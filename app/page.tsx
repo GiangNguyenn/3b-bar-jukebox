@@ -1,18 +1,18 @@
 "use client";
 
+import Search from "@/components/Search";
 import { useCreateNewDailyPlaylist } from "@/hooks/useCreateNewDailyPlayList";
 import { useGetPlaylist } from "@/hooks/useGetPlaylist";
-import { useMyPlaylists } from "@/hooks/useMyPlaylists";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
+import { useSearchTracks } from "../hooks/useSearchTracks";
+import { TrackDetails } from "@/shared/types";
 
 export default function Home() {
-  const { data } = useMyPlaylists();
-  const { createPlaylist, isLoading, todayPlaylistId } =
-    useCreateNewDailyPlaylist();
-  
+  const { createPlaylist, todayPlaylistId } = useCreateNewDailyPlaylist();
   const { data: todayPlaylist } = useGetPlaylist(todayPlaylistId ?? "");
-
-  console.log("data :>> ", data);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchResults, setSearchResults] = useState<TrackDetails[]>([]);
+  const { searchTracks } = useSearchTracks();
 
   useEffect(() => {
     const createDailyPlaylist = async () => {
@@ -25,13 +25,25 @@ export default function Home() {
     };
 
     createDailyPlaylist();
-  }, [createPlaylist]);
+  }, []);
 
-  if (isLoading) return <p>Loading playlists...</p>;
+  const onSearchQueryChange = (e) => {
+    setSearchQuery(e.target.value);
+  };
+
+  const onSearch = async () => {
+    try {
+      const tracks = await searchTracks(searchQuery);
+      console.log("Search results:", tracks);
+      setSearchResults(tracks);
+    } catch (error) {
+      console.error("Error searching tracks:", error);
+    }
+  };
 
   return (
-    <div className="grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20 font-[family-name:var(--font-geist-sans)]">
-      {/* display name + tracks of the playlist */}
+    <div>
+      <Search onChange={onSearchQueryChange} onSearch={onSearch} />
       {todayPlaylist ? (
         <div>
           <h1 className="text-3xl font-bold text-center">Today's Playlist</h1>
@@ -47,6 +59,15 @@ export default function Home() {
       ) : (
         <p>No playlist found.</p>
       )}
+
+      <div>
+        <h1 className="text-3xl font-bold text-center">Search Results</h1>
+        <ul>
+          {searchResults.map((track) => (
+            <li key={track.id}>{track.name}</li>
+          ))}
+        </ul>
+      </div>
     </div>
   );
 }

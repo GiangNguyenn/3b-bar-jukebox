@@ -2,8 +2,6 @@ import { SpotifyPlaylistItem } from "@/shared/types";
 import { sendApiRequest } from "../shared/api";
 import { useMyPlaylists } from "./useMyPlaylists";
 
-const userId = process.env.NEXT_PUBLIC_SPOTIFY_USER_ID ?? "";
-
 export const useCreateNewDailyPlaylist = () => {
   const todayString = new Date().toLocaleDateString();
   const name = `Daily Mix - ${todayString}`;
@@ -58,5 +56,5 @@ export const useCreateNewDailyPlaylist = () => {
     (playlist) => playlist.name === name
   )?.id;
 
-  return { createPlaylist, todayPlaylistId, playlists, isLoading, isError };
+  return { createPlaylist, todayPlaylistId, playlists };
 };
