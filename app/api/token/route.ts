@@ -1,5 +1,3 @@
-import axios from "axios";
-
 const SPOTIFY_TOKEN_URL = "https://accounts.spotify.com/api/token";
 const CLIENT_ID = process.env.SPOTIFY_CLIENT_ID ?? "";
 const CLIENT_SECRET = process.env.SPOTIFY_CLIENT_SECRET ?? "";

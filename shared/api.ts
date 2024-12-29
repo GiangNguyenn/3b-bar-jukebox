@@ -18,7 +18,6 @@ export const sendApiRequest = async <T>({
   config = {},
 }: ApiProps): Promise<T> => {
   const authToken = await getSpotifyToken();
-  console.log("authToken :>> ", authToken);
   const headers = {
     "Content-Type": "application/json",
     ...(authToken && { Authorization: `Bearer ${authToken}` }),
