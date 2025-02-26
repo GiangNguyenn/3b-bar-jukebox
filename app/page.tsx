@@ -1,11 +1,10 @@
 "use client";
-
-import Search from "@/components/Search";
 import { useCreateNewDailyPlaylist } from "@/hooks/useCreateNewDailyPlayList";
 import { useGetPlaylist } from "@/hooks/useGetPlaylist";
 import { useEffect, useState } from "react";
 import { useSearchTracks } from "../hooks/useSearchTracks";
 import { TrackDetails } from "@/shared/types";
+import Search from "@/components/Search";
 
 export default function Home() {
   const { createPlaylist, todayPlaylistId } = useCreateNewDailyPlaylist();
@@ -15,17 +14,12 @@ export default function Home() {
   const { searchTracks } = useSearchTracks();
 
   useEffect(() => {
-    const createDailyPlaylist = async () => {
-      try {
-        const playlist = await createPlaylist();
-        console.log("Daily playlist:", playlist);
-      } catch (err) {
-        console.error("Error creating daily playlist:", err);
+    (async () => {
+      if (!todayPlaylistId) {
+        await createPlaylist();
       }
-    };
-
-    createDailyPlaylist();
-  }, []);
+    })();
+  }, [createPlaylist]);
 
   const onSearchQueryChange = (e) => {
     setSearchQuery(e.target.value);
@@ -34,7 +28,6 @@ export default function Home() {
   const onSearch = async () => {
     try {
       const tracks = await searchTracks(searchQuery);
-      console.log("Search results:", tracks);
       setSearchResults(tracks);
     } catch (error) {
       console.error("Error searching tracks:", error);
@@ -44,7 +37,7 @@ export default function Home() {
   return (
     <div>
       <Search onChange={onSearchQueryChange} onSearch={onSearch} />
-      {todayPlaylist ? (
+      {todayPlaylist && todayPlaylistId ? (
         <div>
           <h1 className="text-3xl font-bold text-center">Today's Playlist</h1>
           <h2 className="text-xl font-semibold text-center">
