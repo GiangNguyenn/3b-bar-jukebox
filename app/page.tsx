@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { useSearchTracks } from "../hooks/useSearchTracks";
 import { TrackDetails } from "@/shared/types";
 import Search from "@/components/Search";
+import { Playlist } from "@/components/Playlist/Playlist";
 
 export default function Home() {
   const { createPlaylist, todayPlaylistId } = useCreateNewDailyPlaylist();
@@ -35,7 +36,7 @@ export default function Home() {
   };
 
   return (
-    <div>
+    <div className="grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20 font-[family-name:var(--font-geist-sans)]">
       <Search onChange={onSearchQueryChange} onSearch={onSearch} />
       {todayPlaylist && todayPlaylistId ? (
         <div>
@@ -43,6 +44,7 @@ export default function Home() {
           <h2 className="text-xl font-semibold text-center">
             {todayPlaylist.name}
           </h2>
+          <Playlist />
           <>
             {todayPlaylist.tracks?.items?.map((track) => (
               <li key={track.track.id}>{track.track.name}</li>
