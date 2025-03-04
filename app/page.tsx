@@ -2,16 +2,16 @@
 import { useCreateNewDailyPlaylist } from "@/hooks/useCreateNewDailyPlayList";
 import { useGetPlaylist } from "@/hooks/useGetPlaylist";
 import { useEffect, useState } from "react";
-import { useSearchTracks } from "../hooks/useSearchTracks";
+import useSearchTracks from "../hooks/useSearchTracks";
 import { TrackDetails } from "@/shared/types";
-import Search from "@/components/Search";
+import SearchInput from "@/components/SearchInput";
+import useDebounce from "@/hooks/useDebounce";
 
 export default function Home() {
   const { createPlaylist, todayPlaylistId } = useCreateNewDailyPlaylist();
   const { data: todayPlaylist } = useGetPlaylist(todayPlaylistId ?? "");
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<TrackDetails[]>([]);
-  const { searchTracks } = useSearchTracks();
 
   useEffect(() => {
     (async () => {
@@ -21,22 +21,22 @@ export default function Home() {
     })();
   }, [createPlaylist]);
 
-  const onSearchQueryChange = (e) => {
-    setSearchQuery(e.target.value);
-  };
+  const debouncedSearchQuery = useDebounce(searchQuery);
 
-  const onSearch = async () => {
-    try {
-      const tracks = await searchTracks(searchQuery);
-      setSearchResults(tracks);
-    } catch (error) {
-      console.error("Error searching tracks:", error);
+  useEffect(() => {
+    const searchTrackDebounce = async () => {
+      if (debouncedSearchQuery !== "") {
+        const tracks = await useSearchTracks(debouncedSearchQuery);
+        setSearchResults(tracks);
+      }
     }
-  };
+
+    searchTrackDebounce()
+  }, [debouncedSearchQuery]);
 
   return (
     <div>
-      <Search onChange={onSearchQueryChange} onSearch={onSearch} />
+      <SearchInput searchQuery={searchQuery} setSearchQuery={setSearchQuery} />
       {todayPlaylist && todayPlaylistId ? (
         <div>
           <h1 className="text-3xl font-bold text-center">Today's Playlist</h1>

@@ -19,20 +19,16 @@ interface SpotifySearchResponse {
   items: TrackDetails[];
 }
 
-export const useSearchTracks = () => {
-  const searchTracks = async (query: string) => {
-    try {
-      const response = await sendApiRequest<{ tracks: SpotifySearchResponse }>({
-        path: `search?q=${query}&type=track&limit=20`,
-        method: "GET",
-      });
-      return response.tracks.items;
-    } catch (error) {
-      throw error;
-    }
-  };
-
-  return {
-    searchTracks,
-  };
+const useSearchTracks = async (query: string) => {
+  try {
+    const response = await sendApiRequest<{ tracks: SpotifySearchResponse }>({
+      path: `search?q=${query}&type=track&limit=20`,
+      method: "GET",
+    });
+    return response.tracks.items;
+  } catch (error) {
+    throw error;
+  }
 };
+
+export default useSearchTracks;
