@@ -11,6 +11,9 @@ const config: Config = {
   ],
   theme: {
     extend: {
+      animation: {
+        glow: "glow 1.5s infinite",
+      },
       colors: {
         background: "hsl(var(--background))",
         foreground: "hsl(var(--foreground))",
@@ -18,17 +21,29 @@ const config: Config = {
           DEFAULT: "hsl(var(--card))",
           foreground: "hsl(var(--card-foreground))",
         },
-        popover: {
-          DEFAULT: "hsl(var(--popover))",
-          foreground: "hsl(var(--popover-foreground))",
-        },
         primary: {
-          DEFAULT: "hsl(var(--primary))",
-          foreground: "hsl(var(--primary-foreground))",
+          50: "hsl(40, 88%, 95%)", // Lightest Gold
+          100: "#ccc297",
+          200: "#E6C591",
+          300: "hsl(40, 88%, 65%)",
+          400: "#C09A5E", // Default
+          500: "hsl(40, 88%, 45%)",
+          600: "hsl(40, 88%, 35%)",
+          700: "hsl(40, 88%, 25%)",
+          800: "hsl(40, 88%, 15%)",
+          900: "hsl(40, 88%, 10%)", // Darkest Gold
         },
         secondary: {
-          DEFAULT: "hsl(var(--secondary))",
-          foreground: "hsl(var(--secondary-foreground))",
+          50: "hsl(220, 15%, 95%)", // Lightest Blue
+          100: "hsl(220, 15%, 85%)",
+          200: "hsl(220, 15%, 75%)",
+          300: "hsl(220, 15%, 65%)",
+          400: "hsl(220, 15%, 55%)",
+          500: "hsl(220, 15%, 45%)",
+          600: "hsl(220, 15%, 35%)",
+          700: "hsl(220, 15%, 25%)",
+          800: "hsl(220, 15%, 15%)",
+          900: "hsl(220, 15%, 10%)", // Darkest Blue
         },
         muted: {
           DEFAULT: "hsl(var(--muted))",

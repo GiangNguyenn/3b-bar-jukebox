@@ -10,11 +10,11 @@ export const useMyPlaylists = () => {
         return response;
     }
 
-    const { data, error, mutate } = useSWR("playlists", fetcher);
+    const { data, error, mutate, isLoading } = useSWR("playlists", fetcher);
 
     return {
         data,
-        isLoading: !error && !data,
+        isLoading: isLoading || error,
         isError: error,
         refetchPlaylists: mutate,
     };

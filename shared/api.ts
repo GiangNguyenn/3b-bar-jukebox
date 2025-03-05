@@ -9,8 +9,6 @@ interface ApiProps {
 }
 
 const baseUrl = process.env.NEXT_PUBLIC_SPOTIFY_BASE_URL ?? "";
-const TOKEN_KEY = "spotify_token";
-const TOKEN_EXPIRY_KEY = "spotify_token_expiry";
 
 export const sendApiRequest = async <T>({
   path,
