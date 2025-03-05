@@ -1,12 +1,13 @@
 "use client";
 import { useCreateNewDailyPlaylist } from "@/hooks/useCreateNewDailyPlayList";
 import { useGetPlaylist } from "@/hooks/useGetPlaylist";
-import { Suspense, useEffect, useState } from "react";
-import { useSearchTracks } from "../hooks/useSearchTracks";
+import { useEffect, useState } from "react";
+import useSearchTracks from "../hooks/useSearchTracks";
 import { TrackDetails } from "@/shared/types";
-import Search from "@/components/Search";
 import { Playlist } from "@/components/Playlist/Playlist";
 import Loading from "./loading";
+import useDebounce from "@/hooks/useDebounce";
+import SearchInput from "@/components/SearchInput";
 
 export default function Home() {
   const { createPlaylist, todayPlaylistId } = useCreateNewDailyPlaylist();
@@ -15,7 +16,6 @@ export default function Home() {
   );
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<TrackDetails[]>([]);
-  const { searchTracks } = useSearchTracks();
 
   useEffect(() => {
     (async () => {
@@ -25,31 +25,32 @@ export default function Home() {
     })();
   }, [createPlaylist]);
 
-  const onSearchQueryChange = (e) => {
-    setSearchQuery(e.target.value);
-  };
+  const debouncedSearchQuery = useDebounce(searchQuery);
 
-  const onSearch = async () => {
-    try {
-      const tracks = await searchTracks(searchQuery);
-      setSearchResults(tracks);
-    } catch (error) {
-      console.error("Error searching tracks:", error);
-    }
-  };
+  useEffect(() => {
+    const searchTrackDebounce = async () => {
+      if (debouncedSearchQuery !== "") {
+        const tracks = await useSearchTracks(debouncedSearchQuery);
+        setSearchResults(tracks);
+      }
+    };
+
+    searchTrackDebounce();
+  }, [debouncedSearchQuery]);
 
   if (isLoading || !todayPlaylist || !todayPlaylistId) {
     return <Loading />;
   }
 
-  const { tracks, name } = todayPlaylist!!;
+  const { tracks, name } = todayPlaylist!;
 
   return (
     <div className="items-center justify-items-center p-4 pt-10 font-mono">
-        <h1 className="text-3xl text-center font-[family-name:var(--font-parklane)]">
-          {name}
-        </h1>
-        <Playlist tracks={tracks.items} />
+      <SearchInput searchQuery={searchQuery} setSearchQuery={setSearchQuery} />
+      <h1 className="text-3xl text-center font-[family-name:var(--font-parklane)]">
+        {name}
+      </h1>
+      <Playlist tracks={tracks.items} />
     </div>
   );
 }
