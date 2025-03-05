@@ -67,5 +67,5 @@ export const useCreateNewDailyPlaylist = () => {
     }
   };
 
-  return { createPlaylist, todayPlaylistId, playlists };
+  return { createPlaylist, todayPlaylistId, playlists, isLoading };
 };
