@@ -6,8 +6,8 @@ import useSearchTracks from "../hooks/useSearchTracks";
 import { TrackDetails } from "@/shared/types";
 import { Playlist } from "@/components/Playlist/Playlist";
 import Loading from "./loading";
-import useDebounce from "@/hooks/useDebounce";
 import SearchInput from "@/components/SearchInput";
+import { useDebounce } from "use-debounce";
 
 export default function Home() {
   const { createPlaylist, todayPlaylistId } = useCreateNewDailyPlaylist();
@@ -26,7 +26,7 @@ export default function Home() {
     })();
   }, [createPlaylist]);
 
-  const debouncedSearchQuery = useDebounce(searchQuery);
+  const [debouncedSearchQuery] = useDebounce(searchQuery, 500);
 
   useEffect(() => {
     const searchTrackDebounce = async () => {
