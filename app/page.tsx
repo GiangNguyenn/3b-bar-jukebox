@@ -16,6 +16,7 @@ export default function Home() {
   );
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<TrackDetails[]>([]);
+  const { searchTracks } = useSearchTracks();
 
   useEffect(() => {
     (async () => {
@@ -30,7 +31,7 @@ export default function Home() {
   useEffect(() => {
     const searchTrackDebounce = async () => {
       if (debouncedSearchQuery !== "") {
-        const tracks = await useSearchTracks(debouncedSearchQuery);
+        const tracks = await searchTracks(debouncedSearchQuery);
         setSearchResults(tracks);
       }
     };
