@@ -1,15 +1,18 @@
 "use client";
 import { useCreateNewDailyPlaylist } from "@/hooks/useCreateNewDailyPlayList";
 import { useGetPlaylist } from "@/hooks/useGetPlaylist";
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { useSearchTracks } from "../hooks/useSearchTracks";
 import { TrackDetails } from "@/shared/types";
 import Search from "@/components/Search";
 import { Playlist } from "@/components/Playlist/Playlist";
+import Loading from "./loading";
 
 export default function Home() {
   const { createPlaylist, todayPlaylistId } = useCreateNewDailyPlaylist();
-  const { data: todayPlaylist } = useGetPlaylist(todayPlaylistId ?? "");
+  const { data: todayPlaylist, isLoading } = useGetPlaylist(
+    todayPlaylistId ?? ""
+  );
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<TrackDetails[]>([]);
   const { searchTracks } = useSearchTracks();
@@ -35,34 +38,18 @@ export default function Home() {
     }
   };
 
-  return (
-    <div className="grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20 font-[family-name:var(--font-geist-sans)]">
-      <Search onChange={onSearchQueryChange} onSearch={onSearch} />
-      {todayPlaylist && todayPlaylistId ? (
-        <div>
-          <h1 className="text-3xl font-bold text-center">Today's Playlist</h1>
-          <h2 className="text-xl font-semibold text-center">
-            {todayPlaylist.name}
-          </h2>
-          <Playlist />
-          <>
-            {todayPlaylist.tracks?.items?.map((track) => (
-              <li key={track.track.id}>{track.track.name}</li>
-            ))}
-          </>
-        </div>
-      ) : (
-        <p>No playlist found.</p>
-      )}
+  if (isLoading || !todayPlaylist || !todayPlaylistId) {
+    return <Loading />;
+  }
 
-      <div>
-        <h1 className="text-3xl font-bold text-center">Search Results</h1>
-        <ul>
-          {searchResults.map((track) => (
-            <li key={track.id}>{track.name}</li>
-          ))}
-        </ul>
-      </div>
+  const { tracks, name } = todayPlaylist!!;
+
+  return (
+    <div className="items-center justify-items-center p-4 pt-10 font-mono">
+        <h1 className="text-3xl text-center font-[family-name:var(--font-parklane)]">
+          {name}
+        </h1>
+        <Playlist tracks={tracks.items} />
     </div>
   );
 }

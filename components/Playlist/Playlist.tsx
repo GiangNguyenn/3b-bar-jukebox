@@ -1,6 +1,12 @@
+import { TrackItem } from "@/shared/types";
 import React from "react";
+import QueueItem from "./QueueItem";
 
-export const Playlist = () => {
+interface IPlaylistProps {
+  tracks: TrackItem[];
+}
+
+export const Playlist: React.FC<IPlaylistProps> = ({ tracks }) => {
   return (
     <div className="w-full">
       <div className="flex w-8/12  bg-white shadow-md rounded-lg overflow-hidden mx-auto">
@@ -48,8 +54,8 @@ export const Playlist = () => {
                     fill="none"
                     stroke="#ef4444"
                     stroke-width="2"
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
                   >
                     <polygon points="19 20 9 12 19 4 19 20"></polygon>
                     <line x1="5" y1="19" x2="5" y2="5"></line>
@@ -63,7 +69,7 @@ export const Playlist = () => {
                     stroke="#ef4444"
                     stroke-width="2"
                     stroke-linecap="round"
-                    stroke-linejoin="round"
+                    strokeLinejoin="round"
                   >
                     <polygon points="5 3 19 12 5 21 5 3"></polygon>
                   </svg>
@@ -76,7 +82,7 @@ export const Playlist = () => {
                     stroke="#ef4444"
                     stroke-width="2"
                     stroke-linecap="round"
-                    stroke-linejoin="round"
+                    strokeLinejoin="round"
                   >
                     <polygon points="5 4 15 12 5 20 5 4"></polygon>
                     <line x1="19" y1="5" x2="19" y2="19"></line>
@@ -106,37 +112,9 @@ export const Playlist = () => {
                 src="https://p.kindpng.com/picc/s/152-1529312_filter-ios-filter-icon-png-transparent-png.png"
               />
             </div>
-
-            <div className="flex border-b py-3 cursor-pointer hover:shadow-md px-2 ">
-              <img
-                className="w-10 h-10 object-cover rounded-lg"
-                alt="User avatar"
-                src="https://images.unsplash.com/photo-1477118476589-bff2c5c4cfbb?ixlib=rb-1.2.1&ixid=eyJhcHBfaWQiOjEyMDd9&auto=format&fit=crop&w=200&q=200"
-              />
-              <div className="flex flex-col px-2 w-full">
-                <span className="text-sm text-red-500 capitalize font-semibold pt-1">
-                  I think I need a sunrise, I'm tired of the sunset
-                </span>
-                <span className="text-xs text-gray-500 uppercase font-medium ">
-                  -"Boston," Augustana
-                </span>
-              </div>
-            </div>
-            <div className="flex border-b py-3 cursor-pointer hover:shadow-md px-2 ">
-              <img
-                className="w-10 h-10 object-cover rounded-lg"
-                alt="User avatar"
-                src="https://images.unsplash.com/photo-1477118476589-bff2c5c4cfbb?ixlib=rb-1.2.1&ixid=eyJhcHBfaWQiOjEyMDd9&auto=format&fit=crop&w=200&q=200"
-              />
-              <div className="flex flex-col px-2 w-full">
-                <span className="text-sm text-red-500 capitalize font-semibold pt-1">
-                  I think I need a sunrise, I'm tired of the sunset
-                </span>
-                <span className="text-xs text-gray-500 uppercase font-medium ">
-                  -"Boston," Augustana
-                </span>
-              </div>
-            </div>
+            {tracks.map((track) => (
+              <QueueItem key={track.track.id} track={track} />
+            ))}
           </div>
         </div>
       </div>
