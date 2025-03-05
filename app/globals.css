@@ -2,8 +2,15 @@
 @tailwind components;
 @tailwind utilities;
 
+:root {
+  --background: #080A0F;
+  --foreground: #C09A5E;
+}
+
 body {
   font-family: Arial, Helvetica, sans-serif;
+  color: var(--foreground);
+  background: var(--background);
 }
 
 @layer utilities {

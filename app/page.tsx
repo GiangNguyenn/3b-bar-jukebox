@@ -4,14 +4,19 @@ import { useGetPlaylist } from "@/hooks/useGetPlaylist";
 import { useEffect, useState } from "react";
 import useSearchTracks from "../hooks/useSearchTracks";
 import { TrackDetails } from "@/shared/types";
-import SearchInput from "@/components/SearchInput";
+import { Playlist } from "@/components/Playlist/Playlist";
+import Loading from "./loading";
 import useDebounce from "@/hooks/useDebounce";
+import SearchInput from "@/components/SearchInput";
 
 export default function Home() {
   const { createPlaylist, todayPlaylistId } = useCreateNewDailyPlaylist();
-  const { data: todayPlaylist } = useGetPlaylist(todayPlaylistId ?? "");
+  const { data: todayPlaylist, isLoading } = useGetPlaylist(
+    todayPlaylistId ?? ""
+  );
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<TrackDetails[]>([]);
+  const { searchTracks } = useSearchTracks();
 
   useEffect(() => {
     (async () => {
@@ -26,41 +31,27 @@ export default function Home() {
   useEffect(() => {
     const searchTrackDebounce = async () => {
       if (debouncedSearchQuery !== "") {
-        const tracks = await useSearchTracks(debouncedSearchQuery);
+        const tracks = await searchTracks(debouncedSearchQuery);
         setSearchResults(tracks);
       }
-    }
+    };
 
-    searchTrackDebounce()
+    searchTrackDebounce();
   }, [debouncedSearchQuery]);
 
-  return (
-    <div>
-      <SearchInput searchQuery={searchQuery} setSearchQuery={setSearchQuery} />
-      {todayPlaylist && todayPlaylistId ? (
-        <div>
-          <h1 className="text-3xl font-bold text-center">Today's Playlist</h1>
-          <h2 className="text-xl font-semibold text-center">
-            {todayPlaylist.name}
-          </h2>
-          <>
-            {todayPlaylist.tracks?.items?.map((track) => (
-              <li key={track.track.id}>{track.track.name}</li>
-            ))}
-          </>
-        </div>
-      ) : (
-        <p>No playlist found.</p>
-      )}
+  if (isLoading || !todayPlaylist || !todayPlaylistId) {
+    return <Loading />;
+  }
 
-      <div>
-        <h1 className="text-3xl font-bold text-center">Search Results</h1>
-        <ul>
-          {searchResults.map((track) => (
-            <li key={track.id}>{track.name}</li>
-          ))}
-        </ul>
-      </div>
+  const { tracks, name } = todayPlaylist!;
+
+  return (
+    <div className="items-center justify-items-center p-4 pt-10 font-mono">
+      <SearchInput searchQuery={searchQuery} setSearchQuery={setSearchQuery} />
+      <h1 className="text-3xl text-center font-[family-name:var(--font-parklane)]">
+        {name}
+      </h1>
+      <Playlist tracks={tracks.items} />
     </div>
   );
 }
