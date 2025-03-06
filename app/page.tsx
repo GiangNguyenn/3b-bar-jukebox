@@ -54,6 +54,7 @@ export default function Home() {
         setSearchQuery={setSearchQuery}
         searchResults={searchResults}
         setSearchResults={setSearchResults}
+        todayPlaylistId={todayPlaylistId}
       />
       <h1 className="text-3xl text-center font-[family-name:var(--font-parklane)]">
         {name}
