@@ -3,10 +3,15 @@ import React from "react";
 
 const NowPlaying = () => {
   const { data: nowPlaying } = useNowPlayingTrack();
+  console.log("nowPlaying :>> ", nowPlaying);
 
-  const { item: nowPlayingTrack } = nowPlaying!;
+  const { item: nowPlayingTrack, is_playing } = nowPlaying!;
 
-
+  const {
+    name,
+    artists,
+    album: { images },
+  } = nowPlayingTrack;
 
   return (
     <div>
@@ -14,32 +19,18 @@ const NowPlaying = () => {
         <img
           className="w-20 h-20 object-cover"
           alt="User avatar"
-          src="https://images.unsplash.com/photo-1477118476589-bff2c5c4cfbb?ixlib=rb-1.2.1&ixid=eyJhcHBfaWQiOjEyMDd9&auto=format&fit=crop&w=200&q=200"
+          src={images[0].url}
         />
         <div className="flex flex-col px-2 w-full">
           <span className="text-xs text-gray-700 uppercase font-medium ">
             now playing
           </span>
           <span className="text-sm text-red-500 capitalize font-semibold pt-1">
-            I think I need a sunrise, I&apos;m tired of the sunset
+            {name}
           </span>
           <span className="text-xs text-gray-500 uppercase font-medium ">
-            -&quot;Boston,&rdquo; Augustana
+            - {artists.map((artist) => artist.name).join(", ")}
           </span>
-          <div className="flex justify-end">
-            <img
-              className="w-5 cursor-pointer"
-              src="https://www.iconpacks.net/icons/2/free-favourite-icon-2765-thumb.png"
-            />
-            <img
-              className="w-5 cursor-pointer mx-2"
-              src="https://www.iconpacks.net/icons/2/free-favourite-icon-2765-thumb.png"
-            />
-            <img
-              className="w-5 cursor-pointer"
-              src="https://www.iconpacks.net/icons/2/free-favourite-icon-2765-thumb.png"
-            />
-          </div>
         </div>
       </div>
 

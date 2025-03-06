@@ -51,5 +51,6 @@ export async function GET() {
     return NextResponse.json({ access_token, expires_in });
   } catch (error) {
     console.error("Error refreshing access token:", error);
+    return NextResponse.error();
   }
 }
