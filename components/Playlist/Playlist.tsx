@@ -22,10 +22,10 @@ export const Playlist: React.FC<IPlaylistProps> = ({ tracks }) => {
                 now playing
               </span>
               <span className="text-sm text-red-500 capitalize font-semibold pt-1">
-                I think I need a sunrise, I'm tired of the sunset
+                I think I need a sunrise, I&apos;m tired of the sunset
               </span>
               <span className="text-xs text-gray-500 uppercase font-medium ">
-                -"Boston," Augustana
+                -&quot;Boston,&rdquo; Augustana
               </span>
               <div className="flex justify-end">
                 <img

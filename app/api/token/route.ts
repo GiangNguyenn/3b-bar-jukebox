@@ -20,7 +20,7 @@ async function getRefreshToken() {
       grant_type: "refresh_token",
       refresh_token: refreshToken,
     }),
-    cache: "no-store",
+    cache: "no-store" as RequestCache,
   };
 
   try {
