@@ -8,6 +8,7 @@ import { Playlist } from "@/components/Playlist/Playlist";
 import Loading from "./loading";
 import useDebounce from "@/hooks/useDebounce";
 import SearchInput from "@/components/SearchInput";
+import useNowPlayingTrack from "@/hooks/useNowPlayingTrack";
 
 export default function Home() {
   const { createPlaylist, todayPlaylistId } = useCreateNewDailyPlaylist();
@@ -17,6 +18,9 @@ export default function Home() {
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<TrackDetails[]>([]);
   const { searchTracks } = useSearchTracks();
+  const { data: nowPlaying } = useNowPlayingTrack();
+
+  console.log('nowPlaying :>> ', nowPlaying);
 
   useEffect(() => {
     (async () => {
