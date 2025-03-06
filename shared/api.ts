@@ -72,7 +72,7 @@ async function getSpotifyToken() {
   const data = await response.json();
   console.log("New token fetched:", data);
 
-  const newToken = data.accessToken;
+  const newToken = data.access_token;
   const newExpiry = now + data.expires_in * 1000;
 
   tokenCache.token = newToken;
