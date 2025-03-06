@@ -25,31 +25,22 @@ async function getRefreshToken() {
     cache: "no-store" as RequestCache,
   };
 
-  try {
-    const response = await fetch(SPOTIFY_TOKEN_URL, payload);
-    const data = await response.json();
+  const response = await fetch(SPOTIFY_TOKEN_URL, payload);
+  const data = await response.json();
 
-    if (!response.ok) {
-      throw new Error(
-        `Failed to refresh token: ${data.error_description || "Unknown error"}`
-      );
-    }
-
-    console.log("Access token refreshed successfully.");
-    console.log("New access token:", data.access_token);
-    return { access_token: data.access_token, expires_in: data.expires_in };
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  } catch (error: any) {
-    console.error("Error refreshing Spotify token:", error.message);
-    throw error;
+  if (!response.ok) {
+    throw new Error(
+      `Failed to refresh token: ${data.error_description || "Unknown error"}`
+    );
   }
+
+  console.log("Access token refreshed successfully.");
+  console.log("New access token:", data.access_token);
+  return { access_token: data.access_token, expires_in: data.expires_in };
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
 }
 
 export async function GET() {
-  try {
-    const { access_token, expires_in } = await getRefreshToken();
-    return NextResponse.json({ access_token, expires_in });
-  } catch (error) {
-    console.error("Error refreshing access token:", error);
-  }
+  const { access_token, expires_in } = await getRefreshToken();
+  return NextResponse.json({ access_token, expires_in });
 }
