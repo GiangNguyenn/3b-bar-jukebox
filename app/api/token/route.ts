@@ -37,7 +37,6 @@ async function getRefreshToken() {
   console.log("Access token refreshed successfully.");
   console.log("New access token:", data.access_token);
   return { access_token: data.access_token, expires_in: data.expires_in };
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
 }
 
 export async function GET() {
