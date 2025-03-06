@@ -15,7 +15,8 @@ export default function Home() {
     todayPlaylistId ?? ""
   );
   const [searchQuery, setSearchQuery] = useState("");
-  const [searchResults, setSearchResults] = useState<TrackDetails[]>([]);
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const [searchResults,setSearchResults] = useState<TrackDetails[]>([]);
   const { searchTracks } = useSearchTracks();
 
   useEffect(() => {
