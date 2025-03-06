@@ -1,3 +1,5 @@
+import { NextResponse } from "next/server";
+
 const SPOTIFY_TOKEN_URL = "https://accounts.spotify.com/api/token";
 const CLIENT_ID = process.env.SPOTIFY_CLIENT_ID ?? "";
 const CLIENT_SECRET = process.env.SPOTIFY_CLIENT_SECRET ?? "";
@@ -20,7 +22,7 @@ async function getRefreshToken() {
       grant_type: "refresh_token",
       refresh_token: refreshToken,
     }),
-    cache: "no-store",
+    cache: "no-store" as RequestCache,
   };
 
   try {
@@ -35,8 +37,9 @@ async function getRefreshToken() {
 
     console.log("Access token refreshed successfully.");
     console.log("New access token:", data.access_token);
-    return { accessToken: data.access_token, expires_in: data.expires_in };
-  } catch (error) {
+    return NextResponse.json(data);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  } catch (error: any) {
     console.error("Error refreshing Spotify token:", error.message);
     throw error;
   }
