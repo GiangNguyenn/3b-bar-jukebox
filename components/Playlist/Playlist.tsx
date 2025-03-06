@@ -105,7 +105,7 @@ export const Playlist: React.FC<IPlaylistProps> = ({ tracks }) => {
             <div className="border-b pb-1 flex justify-between items-center mb-2">
               <span className=" text-base font-semibold uppercase text-gray-700">
                 {" "}
-                play list
+                QUEUE
               </span>
               <img
                 className="w-4 cursor-pointer"
