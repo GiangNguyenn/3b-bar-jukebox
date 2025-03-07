@@ -57,7 +57,7 @@ export default function Home() {
         searchResults={searchResults}
         setSearchResults={setSearchResults}
       />
-      <h1 className="text-3xl text-center font-[family-name:var(--font-parklane)]">
+      <h1 className="text-3xl text-center text-primary-200 font-[family-name:var(--font-parklane)]">
         {name}
       </h1>
       <Playlist tracks={tracks.items} />
