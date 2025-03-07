@@ -19,6 +19,7 @@ export default function Home() {
   const [searchResults,setSearchResults] = useState<TrackDetails[]>([]);
   const { searchTracks } = useSearchTracks();
 
+
   useEffect(() => {
     (async () => {
       if (!todayPlaylistId) {
