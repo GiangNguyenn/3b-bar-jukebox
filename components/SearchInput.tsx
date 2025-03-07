@@ -1,16 +1,15 @@
-import { SpotifyPlaylistItem, TrackDetails } from "@/shared/types";
+import { TrackDetails } from "@/shared/types";
 import { Autocomplete, AutocompleteItem } from "@heroui/react";
 import { FC } from "react";
 import { faSearch } from "@fortawesome/free-solid-svg-icons";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { sendApiRequest } from "@/shared/api";
+import { useAddTrackToPlaylist } from "@/hooks/useAddTrackToPlaylist";
 
 interface SearchInputProps {
   searchQuery: string;
   setSearchQuery: (value: string) => void;
   searchResults: TrackDetails[];
   setSearchResults: (value: TrackDetails[]) => void;
-  todayPlaylistId: string;
 }
 
 const SearchInput: FC<SearchInputProps> = ({
@@ -18,22 +17,17 @@ const SearchInput: FC<SearchInputProps> = ({
   setSearchQuery,
   searchResults,
   setSearchResults,
-  todayPlaylistId,
 }) => {
+  const { addTrack } = useAddTrackToPlaylist();
   const handleChange = (value: string) => {
     setSearchQuery(value);
   };
 
-  const addTrackToPlaylist = async (trackURI: string) => {
+  const handleAddTrack = (trackURI: string) => {
     setSearchResults([]);
     setSearchQuery("");
-    await sendApiRequest<SpotifyPlaylistItem>({
-      path: `playlists/${todayPlaylistId}/tracks`,
-      method: "POST",
-      body: JSON.stringify({
-        uris: [trackURI],
-      }),
-    });
+
+    addTrack(trackURI)
   };
 
   return (
@@ -46,12 +40,13 @@ const SearchInput: FC<SearchInputProps> = ({
         onInputChange={handleChange}
         selectorIcon={<FontAwesomeIcon icon={faSearch} />}
         disableSelectorIconRotation
+        allowsEmptyCollection={false}
       >
         {searchResults.length > 0
           ? searchResults.map((track) => (
               <AutocompleteItem
                 key={track.id}
-                onPress={() => addTrackToPlaylist(track.uri)}
+                onPress={() => handleAddTrack(track.uri)}
               >
                 {track.name}
               </AutocompleteItem>
