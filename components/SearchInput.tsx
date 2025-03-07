@@ -1,5 +1,5 @@
 import { TrackDetails } from "@/shared/types";
-import { Autocomplete, AutocompleteItem, Avatar, Button } from "@heroui/react";
+import { Autocomplete, AutocompleteItem, Avatar } from "@heroui/react";
 import { FC } from "react";
 import { faSearch } from "@fortawesome/free-solid-svg-icons";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
