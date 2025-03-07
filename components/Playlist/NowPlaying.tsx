@@ -1,5 +1,5 @@
 import useNowPlayingTrack from "@/hooks/useNowPlayingTrack";
-import React, { useMemo } from "react";
+import React from "react";
 import VinylSpinningAnimation from "./VinylSpinningAnimation";
 
 const NowPlaying = () => {

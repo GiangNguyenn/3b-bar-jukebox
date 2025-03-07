@@ -7,7 +7,6 @@ import { TrackDetails } from "@/shared/types";
 import { Playlist } from "@/components/Playlist/Playlist";
 import Loading from "./loading";
 import SearchInput from "@/components/SearchInput";
-import useNowPlayingTrack from "@/hooks/useNowPlayingTrack";
 import { useDebounce } from "use-debounce";
 
 export default function Home() {
