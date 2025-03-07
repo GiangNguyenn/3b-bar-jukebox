@@ -13,6 +13,7 @@ const config: Config = {
     extend: {
       animation: {
         glow: "glow 1.5s infinite",
+        spinSlow: "spin 5s linear infinite",
       },
       colors: {
         background: "hsl(var(--background))",
