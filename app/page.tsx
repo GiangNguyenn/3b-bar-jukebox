@@ -16,9 +16,8 @@ export default function Home() {
   );
   const [searchQuery, setSearchQuery] = useState("");
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const [searchResults,setSearchResults] = useState<TrackDetails[]>([]);
+  const [searchResults, setSearchResults] = useState<TrackDetails[]>([]);
   const { searchTracks } = useSearchTracks();
-
 
   useEffect(() => {
     (async () => {
@@ -36,7 +35,7 @@ export default function Home() {
         const tracks = await searchTracks(debouncedSearchQuery);
         setSearchResults(tracks);
       } else {
-        setSearchResults([])
+        setSearchResults([]);
       }
     };
 
@@ -57,7 +56,7 @@ export default function Home() {
         searchResults={searchResults}
         setSearchResults={setSearchResults}
       />
-      <h1 className="text-3xl text-center font-[family-name:var(--font-parklane)]">
+      <h1 className="lg:text-3xl md:text-2xl sm:text-base text-center text-primary-200 font-[family-name:var(--font-parklane)] break-words">
         {name}
       </h1>
       <Playlist tracks={tracks.items} />

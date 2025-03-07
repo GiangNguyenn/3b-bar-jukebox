@@ -22,7 +22,7 @@ const QueueItem: FC<IQueueItemProps> = ({ track }) => {
         src={images[0].url}
       />
       <div className="flex flex-col px-2 w-full">
-        <span className="text-sm text-red-500 capitalize font-semibold pt-1">
+        <span className="text-sm text-secondary-500 capitalize font-semibold pt-1">
           {name}
         </span>
         <span className="text-xs text-gray-500 uppercase font-medium ">

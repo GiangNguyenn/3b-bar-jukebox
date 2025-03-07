@@ -10,7 +10,7 @@ interface IPlaylistProps {
 export const Playlist: React.FC<IPlaylistProps> = ({ tracks }) => {
   return (
     <div className="w-full">
-      <div className="flex w-8/12  bg-white shadow-md rounded-lg overflow-hidden mx-auto">
+      <div className="flex w-full sm:w-10/12 md:w-8/12 lg:w-9/12 bg-white-500 shadow-md rounded-lg overflow-hidden mx-auto">
         <div className="flex flex-col w-full">
           <NowPlaying />
 
@@ -19,10 +19,6 @@ export const Playlist: React.FC<IPlaylistProps> = ({ tracks }) => {
               <span className=" text-base font-semibold uppercase text-gray-700">
                 QUEUE
               </span>
-              <img
-                className="w-4 cursor-pointer"
-                src="https://p.kindpng.com/picc/s/152-1529312_filter-ios-filter-icon-png-transparent-png.png"
-              />
             </div>
             {tracks.map((track) => (
               <QueueItem key={track.track.id} track={track} />
