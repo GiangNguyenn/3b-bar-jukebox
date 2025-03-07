@@ -10,7 +10,7 @@ interface IPlaylistProps {
 export const Playlist: React.FC<IPlaylistProps> = ({ tracks }) => {
   return (
     <div className="w-full">
-      <div className="flex w-9/12 bg-white-500 shadow-md rounded-lg overflow-hidden mx-auto">
+      <div className="flex w-full sm:w-10/12 md:w-8/12 lg:w-9/12 bg-white-500 shadow-md rounded-lg overflow-hidden mx-auto">
         <div className="flex flex-col w-full">
           <NowPlaying />
 

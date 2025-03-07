@@ -31,7 +31,7 @@ const SearchInput: FC<SearchInputProps> = ({
   };
 
   return (
-    <div className="flex w-8/12 bg-white-500 rounded-lg flex-wrap md:flex-nowrap gap-4">
+    <div className="flex bg-white-500 w-full sm:w-10/12 md:w-8/12 lg:w-9/12 rounded-lg flex-wrap md:flex-nowrap gap-4">
       <Autocomplete
         aria-label="Search for songs, albums, or artists"
         placeholder="What do you want to listen to?"

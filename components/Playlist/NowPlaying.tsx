@@ -7,9 +7,9 @@ const NowPlaying = () => {
 
   if (!nowPlaying || !nowPlaying.item) {
     return (
-      <div className="flex flex-rows p-2 items-center justify-start bg-white shadow-lg rounded-lg">
+      <div className="flex flex-col sm:flex-row p-2 items-center justify-start bg-white shadow-lg rounded-lg">
         <VinylSpinningAnimation is_playing={nowPlaying?.is_playing ?? false} />
-        <div className="flex flex-col px-3 w-full">
+        <div className="flex flex-col px-3 w-full text-center sm:text-left">
           <span className="text-sm text-gray-500 font-medium">
             🎵 Nothing is playing right now, you can still add your track
           </span>
@@ -22,12 +22,12 @@ const NowPlaying = () => {
   const { name, artists, album } = nowPlayingTrack;
 
   return (
-    <div className="flex flex-rows items-center justify-start p-2 bg-white shadow-lg rounded-lg">
+    <div className="flex flex-col sm:flex-row items-center justify-start p-2 bg-white shadow-lg rounded-lg">
       <VinylSpinningAnimation
         is_playing={is_playing}
         albumCover={album.images[0].url}
       />
-      <div className="flex flex-col px-3 w-full">
+      <div className="flex flex-col text-center sm:text-left px-3 w-full">
         <span className="text-xs text-gray-600 uppercase font-medium tracking-wide">
           Now Playing
         </span>
