@@ -1,27 +1,35 @@
 import { TrackDetails } from "@/shared/types";
 import { Autocomplete, AutocompleteItem, Avatar, Button } from "@heroui/react";
-import { FC } from "react";
+import { useEffect, useState } from "react";
 import { faSearch } from "@fortawesome/free-solid-svg-icons";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { useAddTrackToPlaylist } from "@/hooks/useAddTrackToPlaylist";
+import { useDebouncedCallback } from "use-debounce";
+import useSearchTracks from "@/hooks/useSearchTracks";
 
-interface SearchInputProps {
-  searchQuery: string;
-  setSearchQuery: (value: string) => void;
-  searchResults: TrackDetails[];
-  setSearchResults: (value: TrackDetails[]) => void;
-}
 
-const SearchInput: FC<SearchInputProps> = ({
-  searchQuery,
-  setSearchQuery,
-  searchResults,
-  setSearchResults,
-}) => {
+const SearchInput = () => {
   const { addTrack } = useAddTrackToPlaylist();
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchResults, setSearchResults] = useState<TrackDetails[]>([]);
+
   const handleChange = (value: string) => {
     setSearchQuery(value);
   };
+  const { searchTracks } = useSearchTracks();
+
+  async function fetchTracks() {
+    const tracks = await searchTracks(searchQuery);
+    setSearchResults(tracks);
+  }
+
+  const debouced = useDebouncedCallback(fetchTracks, 300);
+  useEffect(() => {
+    if (searchQuery) {
+      debouced();
+    }
+  }, [searchQuery]);
+
 
   const handleAddTrack = (trackURI: string) => {
     setSearchResults([]);
@@ -37,7 +45,7 @@ const SearchInput: FC<SearchInputProps> = ({
         placeholder="What do you want to listen to?"
         type="text"
         inputValue={searchQuery}
-        onInputChange={handleChange}
+        onInputChange={(value) => handleChange(value)}
         selectorIcon={<FontAwesomeIcon icon={faSearch} />}
         disableSelectorIconRotation
         allowsEmptyCollection={searchResults.length > 0}
@@ -58,37 +66,35 @@ const SearchInput: FC<SearchInputProps> = ({
           },
         }}
       >
-        {searchResults.length > 0
-          ? searchResults.map((track) => (
-              <AutocompleteItem
-                key={track.id}
-                textValue={track.name}
-                onPress={() => handleAddTrack(track.uri)}
-              >
-                <div className="flex justify-between items-center">
-                  <div className="flex gap-2 items-center">
-                    <Avatar
-                      alt={track.name}
-                      className="flex-shrink-0"
-                      size="sm"
-                      src={track.album.images[2].url}
-                    />
-                    <div className="flex flex-col">
-                      <span className="text-small">{track.name}</span>
-                      <div className="text-tiny text-default-400">
-                        {track.artists.map((artist, index) => (
-                          <span key={index}>
-                            {artist.name}
-                            {index < track.artists.length - 1 ? ", " : ""}
-                          </span>
-                        ))}
-                      </div>
-                    </div>
+        {searchResults.map((track) => (
+          <AutocompleteItem
+            key={track.id}
+            textValue={track.name}
+            onPress={() => handleAddTrack(track.uri)}
+          >
+            <div className="flex justify-between items-center">
+              <div className="flex gap-2 items-center">
+                <Avatar
+                  alt={track.name}
+                  className="flex-shrink-0"
+                  size="sm"
+                  src={track.album.images[2].url}
+                />
+                <div className="flex flex-col">
+                  <span className="text-small">{track.name}</span>
+                  <div className="text-tiny text-default-400">
+                    {track.artists.map((artist, index) => (
+                      <span key={index}>
+                        {artist.name}
+                        {index < track.artists.length - 1 ? ", " : ""}
+                      </span>
+                    ))}
                   </div>
                 </div>
-              </AutocompleteItem>
-            ))
-          : null}
+              </div>
+            </div>
+          </AutocompleteItem>
+        ))}
       </Autocomplete>
     </div>
   );
