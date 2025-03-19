@@ -27,7 +27,7 @@ export type SpotifyPlaylistItem = {
     limit: number;
     offset: number;
     items: TrackItem[];
-  }
+  };
   type: string;
   uri: string;
 };
@@ -120,7 +120,6 @@ export interface Artist {
   uri: string;
 }
 
-
 export interface SpotifyPlaybackState {
   device: {
     id: string;
@@ -146,7 +145,7 @@ export interface SpotifyPlaybackState {
   progress_ms: number;
   is_playing: boolean;
   item: {
-    album: Album
+    album: Album;
     artists: Artist[];
     available_markets: string[];
     disc_number: number;
@@ -190,4 +189,52 @@ export interface SpotifyPlaybackState {
   };
 }
 
-  
+export type UserQueue = {
+  currently_playing: {
+    album: Album;
+    artists: Artist[];
+    available_markets: string[];
+    disc_number: number;
+    duration_ms: number;
+    explicit: boolean;
+    external_ids: {
+      isrc: string;
+    };
+    external_urls: {
+      spotify: string;
+    };
+    href: string;
+    id: string;
+    is_local: boolean;
+    name: string;
+    popularity: number;
+    preview_url?: string;
+    track_number: number;
+    type: string;
+    uri: string;
+  };
+  queue: [
+    {
+      album: Album;
+      artists: Artist[];
+      available_markets: string[];
+      disc_number: number;
+      duration_ms: number;
+      external_ids: {
+        isrc: string;
+      };
+      external_urls: {
+        spotify: string;
+      };
+      href: string;
+      id: string;
+      is_local: boolean;
+      name: string;
+      popularity: number;
+      preview_url: string;
+      track_number: number;
+      type: string;
+      uri: string;
+    }
+  ];
+};
