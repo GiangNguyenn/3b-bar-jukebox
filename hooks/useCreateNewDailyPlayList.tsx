@@ -4,7 +4,10 @@ import { useMyPlaylists } from "./useMyPlaylists";
 import { useEffect, useState } from "react";
 
 export const useCreateNewDailyPlaylist = () => {
-  const todayString = new Date().toLocaleDateString();
+  const today= new Date();
+  const todayString = `${today.getFullYear()}/${String(today.getMonth() + 1).padStart(2, "0")}/${String(today.getDate()).padStart(2, "0")}`;
+
+  
   const name = `Daily Mix - ${todayString}`;
   const description = `A daily mix of your favorite songs on ${todayString}`;
   const [todayPlaylistId, setTodayPlaylistId] = useState<string | null>(null);

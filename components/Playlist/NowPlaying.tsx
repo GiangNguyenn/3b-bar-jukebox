@@ -1,10 +1,12 @@
-import useNowPlayingTrack from "@/hooks/useNowPlayingTrack";
 import React from "react";
 import VinylSpinningAnimation from "./VinylSpinningAnimation";
+import { SpotifyPlaybackState } from "@/shared/types";
 
-const NowPlaying = () => {
-  const { data: nowPlaying } = useNowPlayingTrack();
+interface INowPlayingProps {
+  nowPlaying?: SpotifyPlaybackState;
+}
 
+const NowPlaying: React.FC<INowPlayingProps> = ({ nowPlaying }) => {
   if (!nowPlaying || !nowPlaying.item) {
     return (
       <div className="flex flex-col sm:flex-row p-2 items-center justify-start bg-white shadow-lg rounded-lg">
