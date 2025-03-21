@@ -3,6 +3,8 @@ import React from "react";
 import QueueItem from "./QueueItem";
 import NowPlaying from "./NowPlaying";
 import useNowPlayingTrack from "@/hooks/useNowPlayingTrack";
+import { filterUpcomingTracks } from "@/lib/utils";
+import { useAddSuggestedTrackToPlaylist } from "@/hooks/useAddSuggestedTrackToPlaylist";
 
 interface IPlaylistProps {
   tracks: TrackItem[];
@@ -10,6 +12,11 @@ interface IPlaylistProps {
 
 export const Playlist: React.FC<IPlaylistProps> = ({ tracks }) => {
   const { data: nowPlaying } = useNowPlayingTrack();
+  const currentTrackId = nowPlaying?.item?.id ?? null;
+  const upcomingTracks = filterUpcomingTracks(tracks, currentTrackId);
+  
+  // This will automatically add suggested tracks when needed
+  useAddSuggestedTrackToPlaylist({ upcomingTracks });
 
   return (
     <div className="w-full">
@@ -19,11 +26,11 @@ export const Playlist: React.FC<IPlaylistProps> = ({ tracks }) => {
 
           <div className="flex flex-col p-5">
             <div className="border-b pb-1 flex justify-between items-center mb-2">
-              <span className=" text-base font-semibold uppercase text-gray-700">
-                QUEUE
+              <span className="text-base font-semibold uppercase text-gray-700">
+                UPCOMING TRACKS
               </span>
             </div>
-            {tracks.map((track) => (
+            {upcomingTracks.map((track) => (
               <QueueItem key={track.track.id} track={track} />
             ))}
           </div>
