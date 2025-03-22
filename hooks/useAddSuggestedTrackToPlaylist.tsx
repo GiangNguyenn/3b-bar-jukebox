@@ -13,6 +13,7 @@ interface UseAddSuggestedTrackToPlaylistProps {
 
 // Constants
 const COOLDOWN_MS = 10000;
+const INTERVAL_MS = 60000; // 60 seconds
 
 // 0–30: Very obscure / niche
 // 30–50: Mid-tier popularity — known, but not hits
@@ -125,9 +126,20 @@ export const useAddSuggestedTrackToPlaylist = ({ upcomingTracks }: UseAddSuggest
     }
   }, [addTrack, debouncedPlaylistLength, existingTrackIds]);
 
+  // Effect for playlist length changes
   useEffect(() => {
     getAndAddSuggestedTrack();
   }, [debouncedPlaylistLength, getAndAddSuggestedTrack]);
+
+  // Effect for 60-second interval
+  useEffect(() => {
+    const intervalId = setInterval(() => {
+      getAndAddSuggestedTrack();
+    }, INTERVAL_MS);
+
+    // Cleanup interval on unmount
+    return () => clearInterval(intervalId);
+  }, [getAndAddSuggestedTrack]);
 
   return {
     isLoading,
