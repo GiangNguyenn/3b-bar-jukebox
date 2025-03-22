@@ -12,7 +12,7 @@ interface UseAddSuggestedTrackToPlaylistProps {
 }
 
 // Constants
-const COOLDOWN_MS = 30000;
+const COOLDOWN_MS = 10000;
 
 // 0–30: Very obscure / niche
 // 30–50: Mid-tier popularity — known, but not hits
