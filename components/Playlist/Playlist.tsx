@@ -14,7 +14,7 @@ export const Playlist: React.FC<IPlaylistProps> = ({ tracks }) => {
   const { data: nowPlaying } = useNowPlayingTrack();
   const currentTrackId = nowPlaying?.item?.id ?? null;
   const upcomingTracks = filterUpcomingTracks(tracks, currentTrackId);
-  
+
   // This will automatically add suggested tracks when needed
   useAddSuggestedTrackToPlaylist({ upcomingTracks });
 
@@ -28,11 +28,8 @@ export const Playlist: React.FC<IPlaylistProps> = ({ tracks }) => {
             <div className="border-b pb-1 flex justify-between items-center mb-2">
               <span className="text-base font-semibold uppercase text-gray-700">
                 UPCOMING TRACKS
-              <span className="text-base font-semibold uppercase text-gray-700">
-                UPCOMING TRACKS
               </span>
             </div>
-            {upcomingTracks.map((track) => (
             {upcomingTracks.map((track) => (
               <QueueItem key={track.track.id} track={track} />
             ))}
