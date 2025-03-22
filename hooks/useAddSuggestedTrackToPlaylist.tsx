@@ -19,7 +19,7 @@ const COOLDOWN_MS = 30000;
 // 50–70: Popular, frequently streamed
 // 70–90: Very popular — likely to be hits or viral tracks
 // 90–100: Global megahits 
-const MIN_TRACK_POPULARITY = 70;  
+const MIN_TRACK_POPULARITY = 50;  
 
 const DEBOUNCE_MS = 10000;
 const SPOTIFY_SEARCH_ENDPOINT = "search";
@@ -31,6 +31,8 @@ const FALLBACK_GENRES = [
   "Blues-rock",
   "Contemporary Jazz",
   "Classic Rock",
+  "Rock",
+  "Indie Rock"
 ];
 
 // Utility: Select a random track from a filtered list
