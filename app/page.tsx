@@ -8,6 +8,7 @@ import { Playlist } from "@/components/Playlist/Playlist";
 import Loading from "./loading";
 import SearchInput from "@/components/SearchInput";
 import { useDebounce } from "use-debounce";
+import { useUnfollowOldPlaylists } from "@/hooks/useUnfollowOldPlaylists";
 
 export default function Home() {
   const { createPlaylist, todayPlaylistId } = useCreateNewDailyPlaylist();
@@ -17,6 +18,9 @@ export default function Home() {
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<TrackDetails[]>([]);
   const { searchTracks } = useSearchTracks();
+  
+  // Handle unfollowing of old playlists
+  useUnfollowOldPlaylists();
 
   useEffect(() => {
     (async () => {
