@@ -16,6 +16,9 @@ interface UseAddSuggestedTrackToPlaylistResult {
   error: AxiosError | null;
 }
 
+const MAX_RETRIES = 3;
+const RETRY_DELAY_MS = 1000;
+
 export const useAddSuggestedTrackToPlaylist = ({ 
   upcomingTracks 
 }: UseAddSuggestedTrackToPlaylistProps): UseAddSuggestedTrackToPlaylistResult => {
@@ -33,22 +36,64 @@ export const useAddSuggestedTrackToPlaylist = ({
   const lastAddTimeRef = useRef<number>(0);
   const isRunningRef = useRef<boolean>(false);
 
-  const getAndAddSuggestedTrack = useCallback(async () => {
-    const now = Date.now();
-
-    // Guard clauses for early returns
+  const shouldSkipSuggestion = useCallback((now: number): boolean => {
     if (isRunningRef.current) {
       console.log("Already running — skipping duplicate call");
-      return;
+      return true;
     }
 
     if (now - lastAddTimeRef.current < COOLDOWN_MS) {
       console.log("Still in cooldown period. Skipping suggestion.");
-      return;
+      return true;
     }
 
     if (debouncedPlaylistLength > MAX_PLAYLIST_LENGTH) {
       console.log(`No need to add suggestion - playlist has more than ${MAX_PLAYLIST_LENGTH} tracks`);
+      return true;
+    }
+
+    return false;
+  }, [debouncedPlaylistLength]);
+
+  const waitForRetry = useCallback(async (retryCount: number): Promise<void> => {
+    if (retryCount < MAX_RETRIES) {
+      console.log(`Waiting ${RETRY_DELAY_MS}ms before retrying...`);
+      await new Promise(resolve => setTimeout(resolve, RETRY_DELAY_MS));
+    }
+  }, []);
+
+  const tryAddTrack = useCallback(async (trackUri: string): Promise<boolean> => {
+    const result = await addTrack(trackUri);
+    
+    if (result.success) {
+      return true;
+    }
+
+    // If track exists, return false to trigger a retry
+    if (result.reason === 'TRACK_EXISTS') {
+      return false;
+    }
+
+    // For other failures, throw an error
+    throw new Error(`Failed to add track: ${result.reason}`);
+  }, [addTrack]);
+
+  const handleTrackSuggestion = useCallback(async (retryCount: number): Promise<boolean> => {
+    const selectedTrack = await findSuggestedTrack(existingTrackIds);
+    
+    if (!selectedTrack) {
+      console.log(`No suitable track suggestions found (attempt ${retryCount + 1}/${MAX_RETRIES})`);
+      return false;
+    }
+
+    console.log(`Attempting to add suggested track: ${selectedTrack.name} (attempt ${retryCount + 1}/${MAX_RETRIES})`);
+    return await tryAddTrack(selectedTrack.uri);
+  }, [existingTrackIds, tryAddTrack]);
+
+  const getAndAddSuggestedTrack = useCallback(async () => {
+    const now = Date.now();
+
+    if (shouldSkipSuggestion(now)) {
       return;
     }
 
@@ -57,15 +102,24 @@ export const useAddSuggestedTrackToPlaylist = ({
     setError(null);
 
     try {
-      const selectedTrack = await findSuggestedTrack(existingTrackIds);
-      
-      if (!selectedTrack) {
-        return;
+      let retryCount = 0;
+      let success = false;
+
+      while (!success && retryCount < MAX_RETRIES) {
+        success = await handleTrackSuggestion(retryCount);
+        
+        if (!success) {
+          console.log(`Track already exists or no suitable track found, retrying (attempt ${retryCount + 1}/${MAX_RETRIES})`);
+          retryCount++;
+          await waitForRetry(retryCount);
+        }
       }
 
-      console.log("Adding suggested track:", selectedTrack.name);
-      await addTrack(selectedTrack.uri);
-      lastAddTimeRef.current = Date.now();
+      if (success) {
+        lastAddTimeRef.current = Date.now();
+      } else {
+        throw new Error("Failed to add a track after multiple attempts");
+      }
     } catch (err: any) {
       console.error("Error getting/adding suggestion:", {
         error: err,
@@ -76,7 +130,7 @@ export const useAddSuggestedTrackToPlaylist = ({
       setIsLoading(false);
       isRunningRef.current = false;
     }
-  }, [addTrack, debouncedPlaylistLength, existingTrackIds]);
+  }, [shouldSkipSuggestion, handleTrackSuggestion, waitForRetry, upcomingTracks.length]);
 
   // Effect for playlist length changes
   useEffect(() => {
