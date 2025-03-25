@@ -3,6 +3,7 @@ import { sendApiRequest } from "@/shared/api";
 import { useCreateNewDailyPlaylist } from "./useCreateNewDailyPlayList";
 import { SpotifyPlaylistItem, TrackItem } from "@/shared/types";
 import { useGetPlaylist } from "./useGetPlaylist";
+import { ERROR_MESSAGES } from "@/shared/constants/errors";
 
 export const useAddTrackToPlaylist = () => {
   const [isLoading, setIsLoading] = useState(false);
@@ -19,13 +20,13 @@ export const useAddTrackToPlaylist = () => {
     setIsSuccess(false);
 
     if (isPlaylistError || playlistError) {
-      setError(playlistError || "Failed to load playlist");
+      setError(playlistError || ERROR_MESSAGES.FAILED_TO_LOAD);
       setIsLoading(false);
       return;
     }
 
     if (!playlist || !todayPlaylistId) {
-      setError("No playlist available");
+      setError(ERROR_MESSAGES.NO_PLAYLIST);
       setIsLoading(false);
       return;
     }
@@ -36,7 +37,7 @@ export const useAddTrackToPlaylist = () => {
     );
 
     if (trackExists) {
-      setError("Track already exists in playlist");
+      setError(ERROR_MESSAGES.TRACK_EXISTS);
       setIsLoading(false);
       return;
     }
@@ -53,7 +54,7 @@ export const useAddTrackToPlaylist = () => {
       await refetchPlaylist();
       setIsSuccess(true);
     } catch (error: any) {
-      setError(error.message || "Failed to add track to playlist");
+      setError(error.message || ERROR_MESSAGES.FAILED_TO_ADD);
     } finally {
       setIsLoading(false);
     }
