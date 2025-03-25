@@ -1,20 +1,27 @@
+import { useState } from "react";
 import { sendApiRequest } from "@/shared/api";
 import { useCreateNewDailyPlaylist } from "./useCreateNewDailyPlayList";
 import { SpotifyPlaylistItem, TrackItem } from "@/shared/types";
 import { useGetPlaylist } from "./useGetPlaylist";
 
-interface AddTrackResult {
-  success: boolean;
-  reason?: 'TRACK_EXISTS' | 'NO_PLAYLIST' | 'API_ERROR';
-}
-
 export const useAddTrackToPlaylist = () => {
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [isSuccess, setIsSuccess] = useState(false);
+  
   const { todayPlaylistId } = useCreateNewDailyPlaylist();
   const { data: playlist, refetchPlaylist } = useGetPlaylist(todayPlaylistId ?? "");
 
-  const addTrack = async (trackURI: string): Promise<AddTrackResult> => {
+  const addTrack = async (trackURI: string) => {
+    // Reset states
+    setIsLoading(true);
+    setError(null);
+    setIsSuccess(false);
+
     if (!playlist || !todayPlaylistId) {
-      return { success: false, reason: 'NO_PLAYLIST' };
+      setError("No playlist available");
+      setIsLoading(false);
+      return;
     }
 
     // Check if track already exists in playlist
@@ -23,8 +30,9 @@ export const useAddTrackToPlaylist = () => {
     );
 
     if (trackExists) {
-      console.log("Track already exists in playlist");
-      return { success: false, reason: 'TRACK_EXISTS' };
+      setError("Track already exists in playlist");
+      setIsLoading(false);
+      return;
     }
 
     try {
@@ -36,12 +44,19 @@ export const useAddTrackToPlaylist = () => {
         }),
       });
 
-      refetchPlaylist();
-      return { success: true };
-    } catch (error) {
-      console.error("Error adding track to playlist:", error);
-      return { success: false, reason: 'API_ERROR' };
+      await refetchPlaylist();
+      setIsSuccess(true);
+    } catch (error: any) {
+      setError(error.message || "Failed to add track to playlist");
+    } finally {
+      setIsLoading(false);
     }
   };
-  return { addTrack };
+
+  return { 
+    addTrack,
+    isLoading,
+    error,
+    isSuccess
+  };
 };
