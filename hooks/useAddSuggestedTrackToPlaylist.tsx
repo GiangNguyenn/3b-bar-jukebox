@@ -1,9 +1,8 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { useDebounce } from "use-debounce";
-import { AxiosError } from "axios";
-
 import { TrackItem } from "@/shared/types";
 import { COOLDOWN_MS, INTERVAL_MS, DEBOUNCE_MS, MAX_PLAYLIST_LENGTH } from "@/shared/constants/trackSuggestion";
+import { ERROR_MESSAGES } from "@/shared/constants/errors";
 import { findSuggestedTrack } from "@/services/trackSuggestion";
 import { useAddTrackToPlaylist } from "./useAddTrackToPlaylist";
 
@@ -13,7 +12,7 @@ interface UseAddSuggestedTrackToPlaylistProps {
 
 interface UseAddSuggestedTrackToPlaylistResult {
   isLoading: boolean;
-  error: AxiosError | null;
+  error: string | null;
 }
 
 const MAX_RETRIES = 3;
@@ -22,9 +21,9 @@ const RETRY_DELAY_MS = 1000;
 export const useAddSuggestedTrackToPlaylist = ({ 
   upcomingTracks 
 }: UseAddSuggestedTrackToPlaylistProps): UseAddSuggestedTrackToPlaylistResult => {
-  const { addTrack } = useAddTrackToPlaylist();
+  const { addTrack, isSuccess, error: addTrackError } = useAddTrackToPlaylist();
   const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<AxiosError | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   // Debounced version of upcoming track count
   const [debouncedPlaylistLength] = useDebounce(upcomingTracks.length, DEBOUNCE_MS);
@@ -63,26 +62,24 @@ export const useAddSuggestedTrackToPlaylist = ({
   }, []);
 
   const tryAddTrack = useCallback(async (trackUri: string): Promise<boolean> => {
-    const result = await addTrack(trackUri);
+    await addTrack(trackUri);
     
-    if (result.success) {
+    if (isSuccess) {
       return true;
     }
 
-    // If track exists, return false to trigger a retry
-    if (result.reason === 'TRACK_EXISTS') {
+    if (addTrackError?.includes(ERROR_MESSAGES.TRACK_EXISTS)) {
       return false;
     }
 
-    // For other failures, throw an error
-    throw new Error(`Failed to add track: ${result.reason}`);
-  }, [addTrack]);
+    throw new Error(addTrackError || ERROR_MESSAGES.GENERIC_ERROR);
+  }, [addTrack, isSuccess, addTrackError]);
 
   const handleTrackSuggestion = useCallback(async (retryCount: number): Promise<boolean> => {
     const selectedTrack = await findSuggestedTrack(existingTrackIds);
     
     if (!selectedTrack) {
-      console.log(`No suitable track suggestions found (attempt ${retryCount + 1}/${MAX_RETRIES})`);
+      console.log(`${ERROR_MESSAGES.NO_SUGGESTIONS} (attempt ${retryCount + 1}/${MAX_RETRIES})`);
       return false;
     }
 
@@ -118,14 +115,14 @@ export const useAddSuggestedTrackToPlaylist = ({
       if (success) {
         lastAddTimeRef.current = Date.now();
       } else {
-        throw new Error("Failed to add a track after multiple attempts");
+        throw new Error(ERROR_MESSAGES.MAX_RETRIES);
       }
     } catch (err: any) {
       console.error("Error getting/adding suggestion:", {
         error: err,
         upcomingTracksLength: upcomingTracks.length,
       });
-      setError(err as AxiosError);
+      setError(err.message || ERROR_MESSAGES.GENERIC_ERROR);
     } finally {
       setIsLoading(false);
       isRunningRef.current = false;
