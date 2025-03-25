@@ -9,7 +9,7 @@ export const useAddTrackToPlaylist = () => {
   const [error, setError] = useState<string | null>(null);
   const [isSuccess, setIsSuccess] = useState(false);
   
-  const { todayPlaylistId } = useCreateNewDailyPlaylist();
+  const { todayPlaylistId, error: playlistError, isError: isPlaylistError } = useCreateNewDailyPlaylist();
   const { data: playlist, refetchPlaylist } = useGetPlaylist(todayPlaylistId ?? "");
 
   const addTrack = async (trackURI: string) => {
@@ -17,6 +17,12 @@ export const useAddTrackToPlaylist = () => {
     setIsLoading(true);
     setError(null);
     setIsSuccess(false);
+
+    if (isPlaylistError || playlistError) {
+      setError(playlistError || "Failed to load playlist");
+      setIsLoading(false);
+      return;
+    }
 
     if (!playlist || !todayPlaylistId) {
       setError("No playlist available");
