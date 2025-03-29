@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback } from "react";
 import { SpotifyPlaylistItem } from "@/shared/types";
 import { useMyPlaylists } from "./useMyPlaylists";
 import { useUnfollowPlaylist } from "./useUnfollowPlaylist";
+import { formatDateForPlaylist } from "@/shared/utils/date";
 
 const DAYS_TO_KEEP = 1; // Keep today's playlist, delete yesterday's and older
 
@@ -33,7 +34,7 @@ export const useUnfollowOldPlaylists = () => {
     const cutoffDate = new Date(today);
     cutoffDate.setDate(cutoffDate.getDate() - DAYS_TO_KEEP);
     
-    console.log(`[Unfollow] Processing playlists older than ${cutoffDate.toLocaleDateString()}`);
+    console.log(`[Unfollow] Processing playlists older than ${formatDateForPlaylist(cutoffDate)}`);
 
     const dailyMixPlaylists = playlists.items.filter(playlist => playlist.name.startsWith('Daily Mix - '));
 
@@ -86,12 +87,18 @@ export const useUnfollowOldPlaylists = () => {
         },
         onError: (error) => {
           console.error(`[Unfollow] Failed to delete ${currentPlaylist.name}:`, error.message);
-          setCurrentPlaylistIndex(prev => prev + 1);
+          // Don't increment index on error, try again
+          setIsProcessing(false);
         }
       });
+
+      if (!result.success) {
+        console.error(`[Unfollow] Failed to delete ${currentPlaylist.name}:`, result.error);
+        setIsProcessing(false);
+      }
     } catch (error) {
       console.error(`[Unfollow] Error processing ${currentPlaylist.name}:`, error);
-      setCurrentPlaylistIndex(prev => prev + 1);
+      setIsProcessing(false);
     }
   }, [currentPlaylist, unfollowPlaylist]);
 
