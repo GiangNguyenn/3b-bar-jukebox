@@ -4,6 +4,7 @@ import QueueItem from "./QueueItem";
 import NowPlaying from "./NowPlaying";
 import useNowPlayingTrack from "@/hooks/useNowPlayingTrack";
 import { filterUpcomingTracks } from "@/lib/utils";
+import { useAddSuggestedTrackToPlaylist } from "@/hooks/useAddSuggestedTrackToPlaylist";
 
 interface IPlaylistProps {
   tracks: TrackItem[];
@@ -13,6 +14,9 @@ export const Playlist: React.FC<IPlaylistProps> = ({ tracks }) => {
   const { data: nowPlaying } = useNowPlayingTrack();
   const currentTrackId = nowPlaying?.item?.id ?? null;
   const upcomingTracks = filterUpcomingTracks(tracks, currentTrackId);
+
+  // This will automatically add suggested tracks when needed
+  useAddSuggestedTrackToPlaylist({ upcomingTracks });
 
   return (
     <div className="w-full">
