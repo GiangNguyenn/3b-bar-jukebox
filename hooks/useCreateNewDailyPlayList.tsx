@@ -2,12 +2,10 @@ import { SpotifyPlaylistItem } from "@/shared/types";
 import { sendApiRequest } from "../shared/api";
 import { useMyPlaylists } from "./useMyPlaylists";
 import { useEffect, useState } from "react";
+import { formatDateForPlaylist } from "@/shared/utils/date";
 
 export const useCreateNewDailyPlaylist = () => {
-  const today= new Date();
-  const todayString = `${String(today.getDate()).padStart(2, "0")}/${String(today.getMonth() + 1).padStart(2, "0")}/${today.getFullYear()}`;
-
-  
+  const todayString = formatDateForPlaylist();
   const name = `Daily Mix - ${todayString}`;
   const description = `A daily mix of your favorite songs on ${todayString}`;
   const [todayPlaylistId, setTodayPlaylistId] = useState<string | null>(null);
