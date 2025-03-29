@@ -84,11 +84,6 @@ export const useUnfollowOldPlaylists = () => {
             return newSet;
           });
           setCurrentPlaylistIndex(prev => prev + 1);
-        },
-        onError: (error) => {
-          console.error(`[Unfollow] Failed to delete ${currentPlaylist.name}:`, error.message);
-          // Don't increment index on error, try again
-          setIsProcessing(false);
         }
       });
 
