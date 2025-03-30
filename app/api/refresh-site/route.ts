@@ -12,6 +12,17 @@ const RETRY_DELAY_MS = 1000;
 const userId = process.env.NEXT_PUBLIC_SPOTIFY_USER_ID ?? "";
 const CRON_SECRET = process.env.CRON_SECRET ?? "";
 
+interface ApiError {
+  message: string;
+  response?: {
+    data?: {
+      error?: {
+        message: string;
+      };
+    };
+  };
+}
+
 async function getTodayPlaylist(): Promise<SpotifyPlaylistItem | null> {
   try {
     const todayString = formatDateForPlaylist();
@@ -38,8 +49,9 @@ async function getTodayPlaylist(): Promise<SpotifyPlaylistItem | null> {
     });
 
     return playlist;
-  } catch (error: any) {
-    console.error("[Refresh Site API] Error getting today's playlist:", error);
+  } catch (error) {
+    const apiError = error as ApiError;
+    console.error("[Refresh Site API] Error getting today's playlist:", apiError);
     return null;
   }
 }
@@ -50,8 +62,9 @@ async function getCurrentlyPlaying(): Promise<string | null> {
       path: "me/player/currently-playing",
     });
     return response.item?.id ?? null;
-  } catch (error: any) {
-    console.error("[Refresh Site API] Error getting currently playing track:", error);
+  } catch (error) {
+    const apiError = error as ApiError;
+    console.error("[Refresh Site API] Error getting currently playing track:", apiError);
     return null;
   }
 }
@@ -73,11 +86,12 @@ async function tryAddTrack(trackUri: string, playlistId: string): Promise<boolea
       }),
     });
     return true;
-  } catch (error: any) {
-    if (error.message?.includes(ERROR_MESSAGES.TRACK_EXISTS)) {
+  } catch (error) {
+    const apiError = error as ApiError;
+    if (apiError.message?.includes(ERROR_MESSAGES.TRACK_EXISTS)) {
       return false;
     }
-    throw new Error(error.message || ERROR_MESSAGES.GENERIC_ERROR);
+    throw new Error(apiError.message || ERROR_MESSAGES.GENERIC_ERROR);
   }
 }
 
@@ -131,12 +145,13 @@ async function addSuggestedTrackToPlaylist(upcomingTracks: TrackItem[], playlist
     } else {
       throw new Error(ERROR_MESSAGES.MAX_RETRIES);
     }
-  } catch (err: any) {
+  } catch (error) {
+    const apiError = error as ApiError;
     console.error("Error getting/adding suggestion:", {
-      error: err,
+      error: apiError,
       upcomingTracksLength: upcomingTracks.length,
     });
-    return { success: false, error: err.message || ERROR_MESSAGES.GENERIC_ERROR };
+    return { success: false, error: apiError.message || ERROR_MESSAGES.GENERIC_ERROR };
   }
 }
 
@@ -191,12 +206,13 @@ export async function POST(request: Request) {
       message: 'Successfully added suggested track',
       timestamp: new Date().toISOString()
     });
-  } catch (error: any) {
-    console.error('[Refresh Site API] Error:', error);
+  } catch (error) {
+    const apiError = error as ApiError;
+    console.error('[Refresh Site API] Error:', apiError);
     return NextResponse.json(
       { 
         success: false, 
-        error: error.message || 'Failed to refresh site' 
+        error: apiError.message || 'Failed to refresh site' 
       },
       { status: 500 }
     );
