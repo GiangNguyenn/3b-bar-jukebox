@@ -157,9 +157,33 @@ async function addSuggestedTrackToPlaylist(upcomingTracks: TrackItem[], playlist
 
 export async function POST(request: Request) {
   try {
-    // Verify cron job secret
+    // Debug logging for authorization
     const authHeader = request.headers.get('authorization');
+    console.log('[Refresh Site API] Request received');
+    console.log('[Refresh Site API] All headers:', Object.fromEntries(request.headers.entries()));
+    console.log('[Refresh Site API] Received auth header:', authHeader);
+    console.log('[Refresh Site API] Expected auth header:', `Bearer ${CRON_SECRET}`);
+    console.log('[Refresh Site API] CRON_SECRET value:', CRON_SECRET ? 'Set' : 'Not set');
+    console.log('[Refresh Site API] Header length:', authHeader?.length);
+    console.log('[Refresh Site API] Expected length:', `Bearer ${CRON_SECRET}`.length);
+    
+    if (!authHeader) {
+      console.log('[Refresh Site API] No authorization header provided');
+      return NextResponse.json(
+        { 
+          success: false, 
+          error: 'No authorization header provided' 
+        },
+        { status: 401 }
+      );
+    }
+
     if (authHeader !== `Bearer ${CRON_SECRET}`) {
+      console.log('[Refresh Site API] Invalid authorization header');
+      console.log('[Refresh Site API] Header length:', authHeader.length);
+      console.log('[Refresh Site API] Expected length:', `Bearer ${CRON_SECRET}`.length);
+      console.log('[Refresh Site API] Header bytes:', Array.from(authHeader).map(c => c.charCodeAt(0)));
+      console.log('[Refresh Site API] Expected bytes:', Array.from(`Bearer ${CRON_SECRET}`).map(c => c.charCodeAt(0)));
       return NextResponse.json(
         { 
           success: false, 
@@ -169,7 +193,7 @@ export async function POST(request: Request) {
       );
     }
 
-    console.log('[Refresh Site API] Endpoint called');
+    console.log('[Refresh Site API] Authorization successful');
     
     // Get today's playlist
     const playlist = await getTodayPlaylist();
