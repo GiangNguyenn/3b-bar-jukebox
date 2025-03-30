@@ -8,6 +8,8 @@ import { Playlist } from "@/components/Playlist/Playlist";
 import Loading from "./loading";
 import SearchInput from "@/components/SearchInput";
 import { useDebounce } from "use-debounce";
+import { cleanupOldPlaylists } from "@/services/playlist";
+import { useMyPlaylists } from "@/hooks/useMyPlaylists";
 
 export default function Home() {
   const { createPlaylist, todayPlaylistId } = useCreateNewDailyPlaylist();
@@ -17,6 +19,14 @@ export default function Home() {
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<TrackDetails[]>([]);
   const { searchTracks } = useSearchTracks();
+  const { data: playlists } = useMyPlaylists();
+  
+  // Handle cleanup of old playlists
+  useEffect(() => {
+    if (playlists?.items) {
+      cleanupOldPlaylists(playlists.items).catch(console.error);
+    }
+  }, [playlists?.items]);
 
   useEffect(() => {
     (async () => {
