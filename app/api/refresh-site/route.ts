@@ -10,7 +10,63 @@ import { filterUpcomingTracks } from "@/lib/utils";
 const MAX_RETRIES = 3;
 const RETRY_DELAY_MS = 1000;
 const userId = process.env.NEXT_PUBLIC_SPOTIFY_USER_ID ?? "";
-const CRON_SECRET = process.env.CRON_SECRET ?? "";
+
+// Custom error class for better error handling
+class ApiError extends Error {
+  constructor(
+    message: string,
+    public statusCode: number = 500,
+    public details?: unknown
+  ) {
+    super(message);
+    this.name = 'ApiError';
+  }
+}
+
+// Structured logging utility
+interface LogData {
+  [key: string]: unknown;
+}
+
+const log = {
+  info: (message: string, data?: LogData) => {
+    const logData = {
+      timestamp: new Date().toISOString(),
+      level: 'info',
+      message,
+      ...(data || {})
+    };
+    console.log('\n[INFO]', message);
+    if (data) {
+      console.log('Data:', JSON.stringify(data, null, 2));
+    }
+  },
+  error: (message: string, error?: unknown) => {
+    const logData = {
+      timestamp: new Date().toISOString(),
+      level: 'error',
+      message,
+      error: error instanceof Error ? {
+        name: error.name,
+        message: error.message,
+        stack: error.stack
+      } : error
+    };
+    console.error('\n[ERROR]', message);
+    if (error) {
+      console.error('Error details:', JSON.stringify(logData.error, null, 2));
+    }
+  }
+};
+
+// Log environment variables at startup
+console.log('\n=== Environment Check ===');
+console.log('NODE_ENV:', process.env.NODE_ENV);
+console.log('Spotify User ID:', userId ? 'Set' : 'Not set');
+console.log('Spotify Base URL:', process.env.NEXT_PUBLIC_SPOTIFY_BASE_URL ? 'Set' : 'Not set');
+console.log('========================\n');
+
+let lastAddTime = 0;
 
 interface ApiError {
   message: string;
@@ -23,27 +79,77 @@ interface ApiError {
   };
 }
 
+// Rate limiting configuration
+const RATE_LIMIT_WINDOW_MS = 60 * 1000; // 1 minute
+const MAX_REQUESTS_PER_WINDOW = 1; // Only allow one request per minute
+const requestTimestamps: number[] = [];
+
+function isRateLimited(): boolean {
+  const now = Date.now();
+  // Remove timestamps older than the window
+  while (requestTimestamps.length > 0 && requestTimestamps[0] < now - RATE_LIMIT_WINDOW_MS) {
+    requestTimestamps.shift();
+  }
+  
+  if (requestTimestamps.length >= MAX_REQUESTS_PER_WINDOW) {
+    return true;
+  }
+  
+  requestTimestamps.push(now);
+  return false;
+}
+
 async function getTodayPlaylist(): Promise<SpotifyPlaylistItem | null> {
   try {
     const todayString = formatDateForPlaylist();
     const name = `Daily Mix - ${todayString}`;
     
-    // Get all playlists
+    log.info('Fetching playlists', { 
+      todayString, 
+      name,
+      userId,
+      baseUrl: process.env.NEXT_PUBLIC_SPOTIFY_BASE_URL,
+      hasUserId: !!userId,
+      hasBaseUrl: !!process.env.NEXT_PUBLIC_SPOTIFY_BASE_URL
+    });
+
+    if (!userId) {
+      throw new Error('Spotify user ID is not configured');
+    }
+
+    if (!process.env.NEXT_PUBLIC_SPOTIFY_BASE_URL) {
+      throw new Error('Spotify base URL is not configured');
+    }
+
+    log.info('Making API request to fetch playlists');
     const playlists = await sendApiRequest<{ items: SpotifyPlaylistItem[] }>({
       path: "me/playlists",
     });
 
-    // Find today's playlist
+    log.info('Playlists fetched', { 
+      totalPlaylists: playlists.items.length,
+      playlistNames: playlists.items.map(p => p.name),
+      playlists: playlists.items.map(p => ({ id: p.id, name: p.name }))
+    });
+
     const todayPlaylist = playlists.items.find(
       (playlist) => playlist.name === name
     );
 
     if (!todayPlaylist) {
-      console.log(`[Refresh Site API] No playlist found for today: ${name}`);
+      log.info(`No playlist found for today: ${name}`, {
+        availablePlaylists: playlists.items.map(p => p.name),
+        expectedName: name
+      });
       return null;
     }
 
-    // Get full playlist details
+    log.info('Found today\'s playlist', { 
+      playlistId: todayPlaylist.id,
+      playlistName: todayPlaylist.name
+    });
+
+    log.info('Fetching playlist details', { playlistId: todayPlaylist.id });
     const playlist = await sendApiRequest<SpotifyPlaylistItem>({
       path: `users/${userId}/playlists/${todayPlaylist.id}`,
     });
@@ -51,8 +157,23 @@ async function getTodayPlaylist(): Promise<SpotifyPlaylistItem | null> {
     return playlist;
   } catch (error) {
     const apiError = error as ApiError;
-    console.error("[Refresh Site API] Error getting today's playlist:", apiError);
-    return null;
+    log.error('Error getting today\'s playlist', {
+      error: apiError,
+      statusCode: apiError.response?.data?.error?.message,
+      userId: userId,
+      response: apiError.response,
+      message: apiError.message,
+      stack: apiError.stack,
+      hasUserId: !!userId,
+      hasBaseUrl: !!process.env.NEXT_PUBLIC_SPOTIFY_BASE_URL,
+      errorDetails: apiError.response?.data?.error
+    });
+    
+    if (apiError.response?.data?.error?.message?.includes('401')) {
+      throw new ApiError('Spotify authentication failed. Please check your access token.', 401, apiError);
+    }
+    
+    throw new ApiError('Failed to get today\'s playlist', 500, apiError);
   }
 }
 
@@ -64,15 +185,24 @@ async function getCurrentlyPlaying(): Promise<string | null> {
     return response.item?.id ?? null;
   } catch (error) {
     const apiError = error as ApiError;
-    console.error("[Refresh Site API] Error getting currently playing track:", apiError);
+    log.error('Error getting currently playing track', {
+      error: apiError,
+      statusCode: apiError.response?.data?.error?.message
+    });
+    
+    if (apiError.response?.data?.error?.message?.includes('401')) {
+      throw new ApiError('Spotify authentication failed. Please check your access token.', 401, apiError);
+    }
+    
     return null;
   }
 }
 
 async function waitForRetry(retryCount: number): Promise<void> {
   if (retryCount < MAX_RETRIES) {
-    console.log(`Waiting ${RETRY_DELAY_MS}ms before retrying...`);
-    await new Promise(resolve => setTimeout(resolve, RETRY_DELAY_MS));
+    const delay = RETRY_DELAY_MS * Math.pow(2, retryCount); // Exponential backoff
+    log.info(`Waiting ${delay}ms before retry ${retryCount + 1}/${MAX_RETRIES}`);
+    await new Promise(resolve => setTimeout(resolve, delay));
   }
 }
 
@@ -88,6 +218,17 @@ async function tryAddTrack(trackUri: string, playlistId: string): Promise<boolea
     return true;
   } catch (error) {
     const apiError = error as ApiError;
+    log.error('Error adding track to playlist', {
+      error: apiError,
+      statusCode: apiError.response?.data?.error?.message,
+      playlistId,
+      trackUri
+    });
+    
+    if (apiError.response?.data?.error?.message?.includes('401')) {
+      throw new ApiError('Spotify authentication failed. Please check your access token.', 401, apiError);
+    }
+    
     if (apiError.message?.includes(ERROR_MESSAGES.TRACK_EXISTS)) {
       return false;
     }
@@ -99,18 +240,21 @@ async function handleTrackSuggestion(existingTrackIds: string[], retryCount: num
   const selectedTrack = await findSuggestedTrack(existingTrackIds);
   
   if (!selectedTrack) {
-    console.log(`${ERROR_MESSAGES.NO_SUGGESTIONS} (attempt ${retryCount + 1}/${MAX_RETRIES})`);
+    log.info(`${ERROR_MESSAGES.NO_SUGGESTIONS} (attempt ${retryCount + 1}/${MAX_RETRIES})`);
     return false;
   }
 
-  console.log(`Attempting to add suggested track: ${selectedTrack.name} (attempt ${retryCount + 1}/${MAX_RETRIES})`);
+  log.info(`Attempting to add suggested track: ${selectedTrack.name}`, {
+    attempt: retryCount + 1,
+    maxRetries: MAX_RETRIES,
+    trackId: selectedTrack.id
+  });
+  
   return await tryAddTrack(selectedTrack.uri, playlistId);
 }
 
 async function addSuggestedTrackToPlaylist(upcomingTracks: TrackItem[], playlistId: string): Promise<{ success: boolean; error?: string }> {
   const existingTrackIds = upcomingTracks.map(t => t.track.id);
-  let lastAddTime = 0;
-
   const now = Date.now();
   
   // Skip if in cooldown period
@@ -140,7 +284,7 @@ async function addSuggestedTrackToPlaylist(upcomingTracks: TrackItem[], playlist
     }
 
     if (success) {
-      lastAddTime = Date.now();
+      lastAddTime = now;
       return { success: true };
     } else {
       throw new Error(ERROR_MESSAGES.MAX_RETRIES);
@@ -155,90 +299,67 @@ async function addSuggestedTrackToPlaylist(upcomingTracks: TrackItem[], playlist
   }
 }
 
-export async function POST(request: Request) {
+export async function GET(request: Request) {
   try {
-    // Debug logging for authorization
-    const authHeader = request.headers.get('authorization');
-    console.log('[Refresh Site API] Request received');
-    console.log('[Refresh Site API] All headers:', Object.fromEntries(request.headers.entries()));
-    console.log('[Refresh Site API] Received auth header:', authHeader);
-    console.log('[Refresh Site API] Expected auth header:', `Bearer ${CRON_SECRET}`);
-    console.log('[Refresh Site API] CRON_SECRET value:', CRON_SECRET ? 'Set' : 'Not set');
-    console.log('[Refresh Site API] Header length:', authHeader?.length);
-    console.log('[Refresh Site API] Expected length:', `Bearer ${CRON_SECRET}`.length);
+    log.info('Refresh site request received');
     
-    if (!authHeader) {
-      console.log('[Refresh Site API] No authorization header provided');
-      return NextResponse.json(
-        { 
-          success: false, 
-          error: 'No authorization header provided' 
-        },
-        { status: 401 }
-      );
+    // Check rate limiting
+    if (isRateLimited()) {
+      throw new ApiError('Rate limit exceeded', 429);
     }
-
-    if (authHeader !== `Bearer ${CRON_SECRET}`) {
-      console.log('[Refresh Site API] Invalid authorization header');
-      console.log('[Refresh Site API] Header length:', authHeader.length);
-      console.log('[Refresh Site API] Expected length:', `Bearer ${CRON_SECRET}`.length);
-      console.log('[Refresh Site API] Header bytes:', Array.from(authHeader).map(c => c.charCodeAt(0)));
-      console.log('[Refresh Site API] Expected bytes:', Array.from(`Bearer ${CRON_SECRET}`).map(c => c.charCodeAt(0)));
-      return NextResponse.json(
-        { 
-          success: false, 
-          error: 'Unauthorized' 
-        },
-        { status: 401 }
-      );
+    
+    // Check if we have a valid Spotify user ID
+    if (!userId) {
+      log.error('Spotify user ID not configured');
+      throw new ApiError('Spotify user ID not configured', 500);
     }
-
-    console.log('[Refresh Site API] Authorization successful');
     
     // Get today's playlist
+    log.info('Fetching today\'s playlist');
     const playlist = await getTodayPlaylist();
     if (!playlist) {
-      return NextResponse.json(
-        { 
-          success: false, 
-          error: 'No playlist found for today' 
-        },
-        { status: 404 }
-      );
+      log.error('No playlist found for today');
+      throw new ApiError('No playlist found for today', 404);
     }
 
     // Get currently playing track
+    log.info('Fetching currently playing track');
     const currentTrackId = await getCurrentlyPlaying();
     
     // Get upcoming tracks
+    log.info('Filtering upcoming tracks');
     const upcomingTracks = filterUpcomingTracks(playlist.tracks.items, currentTrackId);
     
+    log.info('Adding suggested track to playlist');
     const result = await addSuggestedTrackToPlaylist(upcomingTracks, playlist.id);
     
     if (!result.success) {
-      return NextResponse.json(
-        { 
-          success: false, 
-          error: result.error || 'Failed to add suggested track' 
-        },
-        { status: 500 }
-      );
+      log.error('Failed to add suggested track', { error: result.error });
+      throw new ApiError(result.error || 'Failed to add suggested track', 500);
     }
     
+    log.info('Successfully added suggested track');
     return NextResponse.json({ 
       success: true, 
       message: 'Successfully added suggested track',
       timestamp: new Date().toISOString()
     });
   } catch (error) {
-    const apiError = error as ApiError;
-    console.error('[Refresh Site API] Error:', apiError);
+    const apiError = error instanceof ApiError ? error : new ApiError('Failed to refresh site', 500, error);
+    log.error('Error in refresh site endpoint', {
+      error: apiError,
+      stack: apiError.stack,
+      details: apiError.details
+    });
+    
     return NextResponse.json(
       { 
         success: false, 
-        error: apiError.message || 'Failed to refresh site' 
+        error: apiError.message,
+        details: apiError.details,
+        timestamp: new Date().toISOString()
       },
-      { status: 500 }
+      { status: apiError.statusCode }
     );
   }
 } 
