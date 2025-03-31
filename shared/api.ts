@@ -8,7 +8,7 @@ interface ApiProps {
   config?: AxiosRequestConfig;
 }
 
-const baseUrl = process.env.NEXT_PUBLIC_SPOTIFY_BASE_URL ?? "";
+const SPOTIFY_API_URL = "https://api.spotify.com/v1";
 
 export const sendApiRequest = async <T>({
   path,
@@ -20,7 +20,7 @@ export const sendApiRequest = async <T>({
   console.log("Making API request:", {
     path,
     method,
-    baseUrl,
+    baseUrl: SPOTIFY_API_URL,
     hasBody: !!body,
     hasExtraHeaders: !!extraHeaders
   });
@@ -44,7 +44,7 @@ export const sendApiRequest = async <T>({
   });
 
   try {
-    const url = `${baseUrl}/${path}`;
+    const url = `${SPOTIFY_API_URL}/${path}`;
     console.log("Making request to:", url);
 
     const response = await axios(url, {
@@ -66,7 +66,7 @@ export const sendApiRequest = async <T>({
         status: error.response?.status,
         statusText: error.response?.statusText,
         data: error.response?.data,
-        url: `${baseUrl}/${path}`,
+        url: `${SPOTIFY_API_URL}/${path}`,
         method,
         hasAuthToken: !!authToken
       });
@@ -77,7 +77,7 @@ export const sendApiRequest = async <T>({
           message: error.message,
           stack: error.stack
         } : error,
-        url: `${baseUrl}/${path}`,
+        url: `${SPOTIFY_API_URL}/${path}`,
         method,
         hasAuthToken: !!authToken
       });
