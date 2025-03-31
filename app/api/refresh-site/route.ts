@@ -30,31 +30,23 @@ interface LogData {
 
 const log = {
   info: (message: string, data?: LogData) => {
-    const logData = {
-      timestamp: new Date().toISOString(),
-      level: 'info',
-      message,
-      ...(data || {})
-    };
     console.log('\n[INFO]', message);
     if (data) {
       console.log('Data:', JSON.stringify(data, null, 2));
     }
   },
   error: (message: string, error?: unknown) => {
-    const logData = {
-      timestamp: new Date().toISOString(),
-      level: 'error',
-      message,
-      error: error instanceof Error ? {
-        name: error.name,
-        message: error.message,
-        stack: error.stack
-      } : error
-    };
     console.error('\n[ERROR]', message);
     if (error) {
-      console.error('Error details:', JSON.stringify(logData.error, null, 2));
+      console.error('Error details:', JSON.stringify(
+        error instanceof Error ? {
+          name: error.name,
+          message: error.message,
+          stack: error.stack
+        } : error,
+        null,
+        2
+      ));
     }
   }
 };
@@ -68,8 +60,9 @@ console.log('========================\n');
 
 let lastAddTime = 0;
 
-interface ApiError {
+interface SpotifyApiError {
   message: string;
+  stack?: string;
   response?: {
     data?: {
       error?: {
@@ -156,7 +149,7 @@ async function getTodayPlaylist(): Promise<SpotifyPlaylistItem | null> {
 
     return playlist;
   } catch (error) {
-    const apiError = error as ApiError;
+    const apiError = error as SpotifyApiError;
     log.error('Error getting today\'s playlist', {
       error: apiError,
       statusCode: apiError.response?.data?.error?.message,
@@ -184,7 +177,7 @@ async function getCurrentlyPlaying(): Promise<string | null> {
     });
     return response.item?.id ?? null;
   } catch (error) {
-    const apiError = error as ApiError;
+    const apiError = error as SpotifyApiError;
     log.error('Error getting currently playing track', {
       error: apiError,
       statusCode: apiError.response?.data?.error?.message
@@ -217,7 +210,7 @@ async function tryAddTrack(trackUri: string, playlistId: string): Promise<boolea
     });
     return true;
   } catch (error) {
-    const apiError = error as ApiError;
+    const apiError = error as SpotifyApiError;
     log.error('Error adding track to playlist', {
       error: apiError,
       statusCode: apiError.response?.data?.error?.message,
@@ -290,7 +283,7 @@ async function addSuggestedTrackToPlaylist(upcomingTracks: TrackItem[], playlist
       throw new Error(ERROR_MESSAGES.MAX_RETRIES);
     }
   } catch (error) {
-    const apiError = error as ApiError;
+    const apiError = error as SpotifyApiError;
     console.error("Error getting/adding suggestion:", {
       error: apiError,
       upcomingTracksLength: upcomingTracks.length,
@@ -299,7 +292,7 @@ async function addSuggestedTrackToPlaylist(upcomingTracks: TrackItem[], playlist
   }
 }
 
-export async function GET(request: Request) {
+export async function GET() {
   try {
     log.info('Refresh site request received');
     
