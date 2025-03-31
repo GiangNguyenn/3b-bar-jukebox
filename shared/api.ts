@@ -1,14 +1,12 @@
-import axios, { AxiosRequestConfig } from "axios";
-
 interface ApiProps {
   path: string;
   method?: "GET" | "POST" | "PUT" | "DELETE" | "PATCH";
   body?: any;
   extraHeaders?: Record<string, string>;
-  config?: AxiosRequestConfig;
+  config?: Omit<RequestInit, 'method' | 'headers' | 'body'>;
 }
 
-const SPOTIFY_API_URL = "https://api.spotify.com/v1";
+const SPOTIFY_API_URL = process.env.NEXT_PUBLIC_SPOTIFY_BASE_URL || "https://api.spotify.com/v1";
 
 export const sendApiRequest = async <T>({
   path,
@@ -37,51 +35,45 @@ export const sendApiRequest = async <T>({
     ...(extraHeaders && { ...extraHeaders }),
   };
 
-  console.log("Request headers:", {
-    hasContentType: !!headers["Content-Type"],
-    hasAuthorization: !!headers["Authorization"],
-    extraHeaders: Object.keys(extraHeaders || {})
-  });
-
   try {
     const url = `${SPOTIFY_API_URL}/${path}`;
     console.log("Making request to:", url);
 
-    const response = await axios(url, {
+    const response = await fetch(url, {
       method,
       headers,
-      ...(body && { data: body }),
+      ...(body && { body: JSON.stringify(body) }),
       ...config,
     });
 
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      console.error("API request failed:", {
+        status: response.status,
+        statusText: response.statusText,
+        data: errorData,
+        url,
+        method
+      });
+      throw new Error(errorData.error || `API request failed with status ${response.status}`);
+    }
+
+    const data = await response.json();
     console.log("API response received:", {
       status: response.status,
-      hasData: !!response.data
+      hasData: !!data
     });
 
-    return response.data;
+    return data;
   } catch (error) {
-    if (axios.isAxiosError(error)) {
-      console.error("API request failed:", {
-        status: error.response?.status,
-        statusText: error.response?.statusText,
-        data: error.response?.data,
-        url: `${SPOTIFY_API_URL}/${path}`,
-        method,
-        hasAuthToken: !!authToken
-      });
-    } else {
-      console.error("API request failed:", {
-        error: error instanceof Error ? {
-          name: error.name,
-          message: error.message,
-          stack: error.stack
-        } : error,
-        url: `${SPOTIFY_API_URL}/${path}`,
-        method,
-        hasAuthToken: !!authToken
-      });
-    }
+    console.error("API request failed:", {
+      error: error instanceof Error ? {
+        name: error.name,
+        message: error.message
+      } : error,
+      url: `${SPOTIFY_API_URL}/${path}`,
+      method
+    });
     throw error;
   }
 };
@@ -112,7 +104,7 @@ async function getSpotifyToken() {
     // In server-side code, use environment variable or default
     baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 
               process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 
-              'http://localhost:3000';
+              process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000';
   }
   
   console.log("Using base URL:", baseUrl);
