@@ -72,7 +72,21 @@ interface SpotifyApiError {
     headers?: Record<string, string>;
     status?: number;
     statusText?: string;
-    config?: any;
+    config?: {
+      url?: string;
+      method?: string;
+      headers?: Record<string, string>;
+      data?: unknown;
+      timeout?: number;
+      withCredentials?: boolean;
+      xsrfCookieName?: string;
+      xsrfHeaderName?: string;
+      maxContentLength?: number;
+      maxBodyLength?: number;
+      maxRedirects?: number;
+      decompress?: boolean;
+      validateStatus?: (status: number) => boolean;
+    };
   };
 }
 
