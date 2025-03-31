@@ -110,37 +110,61 @@ async function getSpotifyToken() {
     baseUrl = window.location.origin;
   } else {
     // In server-side code, use environment variable or default
-    baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000';
+    baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 
+              process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 
+              'http://localhost:3000';
   }
   
   console.log("Using base URL:", baseUrl);
-  const response = await fetch(`${baseUrl}/api/token`);
-
-  if (!response.ok) {
-    const errorData = await response.json().catch(() => ({}));
-    console.error("Failed to fetch token:", {
-      status: response.status,
-      statusText: response.statusText,
-      error: errorData,
-      url: `${baseUrl}/api/token`,
-      environment: process.env.NODE_ENV
+  
+  try {
+    const response = await fetch(`${baseUrl}/api/token`, {
+      cache: 'no-store',
+      headers: {
+        'Content-Type': 'application/json',
+      },
     });
-    throw new Error(errorData.error || "Failed to fetch Spotify token");
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      console.error("Failed to fetch token:", {
+        status: response.status,
+        statusText: response.statusText,
+        error: errorData,
+        url: `${baseUrl}/api/token`,
+        environment: process.env.NODE_ENV,
+        vercelUrl: process.env.VERCEL_URL,
+        baseUrl
+      });
+      throw new Error(errorData.error || "Failed to fetch Spotify token");
+    }
+
+    const data = await response.json();
+    if (!data.access_token) {
+      console.error("Invalid token response:", data);
+      throw new Error("Invalid token response");
+    }
+
+    console.log("New token fetched successfully");
+
+    const newToken = data.access_token;
+    const newExpiry = now + data.expires_in * 1000;
+
+    tokenCache.token = newToken;
+    tokenCache.expiry = newExpiry;
+
+    return newToken;
+  } catch (error) {
+    console.error("Error fetching token:", {
+      error: error instanceof Error ? {
+        name: error.name,
+        message: error.message,
+        stack: error.stack
+      } : error,
+      baseUrl,
+      environment: process.env.NODE_ENV,
+      vercelUrl: process.env.VERCEL_URL
+    });
+    throw error;
   }
-
-  const data = await response.json();
-  if (!data.access_token) {
-    console.error("Invalid token response:", data);
-    throw new Error("Invalid token response");
-  }
-
-  console.log("New token fetched successfully");
-
-  const newToken = data.access_token;
-  const newExpiry = now + data.expires_in * 1000;
-
-  tokenCache.token = newToken;
-  tokenCache.expiry = newExpiry;
-
-  return newToken;
 }
