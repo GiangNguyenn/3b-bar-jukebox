@@ -69,6 +69,10 @@ interface SpotifyApiError {
         message: string;
       };
     };
+    headers?: Record<string, string>;
+    status?: number;
+    statusText?: string;
+    config?: any;
   };
 }
 
@@ -103,7 +107,10 @@ async function getTodayPlaylist(): Promise<SpotifyPlaylistItem | null> {
       userId,
       baseUrl: process.env.NEXT_PUBLIC_SPOTIFY_BASE_URL,
       hasUserId: !!userId,
-      hasBaseUrl: !!process.env.NEXT_PUBLIC_SPOTIFY_BASE_URL
+      hasBaseUrl: !!process.env.NEXT_PUBLIC_SPOTIFY_BASE_URL,
+      environment: process.env.NODE_ENV,
+      nodeVersion: process.version,
+      platform: process.platform
     });
 
     if (!userId) {
@@ -159,7 +166,14 @@ async function getTodayPlaylist(): Promise<SpotifyPlaylistItem | null> {
       stack: apiError.stack,
       hasUserId: !!userId,
       hasBaseUrl: !!process.env.NEXT_PUBLIC_SPOTIFY_BASE_URL,
-      errorDetails: apiError.response?.data?.error
+      errorDetails: apiError.response?.data?.error,
+      environment: process.env.NODE_ENV,
+      nodeVersion: process.version,
+      platform: process.platform,
+      headers: apiError.response?.headers,
+      status: apiError.response?.status,
+      statusText: apiError.response?.statusText,
+      config: apiError.response?.config
     });
     
     if (apiError.response?.data?.error?.message?.includes('401')) {
@@ -339,6 +353,8 @@ export async function GET() {
     });
   } catch (error) {
     const apiError = error instanceof ApiError ? error : new ApiError('Failed to refresh site', 500, error);
+    const errorDetails = apiError.details as SpotifyApiError;
+    
     log.error('Error in refresh site endpoint', {
       error: apiError,
       stack: apiError.stack,
@@ -349,7 +365,15 @@ export async function GET() {
       { 
         success: false, 
         error: apiError.message,
-        details: apiError.details,
+        details: {
+          statusCode: errorDetails?.response?.status,
+          statusText: errorDetails?.response?.statusText,
+          errorMessage: errorDetails?.response?.data?.error?.message,
+          environment: process.env.NODE_ENV,
+          hasUserId: !!userId,
+          hasBaseUrl: !!process.env.NEXT_PUBLIC_SPOTIFY_BASE_URL,
+          timestamp: new Date().toISOString()
+        },
         timestamp: new Date().toISOString()
       },
       { status: apiError.statusCode }
