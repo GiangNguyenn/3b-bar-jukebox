@@ -171,7 +171,7 @@ async function getTodayPlaylist(): Promise<SpotifyPlaylistItem | null> {
     return playlist;
   } catch (error) {
     const apiError = error as SpotifyApiError;
-    log.error('Error getting today\'s playlist', {
+    const errorDetails = {
       error: apiError,
       statusCode: apiError.response?.data?.error?.message,
       userId: userId,
@@ -187,14 +187,20 @@ async function getTodayPlaylist(): Promise<SpotifyPlaylistItem | null> {
       headers: apiError.response?.headers,
       status: apiError.response?.status,
       statusText: apiError.response?.statusText,
-      config: apiError.response?.config
-    });
+      config: apiError.response?.config,
+      requestUrl: apiError.response?.config?.url,
+      requestMethod: apiError.response?.config?.method,
+      requestHeaders: apiError.response?.config?.headers,
+      responseHeaders: apiError.response?.headers
+    };
+
+    log.error('Error getting today\'s playlist', errorDetails);
     
     if (apiError.response?.data?.error?.message?.includes('401')) {
-      throw new ApiError('Spotify authentication failed. Please check your access token.', 401, apiError);
+      throw new ApiError('Spotify authentication failed. Please check your access token.', 401, errorDetails);
     }
     
-    throw new ApiError('Failed to get today\'s playlist', 500, apiError);
+    throw new ApiError('Failed to get today\'s playlist', 500, errorDetails);
   }
 }
 
@@ -320,6 +326,18 @@ async function addSuggestedTrackToPlaylist(upcomingTracks: TrackItem[], playlist
   }
 }
 
+interface ErrorDetails {
+  message?: string;
+  status?: number;
+  statusText?: string;
+  error?: {
+    message?: string;
+  };
+  requestUrl?: string;
+  requestMethod?: string;
+  responseHeaders?: Record<string, string>;
+}
+
 export async function GET() {
   try {
     log.info('Refresh site request received');
@@ -367,7 +385,7 @@ export async function GET() {
     });
   } catch (error) {
     const apiError = error instanceof ApiError ? error : new ApiError('Failed to refresh site', 500, error);
-    const errorDetails = apiError.details as SpotifyApiError;
+    const errorDetails = apiError.details as ErrorDetails;
     
     log.error('Error in refresh site endpoint', {
       error: apiError,
@@ -375,22 +393,35 @@ export async function GET() {
       details: apiError.details
     });
     
+    // Extract the most relevant error information
+    const errorMessage = errorDetails?.message || 
+                        errorDetails?.error?.message || 
+                        apiError.message;
+    
+    const statusCode = errorDetails?.status || 
+                      (errorMessage?.includes('401') ? 401 : 
+                       errorMessage?.includes('404') ? 404 : 
+                       errorMessage?.includes('429') ? 429 : 500);
+    
     return NextResponse.json(
       { 
         success: false, 
-        error: apiError.message,
+        error: errorMessage,
         details: {
-          statusCode: errorDetails?.response?.status,
-          statusText: errorDetails?.response?.statusText,
-          errorMessage: errorDetails?.response?.data?.error?.message,
+          statusCode,
+          statusText: errorDetails?.statusText,
+          errorMessage: errorDetails?.error?.message,
           environment: process.env.NODE_ENV,
           hasUserId: !!userId,
           hasBaseUrl: !!process.env.NEXT_PUBLIC_SPOTIFY_BASE_URL,
+          requestUrl: errorDetails?.requestUrl,
+          requestMethod: errorDetails?.requestMethod,
+          responseHeaders: errorDetails?.responseHeaders,
           timestamp: new Date().toISOString()
         },
         timestamp: new Date().toISOString()
       },
-      { status: apiError.statusCode }
+      { status: statusCode }
     );
   }
 } 
