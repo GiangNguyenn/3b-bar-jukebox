@@ -68,20 +68,7 @@ export const useAddTrackToPlaylist = () => {
       setIsSuccess(true);
     } catch (error: unknown) {
       console.error('[Add Track] Error adding track:', error);
-      
-      // Extract error message from various possible error formats
-      let errorMessage: ErrorMessage = ERROR_MESSAGES.FAILED_TO_ADD;
-      if (error instanceof Error) {
-        errorMessage = (error.message || ERROR_MESSAGES.FAILED_TO_ADD) as ErrorMessage;
-      } else if (typeof error === 'object' && error !== null) {
-        const apiError = error as ApiError;
-        const message = apiError.message || 
-                      apiError.error?.message || 
-                      apiError.details?.errorMessage;
-        errorMessage = (message || ERROR_MESSAGES.FAILED_TO_ADD) as ErrorMessage;
-      }
-      
-      setError(errorMessage);
+      setError(ERROR_MESSAGES.FAILED_TO_ADD);
     } finally {
       setIsLoading(false);
     }
