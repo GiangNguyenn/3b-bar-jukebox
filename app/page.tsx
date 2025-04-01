@@ -99,6 +99,13 @@ export default function Home() {
 
   const { tracks, name } = todayPlaylist!;
 
+  console.log('[Page] Playlist data:', {
+    playlistName: name,
+    totalTracks: tracks.total,
+    tracksItems: tracks.items,
+    tracksItemsLength: tracks.items.length
+  });
+
   return (
     <div className="items-center justify-items-center space-y-3 p-4 pt-10 font-mono">
       <SearchInput
