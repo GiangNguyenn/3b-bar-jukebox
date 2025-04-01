@@ -9,11 +9,11 @@ const Header = () => {
         src={logo}
         width={100}
         height={100}
-        alt="3B Bar Jukebox Logo"
+        alt="3B SAIGON JUKEBOX Logo"
         priority
       />
-      <h1 className="text-4xl text-center text-primary-100 font-[family-name:var(--font-parklane)] leading-tight">
-        Welcome to 3B Bar Jukebox
+      <h1 className="text-4xl text-center text-primary-100 font-[family-name:var(--font-belgrano)] leading-tight">
+        3B SAIGON JUKEBOX
       </h1>
     </div>
   );
