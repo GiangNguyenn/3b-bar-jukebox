@@ -53,28 +53,37 @@ export async function GET() {
       console.error('\n[ERROR] Failed to refresh token:', {
         status: response.status,
         statusText: response.statusText,
-        error: errorData
+        error: errorData,
+        headers: Object.fromEntries(response.headers.entries())
       });
+      
       return NextResponse.json(
-        { error: errorData.error_description || "Failed to refresh token" },
+        { 
+          error: "Failed to refresh token",
+          details: {
+            status: response.status,
+            statusText: response.statusText,
+            error: errorData
+          }
+        },
         { status: response.status }
       );
     }
 
     const data = await response.json();
-    console.log('\n[INFO] Token refresh successful');
+    console.log('\n[INFO] Successfully refreshed token');
     
     return NextResponse.json(data);
   } catch (error) {
-    console.error('\n[ERROR] Unexpected error in token refresh:', {
-      error: error instanceof Error ? {
-        name: error.name,
-        message: error.message,
-        stack: error.stack
-      } : error
-    });
+    console.error('\n[ERROR] Unexpected error in token refresh:', error);
     return NextResponse.json(
-      { error: "Internal server error" },
+      { 
+        error: "Failed to refresh token",
+        details: error instanceof Error ? {
+          message: error.message,
+          stack: error.stack
+        } : error
+      },
       { status: 500 }
     );
   }

@@ -56,6 +56,9 @@ console.log('\n=== Environment Check ===');
 console.log('NODE_ENV:', process.env.NODE_ENV);
 console.log('Spotify User ID:', userId ? 'Set' : 'Not set');
 console.log('Spotify Base URL:', process.env.NEXT_PUBLIC_SPOTIFY_BASE_URL ? 'Set' : 'Not set');
+console.log('Spotify Client ID:', process.env.SPOTIFY_CLIENT_ID ? 'Set' : 'Not set');
+console.log('Spotify Client Secret:', process.env.SPOTIFY_CLIENT_SECRET ? 'Set' : 'Not set');
+console.log('Spotify Refresh Token:', process.env.SPOTIFY_REFRESH_TOKEN ? 'Set' : 'Not set');
 console.log('========================\n');
 
 let lastAddTime = 0;
@@ -235,31 +238,36 @@ async function waitForRetry(retryCount: number): Promise<void> {
 
 async function tryAddTrack(trackUri: string, playlistId: string): Promise<boolean> {
   try {
+    // Ensure the track URI has the correct format
+    const formattedUri = trackUri.startsWith('spotify:track:') ? trackUri : `spotify:track:${trackUri}`;
+    
+    log.info('Attempting to add track to playlist', {
+      playlistId,
+      trackUri: formattedUri
+    });
+
     await sendApiRequest({
       path: `playlists/${playlistId}/tracks`,
       method: "POST",
-      body: JSON.stringify({
-        uris: [trackUri],
-      }),
+      body: {
+        uris: [formattedUri]
+      }
     });
+
+    log.info('Successfully added track to playlist', {
+      playlistId,
+      trackUri: formattedUri
+    });
+    
     return true;
   } catch (error) {
     const apiError = error as SpotifyApiError;
     log.error('Error adding track to playlist', {
       error: apiError,
-      statusCode: apiError.response?.data?.error?.message,
       playlistId,
       trackUri
     });
-    
-    if (apiError.response?.data?.error?.message?.includes('401')) {
-      throw new ApiError('Spotify authentication failed. Please check your access token.', 401, apiError);
-    }
-    
-    if (apiError.message?.includes(ERROR_MESSAGES.TRACK_EXISTS)) {
-      return false;
-    }
-    throw new Error(apiError.message || ERROR_MESSAGES.GENERIC_ERROR);
+    throw error;
   }
 }
 
@@ -412,7 +420,13 @@ export async function GET() {
     log.error('Error in refresh site endpoint', {
       error: apiError,
       stack: apiError.stack,
-      details: apiError.details
+      details: apiError.details,
+      environment: process.env.NODE_ENV,
+      hasUserId: !!userId,
+      hasBaseUrl: !!process.env.NEXT_PUBLIC_SPOTIFY_BASE_URL,
+      hasClientId: !!process.env.SPOTIFY_CLIENT_ID,
+      hasClientSecret: !!process.env.SPOTIFY_CLIENT_SECRET,
+      hasRefreshToken: !!process.env.SPOTIFY_REFRESH_TOKEN
     });
     
     // Extract the most relevant error information
@@ -436,9 +450,9 @@ export async function GET() {
           environment: process.env.NODE_ENV,
           hasUserId: !!userId,
           hasBaseUrl: !!process.env.NEXT_PUBLIC_SPOTIFY_BASE_URL,
-          requestUrl: errorDetails?.requestUrl,
-          requestMethod: errorDetails?.requestMethod,
-          responseHeaders: errorDetails?.responseHeaders,
+          hasClientId: !!process.env.SPOTIFY_CLIENT_ID,
+          hasClientSecret: !!process.env.SPOTIFY_CLIENT_SECRET,
+          hasRefreshToken: !!process.env.SPOTIFY_REFRESH_TOKEN,
           timestamp: new Date().toISOString()
         },
         searchDetails: null,
