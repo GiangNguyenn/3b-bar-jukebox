@@ -1,14 +1,12 @@
-import axios, { AxiosRequestConfig } from "axios";
-
 interface ApiProps {
   path: string;
   method?: "GET" | "POST" | "PUT" | "DELETE" | "PATCH";
   body?: any;
   extraHeaders?: Record<string, string>;
-  config?: AxiosRequestConfig;
+  config?: Omit<RequestInit, 'method' | 'headers' | 'body'>;
 }
 
-const baseUrl = process.env.NEXT_PUBLIC_SPOTIFY_BASE_URL ?? "";
+const SPOTIFY_API_URL = process.env.NEXT_PUBLIC_SPOTIFY_BASE_URL || "https://api.spotify.com/v1";
 
 export const sendApiRequest = async <T>({
   path,
@@ -17,23 +15,65 @@ export const sendApiRequest = async <T>({
   extraHeaders,
   config = {},
 }: ApiProps): Promise<T> => {
+  console.log("Making API request:", {
+    path,
+    method,
+    baseUrl: SPOTIFY_API_URL,
+    hasBody: !!body,
+    hasExtraHeaders: !!extraHeaders
+  });
+
   const authToken = await getSpotifyToken();
+  if (!authToken) {
+    throw new Error("Failed to get Spotify token");
+  }
+  console.log("Got auth token:", "Present");
+
   const headers = {
     "Content-Type": "application/json",
-    ...(authToken && { Authorization: `Bearer ${authToken}` }),
+    Authorization: `Bearer ${authToken}`,
     ...(extraHeaders && { ...extraHeaders }),
   };
 
   try {
-    const response = await axios(`${baseUrl}/${path}`, {
+    const url = `${SPOTIFY_API_URL}/${path}`;
+    console.log("Making request to:", url);
+
+    const response = await fetch(url, {
       method,
       headers,
-      ...(body && { data: body }),
+      ...(body && { body: JSON.stringify(body) }),
       ...config,
     });
 
-    return response.data;
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      console.error("API request failed:", {
+        status: response.status,
+        statusText: response.statusText,
+        data: errorData,
+        url,
+        method
+      });
+      throw new Error(errorData.error || `API request failed with status ${response.status}`);
+    }
+
+    const data = await response.json();
+    console.log("API response received:", {
+      status: response.status,
+      hasData: !!data
+    });
+
+    return data;
   } catch (error) {
+    console.error("API request failed:", {
+      error: error instanceof Error ? {
+        name: error.name,
+        message: error.message
+      } : error,
+      url: `${SPOTIFY_API_URL}/${path}`,
+      method
+    });
     throw error;
   }
 };
@@ -51,34 +91,72 @@ async function getSpotifyToken() {
     return tokenCache.token;
   }
 
-  const cachedToken = localStorage.getItem("spotify_token");
-  const tokenExpiry = localStorage.getItem("spotify_token_expiry");
-
-  if (cachedToken && tokenExpiry && now < parseInt(tokenExpiry, 10)) {
-
-    tokenCache.token = cachedToken;
-    tokenCache.expiry = parseInt(tokenExpiry, 10);
-
-    return cachedToken;
-  }
-
   console.log("Fetching new token...");
-  const response = await fetch("/api/token");
-
-  if (!response.ok) {
-    throw new Error("Failed to fetch Spotify token");
+  
+  // Get the base URL for the token endpoint
+  let baseUrl = '';
+  
+  // Check if we're in a browser environment
+  if (typeof window !== 'undefined') {
+    // In browser, use the current origin
+    baseUrl = window.location.origin;
+  } else {
+    // In server-side code, use environment variable or default
+    baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 
+              process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 
+              process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000';
   }
+  
+  console.log("Using base URL:", baseUrl);
+  
+  try {
+    const response = await fetch(`${baseUrl}/api/token`, {
+      cache: 'no-store',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    });
 
-  const data = await response.json();
-  console.log("New token fetched:", data);
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      console.error("Failed to fetch token:", {
+        status: response.status,
+        statusText: response.statusText,
+        error: errorData,
+        url: `${baseUrl}/api/token`,
+        environment: process.env.NODE_ENV,
+        vercelUrl: process.env.VERCEL_URL,
+        baseUrl
+      });
+      throw new Error(errorData.error || "Failed to fetch Spotify token");
+    }
 
-  const newToken = data.access_token;
-  const newExpiry = now + data.expires_in * 1000;
+    const data = await response.json();
+    if (!data.access_token) {
+      console.error("Invalid token response:", data);
+      throw new Error("Invalid token response");
+    }
 
-  tokenCache.token = newToken;
-  tokenCache.expiry = newExpiry;
-  localStorage.setItem("spotify_token", newToken);
-  localStorage.setItem("spotify_token_expiry", newExpiry.toString());
+    console.log("New token fetched successfully");
 
-  return newToken;
+    const newToken = data.access_token;
+    const newExpiry = now + data.expires_in * 1000;
+
+    tokenCache.token = newToken;
+    tokenCache.expiry = newExpiry;
+
+    return newToken;
+  } catch (error) {
+    console.error("Error fetching token:", {
+      error: error instanceof Error ? {
+        name: error.name,
+        message: error.message,
+        stack: error.stack
+      } : error,
+      baseUrl,
+      environment: process.env.NODE_ENV,
+      vercelUrl: process.env.VERCEL_URL
+    });
+    throw error;
+  }
 }
