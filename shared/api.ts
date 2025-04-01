@@ -6,6 +6,14 @@ interface ApiProps {
   config?: Omit<RequestInit, 'method' | 'headers' | 'body'>;
 }
 
+interface SpotifyErrorResponse {
+  error: {
+    status: number;
+    message: string;
+    reason?: string;
+  };
+}
+
 const SPOTIFY_API_URL = process.env.NEXT_PUBLIC_SPOTIFY_BASE_URL || "https://api.spotify.com/v1";
 
 export const sendApiRequest = async <T>({
@@ -20,7 +28,8 @@ export const sendApiRequest = async <T>({
     method,
     baseUrl: SPOTIFY_API_URL,
     hasBody: !!body,
-    hasExtraHeaders: !!extraHeaders
+    hasExtraHeaders: !!extraHeaders,
+    body: body ? JSON.stringify(body) : undefined
   });
 
   const authToken = await getSpotifyToken();
@@ -53,15 +62,28 @@ export const sendApiRequest = async <T>({
         statusText: response.statusText,
         data: errorData,
         url,
-        method
+        method,
+        requestBody: body ? JSON.stringify(body) : undefined
       });
-      throw new Error(errorData.error || `API request failed with status ${response.status}`);
+
+      // Handle Spotify API error format
+      if (errorData.error) {
+        const spotifyError = errorData as SpotifyErrorResponse;
+        const errorMessage = spotifyError.error.message || 
+                           spotifyError.error.reason || 
+                           `Spotify API error: ${response.status}`;
+        throw new Error(errorMessage);
+      }
+
+      // Handle generic error format
+      throw new Error(errorData.message || `API request failed with status ${response.status}`);
     }
 
     const data = await response.json();
     console.log("API response received:", {
       status: response.status,
-      hasData: !!data
+      hasData: !!data,
+      data: data
     });
 
     return data;
@@ -69,10 +91,12 @@ export const sendApiRequest = async <T>({
     console.error("API request failed:", {
       error: error instanceof Error ? {
         name: error.name,
-        message: error.message
+        message: error.message,
+        stack: error.stack
       } : error,
       url: `${SPOTIFY_API_URL}/${path}`,
-      method
+      method,
+      requestBody: body ? JSON.stringify(body) : undefined
     });
     throw error;
   }

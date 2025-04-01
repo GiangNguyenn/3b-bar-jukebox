@@ -5,6 +5,17 @@ import { SpotifyPlaylistItem, TrackItem } from "@/shared/types";
 import { useGetPlaylist } from "./useGetPlaylist";
 import { ERROR_MESSAGES } from "@/shared/constants/errors";
 
+interface ApiError {
+  message?: string;
+  error?: {
+    message?: string;
+    status?: number;
+  };
+  details?: {
+    errorMessage?: string;
+  };
+}
+
 export const useAddTrackToPlaylist = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -43,6 +54,7 @@ export const useAddTrackToPlaylist = () => {
     }
 
     try {
+      console.log(`[Add Track] Adding track ${trackURI} to playlist ${todayPlaylistId}`);
       await sendApiRequest<SpotifyPlaylistItem>({
         path: `playlists/${todayPlaylistId}/tracks`,
         method: "POST",
@@ -51,10 +63,25 @@ export const useAddTrackToPlaylist = () => {
         }),
       });
 
+      console.log('[Add Track] Track added successfully, refreshing playlist');
       await refetchPlaylist();
       setIsSuccess(true);
-    } catch (error: any) {
-      setError(error.message || ERROR_MESSAGES.FAILED_TO_ADD);
+    } catch (error: unknown) {
+      console.error('[Add Track] Error adding track:', error);
+      
+      // Extract error message from various possible error formats
+      let errorMessage = ERROR_MESSAGES.FAILED_TO_ADD;
+      if (error instanceof Error) {
+        errorMessage = error.message || ERROR_MESSAGES.FAILED_TO_ADD;
+      } else if (typeof error === 'object' && error !== null) {
+        const apiError = error as ApiError;
+        errorMessage = apiError.message || 
+                      apiError.error?.message || 
+                      apiError.details?.errorMessage || 
+                      ERROR_MESSAGES.FAILED_TO_ADD;
+      }
+      
+      setError(errorMessage);
     } finally {
       setIsLoading(false);
     }
