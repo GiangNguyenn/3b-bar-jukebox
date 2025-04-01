@@ -44,16 +44,31 @@ export function getRandomGenre(): string {
 }
 
 export async function findSuggestedTrack(excludedTrackIds: string[]): Promise<TrackDetails | null> {
-  const genre = getRandomGenre();
-  console.log("Searching for tracks in genre:", genre);
+  const MAX_GENRE_ATTEMPTS = 3;
+  let attempts = 0;
 
-  const tracks = await searchTracksByGenre(genre);
-  const selectedTrack = selectRandomTrack(tracks, excludedTrackIds, MIN_TRACK_POPULARITY);
+  while (attempts < MAX_GENRE_ATTEMPTS) {
+    const genre = getRandomGenre();
+    console.log(`Attempt ${attempts + 1}/${MAX_GENRE_ATTEMPTS}: Searching for tracks in genre:`, genre);
 
-  if (!selectedTrack) {
-    console.log("No suitable track suggestions found for genre:", genre);
-    return null;
+    const tracks = await searchTracksByGenre(genre);
+    const selectedTrack = selectRandomTrack(tracks, excludedTrackIds, MIN_TRACK_POPULARITY);
+
+    if (selectedTrack) {
+      console.log("Found suitable track:", selectedTrack.name);
+      return selectedTrack;
+    }
+
+    console.log(`No suitable track suggestions found for genre: ${genre}`);
+    attempts++;
+    
+    if (attempts < MAX_GENRE_ATTEMPTS) {
+      console.log(`Trying another genre...`);
+      // Add a small delay between attempts
+      await new Promise(resolve => setTimeout(resolve, 1000));
+    }
   }
 
-  return selectedTrack;
+  console.log(`No suitable tracks found after trying ${MAX_GENRE_ATTEMPTS} genres`);
+  return null;
 } 
