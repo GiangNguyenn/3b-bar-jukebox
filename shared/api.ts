@@ -102,9 +102,9 @@ async function getSpotifyToken() {
     baseUrl = window.location.origin;
   } else {
     // In server-side code, use environment variable or default
-    baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 
-              process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 
-              process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000';
+    baseUrl = process.env.VERCEL_URL ? 
+      `https://${process.env.VERCEL_URL}` : 
+      process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000';
   }
   
   console.log("Using base URL:", baseUrl);
