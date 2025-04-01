@@ -10,6 +10,13 @@ interface ErrorDetails {
   details?: unknown;
 }
 
+interface ApiErrorResponse {
+  error?: string;
+  details?: {
+    errorMessage?: string;
+  };
+}
+
 const Header = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -36,22 +43,38 @@ const Header = () => {
       });
       
       if (!response.ok) {
-        const data = await response.json();
-        throw new Error(data.error || data.details?.errorMessage || 'Failed to suggest a track');
+        const data = await response.json() as ApiErrorResponse;
+        const errorMessage = data.error || data.details?.errorMessage || 'Failed to suggest a track';
+        console.error('API error:', {
+          status: response.status,
+          statusText: response.statusText,
+          data
+        });
+        throw new Error(errorMessage);
       }
       
       const data = await response.json();
       console.log('Track suggestion response:', data);
     } catch (error) {
       console.error('Error suggesting track:', error);
-      const errorMessage = error instanceof Error ? error.message : 'Failed to suggest a track';
-      setError(errorMessage);
+      let errorMessage = 'Failed to suggest a track';
       
-      // Log additional error details
-      if (error instanceof Error && 'details' in error) {
-        const errorDetails = (error as Error & { details: ErrorDetails }).details;
-        console.error('Error details:', errorDetails);
+      if (error instanceof Error) {
+        // Handle network errors
+        if (error.message.includes('Failed to fetch') || error.message.includes('NetworkError')) {
+          errorMessage = 'Network error. Please check your connection and try again.';
+        } else {
+          errorMessage = error.message;
+        }
+        
+        // Log additional error details
+        if ('details' in error) {
+          const errorDetails = (error as Error & { details: ErrorDetails }).details;
+          console.error('Error details:', errorDetails);
+        }
       }
+      
+      setError(errorMessage);
     } finally {
       setIsLoading(false);
     }
