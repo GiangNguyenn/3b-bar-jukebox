@@ -4,6 +4,12 @@ import React, { useState } from "react";
 import Image from "next/image";
 import logo from "../app/public/logo.png";
 
+interface ErrorDetails {
+  errorMessage?: string;
+  status?: number;
+  details?: unknown;
+}
+
 const Header = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -43,7 +49,8 @@ const Header = () => {
       
       // Log additional error details
       if (error instanceof Error && 'details' in error) {
-        console.error('Error details:', (error as any).details);
+        const errorDetails = (error as Error & { details: ErrorDetails }).details;
+        console.error('Error details:', errorDetails);
       }
     } finally {
       setIsLoading(false);
