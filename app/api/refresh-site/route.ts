@@ -344,7 +344,11 @@ export async function GET() {
     
     // Check rate limiting
     if (isRateLimited()) {
-      throw new ApiError('Rate limit exceeded', 429);
+      return NextResponse.json({ 
+        success: true, 
+        message: 'Rate limit in effect. Please wait before making another request.',
+        timestamp: new Date().toISOString()
+      });
     }
     
     // Check if we have a valid Spotify user ID
@@ -357,8 +361,12 @@ export async function GET() {
     log.info('Fetching today\'s playlist');
     const playlist = await getTodayPlaylist();
     if (!playlist) {
-      log.error('No playlist found for today');
-      throw new ApiError('No playlist found for today', 404);
+      log.info('No playlist found for today');
+      return NextResponse.json({ 
+        success: true, 
+        message: 'No playlist found for today. A new playlist will be created when tracks are added.',
+        timestamp: new Date().toISOString()
+      });
     }
 
     // Get currently playing track
@@ -373,8 +381,16 @@ export async function GET() {
     const result = await addSuggestedTrackToPlaylist(upcomingTracks, playlist.id);
     
     if (!result.success) {
-      log.error('Failed to add suggested track', { error: result.error });
-      throw new ApiError(result.error || 'Failed to add suggested track', 500);
+      log.info('No track added to playlist', { reason: result.error });
+      return NextResponse.json({ 
+        success: true, 
+        message: result.error === "Playlist too long" 
+          ? `Playlist has reached maximum length of ${MAX_PLAYLIST_LENGTH} tracks. No new tracks needed.`
+          : result.error === "In cooldown period"
+          ? "Please wait before requesting another track suggestion."
+          : "No suitable track suggestions available at this time.",
+        timestamp: new Date().toISOString()
+      });
     }
     
     log.info('Successfully added suggested track');
