@@ -88,11 +88,28 @@ const Header = () => {
       // If track was successfully added, dispatch a refresh event
       if (data.success) {
         console.log('Dispatching playlist refresh event...');
-        const event = new CustomEvent<PlaylistRefreshEvent['detail']>('playlistRefresh', {
-          detail: { timestamp: Date.now() }
-        });
-        window.dispatchEvent(event);
-        console.log('Playlist refresh event dispatched');
+        try {
+          // Create and dispatch the event
+          const event = new CustomEvent<PlaylistRefreshEvent['detail']>('playlistRefresh', {
+            detail: { timestamp: Date.now() },
+            bubbles: true, // Allow event to bubble up through the DOM
+            composed: true // Allow event to cross shadow DOM boundaries
+          });
+          
+          // Dispatch from both window and document to ensure maximum compatibility
+          window.dispatchEvent(event);
+          document.dispatchEvent(event);
+          
+          // Also dispatch from the current element
+          const logoElement = document.querySelector('.cursor-pointer');
+          if (logoElement) {
+            logoElement.dispatchEvent(event);
+          }
+          
+          console.log('Playlist refresh event dispatched successfully');
+        } catch (eventError) {
+          console.error('Error dispatching playlist refresh event:', eventError);
+        }
       } else {
         console.log('Track was not successfully added, not dispatching refresh event');
       }

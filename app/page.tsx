@@ -50,14 +50,31 @@ export default function Home() {
 
   // Listen for playlist refresh events
   useEffect(() => {
-    const handlePlaylistRefresh = (event: PlaylistRefreshEvent) => {
-      console.log('Refreshing playlist...', event.detail.timestamp);
-      refetchPlaylist();
+    const handlePlaylistRefresh = (event: Event) => {
+      const customEvent = event as PlaylistRefreshEvent;
+      console.log('Received playlist refresh event:', {
+        timestamp: customEvent.detail.timestamp,
+        source: event.target instanceof Window ? 'window' : 
+                event.target instanceof Document ? 'document' : 
+                'element'
+      });
+      
+      // Add a small delay to ensure the track is added to Spotify
+      setTimeout(() => {
+        console.log('Refreshing playlist after delay...');
+        refetchPlaylist().catch(error => {
+          console.error('Error refreshing playlist:', error);
+        });
+      }, 1000);
     };
 
+    // Add listeners to multiple targets for better reliability
     window.addEventListener('playlistRefresh', handlePlaylistRefresh);
+    document.addEventListener('playlistRefresh', handlePlaylistRefresh);
+    
     return () => {
       window.removeEventListener('playlistRefresh', handlePlaylistRefresh);
+      document.removeEventListener('playlistRefresh', handlePlaylistRefresh);
     };
   }, [refetchPlaylist]);
 
