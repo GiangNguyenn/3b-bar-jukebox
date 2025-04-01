@@ -11,9 +11,21 @@ import { useDebounce } from "use-debounce";
 import { cleanupOldPlaylists } from "@/services/playlist";
 import { useMyPlaylists } from "@/hooks/useMyPlaylists";
 
+interface PlaylistRefreshEvent extends CustomEvent {
+  detail: {
+    timestamp: number;
+  };
+}
+
+declare global {
+  interface WindowEventMap {
+    'playlistRefresh': PlaylistRefreshEvent;
+  }
+}
+
 export default function Home() {
   const { createPlaylist, todayPlaylistId } = useCreateNewDailyPlaylist();
-  const { data: todayPlaylist, isLoading } = useGetPlaylist(
+  const { data: todayPlaylist, isLoading, refetchPlaylist } = useGetPlaylist(
     todayPlaylistId ?? ""
   );
   const [searchQuery, setSearchQuery] = useState("");
@@ -35,6 +47,19 @@ export default function Home() {
       }
     })();
   }, [createPlaylist, todayPlaylistId]);
+
+  // Listen for playlist refresh events
+  useEffect(() => {
+    const handlePlaylistRefresh = (event: PlaylistRefreshEvent) => {
+      console.log('Refreshing playlist...', event.detail.timestamp);
+      refetchPlaylist();
+    };
+
+    window.addEventListener('playlistRefresh', handlePlaylistRefresh);
+    return () => {
+      window.removeEventListener('playlistRefresh', handlePlaylistRefresh);
+    };
+  }, [refetchPlaylist]);
 
   const [debouncedSearchQuery] = useDebounce(searchQuery, 300);
 

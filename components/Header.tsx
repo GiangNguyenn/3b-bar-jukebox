@@ -17,6 +17,35 @@ interface ApiErrorResponse {
   };
 }
 
+interface TrackSuggestionResponse {
+  success: boolean;
+  message: string;
+  searchDetails?: {
+    attempts: number;
+    totalTracksFound: number;
+    excludedTrackIds: string[];
+    minPopularity: number;
+    genresTried: string[];
+    trackDetails: Array<{
+      name: string;
+      popularity: number;
+      isExcluded: boolean;
+    }>;
+  };
+}
+
+interface PlaylistRefreshEvent extends CustomEvent {
+  detail: {
+    timestamp: number;
+  };
+}
+
+declare global {
+  interface WindowEventMap {
+    'playlistRefresh': PlaylistRefreshEvent;
+  }
+}
+
 const Header = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -53,8 +82,16 @@ const Header = () => {
         throw new Error(errorMessage);
       }
       
-      const data = await response.json();
+      const data = await response.json() as TrackSuggestionResponse;
       console.log('Track suggestion response:', data);
+
+      // If track was successfully added, dispatch a refresh event
+      if (data.success) {
+        const event = new CustomEvent<PlaylistRefreshEvent['detail']>('playlistRefresh', {
+          detail: { timestamp: Date.now() }
+        });
+        window.dispatchEvent(event);
+      }
     } catch (error) {
       console.error('Error suggesting track:', error);
       let errorMessage = 'Failed to suggest a track';
