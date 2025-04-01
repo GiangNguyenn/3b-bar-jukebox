@@ -23,6 +23,9 @@ export const useCreateNewDailyPlaylist = () => {
   const [todayPlaylistId, setTodayPlaylistId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<ErrorMessage | null>(null);
+  const [hasFoundExisting, setHasFoundExisting] = useState(false);
+  const [hasAttemptedCreation, setHasAttemptedCreation] = useState(false);
+  const [isInitialFetchComplete, setIsInitialFetchComplete] = useState(false);
   
   const {
     data: playlists,
@@ -32,7 +35,11 @@ export const useCreateNewDailyPlaylist = () => {
 
   // Fetch playlists on mount
   useEffect(() => {
-    void refetchPlaylists();
+    const fetchPlaylists = async () => {
+      await refetchPlaylists();
+      setIsInitialFetchComplete(true);
+    };
+    void fetchPlaylists();
   }, [refetchPlaylists]);
 
   // Check for existing playlist whenever playlists data changes
@@ -44,34 +51,29 @@ export const useCreateNewDailyPlaylist = () => {
       if (existingPlaylist) {
         console.log(`[Daily Playlist] Found today's playlist: ${name} (ID: ${existingPlaylist.id})`);
         setTodayPlaylistId(existingPlaylist.id);
+        setHasFoundExisting(true);
       }
     }
   }, [playlists, name]);
 
   const createPlaylist = async (): Promise<SpotifyPlaylistItem | null> => {
-    // Don't create if we already have a playlist ID
-    if (todayPlaylistId) {
-      console.log(`[Daily Playlist] Playlist already exists: ${name} (ID: ${todayPlaylistId})`);
+    // Don't create if we haven't completed initial fetch
+    if (!isInitialFetchComplete) {
+      console.log('[Daily Playlist] Waiting for initial playlist fetch to complete');
+      return null;
+    }
+
+    // Don't create if we already attempted creation or found existing
+    if (hasAttemptedCreation || todayPlaylistId || hasFoundExisting) {
+      console.log(`[Daily Playlist] Playlist already exists or creation attempted: ${name} (ID: ${todayPlaylistId})`);
       return null;
     }
 
     setIsLoading(true);
     setError(null);
+    setHasAttemptedCreation(true);
     
     try {
-      // Double check if playlist exists before creating
-      await refetchPlaylists();
-      if (playlists?.items) {
-        const existingPlaylist = playlists.items.find(
-          (playlist) => playlist.name === name
-        );
-        if (existingPlaylist) {
-          console.log(`[Daily Playlist] Found existing playlist before creation: ${name} (ID: ${existingPlaylist.id})`);
-          setTodayPlaylistId(existingPlaylist.id);
-          return existingPlaylist;
-        }
-      }
-
       console.log(`[Daily Playlist] Creating new playlist: ${name}`);
       const newPlaylist = await sendApiRequest<SpotifyPlaylistItem>({
         path: `me/playlists`,
