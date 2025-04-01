@@ -263,24 +263,25 @@ async function tryAddTrack(trackUri: string, playlistId: string): Promise<boolea
   }
 }
 
-async function handleTrackSuggestion(existingTrackIds: string[], retryCount: number, playlistId: string): Promise<boolean> {
-  const selectedTrack = await findSuggestedTrack(existingTrackIds);
+async function handleTrackSuggestion(existingTrackIds: string[], retryCount: number, playlistId: string): Promise<{ success: boolean; searchDetails?: any }> {
+  const result = await findSuggestedTrack(existingTrackIds);
   
-  if (!selectedTrack) {
+  if (!result.track) {
     log.info(`${ERROR_MESSAGES.NO_SUGGESTIONS} (attempt ${retryCount + 1}/${MAX_RETRIES})`);
-    return false;
+    return { success: false, searchDetails: result.searchDetails };
   }
 
-  log.info(`Attempting to add suggested track: ${selectedTrack.name}`, {
+  log.info(`Attempting to add suggested track: ${result.track.name}`, {
     attempt: retryCount + 1,
     maxRetries: MAX_RETRIES,
-    trackId: selectedTrack.id
+    trackId: result.track.id
   });
   
-  return await tryAddTrack(selectedTrack.uri, playlistId);
+  const added = await tryAddTrack(result.track.uri, playlistId);
+  return { success: added, searchDetails: result.searchDetails };
 }
 
-async function addSuggestedTrackToPlaylist(upcomingTracks: TrackItem[], playlistId: string): Promise<{ success: boolean; error?: string }> {
+async function addSuggestedTrackToPlaylist(upcomingTracks: TrackItem[], playlistId: string): Promise<{ success: boolean; error?: string; searchDetails?: any }> {
   const existingTrackIds = upcomingTracks.map(t => t.track.id);
   const now = Date.now();
   
@@ -299,9 +300,12 @@ async function addSuggestedTrackToPlaylist(upcomingTracks: TrackItem[], playlist
   try {
     let retryCount = 0;
     let success = false;
+    let searchDetails;
 
     while (!success && retryCount < MAX_RETRIES) {
-      success = await handleTrackSuggestion(existingTrackIds, retryCount, playlistId);
+      const result = await handleTrackSuggestion(existingTrackIds, retryCount, playlistId);
+      success = result.success;
+      searchDetails = result.searchDetails;
       
       if (!success) {
         console.log(`Track already exists or no suitable track found, retrying (attempt ${retryCount + 1}/${MAX_RETRIES})`);
@@ -312,7 +316,7 @@ async function addSuggestedTrackToPlaylist(upcomingTracks: TrackItem[], playlist
 
     if (success) {
       lastAddTime = now;
-      return { success: true };
+      return { success: true, searchDetails };
     } else {
       throw new Error(ERROR_MESSAGES.MAX_RETRIES);
     }
@@ -322,7 +326,7 @@ async function addSuggestedTrackToPlaylist(upcomingTracks: TrackItem[], playlist
       error: apiError,
       upcomingTracksLength: upcomingTracks.length,
     });
-    return { success: false, error: apiError.message || ERROR_MESSAGES.GENERIC_ERROR };
+    return { success: false, error: apiError.message || ERROR_MESSAGES.GENERIC_ERROR, searchDetails };
   }
 }
 
@@ -389,6 +393,7 @@ export async function GET() {
           : result.error === "In cooldown period"
           ? "Please wait before requesting another track suggestion."
           : "No suitable track suggestions available at this time.",
+        searchDetails: result.searchDetails,
         timestamp: new Date().toISOString()
       });
     }
@@ -397,6 +402,7 @@ export async function GET() {
     return NextResponse.json({ 
       success: true, 
       message: 'Successfully added suggested track',
+      searchDetails: result.searchDetails,
       timestamp: new Date().toISOString()
     });
   } catch (error) {
@@ -435,6 +441,7 @@ export async function GET() {
           responseHeaders: errorDetails?.responseHeaders,
           timestamp: new Date().toISOString()
         },
+        searchDetails: null,
         timestamp: new Date().toISOString()
       },
       { status: statusCode }
