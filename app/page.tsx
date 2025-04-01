@@ -34,7 +34,7 @@ export default function Home() {
         await createPlaylist();
       }
     })();
-  }, [createPlaylist]);
+  }, [createPlaylist, todayPlaylistId]);
 
   const [debouncedSearchQuery] = useDebounce(searchQuery, 300);
 
@@ -49,7 +49,7 @@ export default function Home() {
     };
 
     searchTrackDebounce();
-  }, [debouncedSearchQuery]);
+  }, [debouncedSearchQuery, searchTracks]);
 
   if (isLoading || !todayPlaylist || !todayPlaylistId) {
     return <Loading />;

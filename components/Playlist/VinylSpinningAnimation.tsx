@@ -1,4 +1,5 @@
 import React from "react";
+import Image from "next/image";
 
 interface IVinylSpinningAnimationProps {
   is_playing: boolean;
@@ -22,10 +23,12 @@ const VinylSpinningAnimation: React.FC<IVinylSpinningAnimationProps> = ({
 
         {albumCover && (
           <div className="absolute inset-0 flex items-center justify-center">
-            <img
+            <Image
               src={albumCover}
               alt="Album Cover"
-              className="w-20 h-20 rounded-full object-cover border-2 border-gray-800"
+              width={80}
+              height={80}
+              className="rounded-full object-cover border-2 border-gray-800"
             />
           </div>
         )}

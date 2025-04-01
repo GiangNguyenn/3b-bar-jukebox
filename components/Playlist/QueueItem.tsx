@@ -1,5 +1,6 @@
 import { TrackItem } from "@/shared/types";
 import React, { FC } from "react";
+import Image from "next/image";
 
 interface IQueueItemProps {
   track: TrackItem;
@@ -16,10 +17,13 @@ const QueueItem: FC<IQueueItemProps> = ({ track }) => {
 
   return (
     <div className="flex border-b py-3 cursor-pointer hover:shadow-md px-2 ">
-      <img
-        className="w-10 h-10 object-cover rounded-lg"
-        alt="User avatar"
+      <Image
+        className="rounded-lg"
+        alt="Album cover"
         src={images[0].url}
+        width={40}
+        height={40}
+        style={{ objectFit: 'cover' }}
       />
       <div className="flex flex-col px-2 w-full">
         <span className="text-sm text-secondary-500 capitalize font-semibold pt-1">
