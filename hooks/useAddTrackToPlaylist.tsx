@@ -3,11 +3,22 @@ import { sendApiRequest } from "@/shared/api";
 import { useCreateNewDailyPlaylist } from "./useCreateNewDailyPlayList";
 import { SpotifyPlaylistItem, TrackItem } from "@/shared/types";
 import { useGetPlaylist } from "./useGetPlaylist";
-import { ERROR_MESSAGES } from "@/shared/constants/errors";
+import { ERROR_MESSAGES, ErrorMessage } from "@/shared/constants/errors";
+
+interface ApiError {
+  message?: string;
+  error?: {
+    message?: string;
+    status?: number;
+  };
+  details?: {
+    errorMessage?: string;
+  };
+}
 
 export const useAddTrackToPlaylist = () => {
   const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<ErrorMessage | null>(null);
   const [isSuccess, setIsSuccess] = useState(false);
   
   const { todayPlaylistId, error: playlistError, isError: isPlaylistError } = useCreateNewDailyPlaylist();
@@ -43,18 +54,34 @@ export const useAddTrackToPlaylist = () => {
     }
 
     try {
+      console.log(`[Add Track] Adding track ${trackURI} to playlist ${todayPlaylistId}`);
       await sendApiRequest<SpotifyPlaylistItem>({
         path: `playlists/${todayPlaylistId}/tracks`,
         method: "POST",
-        body: JSON.stringify({
+        body: {
           uris: [trackURI],
-        }),
+        },
       });
 
+      console.log('[Add Track] Track added successfully, refreshing playlist');
       await refetchPlaylist();
       setIsSuccess(true);
-    } catch (error: any) {
-      setError(error.message || ERROR_MESSAGES.FAILED_TO_ADD);
+    } catch (error: unknown) {
+      console.error('[Add Track] Error adding track:', error);
+      
+      // Extract error message from various possible error formats
+      let errorMessage: ErrorMessage = ERROR_MESSAGES.FAILED_TO_ADD;
+      if (error instanceof Error) {
+        errorMessage = (error.message || ERROR_MESSAGES.FAILED_TO_ADD) as ErrorMessage;
+      } else if (typeof error === 'object' && error !== null) {
+        const apiError = error as ApiError;
+        const message = apiError.message || 
+                      apiError.error?.message || 
+                      apiError.details?.errorMessage;
+        errorMessage = (message || ERROR_MESSAGES.FAILED_TO_ADD) as ErrorMessage;
+      }
+      
+      setError(errorMessage);
     } finally {
       setIsLoading(false);
     }
