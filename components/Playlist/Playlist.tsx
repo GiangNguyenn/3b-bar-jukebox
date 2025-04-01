@@ -9,7 +9,7 @@ interface IPlaylistProps {
   tracks: TrackItem[];
 }
 
-export const Playlist: React.FC<IPlaylistProps> = ({ tracks }) => {
+export const Playlist: React.FC<IPlaylistProps> = ({ tracks = [] }) => {
   const { data: nowPlaying } = useNowPlayingTrack();
   const currentTrackId = nowPlaying?.item?.id ?? null;
   const upcomingTracks = filterUpcomingTracks(tracks, currentTrackId);
