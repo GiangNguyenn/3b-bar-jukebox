@@ -1,7 +1,7 @@
 import { useCallback, useState } from "react";
 import { sendApiRequest } from "../shared/api";
 import { TrackDetails } from "@/shared/types";
-import { ERROR_MESSAGES } from "@/shared/constants/errors";
+import { ERROR_MESSAGES, ErrorMessage } from "@/shared/constants/errors";
 
 interface ApiError {
   message?: string;
@@ -34,7 +34,7 @@ interface SpotifySearchResponse {
 
 const useSearchTracks = () => {
   const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<ErrorMessage | null>(null);
 
   const searchTracks = useCallback(async (query: string) => {
     setIsLoading(true);
@@ -53,15 +53,15 @@ const useSearchTracks = () => {
       console.error('[Search Tracks] Error searching tracks:', error);
       
       // Extract error message from various possible error formats
-      let errorMessage = ERROR_MESSAGES.GENERIC_ERROR;
+      let errorMessage: ErrorMessage = ERROR_MESSAGES.GENERIC_ERROR;
       if (error instanceof Error) {
-        errorMessage = error.message || ERROR_MESSAGES.GENERIC_ERROR;
+        errorMessage = (error.message || ERROR_MESSAGES.GENERIC_ERROR) as ErrorMessage;
       } else if (typeof error === 'object' && error !== null) {
         const apiError = error as ApiError;
-        errorMessage = apiError.message || 
+        const message = apiError.message || 
                       apiError.error?.message || 
-                      apiError.details?.errorMessage || 
-                      ERROR_MESSAGES.GENERIC_ERROR;
+                      apiError.details?.errorMessage;
+        errorMessage = (message || ERROR_MESSAGES.GENERIC_ERROR) as ErrorMessage;
       }
       
       setError(errorMessage);
