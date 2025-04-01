@@ -30,10 +30,12 @@ export const useCreateNewDailyPlaylist = () => {
     refetchPlaylists,
   } = useMyPlaylists();
 
+  // Fetch playlists on mount
   useEffect(() => {
     refetchPlaylists();
   }, []);
 
+  // Check for existing playlist whenever playlists data changes
   useEffect(() => {
     if (playlists?.items) {
       const existingPlaylist = playlists.items.find(
@@ -47,10 +49,29 @@ export const useCreateNewDailyPlaylist = () => {
   }, [playlists, name]);
 
   const createPlaylist = async () => {
+    // Don't create if we already have a playlist ID
+    if (todayPlaylistId) {
+      console.log(`[Daily Playlist] Playlist already exists: ${name} (ID: ${todayPlaylistId})`);
+      return null;
+    }
+
     setIsLoading(true);
     setError(null);
     
     try {
+      // Double check if playlist exists before creating
+      await refetchPlaylists();
+      if (playlists?.items) {
+        const existingPlaylist = playlists.items.find(
+          (playlist) => playlist.name === name
+        );
+        if (existingPlaylist) {
+          console.log(`[Daily Playlist] Found existing playlist before creation: ${name} (ID: ${existingPlaylist.id})`);
+          setTodayPlaylistId(existingPlaylist.id);
+          return existingPlaylist;
+        }
+      }
+
       console.log(`[Daily Playlist] Creating new playlist: ${name}`);
       const newPlaylist = await sendApiRequest<SpotifyPlaylistItem>({
         path: `me/playlists`,
