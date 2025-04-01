@@ -87,10 +87,14 @@ const Header = () => {
 
       // If track was successfully added, dispatch a refresh event
       if (data.success) {
+        console.log('Dispatching playlist refresh event...');
         const event = new CustomEvent<PlaylistRefreshEvent['detail']>('playlistRefresh', {
           detail: { timestamp: Date.now() }
         });
         window.dispatchEvent(event);
+        console.log('Playlist refresh event dispatched');
+      } else {
+        console.log('Track was not successfully added, not dispatching refresh event');
       }
     } catch (error) {
       console.error('Error suggesting track:', error);
