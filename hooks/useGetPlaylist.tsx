@@ -52,7 +52,7 @@ export const useGetPlaylist = (id: string) => {
     const refetchPlaylist = async () => {
         console.log('[Get Playlist] Refetching playlist...');
         try {
-            await mutate();
+            await mutate(undefined, { revalidate: true });
             console.log('[Get Playlist] Playlist refetched successfully');
         } catch (error: unknown) {
             console.error('[Get Playlist] Error refetching playlist:', error);
