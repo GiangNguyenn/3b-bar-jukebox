@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { TrackItem, SpotifyPlaylistItem, SpotifyPlaybackState } from "@/shared/types";
 import { COOLDOWN_MS, MAX_PLAYLIST_LENGTH } from "@/shared/constants/trackSuggestion";
 import { ERROR_MESSAGES } from "@/shared/constants/errors";
-import { findSuggestedTrack } from "@/services/trackSuggestion";
+import { findSuggestedTrack, TrackSearchResult } from "@/services/trackSuggestion";
 import { sendApiRequest } from "@/shared/api";
 import { formatDateForPlaylist } from "@/shared/utils/date";
 import { filterUpcomingTracks } from "@/lib/utils";
@@ -263,7 +263,7 @@ async function tryAddTrack(trackUri: string, playlistId: string): Promise<boolea
   }
 }
 
-async function handleTrackSuggestion(existingTrackIds: string[], retryCount: number, playlistId: string): Promise<{ success: boolean; searchDetails?: any }> {
+async function handleTrackSuggestion(existingTrackIds: string[], retryCount: number, playlistId: string): Promise<{ success: boolean; searchDetails?: TrackSearchResult['searchDetails'] }> {
   const result = await findSuggestedTrack(existingTrackIds);
   
   if (!result.track) {
@@ -281,7 +281,7 @@ async function handleTrackSuggestion(existingTrackIds: string[], retryCount: num
   return { success: added, searchDetails: result.searchDetails };
 }
 
-async function addSuggestedTrackToPlaylist(upcomingTracks: TrackItem[], playlistId: string): Promise<{ success: boolean; error?: string; searchDetails?: any }> {
+async function addSuggestedTrackToPlaylist(upcomingTracks: TrackItem[], playlistId: string): Promise<{ success: boolean; error?: string; searchDetails?: TrackSearchResult['searchDetails'] }> {
   const existingTrackIds = upcomingTracks.map(t => t.track.id);
   const now = Date.now();
   
@@ -300,7 +300,7 @@ async function addSuggestedTrackToPlaylist(upcomingTracks: TrackItem[], playlist
   try {
     let retryCount = 0;
     let success = false;
-    let searchDetails;
+    let searchDetails: TrackSearchResult['searchDetails'] | undefined;
 
     while (!success && retryCount < MAX_RETRIES) {
       const result = await handleTrackSuggestion(existingTrackIds, retryCount, playlistId);
@@ -326,7 +326,7 @@ async function addSuggestedTrackToPlaylist(upcomingTracks: TrackItem[], playlist
       error: apiError,
       upcomingTracksLength: upcomingTracks.length,
     });
-    return { success: false, error: apiError.message || ERROR_MESSAGES.GENERIC_ERROR, searchDetails };
+    return { success: false, error: apiError.message || ERROR_MESSAGES.GENERIC_ERROR, searchDetails: undefined };
   }
 }
 

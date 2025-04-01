@@ -61,7 +61,7 @@ export function getRandomGenre(): string {
   return FALLBACK_GENRES[Math.floor(Math.random() * FALLBACK_GENRES.length)];
 }
 
-interface TrackSearchResult {
+export interface TrackSearchResult {
   track: TrackDetails | null;
   searchDetails: {
     attempts: number;
