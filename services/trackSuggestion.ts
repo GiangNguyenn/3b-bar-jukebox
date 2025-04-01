@@ -44,7 +44,7 @@ export async function searchTracksByGenre(genre: string): Promise<TrackDetails[]
   // Use a more reliable search query that includes both genre and year
   const currentYear = new Date().getFullYear();
   const response = await sendApiRequest<{ tracks: { items: TrackDetails[] } }>({
-    path: `${SPOTIFY_SEARCH_ENDPOINT}?q=year:${currentYear-5}-${currentYear}&type=track&limit=${TRACK_SEARCH_LIMIT}`,
+    path: `${SPOTIFY_SEARCH_ENDPOINT}?q=genre:${encodeURIComponent(genre)}&type=track&limit=${TRACK_SEARCH_LIMIT}&market=VN`,
     method: "GET",
   });
 
@@ -53,7 +53,7 @@ export async function searchTracksByGenre(genre: string): Promise<TrackDetails[]
     throw new Error("Unexpected API response format");
   }
 
-  console.log(`Found ${tracks.length} tracks in search results`);
+  console.log(`Found ${tracks.length} tracks in search results for genre: ${genre}`);
   return tracks;
 }
 
