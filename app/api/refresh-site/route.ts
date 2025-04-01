@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { TrackItem, SpotifyPlaylistItem, SpotifyPlaybackState } from "@/shared/types";
 import { COOLDOWN_MS, MAX_PLAYLIST_LENGTH } from "@/shared/constants/trackSuggestion";
 import { ERROR_MESSAGES } from "@/shared/constants/errors";
-import { findSuggestedTrack } from "@/services/trackSuggestion";
+import { findSuggestedTrack, TrackSearchResult } from "@/services/trackSuggestion";
 import { sendApiRequest } from "@/shared/api";
 import { formatDateForPlaylist } from "@/shared/utils/date";
 import { filterUpcomingTracks } from "@/lib/utils";
@@ -56,6 +56,9 @@ console.log('\n=== Environment Check ===');
 console.log('NODE_ENV:', process.env.NODE_ENV);
 console.log('Spotify User ID:', userId ? 'Set' : 'Not set');
 console.log('Spotify Base URL:', process.env.NEXT_PUBLIC_SPOTIFY_BASE_URL ? 'Set' : 'Not set');
+console.log('Spotify Client ID:', process.env.SPOTIFY_CLIENT_ID ? 'Set' : 'Not set');
+console.log('Spotify Client Secret:', process.env.SPOTIFY_CLIENT_SECRET ? 'Set' : 'Not set');
+console.log('Spotify Refresh Token:', process.env.SPOTIFY_REFRESH_TOKEN ? 'Set' : 'Not set');
 console.log('========================\n');
 
 let lastAddTime = 0;
@@ -235,52 +238,58 @@ async function waitForRetry(retryCount: number): Promise<void> {
 
 async function tryAddTrack(trackUri: string, playlistId: string): Promise<boolean> {
   try {
+    // Ensure the track URI has the correct format
+    const formattedUri = trackUri.startsWith('spotify:track:') ? trackUri : `spotify:track:${trackUri}`;
+    
+    log.info('Attempting to add track to playlist', {
+      playlistId,
+      trackUri: formattedUri
+    });
+
     await sendApiRequest({
       path: `playlists/${playlistId}/tracks`,
       method: "POST",
-      body: JSON.stringify({
-        uris: [trackUri],
-      }),
+      body: {
+        uris: [formattedUri]
+      }
     });
+
+    log.info('Successfully added track to playlist', {
+      playlistId,
+      trackUri: formattedUri
+    });
+    
     return true;
   } catch (error) {
     const apiError = error as SpotifyApiError;
     log.error('Error adding track to playlist', {
       error: apiError,
-      statusCode: apiError.response?.data?.error?.message,
       playlistId,
       trackUri
     });
-    
-    if (apiError.response?.data?.error?.message?.includes('401')) {
-      throw new ApiError('Spotify authentication failed. Please check your access token.', 401, apiError);
-    }
-    
-    if (apiError.message?.includes(ERROR_MESSAGES.TRACK_EXISTS)) {
-      return false;
-    }
-    throw new Error(apiError.message || ERROR_MESSAGES.GENERIC_ERROR);
+    throw error;
   }
 }
 
-async function handleTrackSuggestion(existingTrackIds: string[], retryCount: number, playlistId: string): Promise<boolean> {
-  const selectedTrack = await findSuggestedTrack(existingTrackIds);
+async function handleTrackSuggestion(existingTrackIds: string[], retryCount: number, playlistId: string): Promise<{ success: boolean; searchDetails?: TrackSearchResult['searchDetails'] }> {
+  const result = await findSuggestedTrack(existingTrackIds);
   
-  if (!selectedTrack) {
+  if (!result.track) {
     log.info(`${ERROR_MESSAGES.NO_SUGGESTIONS} (attempt ${retryCount + 1}/${MAX_RETRIES})`);
-    return false;
+    return { success: false, searchDetails: result.searchDetails };
   }
 
-  log.info(`Attempting to add suggested track: ${selectedTrack.name}`, {
+  log.info(`Attempting to add suggested track: ${result.track.name}`, {
     attempt: retryCount + 1,
     maxRetries: MAX_RETRIES,
-    trackId: selectedTrack.id
+    trackId: result.track.id
   });
   
-  return await tryAddTrack(selectedTrack.uri, playlistId);
+  const added = await tryAddTrack(result.track.uri, playlistId);
+  return { success: added, searchDetails: result.searchDetails };
 }
 
-async function addSuggestedTrackToPlaylist(upcomingTracks: TrackItem[], playlistId: string): Promise<{ success: boolean; error?: string }> {
+async function addSuggestedTrackToPlaylist(upcomingTracks: TrackItem[], playlistId: string): Promise<{ success: boolean; error?: string; searchDetails?: TrackSearchResult['searchDetails'] }> {
   const existingTrackIds = upcomingTracks.map(t => t.track.id);
   const now = Date.now();
   
@@ -299,9 +308,12 @@ async function addSuggestedTrackToPlaylist(upcomingTracks: TrackItem[], playlist
   try {
     let retryCount = 0;
     let success = false;
+    let searchDetails: TrackSearchResult['searchDetails'] | undefined;
 
     while (!success && retryCount < MAX_RETRIES) {
-      success = await handleTrackSuggestion(existingTrackIds, retryCount, playlistId);
+      const result = await handleTrackSuggestion(existingTrackIds, retryCount, playlistId);
+      success = result.success;
+      searchDetails = result.searchDetails;
       
       if (!success) {
         console.log(`Track already exists or no suitable track found, retrying (attempt ${retryCount + 1}/${MAX_RETRIES})`);
@@ -312,7 +324,7 @@ async function addSuggestedTrackToPlaylist(upcomingTracks: TrackItem[], playlist
 
     if (success) {
       lastAddTime = now;
-      return { success: true };
+      return { success: true, searchDetails };
     } else {
       throw new Error(ERROR_MESSAGES.MAX_RETRIES);
     }
@@ -322,7 +334,7 @@ async function addSuggestedTrackToPlaylist(upcomingTracks: TrackItem[], playlist
       error: apiError,
       upcomingTracksLength: upcomingTracks.length,
     });
-    return { success: false, error: apiError.message || ERROR_MESSAGES.GENERIC_ERROR };
+    return { success: false, error: apiError.message || ERROR_MESSAGES.GENERIC_ERROR, searchDetails: undefined };
   }
 }
 
@@ -389,6 +401,7 @@ export async function GET() {
           : result.error === "In cooldown period"
           ? "Please wait before requesting another track suggestion."
           : "No suitable track suggestions available at this time.",
+        searchDetails: result.searchDetails,
         timestamp: new Date().toISOString()
       });
     }
@@ -397,6 +410,7 @@ export async function GET() {
     return NextResponse.json({ 
       success: true, 
       message: 'Successfully added suggested track',
+      searchDetails: result.searchDetails,
       timestamp: new Date().toISOString()
     });
   } catch (error) {
@@ -406,7 +420,13 @@ export async function GET() {
     log.error('Error in refresh site endpoint', {
       error: apiError,
       stack: apiError.stack,
-      details: apiError.details
+      details: apiError.details,
+      environment: process.env.NODE_ENV,
+      hasUserId: !!userId,
+      hasBaseUrl: !!process.env.NEXT_PUBLIC_SPOTIFY_BASE_URL,
+      hasClientId: !!process.env.SPOTIFY_CLIENT_ID,
+      hasClientSecret: !!process.env.SPOTIFY_CLIENT_SECRET,
+      hasRefreshToken: !!process.env.SPOTIFY_REFRESH_TOKEN
     });
     
     // Extract the most relevant error information
@@ -430,11 +450,12 @@ export async function GET() {
           environment: process.env.NODE_ENV,
           hasUserId: !!userId,
           hasBaseUrl: !!process.env.NEXT_PUBLIC_SPOTIFY_BASE_URL,
-          requestUrl: errorDetails?.requestUrl,
-          requestMethod: errorDetails?.requestMethod,
-          responseHeaders: errorDetails?.responseHeaders,
+          hasClientId: !!process.env.SPOTIFY_CLIENT_ID,
+          hasClientSecret: !!process.env.SPOTIFY_CLIENT_SECRET,
+          hasRefreshToken: !!process.env.SPOTIFY_REFRESH_TOKEN,
           timestamp: new Date().toISOString()
         },
+        searchDetails: null,
         timestamp: new Date().toISOString()
       },
       { status: statusCode }
