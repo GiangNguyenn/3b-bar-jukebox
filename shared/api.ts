@@ -94,11 +94,17 @@ async function getSpotifyToken() {
   console.log("Fetching new token...");
   
   // Get the base URL for the token endpoint
-  let baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000';
+  let baseUrl = '';
   
-  // If we're in a server environment and have a Vercel URL, use that
-  if (process.env.NODE_ENV === 'production' && process.env.VERCEL_URL) {
-    baseUrl = `https://${process.env.VERCEL_URL}`;
+  // Check if we're in a browser environment
+  if (typeof window !== 'undefined') {
+    // In browser, use the current origin
+    baseUrl = window.location.origin;
+  } else {
+    // In server-side code, use environment variable or default
+    baseUrl = process.env.VERCEL_URL ? 
+      `https://${process.env.VERCEL_URL}` : 
+      process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000';
   }
   
   console.log("Using base URL:", baseUrl);
