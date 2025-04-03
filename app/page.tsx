@@ -118,6 +118,7 @@ export default function Home() {
         setSearchQuery={setSearchQuery}
         searchResults={searchResults}
         setSearchResults={setSearchResults}
+        playlistId={todayPlaylistId}
       />
       <h1 className="lg:text-3xl md:text-2xl sm:text-base text-center text-primary-200 font-[family-name:var(--font-parklane)] break-words">
         {name}

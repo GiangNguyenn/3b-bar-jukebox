@@ -1,9 +1,9 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { Playlist, TrackItem } from '@/shared/types';
-import { ERROR_MESSAGES } from '@/shared/constants';
+import { SpotifyPlaylistItem, TrackItem } from '@/shared/types';
+import { ERROR_MESSAGES } from '@/shared/constants/errors';
 
 export const usePlaylist = (playlistId: string | null) => {
-  const [playlist, setPlaylist] = useState<Playlist | null>(null);
+  const [playlist, setPlaylist] = useState<SpotifyPlaylistItem | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const refreshTimeoutRef = useRef<NodeJS.Timeout>();
