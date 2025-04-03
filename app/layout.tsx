@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
 import { Belgrano } from "next/font/google";
 import "./globals.css";
-import { HeroUIProvider } from "@heroui/react";
 import Header from "@/components/Header";
 
 // const geistSans = localFont({
@@ -83,10 +82,8 @@ export default function RootLayout({
   return (
     <html lang="en" className="">
       <body className={`${belgrano.variable} antialiased min-h-screen`}>
-        <HeroUIProvider>
-          <Header />
-          {children}
-        </HeroUIProvider>
+        <Header />
+        {children}
       </body>
     </html>
   );

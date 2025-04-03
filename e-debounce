@@ -1,0 +1,340 @@
+warning: in the working copy of 'hooks/useRemoveTrackFromPlaylist.tsx', LF will be replaced by CRLF the next time Git touches it
+[1mdiff --git a/app/layout.tsx b/app/layout.tsx[m
+[1mindex 60a823b..ab88c49 100644[m
+[1m--- a/app/layout.tsx[m
+[1m+++ b/app/layout.tsx[m
+[36m@@ -1,7 +1,6 @@[m
+ import type { Metadata } from "next";[m
+ import { Belgrano } from "next/font/google";[m
+ import "./globals.css";[m
+[31m-import { HeroUIProvider } from "@heroui/react";[m
+ import Header from "@/components/Header";[m
+ [m
+ // const geistSans = localFont({[m
+[36m@@ -83,10 +82,8 @@[m [mexport default function RootLayout({[m
+   return ([m
+     <html lang="en" className="">[m
+       <body className={`${belgrano.variable} antialiased min-h-screen`}>[m
+[31m-        <HeroUIProvider>[m
+[31m-          <Header />[m
+[31m-          {children}[m
+[31m-        </HeroUIProvider>[m
+[32m+[m[32m        <Header />[m
+[32m+[m[32m        {children}[m
+       </body>[m
+     </html>[m
+   );[m
+[1mdiff --git a/app/page.tsx b/app/page.tsx[m
+[1mindex 0ea8633..50749a3 100644[m
+[1m--- a/app/page.tsx[m
+[1m+++ b/app/page.tsx[m
+[36m@@ -4,7 +4,7 @@[m [mimport { useGetPlaylist } from "@/hooks/useGetPlaylist";[m
+ import { useEffect, useState } from "react";[m
+ import useSearchTracks from "../hooks/useSearchTracks";[m
+ import { TrackDetails } from "@/shared/types";[m
+[31m-import { Playlist } from "@/components/Playlist/Playlist";[m
+[32m+[m[32mimport Playlist from "@/components/Playlist/Playlist";[m
+ import Loading from "./loading";[m
+ import SearchInput from "@/components/SearchInput";[m
+ import { useDebounce } from "use-debounce";[m
+[36m@@ -24,8 +24,8 @@[m [mdeclare global {[m
+ }[m
+ [m
+ export default function Home() {[m
+[31m-  const { createPlaylist, todayPlaylistId } = useCreateNewDailyPlaylist();[m
+[31m-  const { data: todayPlaylist, isLoading, refetchPlaylist } = useGetPlaylist([m
+[32m+[m[32m  const { createPlaylist, todayPlaylistId, isLoading: isCreatingPlaylist, isInitialFetchComplete } = useCreateNewDailyPlaylist();[m
+[32m+[m[32m  const { data: todayPlaylist, isLoading: isLoadingPlaylist, refetchPlaylist } = useGetPlaylist([m
+     todayPlaylistId ?? ""[m
+   );[m
+   const [searchQuery, setSearchQuery] = useState("");[m
+[36m@@ -42,11 +42,16 @@[m [mexport default function Home() {[m
+ [m
+   useEffect(() => {[m
+     (async () => {[m
+[31m-      if (!todayPlaylistId) {[m
+[32m+[m[32m      if (!todayPlaylistId && !isCreatingPlaylist && isInitialFetchComplete) {[m
+[32m+[m[32m        console.log('[Page] Creating new playlist - conditions:', {[m
+[32m+[m[32m          noPlaylistId: !todayPlaylistId,[m
+[32m+[m[32m          notCreating: !isCreatingPlaylist,[m
+[32m+[m[32m          initialFetchComplete: isInitialFetchComplete[m
+[32m+[m[32m        });[m
+         await createPlaylist();[m
+       }[m
+     })();[m
+[31m-  }, [createPlaylist, todayPlaylistId]);[m
+[32m+[m[32m  }, [createPlaylist, todayPlaylistId, isCreatingPlaylist, isInitialFetchComplete]);[m
+ [m
+   // Listen for playlist refresh events[m
+   useEffect(() => {[m
+[36m@@ -93,7 +98,7 @@[m [mexport default function Home() {[m
+     searchTrackDebounce();[m
+   }, [debouncedSearchQuery, searchTracks]);[m
+ [m
+[31m-  if (isLoading || !todayPlaylist || !todayPlaylistId) {[m
+[32m+[m[32m  if (isLoadingPlaylist || !todayPlaylist || !todayPlaylistId) {[m
+     return <Loading />;[m
+   }[m
+ [m
+[1mdiff --git a/components/Playlist/Playlist.tsx b/components/Playlist/Playlist.tsx[m
+[1mindex 960825a..b057a98 100644[m
+[1m--- a/components/Playlist/Playlist.tsx[m
+[1m+++ b/components/Playlist/Playlist.tsx[m
+[36m@@ -5,16 +5,19 @@[m [mimport NowPlaying from "./NowPlaying";[m
+ import useNowPlayingTrack from "@/hooks/useNowPlayingTrack";[m
+ import { filterUpcomingTracks } from "@/lib/utils";[m
+ import { useAutoRemoveFinishedTrack } from "@/hooks/useAutoRemoveFinishedTrack";[m
+[32m+[m[32mimport { useGetPlaylist } from "@/hooks/useGetPlaylist";[m
+[32m+[m[32mimport { useCreateNewDailyPlaylist } from "@/hooks/useCreateNewDailyPlayList";[m
+ [m
+ interface IPlaylistProps {[m
+   tracks: TrackItem[];[m
+[31m-  refetchPlaylists: () => void;[m
+ }[m
+ [m
+[31m-const Playlist: React.FC<IPlaylistProps> = ({ tracks, refetchPlaylists }) => {[m
+[32m+[m[32mconst Playlist: React.FC<IPlaylistProps> = ({ tracks }) => {[m
+   const { data: playbackState } = useNowPlayingTrack();[m
+   const currentTrackId = playbackState?.item?.id ?? null;[m
+   const previousTrackIdRef = useRef<string | null>(null);[m
+[32m+[m[32m  const { todayPlaylistId } = useCreateNewDailyPlaylist();[m
+[32m+[m[32m  const { data: playlist, refetchPlaylist } = useGetPlaylist(todayPlaylistId ?? "");[m
+ [m
+   // Use the auto-remove hook[m
+   useAutoRemoveFinishedTrack({[m
+[36m@@ -23,37 +26,35 @@[m [mconst Playlist: React.FC<IPlaylistProps> = ({ tracks, refetchPlaylists }) => {[m
+     playbackState: playbackState ?? null[m
+   });[m
+ [m
+[31m-  const { tracks: upcomingTracks, shouldRemoveOldest } = filterUpcomingTracks(tracks, currentTrackId);[m
+[32m+[m[32m  const upcomingTracks = filterUpcomingTracks(tracks, currentTrackId) ?? [];[m
+[32m+[m[32m  const shouldRemoveOldest = currentTrackId && tracks.length > 5;[m
+ [m
+[31m-  // Check for playlist changes every 30 seconds[m
+[32m+[m[32m  // Check for playlist changes every 30 seconds using SWR's refetch[m
+   useEffect(() => {[m
+     const interval = setInterval(() => {[m
+       console.log('[Playlist] Checking for playlist changes');[m
+[31m-      // Dispatch a custom event instead of directly calling refetchPlaylists[m
+[31m-      const event = new CustomEvent('playlistRefresh', {[m
+[31m-        detail: { timestamp: Date.now() }[m
+[31m-      });[m
+[31m-      window.dispatchEvent(event);[m
+[32m+[m[32m      refetchPlaylist();[m
+     }, 30000);[m
+ [m
+     return () => clearInterval(interval);[m
+[31m-  }, []); // No dependencies needed since we're using window events[m
+[32m+[m[32m  }, [refetchPlaylist]);[m
+ [m
+[31m-  // Track changes for logging purposes only[m
+[32m+[m[32m  // Only refresh when current track changes[m
+   useEffect(() => {[m
+     if (currentTrackId !== previousTrackIdRef.current) {[m
+[31m-      console.log('[Playlist] Track changed:', {[m
+[32m+[m[32m      console.log('[Playlist] Track changed, refreshing:', {[m
+         previous: previousTrackIdRef.current,[m
+         current: currentTrackId[m
+       });[m
+       previousTrackIdRef.current = currentTrackId;[m
+[32m+[m[32m      refetchPlaylist();[m
+     }[m
+[31m-  }, [currentTrackId]);[m
+[32m+[m[32m  }, [currentTrackId, refetchPlaylist]);[m
+ [m
+   console.log('[Playlist] Component data:', {[m
+     totalTracks: tracks.length,[m
+     currentTrackId,[m
+[31m-    upcomingTracksLength: upcomingTracks.length,[m
+[32m+[m[32m    upcomingTracksLength: upcomingTracks?.length ?? 0,[m
+     shouldRemoveOldest,[m
+     tracks[m
+   });[m
+[36m@@ -61,7 +62,7 @@[m [mconst Playlist: React.FC<IPlaylistProps> = ({ tracks, refetchPlaylists }) => {[m
+   // If no track is currently playing, show all tracks[m
+   const tracksToShow = currentTrackId ? upcomingTracks : tracks;[m
+ [m
+[31m-  if (tracksToShow.length === 0) {[m
+[32m+[m[32m  if (!tracksToShow?.length) {[m
+     return ([m
+       <div className="w-full">[m
+         <div className="flex w-full sm:w-10/12 md:w-8/12 lg:w-9/12 bg-primary-100 shadow-md rounded-lg overflow-hidden mx-auto">[m
+[1mdiff --git a/components/SearchInput.tsx b/components/SearchInput.tsx[m
+[1mindex d124f08..cdd1e50 100644[m
+[1m--- a/components/SearchInput.tsx[m
+[1m+++ b/components/SearchInput.tsx[m
+[36m@@ -1,6 +1,5 @@[m
+ import { TrackDetails } from "@/shared/types";[m
+[31m-import { Autocomplete, AutocompleteItem, Avatar } from "@heroui/react";[m
+[31m-import { FC } from "react";[m
+[32m+[m[32mimport { FC, useState } from "react";[m
+ import { faSearch } from "@fortawesome/free-solid-svg-icons";[m
+ import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";[m
+ import { useAddTrackToPlaylist } from "@/hooks/useAddTrackToPlaylist";[m
+[36m@@ -19,77 +18,67 @@[m [mconst SearchInput: FC<SearchInputProps> = ({[m
+   setSearchResults,[m
+ }) => {[m
+   const { addTrack } = useAddTrackToPlaylist();[m
+[32m+[m[32m  const [isOpen, setIsOpen] = useState(false);[m
+[32m+[m
+   const handleChange = (value: string) => {[m
+     setSearchQuery(value);[m
+[32m+[m[32m    setIsOpen(true);[m
+   };[m
+ [m
+   const handleAddTrack = (trackURI: string) => {[m
+     setSearchResults([]);[m
+     setSearchQuery("");[m
+[31m-[m
+[32m+[m[32m    setIsOpen(false);[m
+     addTrack(trackURI);[m
+   };[m
+ [m
+   return ([m
+[31m-    <div className="flex bg-white-500 w-full sm:w-10/12 md:w-8/12 lg:w-9/12 rounded-lg flex-wrap md:flex-nowrap gap-4">[m
+[31m-      <Autocomplete[m
+[31m-        aria-label="Search for songs, albums, or artists"[m
+[31m-        placeholder="What do you want to listen to?"[m
+[31m-        type="text"[m
+[31m-        inputValue={searchQuery}[m
+[31m-        onInputChange={handleChange}[m
+[31m-        selectorIcon={<FontAwesomeIcon icon={faSearch} />}[m
+[31m-        disableSelectorIconRotation[m
+[31m-        allowsEmptyCollection={searchResults.length > 0}[m
+[31m-        listboxProps={{[m
+[31m-          hideSelectedIcon: true,[m
+[31m-          itemClasses: {[m
+[31m-            base: [[m
+[31m-              "rounded-medium",[m
+[31m-              "text-default-500",[m
+[31m-              "transition-opacity",[m
+[31m-              "data-[hover=true]:text-foreground",[m
+[31m-              "dark:data-[hover=true]:bg-default-50",[m
+[31m-              "data-[pressed=true]:opacity-70",[m
+[31m-              "data-[hover=true]:bg-default-200",[m
+[31m-              "data-[selectable=true]:focus:bg-default-100",[m
+[31m-              "data-[focus-visible=true]:ring-default-500",[m
+[31m-            ],[m
+[31m-          },[m
+[31m-        }}[m
+[31m-      >[m
+[31m-        {searchResults.length > 0[m
+[31m-          ? searchResults.map((track) => ([m
+[31m-              <AutocompleteItem[m
+[32m+[m[32m    <div className="relative flex bg-white-500 w-full sm:w-10/12 md:w-8/12 lg:w-9/12 rounded-lg flex-wrap md:flex-nowrap gap-4">[m
+[32m+[m[32m      <div className="relative flex-1">[m
+[32m+[m[32m        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">[m
+[32m+[m[32m          <FontAwesomeIcon icon={faSearch} className="text-gray-400" />[m
+[32m+[m[32m        </div>[m
+[32m+[m[32m        <input[m
+[32m+[m[32m          type="text"[m
+[32m+[m[32m          value={searchQuery}[m
+[32m+[m[32m          onChange={(e) => handleChange(e.target.value)}[m
+[32m+[m[32m          placeholder="What do you want to listen to?"[m
+[32m+[m[32m          className="block w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg leading-5 bg-white placeholder-gray-500 focus:outline-none focus:placeholder-gray-400 focus:ring-1 focus:ring-blue-500 focus:border-blue-500 sm:text-sm"[m
+[32m+[m[32m          aria-label="Search for songs, albums, or artists"[m
+[32m+[m[32m        />[m
+[32m+[m[32m      </div>[m
+[32m+[m[32m      {isOpen && searchResults.length > 0 && ([m
+[32m+[m[32m        <div className="absolute z-10 w-full mt-1 bg-white rounded-md shadow-lg max-h-60 overflow-auto">[m
+[32m+[m[32m          <ul className="py-1 text-base overflow-auto focus:outline-none sm:text-sm">[m
+[32m+[m[32m            {searchResults.map((track) => ([m
+[32m+[m[32m              <li[m
+                 key={track.id}[m
+[31m-                textValue={track.name}[m
+[31m-                onPress={() => handleAddTrack(track.uri)}[m
+[32m+[m[32m                onClick={() => handleAddTrack(track.uri)}[m
+[32m+[m[32m                className="cursor-pointer select-none relative py-2 pl-3 pr-9 hover:bg-gray-100"[m
+               >[m
+[31m-                <div className="flex justify-between items-center">[m
+[31m-                  <div className="flex gap-2 items-center">[m
+[31m-                    <Avatar[m
+[31m-                      alt={track.name}[m
+[31m-                      className="flex-shrink-0"[m
+[31m-                      size="sm"[m
+[31m-                      src={track.album.images[2].url}[m
+[31m-                    />[m
+[31m-                    <div className="flex flex-col">[m
+[31m-                      <span className="text-small">{track.name}</span>[m
+[31m-                      <div className="text-tiny text-default-400">[m
+[31m-                        {track.artists.map((artist, index) => ([m
+[31m-                          <span key={index}>[m
+[31m-                            {artist.name}[m
+[31m-                            {index < track.artists.length - 1 ? ", " : ""}[m
+[31m-                          </span>[m
+[31m-                        ))}[m
+[31m-                      </div>[m
+[31m-                    </div>[m
+[32m+[m[32m                <div className="flex items-center">[m
+[32m+[m[32m                  <img[m
+[32m+[m[32m                    src={track.album.images[2].url}[m
+[32m+[m[32m                    alt={track.name}[m
+[32m+[m[32m                    className="h-8 w-8 rounded-full flex-shrink-0"[m
+[32m+[m[32m                  />[m
+[32m+[m[32m                  <div className="ml-3">[m
+[32m+[m[32m                    <p className="text-sm font-medium text-gray-900">{track.name}</p>[m
+[32m+[m[32m                    <p className="text-xs text-gray-500">[m
+[32m+[m[32m                      {track.artists.map((artist, index) => ([m
+[32m+[m[32m                        <span key={index}>[m
+[32m+[m[32m                          {artist.name}[m
+[32m+[m[32m                          {index < track.artists.length - 1 ? ", " : ""}[m
+[32m+[m[32m                        </span>[m
+[32m+[m[32m                      ))}[m
+[32m+[m[32m                    </p>[m
+                   </div>[m
+                 </div>[m
+[31m-              </AutocompleteItem>[m
+[31m-            ))[m
+[31m-          : null}[m
+[31m-      </Autocomplete>[m
+[32m+[m[32m              </li>[m
+[32m+[m[32m            ))}[m
+[32m+[m[32m          </ul>[m
+[32m+[m[32m        </div>[m
+[32m+[m[32m      )}[m
+     </div>[m
+   );[m
+ };[m
+[1mdiff --git a/hooks/__tests__/useRemoveTrackFromPlaylist.test.tsx b/hooks/__tests__/useRemoveTrackFromPlaylist.test.tsx[m
+[1mindex 277b902..e1f125b 100644[m
+[1m--- a/hooks/__tests__/useRemoveTrackFromPlaylist.test.tsx[m
+[1m+++ b/hooks/__tests__/useRemoveTrackFromPlaylist.test.tsx[m
+[36m@@ -1,10 +1,10 @@[m
+ import React from 'react';[m
+[31m-import { renderHook, act } from '@testing-library/react';[m
+[32m+[m[32mimport { renderHook, act, waitFor } from '@testing-library/react';[m
+ import { useRemoveTrackFromPlaylist } from '../useRemoveTrackFromPlaylist';[m
+ import { sendApiRequest } from '@/shared/api';[m
+ import { useCreateNewDailyPlaylist } from '../useCreateNewDailyPlayList';[m
+ import { useGetPlaylist } from '../useGetPlaylist';[m
+[31m-import { ERROR_MESSAGES } from '@/shared/constants/errors';[m
+[32m+[m[32mimport { ERROR_MESSAGES, ErrorMessage } from '@/shared/constants/errors';[m
+ import { TrackItem } from '@/shared/types';[m
+ [m
+ // Mock the API request function[m
+[36m@@ -116,9 +116,12 @@[m [mconst wrapper = ({ children }: { children: React.ReactNode }) => ([m
+ );[m
+ [m
+ describe('useRemoveTrackFromPlaylist', () => {[m
+[32m+[m[32m  const mockRefetchPlaylist = jest.fn();[m
+[32m+[m
+   beforeEach(() => {[m
+     jest.clearAllMocks();[m
+[31m-    // Set up default mock implementations[m
+[32m+[m[32m    jest.useFakeTimers();[m
+[32m+[m
+     (useCreateNewDailyPlaylist as jest.Mock).mockReturnValue({[m
+       todayPlaylistId: mockPlaylistId,[m
+       error: null,[m
+[36m@@ -126,43 +129,46 @@[m [mdescribe('useRemoveTrackFromPlaylist', () => {[m
+     });[m
+     (useGetPlaylist as jest.Mock).mockReturnValue({[m
+       data: mockPlaylist,[m
+[31m-      refetchPlaylist: jest.fn().mockResolvedValue(undefined),[m
+[32m+[m[32m      refetchPlaylist: mockRefetchPlaylist[m
+     });[m
+   });[m
+ [m
+[32m+[m[32m  afterEach(() => {[m
+[32m+[m[32m    jest.useRealTimers();[m
+[32m+[m[32m  });[m

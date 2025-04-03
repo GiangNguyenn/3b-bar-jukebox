@@ -63,6 +63,19 @@ export const useCreateNewDailyPlaylist = () => {
       return null;
     }
 
+    // Double-check for existing playlist before creating
+    if (playlists?.items) {
+      const existingPlaylist = playlists.items.find(
+        (playlist) => playlist.name === name
+      );
+      if (existingPlaylist) {
+        console.log(`[Daily Playlist] Found existing playlist during creation check: ${name} (ID: ${existingPlaylist.id})`);
+        setTodayPlaylistId(existingPlaylist.id);
+        setHasFoundExisting(true);
+        return null;
+      }
+    }
+
     // Don't create if we already attempted creation or found existing
     if (hasAttemptedCreation || todayPlaylistId || hasFoundExisting) {
       console.log(`[Daily Playlist] Playlist already exists or creation attempted: ${name} (ID: ${todayPlaylistId})`);
@@ -121,5 +134,13 @@ export const useCreateNewDailyPlaylist = () => {
     }
   };
 
-  return { createPlaylist, todayPlaylistId, playlists, isLoading, error, isError };
+  return { 
+    createPlaylist, 
+    todayPlaylistId, 
+    playlists, 
+    isLoading, 
+    error, 
+    isError,
+    isInitialFetchComplete 
+  };
 };
