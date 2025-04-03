@@ -92,19 +92,13 @@ const Header = () => {
           // Create and dispatch the event
           const event = new CustomEvent<PlaylistRefreshEvent['detail']>('playlistRefresh', {
             detail: { timestamp: Date.now() },
-            bubbles: true, // Allow event to bubble up through the DOM
-            composed: true // Allow event to cross shadow DOM boundaries
+            bubbles: true,
+            composed: true
           });
           
           // Dispatch from both window and document to ensure maximum compatibility
           window.dispatchEvent(event);
           document.dispatchEvent(event);
-          
-          // Also dispatch from the current element
-          const logoElement = document.querySelector('.cursor-pointer');
-          if (logoElement) {
-            logoElement.dispatchEvent(event);
-          }
           
           console.log('Playlist refresh event dispatched successfully');
         } catch (eventError) {
