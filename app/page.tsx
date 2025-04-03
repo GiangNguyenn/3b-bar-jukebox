@@ -1,7 +1,7 @@
 "use client";
 import { useCreateNewDailyPlaylist } from "@/hooks/useCreateNewDailyPlayList";
 import { useGetPlaylist } from "@/hooks/useGetPlaylist";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo, memo } from "react";
 import useSearchTracks from "../hooks/useSearchTracks";
 import { TrackDetails } from "@/shared/types";
 import Playlist from "@/components/Playlist/Playlist";
@@ -23,7 +23,7 @@ declare global {
   }
 }
 
-export default function Home() {
+const Home = memo(() => {
   const { createPlaylist, todayPlaylistId, isLoading: isCreatingPlaylist, isInitialFetchComplete } = useCreateNewDailyPlaylist();
   const { data: todayPlaylist, isLoading: isLoadingPlaylist, refetchPlaylist } = useGetPlaylist(
     todayPlaylistId ?? ""
@@ -53,34 +53,14 @@ export default function Home() {
     })();
   }, [createPlaylist, todayPlaylistId, isCreatingPlaylist, isInitialFetchComplete]);
 
-  // Listen for playlist refresh events
-  useEffect(() => {
-    const handlePlaylistRefresh = (event: Event) => {
-      const customEvent = event as PlaylistRefreshEvent;
-      console.log('Received playlist refresh event:', {
-        timestamp: customEvent.detail.timestamp,
-        source: event.target instanceof Window ? 'window' : 
-                event.target instanceof Document ? 'document' : 
-                'element'
+  const handleTrackAdded = useMemo(() => async () => {
+    // Add a small delay to ensure the track is added to Spotify
+    setTimeout(() => {
+      console.log('Refreshing playlist after delay...');
+      refetchPlaylist().catch(error => {
+        console.error('Error refreshing playlist:', error);
       });
-      
-      // Add a small delay to ensure the track is added to Spotify
-      setTimeout(() => {
-        console.log('Refreshing playlist after delay...');
-        refetchPlaylist().catch(error => {
-          console.error('Error refreshing playlist:', error);
-        });
-      }, 1000);
-    };
-
-    // Add listeners to multiple targets for better reliability
-    window.addEventListener('playlistRefresh', handlePlaylistRefresh);
-    document.addEventListener('playlistRefresh', handlePlaylistRefresh);
-    
-    return () => {
-      window.removeEventListener('playlistRefresh', handlePlaylistRefresh);
-      document.removeEventListener('playlistRefresh', handlePlaylistRefresh);
-    };
+    }, 1000);
   }, [refetchPlaylist]);
 
   const [debouncedSearchQuery] = useDebounce(searchQuery, 300);
@@ -98,11 +78,20 @@ export default function Home() {
     searchTrackDebounce();
   }, [debouncedSearchQuery, searchTracks]);
 
+  const searchInputProps = useMemo(() => ({
+    searchQuery,
+    setSearchQuery,
+    searchResults,
+    setSearchResults,
+    playlistId: todayPlaylistId ?? "",
+    onTrackAdded: handleTrackAdded
+  }), [searchQuery, searchResults, todayPlaylistId, handleTrackAdded]);
+
   if (isLoadingPlaylist || !todayPlaylist || !todayPlaylistId) {
     return <Loading />;
   }
 
-  const { tracks, name } = todayPlaylist!;
+  const { tracks, name } = todayPlaylist;
 
   console.log('[Page] Playlist data:', {
     playlistName: name,
@@ -113,17 +102,15 @@ export default function Home() {
 
   return (
     <div className="items-center justify-items-center space-y-3 p-4 pt-10 font-mono">
-      <SearchInput
-        searchQuery={searchQuery}
-        setSearchQuery={setSearchQuery}
-        searchResults={searchResults}
-        setSearchResults={setSearchResults}
-        playlistId={todayPlaylistId}
-      />
+      <SearchInput {...searchInputProps} />
       <h1 className="lg:text-3xl md:text-2xl sm:text-base text-center text-primary-200 font-[family-name:var(--font-parklane)] break-words">
         {name}
       </h1>
       <Playlist tracks={tracks.items} />
     </div>
   );
-}
+});
+
+Home.displayName = 'Home';
+
+export default Home;

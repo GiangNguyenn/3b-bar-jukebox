@@ -11,6 +11,7 @@ interface SearchInputProps {
   searchResults: TrackDetails[];
   setSearchResults: (value: TrackDetails[]) => void;
   playlistId: string;
+  onTrackAdded?: () => void;
 }
 
 const SearchInput: FC<SearchInputProps> = ({
@@ -19,6 +20,7 @@ const SearchInput: FC<SearchInputProps> = ({
   searchResults,
   setSearchResults,
   playlistId,
+  onTrackAdded,
 }) => {
   const { addTrack } = useAddTrackToPlaylist({ playlistId });
   const [isOpen, setIsOpen] = useState(false);
@@ -29,9 +31,6 @@ const SearchInput: FC<SearchInputProps> = ({
   };
 
   const handleAddTrack = (track: TrackDetails) => {
-    setSearchResults([]);
-    setSearchQuery("");
-    setIsOpen(false);
     const trackItem: TrackItem = {
       added_at: new Date().toISOString(),
       added_by: {
@@ -67,13 +66,15 @@ const SearchInput: FC<SearchInputProps> = ({
     };
     console.log('Adding track:', trackItem);
     addTrack(trackItem, () => {
-      // Dispatch a custom event to refresh the playlist
-      const event = new CustomEvent('playlistRefresh', {
-        detail: { timestamp: Date.now() }
-      });
-      window.dispatchEvent(event);
+      // Only clear search results and close dropdown after successful addition
+      setSearchResults([]);
+      setSearchQuery("");
+      setIsOpen(false);
+      // Call the callback instead of dispatching an event
+      onTrackAdded?.();
     }).catch(error => {
       console.error('Failed to add track:', error);
+      // Keep search results visible if there was an error
     });
   };
 

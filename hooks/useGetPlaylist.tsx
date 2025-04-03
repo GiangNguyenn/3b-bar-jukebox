@@ -52,7 +52,17 @@ export const useGetPlaylist = (id: string) => {
     const refetchPlaylist = async () => {
         console.log('[Get Playlist] Refetching playlist...');
         try {
-            await mutate(undefined, { revalidate: true });
+            // Use optimistic update to prevent full re-render
+            await mutate(async () => {
+                const newData = await sendApiRequest<SpotifyPlaylistItem>({
+                    path: `users/${userId}/playlists/${id}`,
+                });
+                return newData;
+            }, {
+                revalidate: false, // Don't trigger a revalidation
+                populateCache: true, // Update the cache with the new data
+                rollbackOnError: true, // Rollback if the request fails
+            });
             console.log('[Get Playlist] Playlist refetched successfully');
         } catch (error: unknown) {
             console.error('[Get Playlist] Error refetching playlist:', error);
