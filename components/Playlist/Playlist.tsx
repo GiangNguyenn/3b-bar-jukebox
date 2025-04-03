@@ -36,7 +36,7 @@ const Playlist: React.FC<IPlaylistProps> = memo(({ tracks }) => {
     [currentTrackId, tracks.length]
   );
 
-  // Check for playlist changes every 30 seconds using SWR's refetch
+  // Check for playlist changes every 30 seconds
   useEffect(() => {
     const interval = setInterval(() => {
       console.log('[Playlist] Checking for playlist changes');
