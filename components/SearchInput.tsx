@@ -3,6 +3,7 @@ import { FC, useState } from "react";
 import { faSearch } from "@fortawesome/free-solid-svg-icons";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { useAddTrackToPlaylist } from "@/hooks/useAddTrackToPlaylist";
+import { Portal } from "@headlessui/react";
 
 interface SearchInputProps {
   searchQuery: string;
@@ -10,6 +11,7 @@ interface SearchInputProps {
   searchResults: TrackDetails[];
   setSearchResults: (value: TrackDetails[]) => void;
   playlistId: string;
+  onTrackAdded?: () => void;
 }
 
 const SearchInput: FC<SearchInputProps> = ({
@@ -18,6 +20,7 @@ const SearchInput: FC<SearchInputProps> = ({
   searchResults,
   setSearchResults,
   playlistId,
+  onTrackAdded,
 }) => {
   const { addTrack } = useAddTrackToPlaylist({ playlistId });
   const [isOpen, setIsOpen] = useState(false);
@@ -28,9 +31,6 @@ const SearchInput: FC<SearchInputProps> = ({
   };
 
   const handleAddTrack = (track: TrackDetails) => {
-    setSearchResults([]);
-    setSearchQuery("");
-    setIsOpen(false);
     const trackItem: TrackItem = {
       added_at: new Date().toISOString(),
       added_by: {
@@ -64,11 +64,22 @@ const SearchInput: FC<SearchInputProps> = ({
         type: track.type,
       },
     };
-    addTrack(trackItem);
+    console.log('Adding track:', trackItem);
+    addTrack(trackItem, () => {
+      // Only clear search results and close dropdown after successful addition
+      setSearchResults([]);
+      setSearchQuery("");
+      setIsOpen(false);
+      // Call the callback instead of dispatching an event
+      onTrackAdded?.();
+    }).catch(error => {
+      console.error('Failed to add track:', error);
+      // Keep search results visible if there was an error
+    });
   };
 
   return (
-    <div className="relative flex bg-white-500 w-full sm:w-10/12 md:w-8/12 lg:w-9/12 rounded-lg flex-wrap md:flex-nowrap gap-4">
+    <div className="relative flex w-full sm:w-10/12 md:w-8/12 lg:w-9/12 rounded-lg flex-wrap md:flex-nowrap gap-4">
       <div className="relative flex-1">
         <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
           <FontAwesomeIcon icon={faSearch} className="text-gray-400" />
@@ -81,39 +92,41 @@ const SearchInput: FC<SearchInputProps> = ({
           className="block w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg leading-5 bg-white placeholder-gray-500 focus:outline-none focus:placeholder-gray-400 focus:ring-1 focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
           aria-label="Search for songs, albums, or artists"
         />
+        {isOpen && searchResults.length > 0 && (
+          <div className="absolute z-50 w-full mt-1 bg-white rounded-md shadow-lg max-h-60 overflow-auto border border-gray-200" style={{ isolation: 'isolate' }}>
+            <div className="bg-white rounded-md">
+              <ul className="py-1 text-base overflow-auto focus:outline-none sm:text-sm">
+                {searchResults.map((track) => (
+                  <li
+                    key={track.id}
+                    onClick={() => handleAddTrack(track)}
+                    className="cursor-pointer select-none relative py-2 pl-3 pr-9 bg-gray-100 hover:bg-gray-200"
+                  >
+                    <div className="flex items-center">
+                      <img
+                        src={track.album.images[2].url}
+                        alt={track.name}
+                        className="h-8 w-8 rounded-full flex-shrink-0"
+                      />
+                      <div className="ml-3">
+                        <p className="text-sm font-medium text-gray-900 dark:text-gray-100">{track.name}</p>
+                        <p className="text-xs text-gray-500 dark:text-gray-400">
+                          {track.artists.map((artist, index) => (
+                            <span key={index}>
+                              {artist.name}
+                              {index < track.artists.length - 1 ? ", " : ""}
+                            </span>
+                          ))}
+                        </p>
+                      </div>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </div>
+        )}
       </div>
-      {isOpen && searchResults.length > 0 && (
-        <div className="absolute z-10 w-full mt-1 bg-white rounded-md shadow-lg max-h-60 overflow-auto">
-          <ul className="py-1 text-base overflow-auto focus:outline-none sm:text-sm">
-            {searchResults.map((track) => (
-              <li
-                key={track.id}
-                onClick={() => handleAddTrack(track)}
-                className="cursor-pointer select-none relative py-2 pl-3 pr-9 hover:bg-gray-100"
-              >
-                <div className="flex items-center">
-                  <img
-                    src={track.album.images[2].url}
-                    alt={track.name}
-                    className="h-8 w-8 rounded-full flex-shrink-0"
-                  />
-                  <div className="ml-3">
-                    <p className="text-sm font-medium text-gray-900">{track.name}</p>
-                    <p className="text-xs text-gray-500">
-                      {track.artists.map((artist, index) => (
-                        <span key={index}>
-                          {artist.name}
-                          {index < track.artists.length - 1 ? ", " : ""}
-                        </span>
-                      ))}
-                    </p>
-                  </div>
-                </div>
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
     </div>
   );
 };

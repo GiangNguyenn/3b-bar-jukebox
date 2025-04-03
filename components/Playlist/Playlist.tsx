@@ -1,5 +1,5 @@
 import { TrackItem } from "@/shared/types";
-import React, { useEffect, useRef } from "react";
+import React, { useEffect, useRef, memo, useMemo } from "react";
 import QueueItem from "./QueueItem";
 import NowPlaying from "./NowPlaying";
 import useNowPlayingTrack from "@/hooks/useNowPlayingTrack";
@@ -12,7 +12,7 @@ interface IPlaylistProps {
   tracks: TrackItem[];
 }
 
-const Playlist: React.FC<IPlaylistProps> = ({ tracks }) => {
+const Playlist: React.FC<IPlaylistProps> = memo(({ tracks }) => {
   const { data: playbackState } = useNowPlayingTrack();
   const currentTrackId = playbackState?.item?.id ?? null;
   const previousTrackIdRef = useRef<string | null>(null);
@@ -26,8 +26,15 @@ const Playlist: React.FC<IPlaylistProps> = ({ tracks }) => {
     playbackState: playbackState ?? null
   });
 
-  const upcomingTracks = filterUpcomingTracks(tracks, currentTrackId) ?? [];
-  const shouldRemoveOldest = currentTrackId && tracks.length > 5;
+  const upcomingTracks = useMemo(() => 
+    filterUpcomingTracks(tracks, currentTrackId) ?? [], 
+    [tracks, currentTrackId]
+  );
+
+  const shouldRemoveOldest = useMemo(() => 
+    currentTrackId && tracks.length > 5,
+    [currentTrackId, tracks.length]
+  );
 
   // Check for playlist changes every 30 seconds using SWR's refetch
   useEffect(() => {
@@ -60,7 +67,10 @@ const Playlist: React.FC<IPlaylistProps> = ({ tracks }) => {
   });
 
   // If no track is currently playing, show all tracks
-  const tracksToShow = currentTrackId ? upcomingTracks : tracks;
+  const tracksToShow = useMemo(() => 
+    currentTrackId ? upcomingTracks : tracks,
+    [currentTrackId, upcomingTracks, tracks]
+  );
 
   if (!tracksToShow?.length) {
     return (
@@ -99,6 +109,8 @@ const Playlist: React.FC<IPlaylistProps> = ({ tracks }) => {
       </div>
     </div>
   );
-};
+});
+
+Playlist.displayName = 'Playlist';
 
 export default Playlist;
