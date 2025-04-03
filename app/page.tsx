@@ -4,7 +4,7 @@ import { useGetPlaylist } from "@/hooks/useGetPlaylist";
 import { useEffect, useState } from "react";
 import useSearchTracks from "../hooks/useSearchTracks";
 import { TrackDetails } from "@/shared/types";
-import { Playlist } from "@/components/Playlist/Playlist";
+import Playlist from "@/components/Playlist/Playlist";
 import Loading from "./loading";
 import SearchInput from "@/components/SearchInput";
 import { useDebounce } from "use-debounce";
@@ -24,8 +24,8 @@ declare global {
 }
 
 export default function Home() {
-  const { createPlaylist, todayPlaylistId } = useCreateNewDailyPlaylist();
-  const { data: todayPlaylist, isLoading, refetchPlaylist } = useGetPlaylist(
+  const { createPlaylist, todayPlaylistId, isLoading: isCreatingPlaylist, isInitialFetchComplete } = useCreateNewDailyPlaylist();
+  const { data: todayPlaylist, isLoading: isLoadingPlaylist, refetchPlaylist } = useGetPlaylist(
     todayPlaylistId ?? ""
   );
   const [searchQuery, setSearchQuery] = useState("");
@@ -42,11 +42,16 @@ export default function Home() {
 
   useEffect(() => {
     (async () => {
-      if (!todayPlaylistId) {
+      if (!todayPlaylistId && !isCreatingPlaylist && isInitialFetchComplete) {
+        console.log('[Page] Creating new playlist - conditions:', {
+          noPlaylistId: !todayPlaylistId,
+          notCreating: !isCreatingPlaylist,
+          initialFetchComplete: isInitialFetchComplete
+        });
         await createPlaylist();
       }
     })();
-  }, [createPlaylist, todayPlaylistId]);
+  }, [createPlaylist, todayPlaylistId, isCreatingPlaylist, isInitialFetchComplete]);
 
   // Listen for playlist refresh events
   useEffect(() => {
@@ -93,7 +98,7 @@ export default function Home() {
     searchTrackDebounce();
   }, [debouncedSearchQuery, searchTracks]);
 
-  if (isLoading || !todayPlaylist || !todayPlaylistId) {
+  if (isLoadingPlaylist || !todayPlaylist || !todayPlaylistId) {
     return <Loading />;
   }
 

@@ -5,16 +5,19 @@ import NowPlaying from "./NowPlaying";
 import useNowPlayingTrack from "@/hooks/useNowPlayingTrack";
 import { filterUpcomingTracks } from "@/lib/utils";
 import { useAutoRemoveFinishedTrack } from "@/hooks/useAutoRemoveFinishedTrack";
+import { useGetPlaylist } from "@/hooks/useGetPlaylist";
+import { useCreateNewDailyPlaylist } from "@/hooks/useCreateNewDailyPlayList";
 
 interface IPlaylistProps {
   tracks: TrackItem[];
-  refetchPlaylists: () => void;
 }
 
-const Playlist: React.FC<IPlaylistProps> = ({ tracks, refetchPlaylists }) => {
+const Playlist: React.FC<IPlaylistProps> = ({ tracks }) => {
   const { data: playbackState } = useNowPlayingTrack();
   const currentTrackId = playbackState?.item?.id ?? null;
   const previousTrackIdRef = useRef<string | null>(null);
+  const { todayPlaylistId } = useCreateNewDailyPlaylist();
+  const { data: playlist, refetchPlaylist } = useGetPlaylist(todayPlaylistId ?? "");
 
   // Use the auto-remove hook
   useAutoRemoveFinishedTrack({
@@ -23,37 +26,35 @@ const Playlist: React.FC<IPlaylistProps> = ({ tracks, refetchPlaylists }) => {
     playbackState: playbackState ?? null
   });
 
-  const { tracks: upcomingTracks, shouldRemoveOldest } = filterUpcomingTracks(tracks, currentTrackId);
+  const upcomingTracks = filterUpcomingTracks(tracks, currentTrackId) ?? [];
+  const shouldRemoveOldest = currentTrackId && tracks.length > 5;
 
-  // Check for playlist changes every 30 seconds
+  // Check for playlist changes every 30 seconds using SWR's refetch
   useEffect(() => {
     const interval = setInterval(() => {
       console.log('[Playlist] Checking for playlist changes');
-      // Dispatch a custom event instead of directly calling refetchPlaylists
-      const event = new CustomEvent('playlistRefresh', {
-        detail: { timestamp: Date.now() }
-      });
-      window.dispatchEvent(event);
+      refetchPlaylist();
     }, 30000);
 
     return () => clearInterval(interval);
-  }, []); // No dependencies needed since we're using window events
+  }, [refetchPlaylist]);
 
-  // Track changes for logging purposes only
+  // Only refresh when current track changes
   useEffect(() => {
     if (currentTrackId !== previousTrackIdRef.current) {
-      console.log('[Playlist] Track changed:', {
+      console.log('[Playlist] Track changed, refreshing:', {
         previous: previousTrackIdRef.current,
         current: currentTrackId
       });
       previousTrackIdRef.current = currentTrackId;
+      refetchPlaylist();
     }
-  }, [currentTrackId]);
+  }, [currentTrackId, refetchPlaylist]);
 
   console.log('[Playlist] Component data:', {
     totalTracks: tracks.length,
     currentTrackId,
-    upcomingTracksLength: upcomingTracks.length,
+    upcomingTracksLength: upcomingTracks?.length ?? 0,
     shouldRemoveOldest,
     tracks
   });
@@ -61,7 +62,7 @@ const Playlist: React.FC<IPlaylistProps> = ({ tracks, refetchPlaylists }) => {
   // If no track is currently playing, show all tracks
   const tracksToShow = currentTrackId ? upcomingTracks : tracks;
 
-  if (tracksToShow.length === 0) {
+  if (!tracksToShow?.length) {
     return (
       <div className="w-full">
         <div className="flex w-full sm:w-10/12 md:w-8/12 lg:w-9/12 bg-primary-100 shadow-md rounded-lg overflow-hidden mx-auto">
