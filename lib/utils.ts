@@ -10,18 +10,29 @@ export function cn(...inputs: ClassValue[]): string {
 export const filterUpcomingTracks = (
   playlistTracks: TrackItem[],
   currentTrackId: string | null,
-  _nowPlaying?: SpotifyPlaybackState // Prefix with _ since it's unused
+  _nowPlaying?: SpotifyPlaybackState
 ): TrackItem[] => {
-  if (!currentTrackId) return playlistTracks; // If no track is playing, return full list
+  if (!currentTrackId) return playlistTracks; // If no track is playing, return all tracks
 
   // Find all occurrences of the current track
   const indices = playlistTracks
     .map((track, index) => track.track.id === currentTrackId ? index : -1)
     .filter(index => index !== -1);
 
-  if (indices.length === 0) return playlistTracks; // If current track isn't found, return full list
+  if (indices.length === 0) {
+    console.log('[Filter Upcoming] Current track not found in playlist, returning all tracks');
+    return playlistTracks; // If current track isn't found, return all tracks
+  }
 
   // Always use the last instance of the track
   const lastIndex = indices[indices.length - 1];
-  return playlistTracks.slice(lastIndex + 1);
+  const upcomingTracks = playlistTracks.slice(lastIndex + 1);
+  
+  console.log('[Filter Upcoming] Result:', {
+    lastIndex,
+    upcomingTracksCount: upcomingTracks.length,
+    upcomingTrackIds: upcomingTracks.map(t => t.track.id)
+  });
+
+  return upcomingTracks;
 };
