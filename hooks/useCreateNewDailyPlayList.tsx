@@ -33,15 +33,6 @@ export const useCreateNewDailyPlaylist = () => {
     refetchPlaylists,
   } = useMyPlaylists();
 
-  // Fetch playlists on mount
-  useEffect(() => {
-    const fetchPlaylists = async () => {
-      await refetchPlaylists();
-      setIsInitialFetchComplete(true);
-    };
-    void fetchPlaylists();
-  }, [refetchPlaylists]);
-
   // Check for existing playlist whenever playlists data changes
   useEffect(() => {
     if (playlists?.items) {
@@ -52,9 +43,25 @@ export const useCreateNewDailyPlaylist = () => {
         console.log(`[Daily Playlist] Found today's playlist: ${name} (ID: ${existingPlaylist.id})`);
         setTodayPlaylistId(existingPlaylist.id);
         setHasFoundExisting(true);
+      } else {
+        console.log(`[Daily Playlist] No existing playlist found for: ${name}`);
       }
     }
   }, [playlists, name]);
+
+  // Fetch playlists on mount
+  useEffect(() => {
+    const fetchPlaylists = async () => {
+      try {
+        await refetchPlaylists();
+        setIsInitialFetchComplete(true);
+      } catch (error) {
+        console.error('[Daily Playlist] Error fetching playlists:', error);
+        setIsInitialFetchComplete(true); // Still mark as complete to prevent hanging
+      }
+    };
+    void fetchPlaylists();
+  }, [refetchPlaylists]);
 
   const createPlaylist = async (): Promise<SpotifyPlaylistItem | null> => {
     // Don't create if we haven't completed initial fetch
