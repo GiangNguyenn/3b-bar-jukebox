@@ -1,15 +1,18 @@
 import { renderHook, act } from '@testing-library/react-hooks';
-import { useAddTrackToPlaylist } from '../useAddTrackToPlaylist';
+import { useRemoveTrackFromPlaylist } from '../useRemoveTrackFromPlaylist';
 import { sendApiRequest } from '@/shared/api';
 import { ERROR_MESSAGES } from '@/shared/constants/errors';
 import { useGetPlaylist } from '../useGetPlaylist';
+import { useCreateNewDailyPlaylist } from '../useCreateNewDailyPlayList';
 import { TrackItem } from '@/shared/types';
 
 jest.mock('@/shared/api');
 jest.mock('../useGetPlaylist');
+jest.mock('../useCreateNewDailyPlayList');
 
 const mockSendApiRequest = sendApiRequest as jest.MockedFunction<typeof sendApiRequest>;
 const mockUseGetPlaylist = useGetPlaylist as jest.MockedFunction<typeof useGetPlaylist>;
+const mockUseCreateNewDailyPlaylist = useCreateNewDailyPlaylist as jest.MockedFunction<typeof useCreateNewDailyPlaylist>;
 
 const mockTrack: TrackItem = {
   added_at: '2024-01-01T00:00:00Z',
@@ -75,7 +78,7 @@ const mockTrack: TrackItem = {
   }
 };
 
-describe('useAddTrackToPlaylist', () => {
+describe('useRemoveTrackFromPlaylist', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockUseGetPlaylist.mockReturnValue({
@@ -84,24 +87,30 @@ describe('useAddTrackToPlaylist', () => {
       isError: false,
       refetchPlaylist: jest.fn()
     });
+    mockUseCreateNewDailyPlaylist.mockReturnValue({
+      createPlaylist: jest.fn(),
+      todayPlaylistId: 'test-playlist-id',
+      playlists: undefined,
+      isLoading: false,
+      error: null,
+      isError: false,
+      isInitialFetchComplete: true
+    });
   });
 
-  it('should add track to playlist successfully', async () => {
+  it('should remove track from playlist successfully', async () => {
     mockSendApiRequest.mockResolvedValueOnce({});
     
-    const { result } = renderHook(() => useAddTrackToPlaylist({ playlistId: 'test-playlist-id' }));
+    const { result } = renderHook(() => useRemoveTrackFromPlaylist());
     
     await act(async () => {
-      await result.current.addTrack(mockTrack);
+      await result.current.removeTrack(mockTrack);
     });
 
     expect(mockSendApiRequest).toHaveBeenCalledWith({
-      path: '/api/playlist/add-track',
-      method: 'POST',
-      body: {
-        playlistId: 'test-playlist-id',
-        track: mockTrack
-      }
+      path: 'playlists/test-playlist-id/tracks',
+      method: 'DELETE',
+      body: { tracks: [{ uri: mockTrack.track.uri }] }
     });
     expect(result.current.isSuccess).toBe(true);
     expect(result.current.error).toBeNull();
@@ -110,21 +119,31 @@ describe('useAddTrackToPlaylist', () => {
   it('should handle API error', async () => {
     mockSendApiRequest.mockRejectedValueOnce(new Error('API Error'));
     
-    const { result } = renderHook(() => useAddTrackToPlaylist({ playlistId: 'test-playlist-id' }));
+    const { result } = renderHook(() => useRemoveTrackFromPlaylist());
     
     await act(async () => {
-      await result.current.addTrack(mockTrack);
+      await result.current.removeTrack(mockTrack);
     });
 
-    expect(result.current.error).toBe(ERROR_MESSAGES.FAILED_TO_ADD);
+    expect(result.current.error).toBe(ERROR_MESSAGES.FAILED_TO_REMOVE);
     expect(result.current.isSuccess).toBe(false);
   });
 
   it('should handle missing playlist ID', async () => {
-    const { result } = renderHook(() => useAddTrackToPlaylist({ playlistId: '' }));
+    mockUseCreateNewDailyPlaylist.mockReturnValue({
+      createPlaylist: jest.fn(),
+      todayPlaylistId: '',
+      playlists: undefined,
+      isLoading: false,
+      error: null,
+      isError: false,
+      isInitialFetchComplete: true
+    });
+    
+    const { result } = renderHook(() => useRemoveTrackFromPlaylist());
     
     await act(async () => {
-      await result.current.addTrack(mockTrack);
+      await result.current.removeTrack(mockTrack);
     });
 
     expect(result.current.error).toBe(ERROR_MESSAGES.NO_PLAYLIST);
@@ -139,13 +158,13 @@ describe('useAddTrackToPlaylist', () => {
       refetchPlaylist: jest.fn()
     });
     
-    const { result } = renderHook(() => useAddTrackToPlaylist({ playlistId: 'test-playlist-id' }));
+    const { result } = renderHook(() => useRemoveTrackFromPlaylist());
     
     await act(async () => {
-      await result.current.addTrack(mockTrack);
+      await result.current.removeTrack(mockTrack);
     });
 
     expect(result.current.error).toBe('Failed to load playlist');
     expect(result.current.isSuccess).toBe(false);
   });
-});
+}); 

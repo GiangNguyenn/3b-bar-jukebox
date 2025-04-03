@@ -1,6 +1,5 @@
-import { TrackDetails } from "@/shared/types";
-import { Autocomplete, AutocompleteItem, Avatar } from "@heroui/react";
-import { FC } from "react";
+import { TrackDetails, TrackItem } from "@/shared/types";
+import { FC, useState } from "react";
 import { faSearch } from "@fortawesome/free-solid-svg-icons";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { useAddTrackToPlaylist } from "@/hooks/useAddTrackToPlaylist";
@@ -10,6 +9,7 @@ interface SearchInputProps {
   setSearchQuery: (value: string) => void;
   searchResults: TrackDetails[];
   setSearchResults: (value: TrackDetails[]) => void;
+  playlistId: string;
 }
 
 const SearchInput: FC<SearchInputProps> = ({
@@ -17,79 +17,103 @@ const SearchInput: FC<SearchInputProps> = ({
   setSearchQuery,
   searchResults,
   setSearchResults,
+  playlistId,
 }) => {
-  const { addTrack } = useAddTrackToPlaylist();
+  const { addTrack } = useAddTrackToPlaylist({ playlistId });
+  const [isOpen, setIsOpen] = useState(false);
+
   const handleChange = (value: string) => {
     setSearchQuery(value);
+    setIsOpen(true);
   };
 
-  const handleAddTrack = (trackURI: string) => {
+  const handleAddTrack = (track: TrackDetails) => {
     setSearchResults([]);
     setSearchQuery("");
-
-    addTrack(trackURI);
+    setIsOpen(false);
+    const trackItem: TrackItem = {
+      added_at: new Date().toISOString(),
+      added_by: {
+        id: "user",
+        type: "user",
+        uri: "spotify:user:user",
+        href: "https://api.spotify.com/v1/users/user",
+        external_urls: {
+          spotify: "https://open.spotify.com/user/user",
+        },
+      },
+      is_local: false,
+      track: {
+        uri: track.uri,
+        name: track.name,
+        artists: track.artists,
+        album: track.album,
+        duration_ms: track.duration_ms,
+        id: track.id,
+        available_markets: track.available_markets,
+        disc_number: track.disc_number,
+        explicit: track.explicit,
+        external_ids: track.external_ids,
+        external_urls: track.external_urls,
+        href: track.href,
+        is_local: track.is_local,
+        is_playable: track.is_playable,
+        popularity: track.popularity,
+        preview_url: track.preview_url,
+        track_number: track.track_number,
+        type: track.type,
+      },
+    };
+    addTrack(trackItem);
   };
 
   return (
-    <div className="flex bg-white-500 w-full sm:w-10/12 md:w-8/12 lg:w-9/12 rounded-lg flex-wrap md:flex-nowrap gap-4">
-      <Autocomplete
-        aria-label="Search for songs, albums, or artists"
-        placeholder="What do you want to listen to?"
-        type="text"
-        inputValue={searchQuery}
-        onInputChange={handleChange}
-        selectorIcon={<FontAwesomeIcon icon={faSearch} />}
-        disableSelectorIconRotation
-        allowsEmptyCollection={searchResults.length > 0}
-        listboxProps={{
-          hideSelectedIcon: true,
-          itemClasses: {
-            base: [
-              "rounded-medium",
-              "text-default-500",
-              "transition-opacity",
-              "data-[hover=true]:text-foreground",
-              "dark:data-[hover=true]:bg-default-50",
-              "data-[pressed=true]:opacity-70",
-              "data-[hover=true]:bg-default-200",
-              "data-[selectable=true]:focus:bg-default-100",
-              "data-[focus-visible=true]:ring-default-500",
-            ],
-          },
-        }}
-      >
-        {searchResults.length > 0
-          ? searchResults.map((track) => (
-              <AutocompleteItem
+    <div className="relative flex bg-white-500 w-full sm:w-10/12 md:w-8/12 lg:w-9/12 rounded-lg flex-wrap md:flex-nowrap gap-4">
+      <div className="relative flex-1">
+        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+          <FontAwesomeIcon icon={faSearch} className="text-gray-400" />
+        </div>
+        <input
+          type="text"
+          value={searchQuery}
+          onChange={(e) => handleChange(e.target.value)}
+          placeholder="What do you want to listen to?"
+          className="block w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg leading-5 bg-white placeholder-gray-500 focus:outline-none focus:placeholder-gray-400 focus:ring-1 focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+          aria-label="Search for songs, albums, or artists"
+        />
+      </div>
+      {isOpen && searchResults.length > 0 && (
+        <div className="absolute z-10 w-full mt-1 bg-white rounded-md shadow-lg max-h-60 overflow-auto">
+          <ul className="py-1 text-base overflow-auto focus:outline-none sm:text-sm">
+            {searchResults.map((track) => (
+              <li
                 key={track.id}
-                textValue={track.name}
-                onPress={() => handleAddTrack(track.uri)}
+                onClick={() => handleAddTrack(track)}
+                className="cursor-pointer select-none relative py-2 pl-3 pr-9 hover:bg-gray-100"
               >
-                <div className="flex justify-between items-center">
-                  <div className="flex gap-2 items-center">
-                    <Avatar
-                      alt={track.name}
-                      className="flex-shrink-0"
-                      size="sm"
-                      src={track.album.images[2].url}
-                    />
-                    <div className="flex flex-col">
-                      <span className="text-small">{track.name}</span>
-                      <div className="text-tiny text-default-400">
-                        {track.artists.map((artist, index) => (
-                          <span key={index}>
-                            {artist.name}
-                            {index < track.artists.length - 1 ? ", " : ""}
-                          </span>
-                        ))}
-                      </div>
-                    </div>
+                <div className="flex items-center">
+                  <img
+                    src={track.album.images[2].url}
+                    alt={track.name}
+                    className="h-8 w-8 rounded-full flex-shrink-0"
+                  />
+                  <div className="ml-3">
+                    <p className="text-sm font-medium text-gray-900">{track.name}</p>
+                    <p className="text-xs text-gray-500">
+                      {track.artists.map((artist, index) => (
+                        <span key={index}>
+                          {artist.name}
+                          {index < track.artists.length - 1 ? ", " : ""}
+                        </span>
+                      ))}
+                    </p>
                   </div>
                 </div>
-              </AutocompleteItem>
-            ))
-          : null}
-      </Autocomplete>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
     </div>
   );
 };
