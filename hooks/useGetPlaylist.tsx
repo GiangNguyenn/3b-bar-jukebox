@@ -47,6 +47,8 @@ export const useGetPlaylist = (id: string) => {
     const { data, error, mutate } = useSWR(`playlist ${id}`, fetcher, {
         revalidateOnFocus: false,
         revalidateOnReconnect: false,
+        revalidateIfStale: false,
+        refreshInterval: 30000 // Check every 30 seconds
     });
 
     const refetchPlaylist = async () => {

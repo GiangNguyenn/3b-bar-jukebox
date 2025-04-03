@@ -207,12 +207,12 @@ async function getTodayPlaylist(): Promise<SpotifyPlaylistItem | null> {
   }
 }
 
-async function getCurrentlyPlaying(): Promise<string | null> {
+async function getCurrentlyPlaying(): Promise<{ id: string | null; error?: string }> {
   try {
     const response = await sendApiRequest<SpotifyPlaybackState>({
       path: "me/player/currently-playing",
     });
-    return response.item?.id ?? null;
+    return { id: response.item?.id ?? null };
   } catch (error) {
     const apiError = error as SpotifyApiError;
     log.error('Error getting currently playing track', {
@@ -221,10 +221,10 @@ async function getCurrentlyPlaying(): Promise<string | null> {
     });
     
     if (apiError.response?.data?.error?.message?.includes('401')) {
-      throw new ApiError('Spotify authentication failed. Please check your access token.', 401, apiError);
+      return { id: null, error: 'Spotify authentication failed. Please check your access token.' };
     }
     
-    return null;
+    return { id: null };
   }
 }
 
@@ -383,11 +383,29 @@ export async function GET() {
 
     // Get currently playing track
     log.info('Fetching currently playing track');
-    const currentTrackId = await getCurrentlyPlaying();
+    const { id: currentTrackId, error: currentTrackError } = await getCurrentlyPlaying();
+    
+    if (currentTrackError) {
+      log.error('Error getting currently playing track', { error: currentTrackError });
+      return NextResponse.json({ 
+        success: false, 
+        message: currentTrackError,
+        timestamp: new Date().toISOString()
+      });
+    }
     
     // Get upcoming tracks
     log.info('Filtering upcoming tracks');
     const upcomingTracks = filterUpcomingTracks(playlist.tracks.items, currentTrackId);
+    
+    // Add diagnostic information to the response
+    const diagnosticInfo = {
+      currentTrackId,
+      totalTracks: playlist.tracks.items.length,
+      upcomingTracksCount: upcomingTracks.length,
+      playlistTrackIds: playlist.tracks.items.map(t => t.track.id),
+      upcomingTrackIds: upcomingTracks.map(t => t.track.id)
+    };
     
     log.info('Adding suggested track to playlist');
     const result = await addSuggestedTrackToPlaylist(upcomingTracks, playlist.id);
@@ -398,20 +416,18 @@ export async function GET() {
         success: true, 
         message: result.error === "Playlist too long" 
           ? `Playlist has reached maximum length of ${MAX_PLAYLIST_LENGTH} tracks. No new tracks needed.`
-          : result.error === "In cooldown period"
-          ? "Please wait before requesting another track suggestion."
-          : "No suitable track suggestions available at this time.",
-        searchDetails: result.searchDetails,
-        timestamp: new Date().toISOString()
+          : result.error,
+        timestamp: new Date().toISOString(),
+        diagnosticInfo
       });
     }
     
-    log.info('Successfully added suggested track');
     return NextResponse.json({ 
       success: true, 
-      message: 'Successfully added suggested track',
+      message: "Successfully added suggested track",
+      timestamp: new Date().toISOString(),
       searchDetails: result.searchDetails,
-      timestamp: new Date().toISOString()
+      diagnosticInfo
     });
   } catch (error) {
     const apiError = error instanceof ApiError ? error : new ApiError('Failed to refresh site', 500, error);
