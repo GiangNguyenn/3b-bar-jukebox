@@ -1,18 +1,8 @@
-import useSWR from "swr";
-import { sendApiRequest } from "../shared/api";
-import { SpotifyPlaylistItem } from "@/shared/types";
+import { SpotifyPlaylistItem, TrackItem } from "@/shared/types";
 import { ERROR_MESSAGES, ErrorMessage } from "@/shared/constants/errors";
-
-interface ApiError {
-  message?: string;
-  error?: {
-    message?: string;
-    status?: number;
-  };
-  details?: {
-    errorMessage?: string;
-  };
-}
+import { useSession } from "next-auth/react";
+import useSWR from "swr";
+import { sendApiRequest } from "@/shared/api";
 
 const userId = process.env.NEXT_PUBLIC_SPOTIFY_USER_ID ?? "";
 
@@ -33,7 +23,7 @@ export const useGetPlaylist = (id: string) => {
             if (error instanceof Error) {
                 errorMessage = (error.message || ERROR_MESSAGES.FAILED_TO_LOAD) as ErrorMessage;
             } else if (typeof error === 'object' && error !== null) {
-                const apiError = error as ApiError;
+                const apiError = error as { message?: string; error?: { message?: string }; details?: { errorMessage?: string } };
                 const message = apiError.message || 
                               apiError.error?.message || 
                               apiError.details?.errorMessage;
@@ -74,7 +64,7 @@ export const useGetPlaylist = (id: string) => {
             if (error instanceof Error) {
                 errorMessage = (error.message || ERROR_MESSAGES.FAILED_TO_LOAD) as ErrorMessage;
             } else if (typeof error === 'object' && error !== null) {
-                const apiError = error as ApiError;
+                const apiError = error as { message?: string; error?: { message?: string }; details?: { errorMessage?: string } };
                 const message = apiError.message || 
                               apiError.error?.message || 
                               apiError.details?.errorMessage;
