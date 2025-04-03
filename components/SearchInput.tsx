@@ -1,4 +1,4 @@
-import { TrackDetails } from "@/shared/types";
+import { TrackDetails, TrackItem } from "@/shared/types";
 import { FC, useState } from "react";
 import { faSearch } from "@fortawesome/free-solid-svg-icons";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
@@ -9,6 +9,7 @@ interface SearchInputProps {
   setSearchQuery: (value: string) => void;
   searchResults: TrackDetails[];
   setSearchResults: (value: TrackDetails[]) => void;
+  playlistId: string;
 }
 
 const SearchInput: FC<SearchInputProps> = ({
@@ -16,8 +17,9 @@ const SearchInput: FC<SearchInputProps> = ({
   setSearchQuery,
   searchResults,
   setSearchResults,
+  playlistId,
 }) => {
-  const { addTrack } = useAddTrackToPlaylist();
+  const { addTrack } = useAddTrackToPlaylist({ playlistId });
   const [isOpen, setIsOpen] = useState(false);
 
   const handleChange = (value: string) => {
@@ -25,11 +27,44 @@ const SearchInput: FC<SearchInputProps> = ({
     setIsOpen(true);
   };
 
-  const handleAddTrack = (trackURI: string) => {
+  const handleAddTrack = (track: TrackDetails) => {
     setSearchResults([]);
     setSearchQuery("");
     setIsOpen(false);
-    addTrack(trackURI);
+    const trackItem: TrackItem = {
+      added_at: new Date().toISOString(),
+      added_by: {
+        id: "user",
+        type: "user",
+        uri: "spotify:user:user",
+        href: "https://api.spotify.com/v1/users/user",
+        external_urls: {
+          spotify: "https://open.spotify.com/user/user",
+        },
+      },
+      is_local: false,
+      track: {
+        uri: track.uri,
+        name: track.name,
+        artists: track.artists,
+        album: track.album,
+        duration_ms: track.duration_ms,
+        id: track.id,
+        available_markets: track.available_markets,
+        disc_number: track.disc_number,
+        explicit: track.explicit,
+        external_ids: track.external_ids,
+        external_urls: track.external_urls,
+        href: track.href,
+        is_local: track.is_local,
+        is_playable: track.is_playable,
+        popularity: track.popularity,
+        preview_url: track.preview_url,
+        track_number: track.track_number,
+        type: track.type,
+      },
+    };
+    addTrack(trackItem);
   };
 
   return (
@@ -53,7 +88,7 @@ const SearchInput: FC<SearchInputProps> = ({
             {searchResults.map((track) => (
               <li
                 key={track.id}
-                onClick={() => handleAddTrack(track.uri)}
+                onClick={() => handleAddTrack(track)}
                 className="cursor-pointer select-none relative py-2 pl-3 pr-9 hover:bg-gray-100"
               >
                 <div className="flex items-center">
