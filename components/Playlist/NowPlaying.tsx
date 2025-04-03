@@ -1,4 +1,4 @@
-import React from "react";
+import React, { memo } from "react";
 import VinylSpinningAnimation from "./VinylSpinningAnimation";
 import { SpotifyPlaybackState } from "@/shared/types";
 
@@ -6,7 +6,7 @@ interface INowPlayingProps {
   nowPlaying?: SpotifyPlaybackState;
 }
 
-const NowPlaying: React.FC<INowPlayingProps> = ({ nowPlaying }) => {
+const NowPlaying: React.FC<INowPlayingProps> = memo(({ nowPlaying }) => {
   if (!nowPlaying || !nowPlaying.item) {
     return (
       <div className="flex flex-col sm:flex-row p-2 items-center justify-start bg-white shadow-lg rounded-lg">
@@ -42,6 +42,8 @@ const NowPlaying: React.FC<INowPlayingProps> = ({ nowPlaying }) => {
       </div>
     </div>
   );
-};
+});
+
+NowPlaying.displayName = 'NowPlaying';
 
 export default NowPlaying;
