@@ -12,7 +12,10 @@ export const filterUpcomingTracks = (
   currentTrackId: string | null,
   _nowPlaying?: SpotifyPlaybackState
 ): TrackItem[] => {
-  if (!currentTrackId) return playlistTracks; // If no track is playing, return all tracks
+  if (!currentTrackId) {
+    console.log('[Filter Upcoming] No track currently playing, returning all tracks');
+    return playlistTracks; // If no track is playing, return all tracks
+  }
 
   // Find all occurrences of the current track
   const indices = playlistTracks
@@ -31,7 +34,8 @@ export const filterUpcomingTracks = (
   console.log('[Filter Upcoming] Result:', {
     lastIndex,
     upcomingTracksCount: upcomingTracks.length,
-    upcomingTrackIds: upcomingTracks.map(t => t.track.id)
+    upcomingTrackIds: upcomingTracks.map(t => t.track.id),
+    hasDuplicates: new Set(upcomingTracks.map(t => t.track.id)).size !== upcomingTracks.length
   });
 
   return upcomingTracks;
