@@ -96,11 +96,10 @@ describe('useAddTrackToPlaylist', () => {
     });
 
     expect(mockSendApiRequest).toHaveBeenCalledWith({
-      path: '/api/playlist/add-track',
+      path: 'playlists/test-playlist-id/tracks',
       method: 'POST',
       body: {
-        playlistId: 'test-playlist-id',
-        track: mockTrack
+        uris: [mockTrack.track.uri]
       }
     });
     expect(result.current.isSuccess).toBe(true);
