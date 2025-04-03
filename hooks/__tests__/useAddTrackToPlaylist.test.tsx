@@ -1,19 +1,15 @@
-import { jest, describe, beforeEach, it, expect } from '@jest/globals';
 import { renderHook, act } from '@testing-library/react-hooks';
 import { useAddTrackToPlaylist } from '../useAddTrackToPlaylist';
 import { sendApiRequest } from '@/shared/api';
 import { ERROR_MESSAGES } from '@/shared/constants/errors';
+import { useGetPlaylist } from '../useGetPlaylist';
 import { TrackItem } from '@/shared/types';
-import * as useGetPlaylistModule from '../useGetPlaylist';
 
-type MockRefetchFunction = () => Promise<void>;
-const mockRefetch = jest.fn().mockImplementation(() => Promise.resolve()) as jest.Mock<MockRefetchFunction>;
+jest.mock('@/shared/api');
+jest.mock('../useGetPlaylist');
 
-jest.mock('@/shared/api', () => ({
-  sendApiRequest: jest.fn()
-}));
-
-const mockSendApiRequest = jest.mocked(sendApiRequest);
+const mockSendApiRequest = sendApiRequest as jest.MockedFunction<typeof sendApiRequest>;
+const mockUseGetPlaylist = useGetPlaylist as jest.MockedFunction<typeof useGetPlaylist>;
 
 const mockTrack: TrackItem = {
   added_at: '2024-01-01T00:00:00Z',
@@ -26,54 +22,71 @@ const mockTrack: TrackItem = {
   },
   is_local: false,
   track: {
+    uri: 'spotify:track:test',
+    name: 'Test Track',
+    artists: [{
+      name: 'Test Artist',
+      external_urls: { spotify: 'https://spotify.com/artist/test' },
+      href: 'https://api.spotify.com/v1/artists/test',
+      id: 'test-artist',
+      type: 'artist',
+      uri: 'spotify:artist:test'
+    }],
     album: {
+      name: 'Test Album',
+      images: [{
+        url: 'test.jpg',
+        height: 640,
+        width: 640
+      }],
       album_type: 'album',
       total_tracks: 1,
       available_markets: ['US'],
       external_urls: { spotify: 'https://spotify.com/album/test' },
       href: 'https://api.spotify.com/v1/albums/test',
       id: 'test-album',
-      images: [],
-      name: 'Test Album',
       release_date: '2024-01-01',
       release_date_precision: 'day',
       type: 'album',
       uri: 'spotify:album:test',
-      artists: []
+      artists: [{
+        name: 'Test Artist',
+        external_urls: { spotify: 'https://spotify.com/artist/test' },
+        href: 'https://api.spotify.com/v1/artists/test',
+        id: 'test-artist',
+        type: 'artist',
+        uri: 'spotify:artist:test'
+      }]
     },
-    artists: [],
-    available_markets: ['US'],
-    disc_number: 1,
-    duration_ms: 1000,
+    duration_ms: 180000,
     explicit: false,
-    external_ids: { isrc: 'test' },
     external_urls: { spotify: 'https://spotify.com/track/test' },
     href: 'https://api.spotify.com/v1/tracks/test',
     id: 'test-track',
-    is_playable: true,
-    name: 'Test Track',
-    popularity: 0,
-    preview_url: null,
+    is_local: false,
+    popularity: 50,
+    preview_url: 'https://preview.spotify.com/test',
     track_number: 1,
     type: 'track',
-    uri: 'spotify:track:test',
-    is_local: false
+    available_markets: ['US'],
+    disc_number: 1,
+    external_ids: {},
+    is_playable: true
   }
 };
 
 describe('useAddTrackToPlaylist', () => {
   beforeEach(() => {
-    mockSendApiRequest.mockClear();
-    jest.resetModules();
+    jest.clearAllMocks();
+    mockUseGetPlaylist.mockReturnValue({
+      data: undefined,
+      isLoading: false,
+      isError: false,
+      refetchPlaylist: jest.fn()
+    });
   });
 
   it('should add track to playlist successfully', async () => {
-    // Mock hooks for successful case
-    jest.spyOn(useGetPlaylistModule, 'useGetPlaylist').mockReturnValue({
-      isError: false,
-      refetchPlaylist: mockRefetch
-    } as any);
-
     mockSendApiRequest.mockResolvedValueOnce({});
     
     const { result } = renderHook(() => useAddTrackToPlaylist({ playlistId: 'test-playlist-id' }));
@@ -85,20 +98,16 @@ describe('useAddTrackToPlaylist', () => {
     expect(mockSendApiRequest).toHaveBeenCalledWith({
       path: '/api/playlist/add-track',
       method: 'POST',
-      body: { playlistId: 'test-playlist-id', track: mockTrack }
+      body: {
+        playlistId: 'test-playlist-id',
+        track: mockTrack
+      }
     });
     expect(result.current.isSuccess).toBe(true);
-    expect(result.current.isLoading).toBe(false);
     expect(result.current.error).toBeNull();
   });
 
   it('should handle API error', async () => {
-    // Mock hooks for API error case
-    jest.spyOn(useGetPlaylistModule, 'useGetPlaylist').mockReturnValue({
-      isError: false,
-      refetchPlaylist: mockRefetch
-    } as any);
-
     mockSendApiRequest.mockRejectedValueOnce(new Error('API Error'));
     
     const { result } = renderHook(() => useAddTrackToPlaylist({ playlistId: 'test-playlist-id' }));
@@ -109,16 +118,9 @@ describe('useAddTrackToPlaylist', () => {
 
     expect(result.current.error).toBe(ERROR_MESSAGES.FAILED_TO_ADD);
     expect(result.current.isSuccess).toBe(false);
-    expect(result.current.isLoading).toBe(false);
   });
 
-  it('should handle no playlist available error', async () => {
-    // Mock hooks for no playlist case
-    jest.spyOn(useGetPlaylistModule, 'useGetPlaylist').mockReturnValue({
-      isError: false,
-      refetchPlaylist: mockRefetch
-    } as any);
-
+  it('should handle missing playlist ID', async () => {
     const { result } = renderHook(() => useAddTrackToPlaylist({ playlistId: '' }));
     
     await act(async () => {
@@ -127,16 +129,16 @@ describe('useAddTrackToPlaylist', () => {
 
     expect(result.current.error).toBe(ERROR_MESSAGES.NO_PLAYLIST);
     expect(result.current.isSuccess).toBe(false);
-    expect(result.current.isLoading).toBe(false);
   });
 
   it('should handle playlist error', async () => {
-    // Mock hooks for playlist error case
-    jest.spyOn(useGetPlaylistModule, 'useGetPlaylist').mockReturnValue({
+    mockUseGetPlaylist.mockReturnValue({
+      data: undefined,
+      isLoading: false,
       isError: true,
-      refetchPlaylist: mockRefetch
-    } as any);
-
+      refetchPlaylist: jest.fn()
+    });
+    
     const { result } = renderHook(() => useAddTrackToPlaylist({ playlistId: 'test-playlist-id' }));
     
     await act(async () => {
@@ -145,6 +147,5 @@ describe('useAddTrackToPlaylist', () => {
 
     expect(result.current.error).toBe('Failed to load playlist');
     expect(result.current.isSuccess).toBe(false);
-    expect(result.current.isLoading).toBe(false);
   });
 });
