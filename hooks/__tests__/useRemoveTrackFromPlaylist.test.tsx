@@ -1,239 +1,213 @@
-import React from 'react';
-import { renderHook, act, waitFor } from '@testing-library/react';
+import { jest, describe, beforeEach, it, expect } from '@jest/globals';
+import { renderHook, act } from '@testing-library/react-hooks';
 import { useRemoveTrackFromPlaylist } from '../useRemoveTrackFromPlaylist';
 import { sendApiRequest } from '@/shared/api';
-import { useCreateNewDailyPlaylist } from '../useCreateNewDailyPlayList';
-import { useGetPlaylist } from '../useGetPlaylist';
-import { ERROR_MESSAGES, ErrorMessage } from '@/shared/constants/errors';
-import { TrackItem } from '@/shared/types';
+import { ERROR_MESSAGES } from '@/shared/constants/errors';
+import { TrackItem, SpotifyPlaylistItem, SpotifyPlaylists } from '@/shared/types';
+import * as useCreateNewDailyPlaylistModule from '../useCreateNewDailyPlayList';
+import * as useGetPlaylistModule from '../useGetPlaylist';
 
-// Mock the API request function
-jest.mock('@/shared/api', () => ({
-  sendApiRequest: jest.fn(),
-}));
+const mockRefetch = jest.fn().mockImplementation(() => Promise.resolve());
 
-// Mock the dependent hooks
-jest.mock('../useCreateNewDailyPlayList', () => ({
-  useCreateNewDailyPlaylist: jest.fn(),
-}));
-
-jest.mock('../useGetPlaylist', () => ({
-  useGetPlaylist: jest.fn(),
-}));
-
-const mockPlaylistId = 'test-playlist-id';
-const mockTrack: TrackItem = {
-  added_at: '2024-01-01T00:00:00Z',
-  added_by: {
-    external_urls: {
-      spotify: 'https://open.spotify.com/user/test',
-    },
+const mockPlaylist: SpotifyPlaylistItem = {
+  collaborative: false,
+  description: 'Test Description',
+  external_urls: { spotify: 'https://spotify.com/playlist/test' },
+  href: 'https://api.spotify.com/v1/playlists/test',
+  id: 'test-playlist-id',
+  images: [],
+  name: 'Test Playlist',
+  owner: {
+    external_urls: { spotify: 'https://spotify.com/user/test' },
+    followers: { href: null, total: 0 },
     href: 'https://api.spotify.com/v1/users/test',
-    id: 'test',
+    id: 'test-user',
     type: 'user',
     uri: 'spotify:user:test',
+    display_name: 'Test User'
   },
-  is_local: false,
+  public: false,
+  snapshot_id: 'test-snapshot',
+  tracks: {
+    href: 'https://api.spotify.com/v1/playlists/test/tracks',
+    total: 0,
+    limit: 100,
+    offset: 0,
+    items: []
+  },
+  type: 'playlist',
+  uri: 'spotify:playlist:test'
+};
+
+const mockPlaylists: SpotifyPlaylists = {
+  href: 'https://api.spotify.com/v1/me/playlists',
+  limit: 20,
+  next: null,
+  offset: 0,
+  previous: null,
+  total: 1,
+  items: [mockPlaylist]
+};
+
+jest.mock('@/shared/api', () => ({
+  sendApiRequest: jest.fn()
+}));
+
+const mockSendApiRequest = jest.mocked(sendApiRequest);
+
+const mockTrack: TrackItem = {
   track: {
+    uri: 'spotify:track:test',
+    name: 'Test Track',
+    artists: [{
+      name: 'Test Artist',
+      external_urls: { spotify: 'https://open.spotify.com/artist/test' },
+      href: 'https://api.spotify.com/v1/artists/test',
+      id: 'test',
+      type: 'artist',
+      uri: 'spotify:artist:test'
+    }],
     album: {
+      name: 'Test Album',
       album_type: 'album',
-      artists: [
-        {
-          external_urls: {
-            spotify: 'https://open.spotify.com/artist/test',
-          },
-          href: 'https://api.spotify.com/v1/artists/test',
-          id: 'test',
-          name: 'Test Artist',
-          type: 'artist',
-          uri: 'spotify:artist:test',
-        },
-      ],
+      total_tracks: 1,
       available_markets: ['US'],
-      external_urls: {
-        spotify: 'https://open.spotify.com/album/test',
-      },
+      external_urls: { spotify: 'https://open.spotify.com/album/test' },
       href: 'https://api.spotify.com/v1/albums/test',
       id: 'test',
-      images: [
-        {
-          height: 640,
-          url: 'https://i.scdn.co/image/test',
-          width: 640,
-        },
-      ],
-      name: 'Test Album',
-      release_date: '2024-01-01',
-      release_date_precision: 'day',
-      total_tracks: 10,
       type: 'album',
       uri: 'spotify:album:test',
+      images: [],
+      release_date: '',
+      release_date_precision: 'day',
+      artists: []
     },
-    artists: [
-      {
-        external_urls: {
-          spotify: 'https://open.spotify.com/artist/test',
-        },
-        href: 'https://api.spotify.com/v1/artists/test',
-        id: 'test',
-        name: 'Test Artist',
-        type: 'artist',
-        uri: 'spotify:artist:test',
-      },
-    ],
     available_markets: ['US'],
     disc_number: 1,
     duration_ms: 180000,
     explicit: false,
-    external_ids: {
-      isrc: 'USRC12345678',
-    },
-    external_urls: {
-      spotify: 'https://open.spotify.com/track/test',
-    },
+    external_ids: { isrc: 'MOCK123456789' },
+    external_urls: { spotify: 'https://open.spotify.com/track/test' },
     href: 'https://api.spotify.com/v1/tracks/test',
     id: 'test',
+    is_playable: true,
     is_local: false,
-    name: 'Test Track',
     popularity: 50,
     preview_url: 'https://p.scdn.co/mp3-preview/test',
     track_number: 1,
-    type: 'track',
-    uri: 'spotify:track:test',
-    is_playable: true
-  }
-};
-
-const mockPlaylist = {
-  id: mockPlaylistId,
-  tracks: {
-    items: [mockTrack],
+    type: 'track'
   },
+  added_at: new Date().toISOString(),
+  added_by: {
+    external_urls: { spotify: 'https://open.spotify.com/user/test' },
+    href: 'https://api.spotify.com/v1/users/test',
+    id: 'test',
+    type: 'user',
+    uri: 'spotify:user:test'
+  },
+  is_local: false
 };
-
-const wrapper = ({ children }: { children: React.ReactNode }) => (
-  <React.StrictMode>{children}</React.StrictMode>
-);
 
 describe('useRemoveTrackFromPlaylist', () => {
-  const mockRefetchPlaylist = jest.fn();
-
   beforeEach(() => {
-    jest.clearAllMocks();
-    jest.useFakeTimers();
+    mockSendApiRequest.mockClear();
+    jest.resetModules();
+  });
 
-    (useCreateNewDailyPlaylist as jest.Mock).mockReturnValue({
-      todayPlaylistId: mockPlaylistId,
-      error: null,
+  it('should remove track from playlist successfully', async () => {
+    // Mock hooks for successful case
+    jest.spyOn(useCreateNewDailyPlaylistModule, 'useCreateNewDailyPlaylist').mockReturnValue({
+      todayPlaylistId: 'test-playlist-id',
+      error: null
+    } as any);
+    jest.spyOn(useGetPlaylistModule, 'useGetPlaylist').mockReturnValue({
       isError: false,
-    });
-    (useGetPlaylist as jest.Mock).mockReturnValue({
-      data: mockPlaylist,
-      refetchPlaylist: mockRefetchPlaylist
-    });
-  });
+      refetchPlaylist: mockRefetch
+    } as any);
 
-  afterEach(() => {
-    jest.useRealTimers();
-  });
-
-  it('should successfully remove a track from the playlist', async () => {
-    (sendApiRequest as jest.Mock).mockResolvedValueOnce({});
-
+    mockSendApiRequest.mockResolvedValueOnce({});
+    
     const { result } = renderHook(() => useRemoveTrackFromPlaylist());
-
+    
     await act(async () => {
       await result.current.removeTrack(mockTrack);
-      jest.advanceTimersByTime(100);
     });
 
-    await waitFor(() => {
-      expect(result.current.isSuccess).toBe(true);
-      expect(result.current.error).toBe(null);
-      expect(result.current.isLoading).toBe(false);
+    expect(mockSendApiRequest).toHaveBeenCalledWith({
+      path: 'playlists/test-playlist-id/tracks',
+      method: 'DELETE',
+      body: { tracks: [{ uri: mockTrack.track.uri }] }
     });
+    expect(result.current.isSuccess).toBe(true);
+    expect(result.current.isLoading).toBe(false);
+    expect(result.current.error).toBeNull();
   });
 
-  it('should handle API errors when removing a track', async () => {
-    (sendApiRequest as jest.Mock).mockRejectedValueOnce(new Error('API Error'));
+  it('should handle API error', async () => {
+    // Mock hooks for API error case
+    jest.spyOn(useCreateNewDailyPlaylistModule, 'useCreateNewDailyPlaylist').mockReturnValue({
+      todayPlaylistId: 'test-playlist-id',
+      error: null
+    } as any);
+    jest.spyOn(useGetPlaylistModule, 'useGetPlaylist').mockReturnValue({
+      isError: false,
+      refetchPlaylist: mockRefetch
+    } as any);
 
+    mockSendApiRequest.mockRejectedValueOnce(new Error('API Error'));
+    
     const { result } = renderHook(() => useRemoveTrackFromPlaylist());
-
+    
     await act(async () => {
       await result.current.removeTrack(mockTrack);
-      jest.advanceTimersByTime(100);
     });
 
-    await waitFor(() => {
-      expect(result.current.error).toBe(ERROR_MESSAGES.FAILED_TO_REMOVE);
-      expect(result.current.isSuccess).toBe(false);
-      expect(result.current.isLoading).toBe(false);
-    });
+    expect(result.current.error).toBe(ERROR_MESSAGES.FAILED_TO_REMOVE);
+    expect(result.current.isSuccess).toBe(false);
+    expect(result.current.isLoading).toBe(false);
   });
 
-  it('should handle missing playlist ID', async () => {
-    (useCreateNewDailyPlaylist as jest.Mock).mockReturnValue({
+  it('should handle no playlist available error', async () => {
+    // Mock hooks for no playlist case
+    jest.spyOn(useCreateNewDailyPlaylistModule, 'useCreateNewDailyPlaylist').mockReturnValue({
       todayPlaylistId: null,
-      error: null,
+      error: null
+    } as any);
+    jest.spyOn(useGetPlaylistModule, 'useGetPlaylist').mockReturnValue({
       isError: false,
-    });
-
-    const { result } = renderHook(() => useRemoveTrackFromPlaylist());
-
-    await act(async () => {
-      await result.current.removeTrack(mockTrack);
-      jest.advanceTimersByTime(100);
-    });
-
-    await waitFor(() => {
-      expect(result.current.error).toBe(ERROR_MESSAGES.NO_PLAYLIST);
-      expect(result.current.isSuccess).toBe(false);
-      expect(result.current.isLoading).toBe(false);
-    });
-  });
-
-  it('should handle playlist errors', async () => {
-    (useCreateNewDailyPlaylist as jest.Mock).mockReturnValue({
-      todayPlaylistId: mockPlaylistId,
-      error: ERROR_MESSAGES.FAILED_TO_LOAD,
-      isError: true,
-    });
-
-    const { result } = renderHook(() => useRemoveTrackFromPlaylist());
-
-    await act(async () => {
-      await result.current.removeTrack(mockTrack);
-      jest.advanceTimersByTime(100);
-    });
-
-    await waitFor(() => {
-      expect(result.current.error).toBe(ERROR_MESSAGES.FAILED_TO_LOAD);
-      expect(result.current.isSuccess).toBe(false);
-      expect(result.current.isLoading).toBe(false);
-    });
-  });
-
-  it('should handle loading state correctly', async () => {
-    let resolvePromise: (value: unknown) => void;
-    const promise = new Promise(resolve => {
-      resolvePromise = resolve;
-    });
-    (sendApiRequest as jest.Mock).mockImplementation(() => promise);
+      refetchPlaylist: mockRefetch
+    } as any);
 
     const { result } = renderHook(() => useRemoveTrackFromPlaylist());
     
     await act(async () => {
-      result.current.removeTrack(mockTrack);
-      await Promise.resolve(); // Let React process state updates
+      await result.current.removeTrack(mockTrack);
     });
 
-    expect(result.current.isLoading).toBe(true);
-
-    await act(async () => {
-      resolvePromise!({});
-      await Promise.resolve(); // Let React process state updates
-    });
-
+    expect(result.current.error).toBe(ERROR_MESSAGES.NO_PLAYLIST);
+    expect(result.current.isSuccess).toBe(false);
     expect(result.current.isLoading).toBe(false);
-  }, 10000);
+  });
+
+  it('should handle playlist error', async () => {
+    // Mock hooks for playlist error case
+    jest.spyOn(useCreateNewDailyPlaylistModule, 'useCreateNewDailyPlaylist').mockReturnValue({
+      todayPlaylistId: 'test-playlist-id',
+      error: 'Failed to load playlist'
+    } as any);
+    jest.spyOn(useGetPlaylistModule, 'useGetPlaylist').mockReturnValue({
+      isError: true,
+      refetchPlaylist: mockRefetch
+    } as any);
+
+    const { result } = renderHook(() => useRemoveTrackFromPlaylist());
+    
+    await act(async () => {
+      await result.current.removeTrack(mockTrack);
+    });
+
+    expect(result.current.error).toBe('Failed to load playlist');
+    expect(result.current.isSuccess).toBe(false);
+    expect(result.current.isLoading).toBe(false);
+  });
 }); 

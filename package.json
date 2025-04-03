@@ -34,9 +34,11 @@
   },
   "devDependencies": {
     "@babel/core": "^7.26.10",
+    "@jest/globals": "^29.7.0",
     "@testing-library/dom": "^10.4.0",
     "@testing-library/jest-dom": "^6.6.3",
-    "@testing-library/react": "^16.3.0",
+    "@testing-library/react": "14.2.1",
+    "@testing-library/react-hooks": "^8.0.1",
     "@types/jest": "^29.5.14",
     "@types/node": "^20",
     "@types/node-cron": "^3.0.11",
