@@ -1,7 +1,7 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { useRemoveTrackFromPlaylist } from './useRemoveTrackFromPlaylist';
-import { SpotifyPlaybackState, TrackItem } from '@/shared/types';
-import { filterUpcomingTracks } from '../lib/utils';
+import { filterUpcomingTracks } from '@/lib/utils';
+import { TrackItem, SpotifyPlaybackState } from '@/shared/types';
 
 interface UseAutoRemoveFinishedTrackProps {
   currentTrackId: string | null;
@@ -15,20 +15,38 @@ export const useAutoRemoveFinishedTrack = ({
   playbackState
 }: UseAutoRemoveFinishedTrackProps) => {
   const { removeTrack, isLoading } = useRemoveTrackFromPlaylist();
+  const lastRemovalTimeRef = useRef<number>(0);
+  const removalTimeoutRef = useRef<NodeJS.Timeout>();
 
   useEffect(() => {
-    // Don't remove any tracks if we don't have the necessary data or if we're loading
-    if (!currentTrackId || !playbackState || !playlistTracks.length || isLoading) {
-      return;
+    if (!currentTrackId || !playbackState || isLoading || !playlistTracks.length) return;
+
+    const currentTrackIndex = playlistTracks.findIndex(track => track.track.id === currentTrackId);
+    if (currentTrackIndex === -1 || currentTrackIndex < 5) return;
+
+    // Clear any pending removal
+    if (removalTimeoutRef.current) {
+      clearTimeout(removalTimeoutRef.current);
     }
 
-    // Find the index of the current track in the playlist
-    const currentTrackIndex = playlistTracks.findIndex(track => track.track.id === currentTrackId);
-    
-    // Remove the oldest track if the current track is at least 5 positions from the start
-    if (currentTrackIndex >= 5) {
-      console.log('[Auto Remove] Removing oldest track:', playlistTracks[0].track.name);
-      removeTrack(playlistTracks[0]);
-    }
-  }, [currentTrackId, playbackState, playlistTracks, removeTrack, isLoading]);
+    // Set a new timeout for the removal
+    removalTimeoutRef.current = setTimeout(() => {
+      const now = Date.now();
+      // Only remove if at least 5 seconds have passed since last removal
+      if (now - lastRemovalTimeRef.current >= 5000) {
+        console.log('[Auto Remove] Removing oldest track:', playlistTracks[0].track.name);
+        removeTrack(playlistTracks[0]);
+        lastRemovalTimeRef.current = now;
+      }
+    }, 5000);
+  }, [currentTrackId, playlistTracks, playbackState, removeTrack, isLoading]);
+
+  // Cleanup timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (removalTimeoutRef.current) {
+        clearTimeout(removalTimeoutRef.current);
+      }
+    };
+  }, []);
 }; 

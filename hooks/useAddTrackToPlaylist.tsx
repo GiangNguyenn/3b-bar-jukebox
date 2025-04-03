@@ -1,80 +1,74 @@
-import { useState } from "react";
-import { sendApiRequest } from "@/shared/api";
-import { useCreateNewDailyPlaylist } from "./useCreateNewDailyPlayList";
-import { SpotifyPlaylistItem, TrackItem } from "@/shared/types";
-import { useGetPlaylist } from "./useGetPlaylist";
-import { ERROR_MESSAGES, ErrorMessage } from "@/shared/constants/errors";
+import { useState, useEffect } from 'react';
+import { TrackItem } from '@/shared/types';
+import { ERROR_MESSAGES } from '@/shared/constants/errors';
+import { sendApiRequest } from '@/shared/api';
+import { useGetPlaylist } from './useGetPlaylist';
 
-interface ApiError {
-  message?: string;
-  error?: {
-    message?: string;
-    status?: number;
-  };
-  details?: {
-    errorMessage?: string;
-  };
+interface UseAddTrackToPlaylistProps {
+  playlistId: string;
 }
 
-export const useAddTrackToPlaylist = () => {
+export const useAddTrackToPlaylist = ({ playlistId }: UseAddTrackToPlaylistProps) => {
+  const { isError: playlistError, refetchPlaylist } = useGetPlaylist(playlistId);
   const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<ErrorMessage | null>(null);
+  const [error, setError] = useState<string | null>(() => {
+    if (!playlistId) return ERROR_MESSAGES.NO_PLAYLIST;
+    if (playlistError) return 'Failed to load playlist';
+    return null;
+  });
   const [isSuccess, setIsSuccess] = useState(false);
-  
-  const { todayPlaylistId, error: playlistError, isError: isPlaylistError } = useCreateNewDailyPlaylist();
-  const { data: playlist, refetchPlaylist } = useGetPlaylist(todayPlaylistId ?? "");
 
-  const addTrack = async (trackURI: string) => {
-    // Reset states
+  useEffect(() => {
+    if (!playlistId) {
+      setError(ERROR_MESSAGES.NO_PLAYLIST);
+      setIsSuccess(false);
+    } else if (playlistError) {
+      setError('Failed to load playlist');
+      setIsSuccess(false);
+    }
+  }, [playlistId, playlistError]);
+
+  const addTrack = async (track: TrackItem, onSuccess?: () => void) => {
+    if (!playlistId) {
+      setError(ERROR_MESSAGES.NO_PLAYLIST);
+      setIsSuccess(false);
+      return;
+    }
+
+    if (playlistError) {
+      setError('Failed to load playlist');
+      setIsSuccess(false);
+      return;
+    }
+
     setIsLoading(true);
     setError(null);
     setIsSuccess(false);
 
-    if (isPlaylistError || playlistError) {
-      setError(playlistError || ERROR_MESSAGES.FAILED_TO_LOAD);
-      setIsLoading(false);
-      return;
-    }
-
-    if (!playlist || !todayPlaylistId) {
-      setError(ERROR_MESSAGES.NO_PLAYLIST);
-      setIsLoading(false);
-      return;
-    }
-
-    // Check if track already exists in playlist
-    const trackExists = playlist.tracks.items.some(
-      (item: TrackItem) => item.track.uri === trackURI
-    );
-
-    if (trackExists) {
-      setError(ERROR_MESSAGES.TRACK_EXISTS);
-      setIsLoading(false);
-      return;
-    }
-
     try {
-      console.log(`[Add Track] Adding track ${trackURI} to playlist ${todayPlaylistId}`);
-      await sendApiRequest<SpotifyPlaylistItem>({
-        path: `playlists/${todayPlaylistId}/tracks`,
-        method: "POST",
-        body: {
-          uris: [trackURI],
-        },
+      console.log(`[Add Track] Adding track ${track.track.uri} to playlist ${playlistId}`);
+      
+      await sendApiRequest({
+        path: '/api/playlist/add-track',
+        method: 'POST',
+        body: { playlistId, track }
       });
 
       console.log('[Add Track] Track added successfully, refreshing playlist');
       await refetchPlaylist();
       setIsSuccess(true);
+      setError(null);
+      onSuccess?.();
     } catch (error: unknown) {
       console.error('[Add Track] Error adding track:', error);
       setError(ERROR_MESSAGES.FAILED_TO_ADD);
+      setIsSuccess(false);
     } finally {
       setIsLoading(false);
     }
   };
 
-  return { 
+  return {
     addTrack,
     isLoading,
     error,
