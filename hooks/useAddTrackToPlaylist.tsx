@@ -49,9 +49,11 @@ export const useAddTrackToPlaylist = ({ playlistId }: UseAddTrackToPlaylistProps
       console.log(`[Add Track] Adding track ${track.track.uri} to playlist ${playlistId}`);
       
       await sendApiRequest({
-        path: '/api/playlist/add-track',
-        method: 'POST',
-        body: { playlistId, track }
+        path: `playlists/${playlistId}/tracks`,
+        method: "POST",
+        body: {
+          uris: [track.track.uri]
+        }
       });
 
       console.log('[Add Track] Track added successfully, refreshing playlist');
