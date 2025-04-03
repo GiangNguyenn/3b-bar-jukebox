@@ -18,12 +18,23 @@ export const SPOTIFY_SEARCH_ENDPOINT = "search";
 export const FALLBACK_GENRES = [
   "Australian Alternative Rock",
   "Australian Rock",
+  "Australian Indie",
+  "Australian Pop",
+  "Australian Punk",
+  "Australian Blues",
+  "Australian Soul",
   "Vietnamese Pop",
+  "Vietnamese Rock",
+  "Vietnamese Indie",
+  "Vietnamese R&B",
   "Blues-rock",
   "Contemporary Jazz",
   "Classic Rock",
   "Rock",
-  "Indie Rock"
+  "Indie Rock",
+  "Soul",
+  "Alternative Pop",
+  "Funk"
 ] as const;
 
 // Configuration
