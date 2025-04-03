@@ -1,7 +1,7 @@
-import { useEffect, useRef } from 'react';
+import { useEffect } from 'react';
 import { useRemoveTrackFromPlaylist } from './useRemoveTrackFromPlaylist';
 import { SpotifyPlaybackState, TrackItem } from '@/shared/types';
-import { filterUpcomingTracks } from '@/lib/utils';
+import { filterUpcomingTracks } from '../lib/utils';
 
 interface UseAutoRemoveFinishedTrackProps {
   currentTrackId: string | null;
@@ -14,45 +14,24 @@ export const useAutoRemoveFinishedTrack = ({
   playlistTracks,
   playbackState
 }: UseAutoRemoveFinishedTrackProps) => {
-  const { removeTrack, isLoading, error, isSuccess } = useRemoveTrackFromPlaylist();
-  const lastProcessedTrackRef = useRef<string | null>(null);
-  const lastProcessedTimeRef = useRef<number>(0);
+  const { removeTrack, isLoading } = useRemoveTrackFromPlaylist();
 
   useEffect(() => {
-    if (!currentTrackId || !playbackState || isLoading) return;
-
-    // Prevent processing the same track multiple times in quick succession
-    const now = Date.now();
-    if (currentTrackId === lastProcessedTrackRef.current && now - lastProcessedTimeRef.current < 5000) {
+    // Don't remove any tracks if we don't have the necessary data or if we're loading
+    if (!currentTrackId || !playbackState || !playlistTracks.length || isLoading) {
       return;
     }
 
-    const currentTrack = playlistTracks.find(track => track.track.id === currentTrackId);
-    if (!currentTrack) return;
+    // Find the index of the current track in the playlist
+    const currentTrackIndex = playlistTracks.findIndex(track => track.track.id === currentTrackId);
+    const oldestTrack = playlistTracks[0];
 
-    // Check if the track has finished playing
-    const isTrackFinished = playbackState.progress_ms >= currentTrack.track.duration_ms;
-    const isTrackNearEnd = playbackState.progress_ms >= currentTrack.track.duration_ms - 1000; // Within 1 second of ending
-
-    if (isTrackFinished || (isTrackNearEnd && !playbackState.is_playing)) {
-      console.log(`[Auto Remove] Track ${currentTrack.track.name} has finished playing, removing from playlist`);
-      removeTrack(currentTrack);
-      lastProcessedTrackRef.current = currentTrackId;
-      lastProcessedTimeRef.current = now;
-    }
-
-    // Check if we need to remove the oldest track
-    const { shouldRemoveOldest } = filterUpcomingTracks(playlistTracks, currentTrackId);
-    if (shouldRemoveOldest && playlistTracks.length > 0) {
-      const oldestTrack = playlistTracks[0];
-      console.log(`[Auto Remove] Current track is more than 5 tracks from start, removing oldest track: ${oldestTrack.track.name}`);
+    // Remove the oldest track if:
+    // 1. The current track is at least 5 positions from the start
+    // 2. The oldest track is not the currently playing track
+    if (currentTrackIndex >= 5 && oldestTrack.track.id !== currentTrackId) {
+      console.log('[Auto Remove] Removing oldest track:', oldestTrack.track.name);
       removeTrack(oldestTrack);
     }
-  }, [currentTrackId, playbackState, playlistTracks, isLoading, removeTrack]);
-
-  return {
-    isLoading,
-    error,
-    isSuccess
-  };
+  }, [currentTrackId, playbackState, playlistTracks, removeTrack, isLoading]);
 }; 
