@@ -24,14 +24,11 @@ export const useAutoRemoveFinishedTrack = ({
 
     // Find the index of the current track in the playlist
     const currentTrackIndex = playlistTracks.findIndex(track => track.track.id === currentTrackId);
-    const oldestTrack = playlistTracks[0];
-
-    // Remove the oldest track if:
-    // 1. The current track is at least 5 positions from the start
-    // 2. The oldest track is not the currently playing track
-    if (currentTrackIndex >= 5 && oldestTrack.track.id !== currentTrackId) {
-      console.log('[Auto Remove] Removing oldest track:', oldestTrack.track.name);
-      removeTrack(oldestTrack);
+    
+    // Remove the oldest track if the current track is at least 5 positions from the start
+    if (currentTrackIndex >= 5) {
+      console.log('[Auto Remove] Removing oldest track:', playlistTracks[0].track.name);
+      removeTrack(playlistTracks[0]);
     }
   }, [currentTrackId, playbackState, playlistTracks, removeTrack, isLoading]);
 }; 

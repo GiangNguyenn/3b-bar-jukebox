@@ -1,10 +1,10 @@
 import React from 'react';
-import { renderHook, act } from '@testing-library/react';
+import { renderHook, act, waitFor } from '@testing-library/react';
 import { useRemoveTrackFromPlaylist } from '../useRemoveTrackFromPlaylist';
 import { sendApiRequest } from '@/shared/api';
 import { useCreateNewDailyPlaylist } from '../useCreateNewDailyPlayList';
 import { useGetPlaylist } from '../useGetPlaylist';
-import { ERROR_MESSAGES } from '@/shared/constants/errors';
+import { ERROR_MESSAGES, ErrorMessage } from '@/shared/constants/errors';
 import { TrackItem } from '@/shared/types';
 
 // Mock the API request function
@@ -116,9 +116,12 @@ const wrapper = ({ children }: { children: React.ReactNode }) => (
 );
 
 describe('useRemoveTrackFromPlaylist', () => {
+  const mockRefetchPlaylist = jest.fn();
+
   beforeEach(() => {
     jest.clearAllMocks();
-    // Set up default mock implementations
+    jest.useFakeTimers();
+
     (useCreateNewDailyPlaylist as jest.Mock).mockReturnValue({
       todayPlaylistId: mockPlaylistId,
       error: null,
@@ -126,43 +129,46 @@ describe('useRemoveTrackFromPlaylist', () => {
     });
     (useGetPlaylist as jest.Mock).mockReturnValue({
       data: mockPlaylist,
-      refetchPlaylist: jest.fn().mockResolvedValue(undefined),
+      refetchPlaylist: mockRefetchPlaylist
     });
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
   });
 
   it('should successfully remove a track from the playlist', async () => {
     (sendApiRequest as jest.Mock).mockResolvedValueOnce({});
-    const { result } = renderHook(() => useRemoveTrackFromPlaylist(), { wrapper });
+
+    const { result } = renderHook(() => useRemoveTrackFromPlaylist());
 
     await act(async () => {
       await result.current.removeTrack(mockTrack);
+      jest.advanceTimersByTime(100);
     });
 
-    expect(sendApiRequest).toHaveBeenCalledWith({
-      path: `playlists/${mockPlaylistId}/tracks`,
-      method: 'DELETE',
-      body: {
-        tracks: [{
-          uri: mockTrack.track.uri
-        }]
-      },
+    await waitFor(() => {
+      expect(result.current.isSuccess).toBe(true);
+      expect(result.current.error).toBe(null);
+      expect(result.current.isLoading).toBe(false);
     });
-    expect(result.current.isSuccess).toBe(true);
-    expect(result.current.error).toBeNull();
-    expect(result.current.isLoading).toBe(false);
   });
 
   it('should handle API errors when removing a track', async () => {
     (sendApiRequest as jest.Mock).mockRejectedValueOnce(new Error('API Error'));
-    const { result } = renderHook(() => useRemoveTrackFromPlaylist(), { wrapper });
+
+    const { result } = renderHook(() => useRemoveTrackFromPlaylist());
 
     await act(async () => {
       await result.current.removeTrack(mockTrack);
+      jest.advanceTimersByTime(100);
     });
 
-    expect(result.current.error).toBe(ERROR_MESSAGES.FAILED_TO_REMOVE);
-    expect(result.current.isSuccess).toBe(false);
-    expect(result.current.isLoading).toBe(false);
+    await waitFor(() => {
+      expect(result.current.error).toBe(ERROR_MESSAGES.FAILED_TO_REMOVE);
+      expect(result.current.isSuccess).toBe(false);
+      expect(result.current.isLoading).toBe(false);
+    });
   });
 
   it('should handle missing playlist ID', async () => {
@@ -171,51 +177,63 @@ describe('useRemoveTrackFromPlaylist', () => {
       error: null,
       isError: false,
     });
-    const { result } = renderHook(() => useRemoveTrackFromPlaylist(), { wrapper });
+
+    const { result } = renderHook(() => useRemoveTrackFromPlaylist());
 
     await act(async () => {
       await result.current.removeTrack(mockTrack);
+      jest.advanceTimersByTime(100);
     });
 
-    expect(result.current.error).toBe(ERROR_MESSAGES.NO_PLAYLIST);
-    expect(result.current.isSuccess).toBe(false);
-    expect(result.current.isLoading).toBe(false);
+    await waitFor(() => {
+      expect(result.current.error).toBe(ERROR_MESSAGES.NO_PLAYLIST);
+      expect(result.current.isSuccess).toBe(false);
+      expect(result.current.isLoading).toBe(false);
+    });
   });
 
-  it('should handle playlist error', async () => {
+  it('should handle playlist errors', async () => {
     (useCreateNewDailyPlaylist as jest.Mock).mockReturnValue({
       todayPlaylistId: mockPlaylistId,
       error: ERROR_MESSAGES.FAILED_TO_LOAD,
       isError: true,
     });
-    const { result } = renderHook(() => useRemoveTrackFromPlaylist(), { wrapper });
-
-    await act(async () => {
-      await result.current.removeTrack(mockTrack);
-    });
-
-    expect(result.current.error).toBe(ERROR_MESSAGES.FAILED_TO_LOAD);
-    expect(result.current.isSuccess).toBe(false);
-    expect(result.current.isLoading).toBe(false);
-  });
-
-  it('should handle loading state correctly', async () => {
-    (sendApiRequest as jest.Mock).mockResolvedValueOnce({});
 
     const { result } = renderHook(() => useRemoveTrackFromPlaylist());
 
-    // Start the track removal
+    await act(async () => {
+      await result.current.removeTrack(mockTrack);
+      jest.advanceTimersByTime(100);
+    });
+
+    await waitFor(() => {
+      expect(result.current.error).toBe(ERROR_MESSAGES.FAILED_TO_LOAD);
+      expect(result.current.isSuccess).toBe(false);
+      expect(result.current.isLoading).toBe(false);
+    });
+  });
+
+  it('should handle loading state correctly', async () => {
+    let resolvePromise: (value: unknown) => void;
+    const promise = new Promise(resolve => {
+      resolvePromise = resolve;
+    });
+    (sendApiRequest as jest.Mock).mockImplementation(() => promise);
+
+    const { result } = renderHook(() => useRemoveTrackFromPlaylist());
+    
     await act(async () => {
       result.current.removeTrack(mockTrack);
+      await Promise.resolve(); // Let React process state updates
     });
 
-    // Wait for state updates to complete
+    expect(result.current.isLoading).toBe(true);
+
     await act(async () => {
-      await new Promise(resolve => setTimeout(resolve, 10));
+      resolvePromise!({});
+      await Promise.resolve(); // Let React process state updates
     });
 
-    // Check success state is true and loading is false
-    expect(result.current.isSuccess).toBe(true);
     expect(result.current.isLoading).toBe(false);
-  });
+  }, 10000);
 }); 

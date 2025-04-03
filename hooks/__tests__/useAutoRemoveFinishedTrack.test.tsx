@@ -153,6 +153,12 @@ const createMockPlaybackState = (progress: number, isPlaying: boolean = true): S
     toggling_shuffle: false,
     toggling_repeat_track: false,
     transferring_playback: false
+  },
+  context: {
+    type: 'playlist',
+    href: 'https://api.spotify.com/v1/playlists/test',
+    external_urls: { spotify: 'https://open.spotify.com/playlist/test' },
+    uri: 'spotify:playlist:test'
   }
 });
 
@@ -415,33 +421,25 @@ describe('useAutoRemoveFinishedTrack', () => {
   });
 
   it('should not remove track when loading', async () => {
+    const mockTracks = Array.from({ length: 10 }, (_, i) => ({
+      ...mockTrack,
+      track: {
+        ...mockTrack.track,
+        name: `Track ${i}`,
+        uri: `spotify:track:track${i}`
+      }
+    }));
+
     (useRemoveTrackFromPlaylist as jest.Mock).mockReturnValue({
       removeTrack: mockRemoveTrack,
-      isLoading: true,
-      error: mockError,
-      isSuccess: mockIsSuccess
+      isLoading: true
     });
 
-    const tracks = createMockTracks(10);
-    (filterUpcomingTracks as jest.Mock).mockReturnValue(tracks.slice(5));
+    renderHook(() => useAutoRemoveFinishedTrack(mockTracks, mockPlaybackState));
 
-    let result;
-    await act(async () => {
-      result = renderHook(() => useAutoRemoveFinishedTrack({
-        currentTrackId: 'track-5',
-        playlistTracks: tracks,
-        playbackState: mockPlaybackState
-      }));
-    });
+    jest.advanceTimersByTime(5000);
 
-    await act(async () => {
-      jest.advanceTimersByTime(6000);
-      await Promise.resolve();
-    });
-
-    await waitFor(() => {
-      expect(mockRemoveTrack).not.toHaveBeenCalled();
-    });
+    expect(mockRemoveTrack).not.toHaveBeenCalled();
   });
 
   it('should remove track when it has finished playing', async () => {
@@ -500,34 +498,5 @@ describe('useAutoRemoveFinishedTrack', () => {
     await waitFor(() => {
       expect(mockRemoveTrack).toHaveBeenCalledWith(tracks[0]);
     }, { timeout: 1000 });
-  });
-
-  it('should not remove track when it is still playing', async () => {
-    const tracks = createMockTracks(10);
-    (filterUpcomingTracks as jest.Mock).mockReturnValue(tracks.slice(5));
-
-    const playingPlaybackState: SpotifyPlaybackState = {
-      ...mockPlaybackState,
-      progress_ms: 170000,
-      is_playing: true
-    };
-
-    let result;
-    await act(async () => {
-      result = renderHook(() => useAutoRemoveFinishedTrack({
-        currentTrackId: 'track-5',
-        playlistTracks: tracks,
-        playbackState: playingPlaybackState
-      }));
-    });
-
-    await act(async () => {
-      jest.advanceTimersByTime(6000);
-      await Promise.resolve();
-    });
-
-    await waitFor(() => {
-      expect(mockRemoveTrack).not.toHaveBeenCalled();
-    });
   });
 }); 

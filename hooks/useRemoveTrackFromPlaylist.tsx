@@ -26,9 +26,9 @@ export const useRemoveTrackFromPlaylist = () => {
 
   const removeTrack = async (trackToRemove: TrackItem) => {
     // Reset states
-    setIsLoading(true);
     setError(null);
     setIsSuccess(false);
+    setIsLoading(true);
 
     if (isPlaylistError || playlistError) {
       setError(playlistError || ERROR_MESSAGES.FAILED_TO_LOAD);
@@ -57,12 +57,10 @@ export const useRemoveTrackFromPlaylist = () => {
       console.log('[Remove Track] Track removed successfully, refreshing playlist');
       await refetchPlaylist();
       setIsSuccess(true);
+      setIsLoading(false);
     } catch (error: unknown) {
       console.error('[Remove Track] Error removing track:', error);
       setError(ERROR_MESSAGES.FAILED_TO_REMOVE);
-    } finally {
-      // Wait for any pending state updates to complete
-      await new Promise(resolve => setTimeout(resolve, 0));
       setIsLoading(false);
     }
   };
