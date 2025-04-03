@@ -350,8 +350,17 @@ interface ErrorDetails {
   responseHeaders?: Record<string, string>;
 }
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
+    // Get the URL and check for force parameter
+    const url = new URL(request.url);
+    const force = url.searchParams.get('force') === 'true';
+    
+    // If this is a forced request, log it
+    if (force) {
+      console.log('Force refresh requested - bypassing any potential caching');
+    }
+
     log.info('Refresh site request received');
     
     // Check rate limiting
@@ -437,7 +446,8 @@ export async function GET() {
           ? `Playlist has reached maximum length of ${MAX_PLAYLIST_LENGTH} tracks. No new tracks needed.`
           : result.error,
         timestamp: new Date().toISOString(),
-        diagnosticInfo
+        diagnosticInfo,
+        forceRefresh: force
       });
     }
     
@@ -447,7 +457,8 @@ export async function GET() {
         message: "Successfully added suggested track",
         timestamp: new Date().toISOString(),
         searchDetails: result.searchDetails,
-        diagnosticInfo
+        diagnosticInfo,
+        forceRefresh: force
       },
       {
         headers: {
