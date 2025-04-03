@@ -332,7 +332,7 @@ async function addSuggestedTrackToPlaylist(upcomingTracks: TrackItem[], playlist
     const apiError = error as SpotifyApiError;
     console.error("Error getting/adding suggestion:", {
       error: apiError,
-      upcomingTracksLength: upcomingTracks.length,
+      upcomingTracksLength: upcomingTracks.length
     });
     return { success: false, error: apiError.message || ERROR_MESSAGES.GENERIC_ERROR, searchDetails: undefined };
   }
@@ -393,10 +393,25 @@ export async function GET() {
         timestamp: new Date().toISOString()
       });
     }
+
+    log.info('Current track state:', {
+      currentTrackId,
+      hasCurrentTrack: !!currentTrackId,
+      playlistId: playlist.id,
+      totalTracks: playlist.tracks.items.length
+    });
     
     // Get upcoming tracks
     log.info('Filtering upcoming tracks');
     const upcomingTracks = filterUpcomingTracks(playlist.tracks.items, currentTrackId);
+    
+    log.info('Upcoming tracks analysis:', {
+      totalTracks: playlist.tracks.items.length,
+      upcomingTracksCount: upcomingTracks.length,
+      currentTrackId,
+      playlistTrackIds: playlist.tracks.items.map(t => t.track.id),
+      upcomingTrackIds: upcomingTracks.map(t => t.track.id)
+    });
     
     // Add diagnostic information to the response
     const diagnosticInfo = {
@@ -411,7 +426,11 @@ export async function GET() {
     const result = await addSuggestedTrackToPlaylist(upcomingTracks, playlist.id);
     
     if (!result.success) {
-      log.info('No track added to playlist', { reason: result.error });
+      log.info('No track added to playlist', { 
+        reason: result.error,
+        upcomingTracksCount: upcomingTracks.length,
+        maxAllowed: MAX_PLAYLIST_LENGTH
+      });
       return NextResponse.json({ 
         success: true, 
         message: result.error === "Playlist too long" 
@@ -422,13 +441,22 @@ export async function GET() {
       });
     }
     
-    return NextResponse.json({ 
-      success: true, 
-      message: "Successfully added suggested track",
-      timestamp: new Date().toISOString(),
-      searchDetails: result.searchDetails,
-      diagnosticInfo
-    });
+    return NextResponse.json(
+      { 
+        success: true, 
+        message: "Successfully added suggested track",
+        timestamp: new Date().toISOString(),
+        searchDetails: result.searchDetails,
+        diagnosticInfo
+      },
+      {
+        headers: {
+          'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
+          'Pragma': 'no-cache',
+          'Expires': '0'
+        }
+      }
+    );
   } catch (error) {
     const apiError = error instanceof ApiError ? error : new ApiError('Failed to refresh site', 500, error);
     const errorDetails = apiError.details as ErrorDetails;
@@ -474,7 +502,14 @@ export async function GET() {
         searchDetails: null,
         timestamp: new Date().toISOString()
       },
-      { status: statusCode }
+      { 
+        status: statusCode,
+        headers: {
+          'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
+          'Pragma': 'no-cache',
+          'Expires': '0'
+        }
+      }
     );
   }
 } 
