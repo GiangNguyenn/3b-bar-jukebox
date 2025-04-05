@@ -9,6 +9,7 @@ import { filterUpcomingTracks } from "@/lib/utils";
 
 const MAX_RETRIES = 3;
 const RETRY_DELAY_MS = 1000;
+const FIXED_PLAYLIST_NAME = "3B Saigon";
 const userId = process.env.NEXT_PUBLIC_SPOTIFY_USER_ID ?? "";
 
 // Custom error class for better error handling
@@ -113,30 +114,11 @@ function isRateLimited(): boolean {
   return false;
 }
 
-async function getTodayPlaylist(): Promise<SpotifyPlaylistItem | null> {
+async function getFixedPlaylist(): Promise<SpotifyPlaylistItem | null> {
   try {
-    const todayString = formatDateForPlaylist();
-    const name = `Daily Mix - ${todayString}`;
-    
-    log.info('Fetching playlists', { 
-      todayString, 
-      name,
-      userId,
-      baseUrl: process.env.NEXT_PUBLIC_SPOTIFY_BASE_URL,
-      hasUserId: !!userId,
-      hasBaseUrl: !!process.env.NEXT_PUBLIC_SPOTIFY_BASE_URL,
-      environment: process.env.NODE_ENV,
-      nodeVersion: process.version,
-      platform: process.platform
+    log.info('Fetching playlists to find fixed playlist', { 
+      playlistName: FIXED_PLAYLIST_NAME
     });
-
-    if (!userId) {
-      throw new Error('Spotify user ID is not configured');
-    }
-
-    if (!process.env.NEXT_PUBLIC_SPOTIFY_BASE_URL) {
-      throw new Error('Spotify base URL is not configured');
-    }
 
     log.info('Making API request to fetch playlists');
     const playlists = await sendApiRequest<{ items: SpotifyPlaylistItem[] }>({
@@ -149,26 +131,26 @@ async function getTodayPlaylist(): Promise<SpotifyPlaylistItem | null> {
       playlists: playlists.items.map(p => ({ id: p.id, name: p.name }))
     });
 
-    const todayPlaylist = playlists.items.find(
-      (playlist) => playlist.name === name
+    const fixedPlaylist = playlists.items.find(
+      (playlist) => playlist.name === FIXED_PLAYLIST_NAME
     );
 
-    if (!todayPlaylist) {
-      log.info(`No playlist found for today: ${name}`, {
+    if (!fixedPlaylist) {
+      log.info(`No playlist found with name: ${FIXED_PLAYLIST_NAME}`, {
         availablePlaylists: playlists.items.map(p => p.name),
-        expectedName: name
+        expectedName: FIXED_PLAYLIST_NAME
       });
       return null;
     }
 
-    log.info('Found today\'s playlist', { 
-      playlistId: todayPlaylist.id,
-      playlistName: todayPlaylist.name
+    log.info('Found fixed playlist', { 
+      playlistId: fixedPlaylist.id,
+      playlistName: fixedPlaylist.name
     });
 
-    log.info('Fetching playlist details', { playlistId: todayPlaylist.id });
+    log.info('Fetching playlist details', { playlistId: fixedPlaylist.id });
     const playlist = await sendApiRequest<SpotifyPlaylistItem>({
-      path: `users/${userId}/playlists/${todayPlaylist.id}`,
+      path: `playlists/${fixedPlaylist.id}`,
     });
 
     return playlist;
@@ -177,12 +159,9 @@ async function getTodayPlaylist(): Promise<SpotifyPlaylistItem | null> {
     const errorDetails = {
       error: apiError,
       statusCode: apiError.response?.data?.error?.message,
-      userId: userId,
       response: apiError.response,
       message: apiError.message,
       stack: apiError.stack,
-      hasUserId: !!userId,
-      hasBaseUrl: !!process.env.NEXT_PUBLIC_SPOTIFY_BASE_URL,
       errorDetails: apiError.response?.data?.error,
       environment: process.env.NODE_ENV,
       nodeVersion: process.version,
@@ -197,13 +176,8 @@ async function getTodayPlaylist(): Promise<SpotifyPlaylistItem | null> {
       responseHeaders: apiError.response?.headers
     };
 
-    log.error('Error getting today\'s playlist', errorDetails);
-    
-    if (apiError.response?.data?.error?.message?.includes('401')) {
-      throw new ApiError('Spotify authentication failed. Please check your access token.', 401, errorDetails);
-    }
-    
-    throw new ApiError('Failed to get today\'s playlist', 500, errorDetails);
+    log.error('Error getting fixed playlist', errorDetails);
+    throw new ApiError('Failed to get fixed playlist', 500, errorDetails);
   }
 }
 
@@ -352,63 +326,32 @@ interface ErrorDetails {
 
 export async function GET(request: Request) {
   try {
-    // Get the URL and check for force parameter
-    const url = new URL(request.url);
-    const force = url.searchParams.get('force') === 'true';
+    const force = new URL(request.url).searchParams.get('force') === 'true';
     
-    // If this is a forced request, log it
-    if (force) {
-      console.log('Force refresh requested - bypassing any potential caching');
-    }
-
-    log.info('Refresh site request received');
+    // Get the fixed playlist
+    log.info('Getting fixed playlist');
+    const playlist = await getFixedPlaylist();
     
-    // Check rate limiting
-    if (isRateLimited()) {
-      return NextResponse.json({ 
-        success: true, 
-        message: 'Rate limit in effect. Please wait before making another request.',
-        timestamp: new Date().toISOString()
-      });
-    }
-    
-    // Check if we have a valid Spotify user ID
-    if (!userId) {
-      log.error('Spotify user ID not configured');
-      throw new ApiError('Spotify user ID not configured', 500);
-    }
-    
-    // Get today's playlist
-    log.info('Fetching today\'s playlist');
-    const playlist = await getTodayPlaylist();
     if (!playlist) {
-      log.info('No playlist found for today');
       return NextResponse.json({ 
-        success: true, 
-        message: 'No playlist found for today. A new playlist will be created when tracks are added.',
+        success: false, 
+        message: `No playlist found with name: ${FIXED_PLAYLIST_NAME}`,
         timestamp: new Date().toISOString()
       });
     }
 
     // Get currently playing track
-    log.info('Fetching currently playing track');
-    const { id: currentTrackId, error: currentTrackError } = await getCurrentlyPlaying();
+    log.info('Getting currently playing track');
+    const { id: currentTrackId, error: playbackError } = await getCurrentlyPlaying();
     
-    if (currentTrackError) {
-      log.error('Error getting currently playing track', { error: currentTrackError });
+    if (playbackError) {
+      log.error('Error getting currently playing track', { error: playbackError });
       return NextResponse.json({ 
         success: false, 
-        message: currentTrackError,
+        message: playbackError,
         timestamp: new Date().toISOString()
       });
     }
-
-    log.info('Current track state:', {
-      currentTrackId,
-      hasCurrentTrack: !!currentTrackId,
-      playlistId: playlist.id,
-      totalTracks: playlist.tracks.items.length
-    });
     
     // Get upcoming tracks
     log.info('Filtering upcoming tracks');
@@ -450,81 +393,21 @@ export async function GET(request: Request) {
         forceRefresh: force
       });
     }
-    
-    return NextResponse.json(
-      { 
-        success: true, 
-        message: "Successfully added suggested track",
-        timestamp: new Date().toISOString(),
-        searchDetails: result.searchDetails,
-        diagnosticInfo,
-        forceRefresh: force
-      },
-      {
-        headers: {
-          'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
-          'Pragma': 'no-cache',
-          'Expires': '0',
-          'CDN-Cache-Control': 'no-store',
-          'Vercel-CDN-Cache-Control': 'no-store'
-        }
-      }
-    );
-  } catch (error) {
-    const apiError = error instanceof ApiError ? error : new ApiError('Failed to refresh site', 500, error);
-    const errorDetails = apiError.details as ErrorDetails;
-    
-    log.error('Error in refresh site endpoint', {
-      error: apiError,
-      stack: apiError.stack,
-      details: apiError.details,
-      environment: process.env.NODE_ENV,
-      hasUserId: !!userId,
-      hasBaseUrl: !!process.env.NEXT_PUBLIC_SPOTIFY_BASE_URL,
-      hasClientId: !!process.env.SPOTIFY_CLIENT_ID,
-      hasClientSecret: !!process.env.SPOTIFY_CLIENT_SECRET,
-      hasRefreshToken: !!process.env.SPOTIFY_REFRESH_TOKEN
+
+    return NextResponse.json({ 
+      success: true, 
+      message: 'Track added successfully',
+      timestamp: new Date().toISOString(),
+      diagnosticInfo,
+      forceRefresh: force
     });
-    
-    // Extract the most relevant error information
-    const errorMessage = errorDetails?.message || 
-                        errorDetails?.error?.message || 
-                        apiError.message;
-    
-    const statusCode = errorDetails?.status || 
-                      (errorMessage?.includes('401') ? 401 : 
-                       errorMessage?.includes('404') ? 404 : 
-                       errorMessage?.includes('429') ? 429 : 500);
-    
-    return NextResponse.json(
-      { 
-        success: false, 
-        error: errorMessage,
-        details: {
-          statusCode,
-          statusText: errorDetails?.statusText,
-          errorMessage: errorDetails?.error?.message,
-          environment: process.env.NODE_ENV,
-          hasUserId: !!userId,
-          hasBaseUrl: !!process.env.NEXT_PUBLIC_SPOTIFY_BASE_URL,
-          hasClientId: !!process.env.SPOTIFY_CLIENT_ID,
-          hasClientSecret: !!process.env.SPOTIFY_CLIENT_SECRET,
-          hasRefreshToken: !!process.env.SPOTIFY_REFRESH_TOKEN,
-          timestamp: new Date().toISOString()
-        },
-        searchDetails: null,
-        timestamp: new Date().toISOString()
-      },
-      { 
-        status: statusCode,
-        headers: {
-          'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
-          'Pragma': 'no-cache',
-          'Expires': '0',
-          'CDN-Cache-Control': 'no-store',
-          'Vercel-CDN-Cache-Control': 'no-store'
-        }
-      }
-    );
+  } catch (error) {
+    const apiError = error as SpotifyApiError;
+    log.error('Error in refresh-site endpoint', apiError);
+    return NextResponse.json({ 
+      success: false, 
+      message: apiError.message || ERROR_MESSAGES.GENERIC_ERROR,
+      timestamp: new Date().toISOString()
+    }, { status: 500 });
   }
 } 

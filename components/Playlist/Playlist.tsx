@@ -6,7 +6,7 @@ import useNowPlayingTrack from "@/hooks/useNowPlayingTrack";
 import { filterUpcomingTracks } from "@/lib/utils";
 import { useAutoRemoveFinishedTrack } from "@/hooks/useAutoRemoveFinishedTrack";
 import { useGetPlaylist } from "@/hooks/useGetPlaylist";
-import { useCreateNewDailyPlaylist } from "@/hooks/useCreateNewDailyPlayList";
+import { useFixedPlaylist } from "@/hooks/useFixedPlaylist";
 
 interface IPlaylistProps {
   tracks: TrackItem[];
@@ -16,7 +16,7 @@ const Playlist: React.FC<IPlaylistProps> = memo(({ tracks }) => {
   const { data: playbackState } = useNowPlayingTrack();
   const currentTrackId = playbackState?.item?.id ?? null;
   const previousTrackIdRef = useRef<string | null>(null);
-  const { todayPlaylistId } = useCreateNewDailyPlaylist();
+  const { todayPlaylistId } = useFixedPlaylist();
   const { data: playlist, refetchPlaylist } = useGetPlaylist(todayPlaylistId ?? "");
 
   // Use the auto-remove hook

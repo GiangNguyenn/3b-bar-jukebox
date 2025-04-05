@@ -42,5 +42,15 @@ export const usePlaylist = (playlistId: string | null) => {
     };
   }, []);
 
-  // ... rest of the code ...
-} 
+  // Initial fetch
+  useEffect(() => {
+    void refreshPlaylist();
+  }, [refreshPlaylist]);
+
+  return {
+    playlist,
+    isLoading,
+    error,
+    refreshPlaylist
+  };
+}; 
