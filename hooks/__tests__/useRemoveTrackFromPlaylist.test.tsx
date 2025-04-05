@@ -1,9 +1,16 @@
-import { renderHook, act } from '@testing-library/react';
+import { renderHook, act } from '@testing-library/react-hooks';
 import { useRemoveTrackFromPlaylist } from '../useRemoveTrackFromPlaylist';
-import { usePlaylist } from '../usePlaylist';
+import { useGetPlaylist } from '../useGetPlaylist';
+import { useFixedPlaylist } from '../useFixedPlaylist';
+import { sendApiRequest } from '@/shared/api';
 import { TrackItem } from '@/shared/types';
+import { ERROR_MESSAGES } from '@/shared/constants/errors';
 
-jest.mock('../usePlaylist');
+jest.mock('../useGetPlaylist');
+jest.mock('../useFixedPlaylist');
+jest.mock('@/shared/api');
+
+const mockSendApiRequest = sendApiRequest as jest.Mock;
 
 describe('useRemoveTrackFromPlaylist', () => {
   const mockPlaylistId = 'test-playlist-id';
@@ -73,33 +80,74 @@ describe('useRemoveTrackFromPlaylist', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    (useFixedPlaylist as jest.Mock).mockReturnValue({
+      todayPlaylistId: mockPlaylistId,
+      error: null
+    });
+    (useGetPlaylist as jest.Mock).mockReturnValue({
+      data: null,
+      isLoading: false,
+      isError: false,
+      refetchPlaylist: jest.fn()
+    });
+    mockSendApiRequest.mockResolvedValue({});
   });
 
   it('should remove track from playlist successfully', async () => {
-    const mockRefreshPlaylist = jest.fn();
-    (usePlaylist as jest.Mock).mockReturnValue({
-      refreshPlaylist: mockRefreshPlaylist
+    const mockRefetchPlaylist = jest.fn();
+    (useGetPlaylist as jest.Mock).mockReturnValue({
+      data: null,
+      isLoading: false,
+      isError: false,
+      refetchPlaylist: mockRefetchPlaylist
     });
 
     const { result } = renderHook(() => useRemoveTrackFromPlaylist());
 
+    expect(result.current.removeTrack).toBeDefined();
+    expect(result.current.removeTrack).not.toBeNull();
+
     await act(async () => {
-      await result.current.removeTrack(mockTrack);
+      await result.current.removeTrack!(mockTrack);
     });
 
-    expect(mockRefreshPlaylist).toHaveBeenCalled();
+    expect(mockSendApiRequest).toHaveBeenCalledWith({
+      path: `playlists/${mockPlaylistId}/tracks`,
+      method: 'DELETE',
+      body: { tracks: [{ uri: mockTrack.track.uri }] }
+    });
+    expect(mockRefetchPlaylist).toHaveBeenCalled();
   });
 
   it('should handle errors when removing track', async () => {
-    const mockRefreshPlaylist = jest.fn().mockRejectedValue(new Error('Failed to remove track'));
-    (usePlaylist as jest.Mock).mockReturnValue({
-      refreshPlaylist: mockRefreshPlaylist
+    const mockRefetchPlaylist = jest.fn();
+    (useGetPlaylist as jest.Mock).mockReturnValue({
+      data: null,
+      isLoading: false,
+      isError: false,
+      refetchPlaylist: mockRefetchPlaylist
+    });
+    mockSendApiRequest.mockRejectedValue(new Error('Failed to remove track'));
+
+    const { result } = renderHook(() => useRemoveTrackFromPlaylist());
+
+    expect(result.current.removeTrack).toBeDefined();
+    expect(result.current.removeTrack).not.toBeNull();
+
+    await act(async () => {
+      await expect(result.current.removeTrack!(mockTrack)).rejects.toThrow('Failed to remove track');
+    });
+  });
+
+  it('should handle missing playlist ID', async () => {
+    (useFixedPlaylist as jest.Mock).mockReturnValue({
+      todayPlaylistId: null,
+      error: null
     });
 
     const { result } = renderHook(() => useRemoveTrackFromPlaylist());
 
-    await act(async () => {
-      await expect(result.current.removeTrack(mockTrack)).rejects.toThrow('Failed to remove track');
-    });
+    expect(result.current.removeTrack).toBeNull();
+    expect(result.current.error).toBe(ERROR_MESSAGES.NO_PLAYLIST);
   });
 }); 
