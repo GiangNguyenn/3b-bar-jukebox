@@ -2,11 +2,11 @@ import { useState, useEffect } from 'react';
 import { TrackItem } from '@/shared/types';
 import { ERROR_MESSAGES } from '@/shared/constants/errors';
 import { sendApiRequest } from '@/shared/api';
-import { useCreateNewDailyPlaylist } from './useCreateNewDailyPlayList';
+import { useFixedPlaylist } from './useFixedPlaylist';
 import { useGetPlaylist } from './useGetPlaylist';
 
 export const useRemoveTrackFromPlaylist = () => {
-  const { todayPlaylistId, error: createPlaylistError } = useCreateNewDailyPlaylist();
+  const { todayPlaylistId, error: createPlaylistError } = useFixedPlaylist();
   const { isError: playlistError, refetchPlaylist } = useGetPlaylist(todayPlaylistId || '');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(() => {
