@@ -7,7 +7,7 @@ import { useGetPlaylist } from './useGetPlaylist';
 
 export const useRemoveTrackFromPlaylist = () => {
   const { todayPlaylistId, error: createPlaylistError } = useFixedPlaylist();
-  const { isError: playlistError, refetchPlaylist } = useGetPlaylist(todayPlaylistId || '');
+  const { isError: playlistError, refetchPlaylist } = useGetPlaylist(todayPlaylistId ?? '');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(() => {
     if (!todayPlaylistId) return ERROR_MESSAGES.NO_PLAYLIST;
@@ -29,12 +29,12 @@ export const useRemoveTrackFromPlaylist = () => {
   const removeTrack = async (track: TrackItem) => {
     if (!todayPlaylistId) {
       setError(ERROR_MESSAGES.NO_PLAYLIST);
-      return;
+      throw new Error(ERROR_MESSAGES.NO_PLAYLIST);
     }
 
     if (playlistError || createPlaylistError) {
       setError('Failed to load playlist');
-      return;
+      throw new Error('Failed to load playlist');
     }
 
     setIsLoading(true);
@@ -50,18 +50,21 @@ export const useRemoveTrackFromPlaylist = () => {
       });
 
       console.log('[Remove Track] Track removed successfully, refreshing playlist');
-      setIsSuccess(true);
       await refetchPlaylist();
-    } catch (error: unknown) {
+      setIsSuccess(true);
+      setError(null);
+    } catch (error) {
       console.error('[Remove Track] Error removing track:', error);
       setError(ERROR_MESSAGES.FAILED_TO_REMOVE);
+      setIsSuccess(false);
+      throw error;
     } finally {
       setIsLoading(false);
     }
   };
 
   return {
-    removeTrack,
+    removeTrack: todayPlaylistId ? removeTrack : null,
     isLoading,
     error,
     isSuccess
