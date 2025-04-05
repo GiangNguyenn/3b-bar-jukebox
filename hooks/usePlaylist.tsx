@@ -1,56 +1,60 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
-import { SpotifyPlaylistItem, TrackItem } from '@/shared/types';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import { SpotifyPlaylistItem, TrackItem, SpotifyPlaybackState } from '@/shared/types';
 import { ERROR_MESSAGES } from '@/shared/constants/errors';
+import { filterUpcomingTracks } from '@/lib/utils';
+import useSWR from 'swr';
+import { sendApiRequest } from '@/shared/api';
+
+const fetcher = async (playlistId: string) => {
+  if (!playlistId) return null;
+  return sendApiRequest<SpotifyPlaylistItem>({
+    path: `playlists/${playlistId}`,
+  });
+};
+
+const currentlyPlayingFetcher = async () => {
+  return sendApiRequest<SpotifyPlaybackState>({
+    path: "me/player/currently-playing",
+  });
+};
 
 export const usePlaylist = (playlistId: string | null) => {
-  const [playlist, setPlaylist] = useState<SpotifyPlaylistItem | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const refreshTimeoutRef = useRef<NodeJS.Timeout>();
-
-  const refreshPlaylist = useCallback(async () => {
-    if (!playlistId) return;
-    
-    // Clear any pending refresh
-    if (refreshTimeoutRef.current) {
-      clearTimeout(refreshTimeoutRef.current);
+  const { data: playlist, error, mutate: refreshPlaylist } = useSWR(
+    playlistId ? `playlist-${playlistId}` : null,
+    () => fetcher(playlistId ?? ''),
+    {
+      refreshInterval: 10000, // Refresh every 10 seconds
+      revalidateOnFocus: true,
+      revalidateOnReconnect: true,
     }
+  );
 
-    // Set a new timeout for the refresh
-    refreshTimeoutRef.current = setTimeout(async () => {
-      setIsLoading(true);
-      try {
-        const response = await fetch(`/api/playlist/${playlistId}`);
-        if (!response.ok) throw new Error('Failed to fetch playlist');
-        const data = await response.json();
-        setPlaylist(data);
-      } catch (error) {
-        console.error('Error refreshing playlist:', error);
-        setError(ERROR_MESSAGES.FAILED_TO_LOAD);
-      } finally {
-        setIsLoading(false);
-      }
-    }, 500); // 500ms debounce
-  }, [playlistId]);
+  // Get currently playing track
+  const { data: playbackState } = useSWR(
+    'currently-playing-state',
+    currentlyPlayingFetcher,
+    {
+      refreshInterval: 10000, // Refresh every 10 seconds
+      revalidateOnFocus: true,
+      revalidateOnReconnect: true,
+    }
+  );
 
-  // Cleanup timeout on unmount
-  useEffect(() => {
-    return () => {
-      if (refreshTimeoutRef.current) {
-        clearTimeout(refreshTimeoutRef.current);
-      }
-    };
-  }, []);
+  // Filter upcoming tracks
+  const upcomingTracks = useMemo(() => {
+    if (!playlist || !playbackState?.item?.id) return [];
+    return filterUpcomingTracks(playlist.tracks.items, playbackState.item.id);
+  }, [playlist, playbackState?.item?.id]);
 
-  // Initial fetch
-  useEffect(() => {
-    void refreshPlaylist();
+  const handleRefresh = useCallback(async () => {
+    await refreshPlaylist();
   }, [refreshPlaylist]);
 
   return {
     playlist,
-    isLoading,
-    error,
-    refreshPlaylist
+    upcomingTracks,
+    isLoading: !error && !playlist,
+    error: error ? ERROR_MESSAGES.FAILED_TO_LOAD : null,
+    refreshPlaylist: handleRefresh
   };
 }; 
