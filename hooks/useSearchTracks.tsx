@@ -2,6 +2,7 @@ import { useCallback, useState } from "react";
 import { sendApiRequest } from "../shared/api";
 import { TrackDetails } from "@/shared/types";
 import { ERROR_MESSAGES, ErrorMessage } from "@/shared/constants/errors";
+import { handleApiError, AppError } from "@/shared/utils/errorHandling";
 
 interface ApiError {
   message?: string;
@@ -49,22 +50,9 @@ const useSearchTracks = () => {
 
       console.log(`[Search Tracks] Found ${response.tracks.items.length} tracks`);
       return response.tracks.items;
-    } catch (error: unknown) {
-      console.error('[Search Tracks] Error searching tracks:', error);
-      
-      // Extract error message from various possible error formats
-      let errorMessage: ErrorMessage = ERROR_MESSAGES.GENERIC_ERROR;
-      if (error instanceof Error) {
-        errorMessage = (error.message || ERROR_MESSAGES.GENERIC_ERROR) as ErrorMessage;
-      } else if (typeof error === 'object' && error !== null) {
-        const apiError = error as ApiError;
-        const message = apiError.message || 
-                      apiError.error?.message || 
-                      apiError.details?.errorMessage;
-        errorMessage = (message || ERROR_MESSAGES.GENERIC_ERROR) as ErrorMessage;
-      }
-      
-      setError(errorMessage);
+    } catch (error) {
+      const appError = handleApiError(error, 'Search Tracks');
+      setError(appError.message);
       return [];
     } finally {
       setIsLoading(false);
