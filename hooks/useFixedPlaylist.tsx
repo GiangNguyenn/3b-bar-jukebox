@@ -7,7 +7,7 @@ import { ERROR_MESSAGES, ErrorMessage } from "@/shared/constants/errors";
 const FIXED_PLAYLIST_NAME = "3B Saigon";
 
 export const useFixedPlaylist = () => {
-  const [todayPlaylistId, setTodayPlaylistId] = useState<string | null>(null);
+  const [fixedPlaylistId, setFixedPlaylistId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<ErrorMessage | null>(null);
   const [isInitialFetchComplete, setIsInitialFetchComplete] = useState(false);
@@ -26,7 +26,7 @@ export const useFixedPlaylist = () => {
       );
       if (existingPlaylist) {
         console.log(`[Fixed Playlist] Found playlist: ${FIXED_PLAYLIST_NAME} (ID: ${existingPlaylist.id})`);
-        setTodayPlaylistId(existingPlaylist.id);
+        setFixedPlaylistId(existingPlaylist.id);
       } else {
         console.log(`[Fixed Playlist] No playlist found with name: ${FIXED_PLAYLIST_NAME}`);
         setError(ERROR_MESSAGES.FAILED_TO_LOAD);
@@ -56,8 +56,8 @@ export const useFixedPlaylist = () => {
   };
 
   return { 
+    fixedPlaylistId,
     createPlaylist, 
-    todayPlaylistId, 
     playlists, 
     isLoading, 
     error, 

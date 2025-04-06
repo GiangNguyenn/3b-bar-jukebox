@@ -16,15 +16,15 @@ const Playlist: React.FC<IPlaylistProps> = memo(({ tracks }) => {
   const { data: playbackState } = useNowPlayingTrack();
   const currentTrackId = playbackState?.item?.id ?? null;
   const previousTrackIdRef = useRef<string | null>(null);
-  const { todayPlaylistId } = useFixedPlaylist();
-  const { data: playlist, refetchPlaylist } = useGetPlaylist(todayPlaylistId ?? "");
+  const { fixedPlaylistId } = useFixedPlaylist();
+  const { data: playlist, refetchPlaylist } = useGetPlaylist(fixedPlaylistId ?? "");
 
   // Use the auto-remove hook
   useAutoRemoveFinishedTrack({
     currentTrackId,
     playlistTracks: tracks,
     playbackState: playbackState ?? null,
-    playlistId: todayPlaylistId ?? ''
+    playlistId: fixedPlaylistId ?? ''
   });
 
   const upcomingTracks = useMemo(() => 

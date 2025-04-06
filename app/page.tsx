@@ -23,8 +23,8 @@ declare global {
 }
 
 const Home = memo(() => {
-  const { createPlaylist, todayPlaylistId, isLoading: isCreatingPlaylist, isInitialFetchComplete } = useFixedPlaylist();
-  const { playlist, isLoading: isLoadingPlaylist, refreshPlaylist } = usePlaylist(todayPlaylistId ?? "");
+  const { createPlaylist, fixedPlaylistId, isLoading: isCreatingPlaylist, isInitialFetchComplete } = useFixedPlaylist();
+  const { playlist, isLoading: isLoadingPlaylist, refreshPlaylist } = usePlaylist(fixedPlaylistId ?? "");
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<TrackDetails[]>([]);
   const { searchTracks } = useSearchTracks();
@@ -32,16 +32,12 @@ const Home = memo(() => {
 
   useEffect(() => {
     (async () => {
-      if (!todayPlaylistId && !isCreatingPlaylist && isInitialFetchComplete) {
-        console.log('[Page] Creating new playlist - conditions:', {
-          noPlaylistId: !todayPlaylistId,
-          notCreating: !isCreatingPlaylist,
-          initialFetchComplete: isInitialFetchComplete
-        });
+      if (!fixedPlaylistId && !isCreatingPlaylist && isInitialFetchComplete) {
+        console.log('[Fixed Playlist] Created new playlist');
         await createPlaylist();
       }
     })();
-  }, [createPlaylist, todayPlaylistId, isCreatingPlaylist, isInitialFetchComplete]);
+  }, [createPlaylist, fixedPlaylistId, isCreatingPlaylist, isInitialFetchComplete]);
 
   const handleTrackAdded = useMemo(() => async () => {
     // Add a small delay to ensure the track is added to Spotify
@@ -73,11 +69,11 @@ const Home = memo(() => {
     setSearchQuery,
     searchResults,
     setSearchResults,
-    playlistId: todayPlaylistId ?? "",
+    playlistId: fixedPlaylistId ?? "",
     onTrackAdded: handleTrackAdded
-  }), [searchQuery, searchResults, todayPlaylistId, handleTrackAdded]);
+  }), [searchQuery, searchResults, fixedPlaylistId, handleTrackAdded]);
 
-  if (isLoadingPlaylist || !playlist || !todayPlaylistId) {
+  if (isLoadingPlaylist || !playlist || !fixedPlaylistId) {
     return <Loading />;
   }
 
