@@ -77,11 +77,16 @@ export interface TrackSearchResult {
   };
 }
 
-export async function findSuggestedTrack(excludedTrackIds: string[]): Promise<TrackSearchResult> {
+export async function findSuggestedTrack(excludedTrackIds: string[], currentTrackId?: string | null): Promise<TrackSearchResult> {
   const MAX_GENRE_ATTEMPTS = 3;
   let attempts = 0;
   const genresTried: string[] = [];
   const allTrackDetails: Array<{ name: string; popularity: number; isExcluded: boolean }> = [];
+  
+  // Add current track to excluded IDs if provided
+  const allExcludedIds = currentTrackId 
+    ? [...excludedTrackIds, currentTrackId]
+    : excludedTrackIds;
 
   while (attempts < MAX_GENRE_ATTEMPTS) {
     const genre = getRandomGenre();
@@ -94,12 +99,12 @@ export async function findSuggestedTrack(excludedTrackIds: string[]): Promise<Tr
     const trackDetails = tracks.map(t => ({
       name: t.name,
       popularity: t.popularity,
-      isExcluded: excludedTrackIds.includes(t.id)
+      isExcluded: allExcludedIds.includes(t.id)
     }));
     allTrackDetails.push(...trackDetails);
     console.log('Track details:', trackDetails);
 
-    const selectedTrack = selectRandomTrack(tracks, excludedTrackIds, MIN_TRACK_POPULARITY);
+    const selectedTrack = selectRandomTrack(tracks, allExcludedIds, MIN_TRACK_POPULARITY);
 
     if (selectedTrack) {
       console.log("Found suitable track:", {
@@ -112,7 +117,7 @@ export async function findSuggestedTrack(excludedTrackIds: string[]): Promise<Tr
         searchDetails: {
           attempts: attempts + 1,
           totalTracksFound: allTrackDetails.length,
-          excludedTrackIds,
+          excludedTrackIds: allExcludedIds,
           minPopularity: MIN_TRACK_POPULARITY,
           genresTried,
           trackDetails: allTrackDetails
@@ -139,7 +144,7 @@ export async function findSuggestedTrack(excludedTrackIds: string[]): Promise<Tr
     searchDetails: {
       attempts,
       totalTracksFound: allTrackDetails.length,
-      excludedTrackIds,
+      excludedTrackIds: allExcludedIds,
       minPopularity: MIN_TRACK_POPULARITY,
       genresTried,
       trackDetails: allTrackDetails
