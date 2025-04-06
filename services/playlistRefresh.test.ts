@@ -3,9 +3,15 @@ import { SpotifyApiClient } from './spotifyApi';
 import { SpotifyPlaylistItem, TrackItem } from '@/shared/types';
 
 describe('PlaylistRefreshService', () => {
-  it('should successfully refresh playlist', async () => {
+  let mockSpotifyApi: SpotifyApiClient;
+  let service: PlaylistRefreshServiceImpl;
+
+  beforeEach(() => {
+    // Reset the singleton instance before each test
+    PlaylistRefreshServiceImpl.resetInstance();
+
     // Mock Spotify API client
-    const mockSpotifyApi: SpotifyApiClient = {
+    mockSpotifyApi = {
       getPlaylists: jest.fn().mockResolvedValue({
         items: [{
           id: 'playlist1',
@@ -24,12 +30,24 @@ describe('PlaylistRefreshService', () => {
       addTrackToPlaylist: jest.fn().mockResolvedValue(undefined),
       getPlaybackState: jest.fn().mockResolvedValue({
         is_playing: true
+      }),
+      getQueue: jest.fn().mockResolvedValue({
+        currently_playing: null,
+        queue: []
       })
     };
 
-    // Create service instance with mock
-    const service = new PlaylistRefreshServiceImpl(mockSpotifyApi);
+    // Initialize service with mock
+    service = PlaylistRefreshServiceImpl.getInstance();
+    // @ts-ignore - Override private spotifyApi for testing
+    service['spotifyApi'] = mockSpotifyApi;
+  });
 
+  afterEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it('should successfully refresh playlist', async () => {
     // Call refresh playlist
     const result = await service.refreshPlaylist();
 
