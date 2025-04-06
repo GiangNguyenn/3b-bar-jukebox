@@ -1,25 +1,27 @@
 import { useEffect, useRef } from 'react';
 import { useRemoveTrackFromPlaylist } from './useRemoveTrackFromPlaylist';
-import { filterUpcomingTracks } from '@/lib/utils';
 import { TrackItem, SpotifyPlaybackState } from '@/shared/types';
+import { autoRemoveTrack } from '@/shared/utils/autoRemoveTrack';
 
 interface UseAutoRemoveFinishedTrackProps {
   currentTrackId: string | null;
   playlistTracks: TrackItem[];
   playbackState: SpotifyPlaybackState | null;
+  playlistId: string;
 }
 
 export const useAutoRemoveFinishedTrack = ({
   currentTrackId,
   playlistTracks,
-  playbackState
+  playbackState,
+  playlistId
 }: UseAutoRemoveFinishedTrackProps) => {
   const { removeTrack, isLoading } = useRemoveTrackFromPlaylist();
   const lastRemovalTimeRef = useRef<number>(0);
   const removalTimeoutRef = useRef<NodeJS.Timeout>();
 
   useEffect(() => {
-    if (!currentTrackId || !playbackState || isLoading || !playlistTracks.length) return;
+    if (!currentTrackId || !playbackState || isLoading || !playlistTracks.length || !removeTrack) return;
 
     const currentTrackIndex = playlistTracks.findIndex(track => track.track.id === currentTrackId);
     if (currentTrackIndex === -1 || currentTrackIndex < 5) return;
@@ -30,16 +32,22 @@ export const useAutoRemoveFinishedTrack = ({
     }
 
     // Set a new timeout for the removal
-    removalTimeoutRef.current = setTimeout(() => {
+    removalTimeoutRef.current = setTimeout(async () => {
       const now = Date.now();
       // Only remove if at least 5 seconds have passed since last removal
       if (now - lastRemovalTimeRef.current >= 5000) {
-        console.log('[Auto Remove] Removing oldest track:', playlistTracks[0].track.name);
-        removeTrack(playlistTracks[0]);
-        lastRemovalTimeRef.current = now;
+        await autoRemoveTrack({
+          playlistId,
+          currentTrackId,
+          playlistTracks,
+          playbackState,
+          onSuccess: () => {
+            lastRemovalTimeRef.current = now;
+          }
+        });
       }
     }, 5000);
-  }, [currentTrackId, playlistTracks, playbackState, removeTrack, isLoading]);
+  }, [currentTrackId, playlistTracks, playbackState, removeTrack, isLoading, playlistId]);
 
   // Cleanup timeout on unmount
   useEffect(() => {

@@ -4,6 +4,7 @@ import { sendApiRequest } from '@/shared/api';
 import { ERROR_MESSAGES } from '@/shared/constants/errors';
 import { useGetPlaylist } from '../useGetPlaylist';
 import { TrackItem } from '@/shared/types';
+import { AppError } from '@/shared/utils/errorHandling';
 
 jest.mock('@/shared/api');
 jest.mock('../useGetPlaylist');
@@ -115,7 +116,8 @@ describe('useAddTrackToPlaylist', () => {
       await result.current.addTrack(mockTrack);
     });
 
-    expect(result.current.error).toBe(ERROR_MESSAGES.FAILED_TO_ADD);
+    expect(result.current.error).toBeInstanceOf(AppError);
+    expect(result.current.error?.message).toBe(ERROR_MESSAGES.FAILED_TO_ADD);
     expect(result.current.isSuccess).toBe(false);
   });
 
@@ -126,7 +128,8 @@ describe('useAddTrackToPlaylist', () => {
       await result.current.addTrack(mockTrack);
     });
 
-    expect(result.current.error).toBe(ERROR_MESSAGES.NO_PLAYLIST);
+    expect(result.current.error).toBeInstanceOf(AppError);
+    expect(result.current.error?.message).toBe(ERROR_MESSAGES.NO_PLAYLIST);
     expect(result.current.isSuccess).toBe(false);
   });
 
@@ -144,7 +147,8 @@ describe('useAddTrackToPlaylist', () => {
       await result.current.addTrack(mockTrack);
     });
 
-    expect(result.current.error).toBe('Failed to load playlist');
+    expect(result.current.error).toBeInstanceOf(AppError);
+    expect(result.current.error?.message).toBe('Failed to load playlist');
     expect(result.current.isSuccess).toBe(false);
   });
 });

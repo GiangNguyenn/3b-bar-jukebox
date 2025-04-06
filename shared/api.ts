@@ -51,32 +51,22 @@ export const sendApiRequest = async <T>({
     const response = await fetch(url, {
       method,
       headers,
-      ...(body && { body: JSON.stringify(body) }),
+      body: body ? JSON.stringify(body) : undefined,
       ...config,
     });
 
     if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
+      const errorData = await response.json().catch(() => null);
+      const errorMessage = errorData?.error?.message || `HTTP error! status: ${response.status}`;
       console.error("API request failed:", {
         status: response.status,
         statusText: response.statusText,
-        data: errorData,
+        error: errorData,
         url,
         method,
         requestBody: body ? JSON.stringify(body) : undefined
       });
-
-      // Handle Spotify API error format
-      if (errorData.error) {
-        const spotifyError = errorData as SpotifyErrorResponse;
-        const errorMessage = spotifyError.error.message || 
-                           spotifyError.error.reason || 
-                           `Spotify API error: ${response.status}`;
-        throw new Error(errorMessage);
-      }
-
-      // Handle generic error format
-      throw new Error(errorData.message || `API request failed with status ${response.status}`);
+      throw new Error(errorMessage);
     }
 
     const data = await response.json();
