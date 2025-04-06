@@ -17,15 +17,12 @@ export const useRemoveTrackFromPlaylist = () => {
 
   const removeTrack = async (track: TrackItem) => {
     const operation = async (track: TrackItem) => {
-      console.log('[Remove Track] Removing track', track.track.uri, 'from playlist', fixedPlaylistId);
-      
       try {
         await sendApiRequest({
           path: `playlists/${fixedPlaylistId}/tracks`,
           method: 'DELETE',
           body: { tracks: [{ uri: track.track.uri }] }
         });
-        console.log('[Remove Track] Track removed successfully, refreshing playlist');
       } catch (error) {
         throw handleApiError(error, 'RemoveTrackFromPlaylist');
       }

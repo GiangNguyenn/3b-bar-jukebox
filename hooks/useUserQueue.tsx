@@ -8,14 +8,11 @@ const userId = process.env.NEXT_PUBLIC_SPOTIFY_USER_ID ?? "";
 
 export const useUserQueue = (id: string) => {
   const fetcher = async () => {
-    console.log(`[User Queue] Fetching queue for user ${userId}`);
-    
     return handleOperationError(
       async () => {
         const response = await sendApiRequest<UserQueue>({
           path: `me/player/queue`,
         });
-        console.log(`[User Queue] Successfully fetched queue with ${response.queue.length} tracks`);
         return response;
       },
       "UserQueue",

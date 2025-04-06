@@ -25,10 +25,8 @@ export const useFixedPlaylist = () => {
         (playlist) => playlist.name === FIXED_PLAYLIST_NAME
       );
       if (existingPlaylist) {
-        console.log(`[Fixed Playlist] Found playlist: ${FIXED_PLAYLIST_NAME} (ID: ${existingPlaylist.id})`);
         setFixedPlaylistId(existingPlaylist.id);
       } else {
-        console.log(`[Fixed Playlist] No playlist found with name: ${FIXED_PLAYLIST_NAME}`);
         setError(ERROR_MESSAGES.FAILED_TO_LOAD);
       }
     }
@@ -51,7 +49,6 @@ export const useFixedPlaylist = () => {
 
   // No-op since we don't create playlists anymore
   const createPlaylist = async (): Promise<SpotifyPlaylistItem | null> => {
-    console.log('[Fixed Playlist] Creating playlists is disabled, using fixed playlist instead');
     return null;
   };
 

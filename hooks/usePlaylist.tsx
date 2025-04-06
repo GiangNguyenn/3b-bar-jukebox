@@ -11,11 +11,9 @@ const fetcher = async (playlistId: string) => {
   
   return handleOperationError(
     async () => {
-      console.log(`[Playlist] Fetching playlist: ${playlistId}`);
       const result = await sendApiRequest<SpotifyPlaylistItem>({
         path: `playlists/${playlistId}`,
       });
-      console.log(`[Playlist] Successfully fetched playlist: ${playlistId}`);
       return result;
     },
     'PlaylistFetcher',
@@ -28,11 +26,9 @@ const fetcher = async (playlistId: string) => {
 const currentlyPlayingFetcher = async () => {
   return handleOperationError(
     async () => {
-      console.log('[Playlist] Fetching currently playing track');
       const result = await sendApiRequest<SpotifyPlaybackState>({
         path: "me/player/currently-playing",
       });
-      console.log('[Playlist] Successfully fetched currently playing track');
       return result;
     },
     'CurrentlyPlayingFetcher',
@@ -72,9 +68,7 @@ export const usePlaylist = (playlistId: string | null) => {
 
   const handleRefresh = useCallback(async () => {
     try {
-      console.log(`[Playlist] Refreshing playlist: ${playlistId}`);
       await refreshPlaylist();
-      console.log(`[Playlist] Successfully refreshed playlist: ${playlistId}`);
     } catch (error) {
       console.error(`[Playlist] Error refreshing playlist ${playlistId}:`, error);
       throw error;

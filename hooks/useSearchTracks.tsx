@@ -31,15 +31,17 @@ const useSearchTracks = () => {
     setError(null);
 
     try {
-      console.log(`[Search Tracks] Searching for: ${query}`);
-      
       const response = await handleOperationError(
         async () => {
           const result = await sendApiRequest<{ tracks: SpotifySearchResponse }>({
             path: `search?q=${query}&type=track&limit=20`,
             method: "GET",
           });
-          console.log(`[Search Tracks] Found ${result.tracks.items.length} tracks`);
+          
+          if (!result.tracks?.items) {
+            throw new AppError(ERROR_MESSAGES.MALFORMED_RESPONSE, 'SearchTracks');
+          }
+          
           return result.tracks.items;
         },
         'SearchTracks',
@@ -49,7 +51,7 @@ const useSearchTracks = () => {
         }
       );
 
-      return response;
+      return response ?? [];
     } catch (error) {
       // Error is already handled by handleOperationError
       return [];
