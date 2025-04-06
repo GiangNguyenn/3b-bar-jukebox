@@ -1,19 +1,20 @@
 import { useEffect, useRef } from 'react';
 import { useRemoveTrackFromPlaylist } from './useRemoveTrackFromPlaylist';
-import { filterUpcomingTracks } from '@/lib/utils';
 import { TrackItem, SpotifyPlaybackState } from '@/shared/types';
-import { handleOperationError } from '@/shared/utils/errorHandling';
+import { autoRemoveTrack } from '@/shared/utils/autoRemoveTrack';
 
 interface UseAutoRemoveFinishedTrackProps {
   currentTrackId: string | null;
   playlistTracks: TrackItem[];
   playbackState: SpotifyPlaybackState | null;
+  playlistId: string;
 }
 
 export const useAutoRemoveFinishedTrack = ({
   currentTrackId,
   playlistTracks,
-  playbackState
+  playbackState,
+  playlistId
 }: UseAutoRemoveFinishedTrackProps) => {
   const { removeTrack, isLoading } = useRemoveTrackFromPlaylist();
   const lastRemovalTimeRef = useRef<number>(0);
@@ -35,23 +36,18 @@ export const useAutoRemoveFinishedTrack = ({
       const now = Date.now();
       // Only remove if at least 5 seconds have passed since last removal
       if (now - lastRemovalTimeRef.current >= 5000) {
-        const trackToRemove = playlistTracks[0];
-        console.log('[Auto Remove] Removing oldest track:', trackToRemove.track.name);
-        
-        try {
-          await handleOperationError(
-            () => removeTrack(trackToRemove),
-            'AutoRemoveFinishedTrack',
-            (error) => console.error('[Auto Remove] Error removing track:', error)
-          );
-          lastRemovalTimeRef.current = now;
-        } catch (error) {
-          // Error is already logged by handleOperationError
-          return;
-        }
+        await autoRemoveTrack({
+          playlistId,
+          currentTrackId,
+          playlistTracks,
+          playbackState,
+          onSuccess: () => {
+            lastRemovalTimeRef.current = now;
+          }
+        });
       }
     }, 5000);
-  }, [currentTrackId, playlistTracks, playbackState, removeTrack, isLoading]);
+  }, [currentTrackId, playlistTracks, playbackState, removeTrack, isLoading, playlistId]);
 
   // Cleanup timeout on unmount
   useEffect(() => {

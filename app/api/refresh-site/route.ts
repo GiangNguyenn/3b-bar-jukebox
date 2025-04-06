@@ -5,6 +5,7 @@ import { ERROR_MESSAGES } from "@/shared/constants/errors";
 import { findSuggestedTrack, TrackSearchResult } from "@/services/trackSuggestion";
 import { sendApiRequest } from "@/shared/api";
 import { filterUpcomingTracks } from "@/lib/utils";
+import { autoRemoveTrack } from '@/shared/utils/autoRemoveTrack';
 
 const MAX_RETRIES = 3;
 const RETRY_DELAY_MS = 1000;
@@ -311,18 +312,6 @@ async function addSuggestedTrackToPlaylist(upcomingTracks: TrackItem[], playlist
   }
 }
 
-interface ErrorDetails {
-  message?: string;
-  status?: number;
-  statusText?: string;
-  error?: {
-    message?: string;
-  };
-  requestUrl?: string;
-  requestMethod?: string;
-  responseHeaders?: Record<string, string>;
-}
-
 export async function GET(request: Request) {
   try {
     const force = new URL(request.url).searchParams.get('force') === 'true';
@@ -363,6 +352,15 @@ export async function GET(request: Request) {
       playlistTrackIds: playlist.tracks.items.map(t => t.track.id),
       upcomingTrackIds: upcomingTracks.map(t => t.track.id)
     });
+
+    // Try to auto-remove finished tracks
+    const playbackState = await sendApiRequest<SpotifyPlaybackState>({ path: "me/player" });
+    const removedTrack = await autoRemoveTrack({
+      playlistId: playlist.id,
+      currentTrackId,
+      playlistTracks: playlist.tracks.items,
+      playbackState
+    });
     
     // Add diagnostic information to the response
     const diagnosticInfo = {
@@ -370,7 +368,8 @@ export async function GET(request: Request) {
       totalTracks: playlist.tracks.items.length,
       upcomingTracksCount: upcomingTracks.length,
       playlistTrackIds: playlist.tracks.items.map(t => t.track.id),
-      upcomingTrackIds: upcomingTracks.map(t => t.track.id)
+      upcomingTrackIds: upcomingTracks.map(t => t.track.id),
+      removedTrack
     };
     
     log.info('Adding suggested track to playlist');
