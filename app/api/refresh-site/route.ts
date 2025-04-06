@@ -4,7 +4,6 @@ import { COOLDOWN_MS, MAX_PLAYLIST_LENGTH } from "@/shared/constants/trackSugges
 import { ERROR_MESSAGES } from "@/shared/constants/errors";
 import { findSuggestedTrack, TrackSearchResult } from "@/services/trackSuggestion";
 import { sendApiRequest } from "@/shared/api";
-import { formatDateForPlaylist } from "@/shared/utils/date";
 import { filterUpcomingTracks } from "@/lib/utils";
 
 const MAX_RETRIES = 3;
