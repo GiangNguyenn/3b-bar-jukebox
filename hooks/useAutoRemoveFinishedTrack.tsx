@@ -19,7 +19,7 @@ export const useAutoRemoveFinishedTrack = ({
   const removalTimeoutRef = useRef<NodeJS.Timeout>();
 
   useEffect(() => {
-    if (!currentTrackId || !playbackState || isLoading || !playlistTracks.length) return;
+    if (!currentTrackId || !playbackState || isLoading || !playlistTracks.length || !removeTrack) return;
 
     const currentTrackIndex = playlistTracks.findIndex(track => track.track.id === currentTrackId);
     if (currentTrackIndex === -1 || currentTrackIndex < 5) return;
