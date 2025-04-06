@@ -17,7 +17,6 @@ export const useGetPlaylist = (id: string) => {
     const { data, error, mutate } = useSWR(`playlist-${id}`, fetcher);
 
     const refetchPlaylist = async () => {
-        console.log('[Get Playlist] Refetching playlist...');
         await handleOperationError(
             async () => {
                 await mutate(async () => {
@@ -30,7 +29,6 @@ export const useGetPlaylist = (id: string) => {
                     populateCache: true,
                     rollbackOnError: true,
                 });
-                console.log('[Get Playlist] Playlist refetched successfully');
             },
             'Get Playlist'
         );

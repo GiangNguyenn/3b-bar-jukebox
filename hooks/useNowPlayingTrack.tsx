@@ -8,11 +8,9 @@ const useNowPlayingTrack = () => {
   const fetcher = async () => {
     return handleOperationError(
       async () => {
-        console.log('[useNowPlayingTrack] Fetching current track');
         const response = await sendApiRequest<SpotifyPlaybackState>({
           path: "me/player/currently-playing",
         });
-        console.log('[useNowPlayingTrack] Current track:', response?.item?.id);
         return response;
       },
       'useNowPlayingTrack',
