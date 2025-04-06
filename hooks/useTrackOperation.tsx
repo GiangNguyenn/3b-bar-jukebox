@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { TrackItem } from '@/shared/types';
 import { ERROR_MESSAGES } from '@/shared/constants/errors';
 import { sendApiRequest } from '@/shared/api';
+import { handleOperationError, AppError } from '@/shared/utils/errorHandling';
 
 interface UseTrackOperationProps {
   playlistId: string | null;
@@ -11,7 +12,7 @@ interface UseTrackOperationProps {
 
 interface TrackOperationState {
   isLoading: boolean;
-  error: string | null;
+  error: AppError | null;
   isSuccess: boolean;
 }
 
@@ -25,49 +26,56 @@ export const useTrackOperation = ({
   executeOperation: (operation: TrackOperation, track: TrackItem) => Promise<void>;
 } => {
   const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<string | null>(() => {
-    if (!playlistId) return ERROR_MESSAGES.NO_PLAYLIST;
-    if (playlistError) return 'Failed to load playlist';
+  const [error, setError] = useState<AppError | null>(() => {
+    if (!playlistId) return new AppError(ERROR_MESSAGES.NO_PLAYLIST, null, 'TrackOperation');
+    if (playlistError) return new AppError(ERROR_MESSAGES.FAILED_TO_LOAD, null, 'TrackOperation');
     return null;
   });
   const [isSuccess, setIsSuccess] = useState(false);
 
   useEffect(() => {
     if (!playlistId) {
-      setError(ERROR_MESSAGES.NO_PLAYLIST);
+      setError(new AppError(ERROR_MESSAGES.NO_PLAYLIST, null, 'TrackOperation'));
       setIsSuccess(false);
     } else if (playlistError) {
-      setError('Failed to load playlist');
+      setError(new AppError(ERROR_MESSAGES.FAILED_TO_LOAD, null, 'TrackOperation'));
       setIsSuccess(false);
     }
   }, [playlistId, playlistError]);
 
   const executeOperation = async (operation: TrackOperation, track: TrackItem) => {
     if (!playlistId) {
-      setError(ERROR_MESSAGES.NO_PLAYLIST);
+      const error = new AppError(ERROR_MESSAGES.NO_PLAYLIST, null, 'TrackOperation');
+      setError(error);
       setIsSuccess(false);
-      throw new Error(ERROR_MESSAGES.NO_PLAYLIST);
+      throw error;
     }
 
     if (playlistError) {
-      setError('Failed to load playlist');
+      const error = new AppError(ERROR_MESSAGES.FAILED_TO_LOAD, null, 'TrackOperation');
+      setError(error);
       setIsSuccess(false);
-      throw new Error('Failed to load playlist');
+      throw error;
     }
 
     setIsLoading(true);
     setIsSuccess(false);
 
     try {
-      await operation(track);
-      await refetchPlaylist();
-      setIsSuccess(true);
-      setError(null);
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Operation failed';
-      setError(errorMessage);
-      setIsSuccess(false);
-      throw error;
+      await handleOperationError(
+        async () => {
+          await operation(track);
+          await refetchPlaylist();
+          setIsSuccess(true);
+          setError(null);
+        },
+        'TrackOperation',
+        (error) => {
+          setError(error);
+          setIsSuccess(false);
+          throw error;
+        }
+      );
     } finally {
       setIsLoading(false);
     }

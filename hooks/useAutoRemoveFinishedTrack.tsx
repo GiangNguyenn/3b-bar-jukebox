@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react';
 import { useRemoveTrackFromPlaylist } from './useRemoveTrackFromPlaylist';
 import { filterUpcomingTracks } from '@/lib/utils';
 import { TrackItem, SpotifyPlaybackState } from '@/shared/types';
+import { handleOperationError } from '@/shared/utils/errorHandling';
 
 interface UseAutoRemoveFinishedTrackProps {
   currentTrackId: string | null;
@@ -30,13 +31,24 @@ export const useAutoRemoveFinishedTrack = ({
     }
 
     // Set a new timeout for the removal
-    removalTimeoutRef.current = setTimeout(() => {
+    removalTimeoutRef.current = setTimeout(async () => {
       const now = Date.now();
       // Only remove if at least 5 seconds have passed since last removal
       if (now - lastRemovalTimeRef.current >= 5000) {
-        console.log('[Auto Remove] Removing oldest track:', playlistTracks[0].track.name);
-        removeTrack(playlistTracks[0]);
-        lastRemovalTimeRef.current = now;
+        const trackToRemove = playlistTracks[0];
+        console.log('[Auto Remove] Removing oldest track:', trackToRemove.track.name);
+        
+        try {
+          await handleOperationError(
+            () => removeTrack(trackToRemove),
+            'AutoRemoveFinishedTrack',
+            (error) => console.error('[Auto Remove] Error removing track:', error)
+          );
+          lastRemovalTimeRef.current = now;
+        } catch (error) {
+          // Error is already logged by handleOperationError
+          return;
+        }
       }
     }, 5000);
   }, [currentTrackId, playlistTracks, playbackState, removeTrack, isLoading]);
