@@ -7,21 +7,21 @@ import { handleApiError, handleOperationError } from '@/shared/utils/errorHandli
 import { ERROR_MESSAGES } from '@/shared/constants/errors';
 
 export const useRemoveTrackFromPlaylist = () => {
-  const { todayPlaylistId, error: createPlaylistError } = useFixedPlaylist();
-  const { isError: playlistError, refetchPlaylist } = useGetPlaylist(todayPlaylistId ?? '');
+  const { fixedPlaylistId, error: createPlaylistError } = useFixedPlaylist();
+  const { isError: playlistError, refetchPlaylist } = useGetPlaylist(fixedPlaylistId ?? '');
   const { isLoading, error, isSuccess, executeOperation } = useTrackOperation({
-    playlistId: todayPlaylistId,
+    playlistId: fixedPlaylistId,
     playlistError: playlistError || !!createPlaylistError,
     refetchPlaylist
   });
 
   const removeTrack = async (track: TrackItem) => {
     const operation = async (track: TrackItem) => {
-      console.log('[Remove Track] Removing track', track.track.uri, 'from playlist', todayPlaylistId);
+      console.log('[Remove Track] Removing track', track.track.uri, 'from playlist', fixedPlaylistId);
       
       try {
         await sendApiRequest({
-          path: `playlists/${todayPlaylistId}/tracks`,
+          path: `playlists/${fixedPlaylistId}/tracks`,
           method: 'DELETE',
           body: { tracks: [{ uri: track.track.uri }] }
         });
@@ -39,7 +39,7 @@ export const useRemoveTrackFromPlaylist = () => {
   };
 
   return {
-    removeTrack: todayPlaylistId ? removeTrack : null,
+    removeTrack: fixedPlaylistId ? removeTrack : null,
     isLoading,
     error,
     isSuccess

@@ -14,7 +14,7 @@ export const useGetPlaylist = (id: string) => {
         });
     };
 
-    const { data, error, mutate } = useSWR(`playlist ${id}`, fetcher);
+    const { data, error, mutate } = useSWR(`playlist-${id}`, fetcher);
 
     const refetchPlaylist = async () => {
         console.log('[Get Playlist] Refetching playlist...');

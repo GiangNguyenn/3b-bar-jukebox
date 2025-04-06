@@ -82,7 +82,7 @@ describe('useRemoveTrackFromPlaylist', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     (useFixedPlaylist as jest.Mock).mockReturnValue({
-      todayPlaylistId: mockPlaylistId,
+      fixedPlaylistId: mockPlaylistId,
       error: null
     });
     (useGetPlaylist as jest.Mock).mockReturnValue({
@@ -142,7 +142,7 @@ describe('useRemoveTrackFromPlaylist', () => {
 
   it('should handle missing playlist ID', async () => {
     (useFixedPlaylist as jest.Mock).mockReturnValue({
-      todayPlaylistId: null,
+      fixedPlaylistId: null,
       error: null
     });
 
