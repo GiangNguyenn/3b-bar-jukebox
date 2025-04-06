@@ -116,7 +116,10 @@ describe('GET /api/refresh-site', () => {
     const response = await GET(request);
 
     expect(response.status).toBe(500);
-    expect(await response.json()).toEqual({ success: false });
+    expect(await response.json()).toEqual({ 
+      success: false,
+      message: 'Invalid URL'
+    });
   });
 
   it('should handle service errors gracefully', async () => {
@@ -128,7 +131,10 @@ describe('GET /api/refresh-site', () => {
     const response = await GET(request);
 
     expect(response.status).toBe(500);
-    expect(await response.json()).toEqual({ success: false });
+    expect(await response.json()).toEqual({ 
+      success: false,
+      message: 'Failed to load playlist'
+    });
   });
 
   it('should handle unexpected errors gracefully', async () => {
@@ -140,6 +146,9 @@ describe('GET /api/refresh-site', () => {
     const response = await GET(request);
 
     expect(response.status).toBe(500);
-    expect(await response.json()).toEqual({ success: false });
+    expect(await response.json()).toEqual({ 
+      success: false,
+      message: 'Unexpected error'
+    });
   });
 }); 

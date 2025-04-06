@@ -41,6 +41,11 @@ export class PlaylistRefreshServiceImpl implements PlaylistRefreshService {
     return PlaylistRefreshServiceImpl.instance;
   }
 
+  // For testing purposes only
+  public static resetInstance(): void {
+    PlaylistRefreshServiceImpl.instance = undefined as any;
+  }
+
   private async getFixedPlaylist(): Promise<SpotifyPlaylistItem | null> {
     const playlists = await this.spotifyApi.getPlaylists();
     const fixedPlaylist = playlists.items.find(
@@ -77,9 +82,11 @@ export class PlaylistRefreshServiceImpl implements PlaylistRefreshService {
 
   private async addSuggestedTrackToPlaylist(
     upcomingTracks: TrackItem[],
-    playlistId: string
+    playlistId: string,
+    currentTrackId: string | null,
+    allPlaylistTracks: TrackItem[]
   ): Promise<{ success: boolean; error?: string; searchDetails?: unknown }> {
-    const existingTrackIds = upcomingTracks.map(t => t.track.id);
+    const existingTrackIds = allPlaylistTracks.map(t => t.track.id);
     const now = Date.now();
     
     if (now - this.lastAddTime < COOLDOWN_MS) {
@@ -96,7 +103,7 @@ export class PlaylistRefreshServiceImpl implements PlaylistRefreshService {
       let searchDetails: unknown;
 
       while (!success && retryCount < this.MAX_RETRIES) {
-        const result = await findSuggestedTrack(existingTrackIds);
+        const result = await findSuggestedTrack(existingTrackIds, currentTrackId);
         
         if (!result.track) {
           retryCount++;
@@ -194,7 +201,12 @@ export class PlaylistRefreshServiceImpl implements PlaylistRefreshService {
         removedTrack
       };
       
-      const result = await this.addSuggestedTrackToPlaylist(upcomingTracks, playlist.id);
+      const result = await this.addSuggestedTrackToPlaylist(
+        upcomingTracks,
+        playlist.id,
+        currentTrackId,
+        playlist.tracks.items
+      );
       
       if (!result.success) {
         return {
