@@ -4,18 +4,42 @@ import { ERROR_MESSAGES } from '@/shared/constants/errors';
 import { filterUpcomingTracks } from '@/lib/utils';
 import useSWR from 'swr';
 import { sendApiRequest } from '@/shared/api';
+import { handleOperationError, AppError } from '@/shared/utils/errorHandling';
 
 const fetcher = async (playlistId: string) => {
   if (!playlistId) return null;
-  return sendApiRequest<SpotifyPlaylistItem>({
-    path: `playlists/${playlistId}`,
-  });
+  
+  return handleOperationError(
+    async () => {
+      console.log(`[Playlist] Fetching playlist: ${playlistId}`);
+      const result = await sendApiRequest<SpotifyPlaylistItem>({
+        path: `playlists/${playlistId}`,
+      });
+      console.log(`[Playlist] Successfully fetched playlist: ${playlistId}`);
+      return result;
+    },
+    'PlaylistFetcher',
+    (error) => {
+      console.error(`[Playlist] Error fetching playlist ${playlistId}:`, error);
+    }
+  );
 };
 
 const currentlyPlayingFetcher = async () => {
-  return sendApiRequest<SpotifyPlaybackState>({
-    path: "me/player/currently-playing",
-  });
+  return handleOperationError(
+    async () => {
+      console.log('[Playlist] Fetching currently playing track');
+      const result = await sendApiRequest<SpotifyPlaybackState>({
+        path: "me/player/currently-playing",
+      });
+      console.log('[Playlist] Successfully fetched currently playing track');
+      return result;
+    },
+    'CurrentlyPlayingFetcher',
+    (error) => {
+      console.error('[Playlist] Error fetching currently playing track:', error);
+    }
+  );
 };
 
 export const usePlaylist = (playlistId: string | null) => {
@@ -47,14 +71,21 @@ export const usePlaylist = (playlistId: string | null) => {
   }, [playlist, playbackState?.item?.id]);
 
   const handleRefresh = useCallback(async () => {
-    await refreshPlaylist();
-  }, [refreshPlaylist]);
+    try {
+      console.log(`[Playlist] Refreshing playlist: ${playlistId}`);
+      await refreshPlaylist();
+      console.log(`[Playlist] Successfully refreshed playlist: ${playlistId}`);
+    } catch (error) {
+      console.error(`[Playlist] Error refreshing playlist ${playlistId}:`, error);
+      throw error;
+    }
+  }, [refreshPlaylist, playlistId]);
 
   return {
     playlist,
     upcomingTracks,
     isLoading: !error && !playlist,
-    error: error ? ERROR_MESSAGES.FAILED_TO_LOAD : null,
+    error: error ? (error instanceof AppError ? error : new AppError(ERROR_MESSAGES.FAILED_TO_LOAD, error, 'usePlaylist')) : null,
     refreshPlaylist: handleRefresh
   };
 }; 

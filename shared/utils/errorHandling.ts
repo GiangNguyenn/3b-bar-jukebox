@@ -44,13 +44,13 @@ export const handleApiError = (error: unknown, context: string): AppError => {
   return new AppError(errorMessage, error, context);
 };
 
-export const handleOperationError = async (
-  operation: () => Promise<void>,
+export const handleOperationError = async <T>(
+  operation: () => Promise<T>,
   context: string,
   onError?: (error: AppError) => void
-): Promise<void> => {
+): Promise<T> => {
   try {
-    await operation();
+    return await operation();
   } catch (error) {
     const appError = handleApiError(error, context);
     onError?.(appError);

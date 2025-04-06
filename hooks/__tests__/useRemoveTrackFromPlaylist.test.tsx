@@ -5,6 +5,7 @@ import { useFixedPlaylist } from '../useFixedPlaylist';
 import { sendApiRequest } from '@/shared/api';
 import { TrackItem } from '@/shared/types';
 import { ERROR_MESSAGES } from '@/shared/constants/errors';
+import { AppError } from '@/shared/utils/errorHandling';
 
 jest.mock('../useGetPlaylist');
 jest.mock('../useFixedPlaylist');
@@ -148,6 +149,7 @@ describe('useRemoveTrackFromPlaylist', () => {
     const { result } = renderHook(() => useRemoveTrackFromPlaylist());
 
     expect(result.current.removeTrack).toBeNull();
-    expect(result.current.error).toBe(ERROR_MESSAGES.NO_PLAYLIST);
+    expect(result.current.error).toBeInstanceOf(AppError);
+    expect(result.current.error?.message).toBe(ERROR_MESSAGES.NO_PLAYLIST);
   });
 }); 

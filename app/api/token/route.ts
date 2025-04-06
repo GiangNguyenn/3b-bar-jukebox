@@ -1,4 +1,6 @@
 import { NextResponse } from "next/server";
+import { handleOperationError, AppError } from "@/shared/utils/errorHandling";
+import { ERROR_MESSAGES } from "@/shared/constants/errors";
 
 const SPOTIFY_TOKEN_URL = "https://accounts.spotify.com/api/token";
 const CLIENT_ID = process.env.SPOTIFY_CLIENT_ID ?? "";
@@ -17,19 +19,11 @@ export async function GET() {
     console.log('===========================\n');
 
     if (!refreshToken) {
-      console.error('\n[ERROR] No refresh token available');
-      return NextResponse.json(
-        { error: "No refresh token available" },
-        { status: 500 }
-      );
+      throw new AppError(ERROR_MESSAGES.UNAUTHORIZED, undefined, "TokenRefresh");
     }
 
     if (!CLIENT_ID || !CLIENT_SECRET) {
-      console.error('\n[ERROR] Missing Spotify credentials');
-      return NextResponse.json(
-        { error: "Missing Spotify credentials" },
-        { status: 500 }
-      );
+      throw new AppError(ERROR_MESSAGES.UNAUTHORIZED, undefined, "TokenRefresh");
     }
 
     const auth = Buffer.from(`${CLIENT_ID}:${CLIENT_SECRET}`).toString('base64');
@@ -57,16 +51,14 @@ export async function GET() {
         headers: Object.fromEntries(response.headers.entries())
       });
       
-      return NextResponse.json(
-        { 
-          error: "Failed to refresh token",
-          details: {
-            status: response.status,
-            statusText: response.statusText,
-            error: errorData
-          }
+      throw new AppError(
+        ERROR_MESSAGES.UNAUTHORIZED,
+        {
+          status: response.status,
+          statusText: response.statusText,
+          error: errorData
         },
-        { status: response.status }
+        "TokenRefresh"
       );
     }
 
@@ -76,13 +68,16 @@ export async function GET() {
     return NextResponse.json(data);
   } catch (error) {
     console.error('\n[ERROR] Unexpected error in token refresh:', error);
+    const appError = error instanceof AppError ? error : new AppError(
+      ERROR_MESSAGES.GENERIC_ERROR,
+      error,
+      "TokenRefresh"
+    );
+    
     return NextResponse.json(
       { 
-        error: "Failed to refresh token",
-        details: error instanceof Error ? {
-          message: error.message,
-          stack: error.stack
-        } : error
+        error: appError.message,
+        details: appError.originalError
       },
       { status: 500 }
     );

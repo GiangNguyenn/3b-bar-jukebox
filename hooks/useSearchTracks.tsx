@@ -1,19 +1,8 @@
 import { useCallback, useState } from "react";
 import { sendApiRequest } from "../shared/api";
 import { TrackDetails } from "@/shared/types";
-import { ERROR_MESSAGES, ErrorMessage } from "@/shared/constants/errors";
-import { handleApiError, AppError } from "@/shared/utils/errorHandling";
-
-interface ApiError {
-  message?: string;
-  error?: {
-    message?: string;
-    status?: number;
-  };
-  details?: {
-    errorMessage?: string;
-  };
-}
+import { ERROR_MESSAGES } from "@/shared/constants/errors";
+import { handleApiError, handleOperationError, AppError } from "@/shared/utils/errorHandling";
 
 export interface SpotifySearchRequest {
   query: string;
@@ -35,7 +24,7 @@ interface SpotifySearchResponse {
 
 const useSearchTracks = () => {
   const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<ErrorMessage | null>(null);
+  const [error, setError] = useState<AppError | null>(null);
 
   const searchTracks = useCallback(async (query: string) => {
     setIsLoading(true);
@@ -43,16 +32,26 @@ const useSearchTracks = () => {
 
     try {
       console.log(`[Search Tracks] Searching for: ${query}`);
-      const response = await sendApiRequest<{ tracks: SpotifySearchResponse }>({
-        path: `search?q=${query}&type=track&limit=20`,
-        method: "GET",
-      });
+      
+      const response = await handleOperationError(
+        async () => {
+          const result = await sendApiRequest<{ tracks: SpotifySearchResponse }>({
+            path: `search?q=${query}&type=track&limit=20`,
+            method: "GET",
+          });
+          console.log(`[Search Tracks] Found ${result.tracks.items.length} tracks`);
+          return result.tracks.items;
+        },
+        'SearchTracks',
+        (error) => {
+          console.error('[Search Tracks] Error during search:', error);
+          setError(error);
+        }
+      );
 
-      console.log(`[Search Tracks] Found ${response.tracks.items.length} tracks`);
-      return response.tracks.items;
+      return response;
     } catch (error) {
-      const appError = handleApiError(error, 'Search Tracks');
-      setError(appError.message);
+      // Error is already handled by handleOperationError
       return [];
     } finally {
       setIsLoading(false);
