@@ -11,6 +11,9 @@ export const DEBOUNCE_MS = 10000;
 // 90–100: Global megahits 
 export const MIN_TRACK_POPULARITY = 50;
 
+// Default market for track search (Vietnam)
+export const DEFAULT_MARKET = 'VN';
+
 // API endpoints
 export const SPOTIFY_SEARCH_ENDPOINT = "search";
 
