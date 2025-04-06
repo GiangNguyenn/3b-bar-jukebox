@@ -1,26 +1,64 @@
 import { renderHook, act } from '@testing-library/react-hooks';
 import { useAutoRemoveFinishedTrack } from '../useAutoRemoveFinishedTrack';
-import { useRemoveTrackFromPlaylist } from '../useRemoveTrackFromPlaylist';
 import { TrackItem, SpotifyPlaybackState } from '@/shared/types';
-import { jest, describe, beforeEach, afterEach, it, expect } from '@jest/globals';
+import { jest } from '@jest/globals';
+import { sendApiRequest } from '@/shared/api';
 
-// Mock the useRemoveTrackFromPlaylist hook
-const mockRemoveTrack = jest.fn().mockImplementation(() => Promise.resolve());
+// Mock fetch globally
+global.fetch = jest.fn(() => 
+  Promise.resolve({
+    ok: true,
+    json: () => Promise.resolve({ access_token: 'mock-token' }),
+    status: 200,
+    statusText: 'OK',
+    headers: new Headers(),
+    body: null,
+    bodyUsed: false,
+    arrayBuffer: () => Promise.resolve(new ArrayBuffer(0)),
+    blob: () => Promise.resolve(new Blob()),
+    formData: () => Promise.resolve(new FormData()),
+    text: () => Promise.resolve('')
+  } as Response)
+) as unknown as typeof fetch;
 
-// Use a different approach for mocking
-jest.mock('../useRemoveTrackFromPlaylist', () => {
-  return {
-    useRemoveTrackFromPlaylist: () => ({
-      removeTrack: mockRemoveTrack,
-      isLoading: false,
-      isSuccess: false,
-      error: null
-    })
-  };
+// Mock useRemoveTrackFromPlaylist
+jest.mock('../useRemoveTrackFromPlaylist', () => ({
+  useRemoveTrackFromPlaylist: () => ({
+    removeTrack: async (track: any) => {
+      await mockSendApiRequest({
+        path: 'playlists/test-playlist-id/tracks',
+        method: 'DELETE',
+        body: {
+          tracks: [{ uri: `spotify:track:${track.track.id}` }]
+        }
+      });
+    },
+    isLoading: false
+  })
+}));
+
+// Mock sendApiRequest
+jest.mock('@/shared/api');
+
+const mockSendApiRequest = sendApiRequest as jest.MockedFunction<typeof sendApiRequest>;
+
+beforeEach(() => {
+  jest.clearAllTimers();
+  mockSendApiRequest.mockClear();
+  mockSendApiRequest.mockImplementation(async (params) => {
+    if (params.path === 'playlists/test-playlist-id/tracks' && params.method === 'DELETE') {
+      return { snapshot_id: 'mock-snapshot-id' } as any;
+    }
+    throw new Error(`Unexpected API call: ${params.path}`);
+  });
 });
 
-// Mock timers
-jest.useFakeTimers();
+afterEach(() => {
+  jest.clearAllTimers();
+  mockSendApiRequest.mockClear();
+});
+
+const mockTimers = jest.useFakeTimers();
 
 const createMockTrack = (id: string): TrackItem => ({
   added_at: '2024-01-01T00:00:00Z',
@@ -137,7 +175,6 @@ const createMockPlaybackState = (id: string): SpotifyPlaybackState => {
 
 describe('useAutoRemoveFinishedTrack', () => {
   beforeEach(() => {
-    mockRemoveTrack.mockClear();
     jest.clearAllTimers();
   });
 
@@ -152,7 +189,8 @@ describe('useAutoRemoveFinishedTrack', () => {
     renderHook(() => useAutoRemoveFinishedTrack({
       currentTrackId: 'track-5',
       playlistTracks: tracks,
-      playbackState
+      playbackState,
+      playlistId: 'test-playlist-id'
     }));
 
     // Fast-forward time by 5 seconds
@@ -160,7 +198,13 @@ describe('useAutoRemoveFinishedTrack', () => {
       jest.advanceTimersByTime(5000);
     });
 
-    expect(mockRemoveTrack).toHaveBeenCalledWith(tracks[0]);
+    expect(sendApiRequest).toHaveBeenCalledWith({
+      path: 'playlists/test-playlist-id/tracks',
+      method: 'DELETE',
+      body: {
+        tracks: [{ uri: 'spotify:track:track-0' }]
+      }
+    });
   });
 
   it('should not remove any track when current track index is < 5', async () => {
@@ -170,7 +214,8 @@ describe('useAutoRemoveFinishedTrack', () => {
     renderHook(() => useAutoRemoveFinishedTrack({
       currentTrackId: 'track-3',
       playlistTracks: tracks,
-      playbackState
+      playbackState,
+      playlistId: 'test-playlist-id'
     }));
 
     // Fast-forward time by 5 seconds
@@ -178,7 +223,7 @@ describe('useAutoRemoveFinishedTrack', () => {
       jest.advanceTimersByTime(5000);
     });
 
-    expect(mockRemoveTrack).not.toHaveBeenCalled();
+    expect(sendApiRequest).not.toHaveBeenCalled();
   });
 
   it('should not remove any track when playlist is empty', async () => {
@@ -187,7 +232,8 @@ describe('useAutoRemoveFinishedTrack', () => {
     renderHook(() => useAutoRemoveFinishedTrack({
       currentTrackId: 'track-5',
       playlistTracks: [],
-      playbackState
+      playbackState,
+      playlistId: 'test-playlist-id'
     }));
 
     // Fast-forward time by 5 seconds
@@ -195,6 +241,6 @@ describe('useAutoRemoveFinishedTrack', () => {
       jest.advanceTimersByTime(5000);
     });
 
-    expect(mockRemoveTrack).not.toHaveBeenCalled();
+    expect(sendApiRequest).not.toHaveBeenCalled();
   });
 }); 
