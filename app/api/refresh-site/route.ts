@@ -1,3 +1,6 @@
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
 import { NextResponse } from 'next/server';
 import { PlaylistRefreshServiceImpl } from '@/services/playlistRefresh';
 import { AppError } from '@/shared/utils/errorHandling';
@@ -20,6 +23,11 @@ export async function GET(request: Request) {
     });
   } catch (error) {
     console.error('Error in refresh route:', error);
-    return NextResponse.json({ success: false }, { status: 500 });
+    return NextResponse.json({ 
+      success: false, 
+      message: error instanceof Error ? error.message : 'Unknown error'
+    }, { 
+      status: 500 
+    });
   }
 } 
