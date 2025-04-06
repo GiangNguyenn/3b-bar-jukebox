@@ -23,7 +23,8 @@ const Playlist: React.FC<IPlaylistProps> = memo(({ tracks }) => {
   useAutoRemoveFinishedTrack({
     currentTrackId,
     playlistTracks: tracks,
-    playbackState: playbackState ?? null
+    playbackState: playbackState ?? null,
+    playlistId: todayPlaylistId ?? ''
   });
 
   const upcomingTracks = useMemo(() => 

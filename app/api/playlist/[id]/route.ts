@@ -5,7 +5,7 @@ import { SpotifyPlaylistItem } from '@/shared/types';
 export async function GET(
   request: Request,
   { params }: { params: { id: string } }
-) {
+): Promise<NextResponse<SpotifyPlaylistItem | { error: string }>> {
   try {
     console.log('[API Playlist] Fetching playlist:', params.id);
     const playlist = await sendApiRequest<SpotifyPlaylistItem>({
