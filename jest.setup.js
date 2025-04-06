@@ -78,4 +78,22 @@ jest.mock('react-dom', () => {
       unmount: jest.fn(),
     }),
   };
-}); 
+});
+
+// Mock the Request constructor
+global.Request = jest.fn().mockImplementation((url) => ({
+  url
+}));
+
+// Mock the URL constructor
+global.URL = jest.fn().mockImplementation((url) => ({
+  searchParams: {
+    get: jest.fn()
+  }
+}));
+
+// Mock the Response constructor
+global.Response = jest.fn().mockImplementation((body, init) => ({
+  ...init,
+  json: () => Promise.resolve(body)
+})); 
