@@ -18,6 +18,13 @@ export async function GET(request: Request) {
 
     const result = await PlaylistRefreshServiceImpl.getInstance().refreshPlaylist(shouldForce);
     
+    // If refresh was successful, trigger a player state refresh
+    if (result.success) {
+      console.log('Playlist refresh successful, triggering player state refresh');
+      // This will be handled by the client-side code
+      result.playerStateRefresh = true;
+    }
+    
     return NextResponse.json(result, {
       status: result.success ? 200 : 500
     });
