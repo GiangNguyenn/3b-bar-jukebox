@@ -56,7 +56,13 @@ export const sendApiRequest = async <T>({
     });
 
     if (!response.ok) {
-      const errorData = await response.json().catch(() => null);
+      let errorData;
+      try {
+        errorData = await response.json();
+      } catch (e) {
+        errorData = null;
+      }
+
       const errorMessage = errorData?.error?.message || `HTTP error! status: ${response.status}`;
       console.error("API request failed:", {
         status: response.status,
@@ -66,17 +72,45 @@ export const sendApiRequest = async <T>({
         method,
         requestBody: body ? JSON.stringify(body) : undefined
       });
+
+      // Handle specific error cases
+      if (response.status === 401) {
+        throw new Error("Authentication failed. Please try refreshing the page.");
+      } else if (response.status === 403) {
+        throw new Error("You don't have permission to perform this action.");
+      } else if (response.status === 404) {
+        throw new Error("The requested resource was not found.");
+      } else if (response.status === 429) {
+        throw new Error("Too many requests. Please try again later.");
+      } else if (response.status >= 500) {
+        throw new Error("Spotify service is currently unavailable. Please try again later.");
+      }
+
       throw new Error(errorMessage);
     }
 
-    const data = await response.json();
-    console.log("API response received:", {
-      status: response.status,
-      hasData: !!data,
-      data: data
-    });
+    // Handle 204 No Content responses
+    if (response.status === 204) {
+      return {} as T;
+    }
 
-    return data;
+    // Only try to parse JSON if we have content
+    if (response.headers.get('content-length') === '0') {
+      return {} as T;
+    }
+
+    try {
+      const data = await response.json();
+      console.log("API response received:", {
+        status: response.status,
+        hasData: !!data,
+        data: data
+      });
+      return data;
+    } catch (e) {
+      console.error("Failed to parse response as JSON:", e);
+      return {} as T;
+    }
   } catch (error) {
     console.error("API request failed:", {
       error: error instanceof Error ? {
@@ -88,6 +122,12 @@ export const sendApiRequest = async <T>({
       method,
       requestBody: body ? JSON.stringify(body) : undefined
     });
+
+    // Handle network errors
+    if (error instanceof TypeError && error.message === 'Failed to fetch') {
+      throw new Error("Network error. Please check your internet connection and try again.");
+    }
+
     throw error;
   }
 };
