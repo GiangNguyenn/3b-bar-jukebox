@@ -40,7 +40,7 @@ export async function GET(request: Request) {
             method: 'PUT',
             body: {
               device_ids: [playbackState.device.id],
-              play: false // Don't auto-play
+              play: playbackState.is_playing // Preserve the current play state
             },
           });
         }
