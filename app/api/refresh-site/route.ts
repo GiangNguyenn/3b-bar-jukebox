@@ -4,6 +4,8 @@ export const revalidate = 0;
 import { NextResponse } from 'next/server';
 import { PlaylistRefreshServiceImpl } from '@/services/playlistRefresh';
 import { AppError } from '@/shared/utils/errorHandling';
+import { sendApiRequest } from '@/shared/api';
+import { SpotifyPlaybackState } from '@/shared/types';
 
 export async function GET(request: Request) {
   try {
@@ -21,8 +23,33 @@ export async function GET(request: Request) {
     // If refresh was successful, trigger a player state refresh
     if (result.success) {
       console.log('Playlist refresh successful, triggering player state refresh');
-      // This will be handled by the client-side code
-      result.playerStateRefresh = true;
+      
+      try {
+        // Get the current playback state
+        const playbackState = await sendApiRequest<SpotifyPlaybackState>({
+          path: 'me/player',
+          method: 'GET',
+        });
+
+        // If there's an active device, refresh its state
+        if (playbackState?.device?.id) {
+          console.log('Found active device, refreshing state');
+          // Transfer playback to the same device to refresh its state
+          await sendApiRequest({
+            path: 'me/player',
+            method: 'PUT',
+            body: {
+              device_ids: [playbackState.device.id],
+              play: false // Don't auto-play
+            },
+          });
+        }
+
+        result.playerStateRefresh = true;
+      } catch (error) {
+        console.error('Error refreshing player state:', error);
+        // Don't fail the request if player refresh fails
+      }
     }
     
     return NextResponse.json(result, {
