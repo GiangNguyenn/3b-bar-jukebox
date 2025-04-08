@@ -80,11 +80,27 @@ export default function AdminPage() {
 
   useEffect(() => {
     // Function to check if playback stopped unexpectedly
-    const checkPlaybackContinuity = () => {
+    const checkPlaybackContinuity = async () => {
       // If player was playing before but is not playing now
       if (wasPlaying.current && playbackState && !playbackState.is_playing) {
         const currentTime = Date.now()
         const timeSinceLastPlaying = lastPlayingTime.current ? currentTime - lastPlayingTime.current : null
+        
+        // Check if music is playing on another device before attempting auto-resume
+        try {
+          const response = await fetch('/api/playback-state')
+          if (response.ok) {
+            const state = await response.json()
+            // If music is playing on another device, don't auto-resume
+            if (state.is_playing && state.device?.id !== deviceId) {
+              console.log('Music is playing on another device, skipping auto-resume')
+              wasPlaying.current = false
+              return
+            }
+          }
+        } catch (error) {
+          console.error('Error checking playback state:', error)
+        }
         
         // Only auto-resume if it's been less than 5 minutes since it was last playing
         // This prevents auto-resume at unwanted times (e.g., at the end of the day)
@@ -96,7 +112,7 @@ export default function AdminPage() {
       }
       
       // Update wasPlaying reference based on current state
-      if (playbackState?.is_playing) {
+      if (playbackState?.is_playing && playbackState.device?.id === deviceId) {
         wasPlaying.current = true
         lastPlayingTime.current = Date.now()
         // Reset auto-resume attempts when playing successfully
@@ -162,6 +178,13 @@ export default function AdminPage() {
 
       if (!response.ok) {
         console.error('Playback error:', data)
+        // Special handling for the case where music is playing on another device
+        if (response.status === 409) {
+          setError(`${data.error}${data.details ? ` (${data.details.currentDevice}: ${data.details.currentTrack})` : ''}`)
+          // Don't attempt auto-resume in this case
+          wasPlaying.current = false
+          return
+        }
         throw new Error(data.error || data.details?.error?.message || 'Failed to control playback')
       }
     } catch (error) {
