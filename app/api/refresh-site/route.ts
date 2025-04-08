@@ -13,12 +13,11 @@ export async function GET(request: Request) {
     const forceParam = url.searchParams.get('force');
     const shouldForce = forceParam === 'true';
 
-
     const result = await PlaylistRefreshServiceImpl.getInstance().refreshPlaylist(shouldForce);
     
-    // If refresh was successful, trigger a player state refresh
-    if (result.success) {
-      console.log('Playlist refresh successful, triggering player state refresh');
+    // Only refresh player state if the playlist was actually updated
+    if (result.success && result.diagnosticInfo?.removedTrack) {
+      console.log('Playlist was updated, refreshing player state');
       
       try {
         // Get the current playback state
@@ -27,17 +26,15 @@ export async function GET(request: Request) {
           method: 'GET',
         });
 
-        // If there's an active device, refresh its state
-        if (playbackState?.device?.id) {
-          console.log('Found active device, refreshing state');
-          // Transfer playback to the same device to refresh its state
+        // If there's an active device and it's currently playing
+        if (playbackState?.device?.id && playbackState.is_playing) {
+          console.log('Found active playing device, refreshing state');
+          
+          // Instead of transferring playback, just seek to current position
+          const currentPosition = playbackState.progress_ms;
           await sendApiRequest({
-            path: 'me/player',
-            method: 'PUT',
-            body: {
-              device_ids: [playbackState.device.id],
-              play: playbackState.is_playing // Preserve the current play state
-            },
+            path: `me/player/seek?position_ms=${currentPosition}`,
+            method: 'PUT'
           });
         }
 

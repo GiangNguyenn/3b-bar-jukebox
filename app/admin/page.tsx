@@ -1,16 +1,78 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useFixedPlaylist } from '@/hooks/useFixedPlaylist'
 import { useSpotifyPlayer } from '@/hooks/useSpotifyPlayer'
 import SpotifyPlayer from '@/components/SpotifyPlayer'
+import { SpotifyPlaybackState } from '@/shared/types'
 
 export default function AdminPage() {
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [lastRefreshTime, setLastRefreshTime] = useState<Date | null>(null)
+  const [isRefreshing, setIsRefreshing] = useState(false)
+  const [refreshError, setRefreshError] = useState<string | null>(null)
+  const [playbackState, setPlaybackState] = useState<SpotifyPlaybackState | null>(null)
+  const [playlistStats, setPlaylistStats] = useState<{
+    totalTracks: number;
+    upcomingTracksCount: number;
+    removedTrack: boolean;
+  } | null>(null)
   const deviceId = useSpotifyPlayer((state) => state.deviceId)
   const isReady = useSpotifyPlayer((state) => state.isReady)
   const { fixedPlaylistId } = useFixedPlaylist()
+
+  useEffect(() => {
+    const refreshInterval = setInterval(async () => {
+      try {
+        setIsRefreshing(true)
+        setRefreshError(null)
+        const response = await fetch('/api/refresh-site')
+        const data = await response.json()
+        
+        if (!response.ok) {
+          throw new Error(data.message || 'Failed to refresh site')
+        }
+        
+        setLastRefreshTime(new Date())
+        if (data.diagnosticInfo) {
+          setPlaylistStats({
+            totalTracks: data.diagnosticInfo.totalTracks,
+            upcomingTracksCount: data.diagnosticInfo.upcomingTracksCount,
+            removedTrack: data.diagnosticInfo.removedTrack
+          })
+        }
+      } catch (error) {
+        console.error('Error refreshing site:', error)
+        setRefreshError(error instanceof Error ? error.message : 'Failed to refresh site')
+      } finally {
+        setIsRefreshing(false)
+      }
+    }, 120000) // 2 minutes in milliseconds
+
+    return () => clearInterval(refreshInterval)
+  }, [])
+
+  useEffect(() => {
+    const fetchPlaybackState = async () => {
+      try {
+        const response = await fetch('/api/playback-state')
+        if (response.ok) {
+          const data = await response.json()
+          setPlaybackState(data)
+        }
+      } catch (error) {
+        console.error('Error fetching playback state:', error)
+      }
+    }
+
+    // Initial fetch
+    fetchPlaybackState()
+
+    // Update every 5 seconds
+    const interval = setInterval(fetchPlaybackState, 5000)
+    return () => clearInterval(interval)
+  }, [])
 
   const handlePlayback = async (action: 'play' | 'skip') => {
     try {
@@ -29,6 +91,7 @@ export default function AdminPage() {
           action,
           contextUri: action === 'play' ? `spotify:playlist:${fixedPlaylistId}` : undefined,
           deviceId: deviceId || undefined,
+          position_ms: action === 'play' && playbackState?.progress_ms ? playbackState.progress_ms : undefined
         }),
       })
 
@@ -44,6 +107,18 @@ export default function AdminPage() {
     } finally {
       setIsLoading(false)
     }
+  }
+
+  const formatTime = (ms: number) => {
+    const seconds = Math.floor(ms / 1000)
+    const minutes = Math.floor(seconds / 60)
+    const remainingSeconds = seconds % 60
+    return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`
+  }
+
+  const getProgressPercentage = () => {
+    if (!playbackState?.item?.duration_ms || !playbackState?.progress_ms) return 0
+    return (playbackState.progress_ms / playbackState.item.duration_ms) * 100
   }
 
   return (
@@ -63,22 +138,99 @@ export default function AdminPage() {
               {!deviceId ? 'Waiting for Spotify player to initialize...' : 'Waiting for player to be ready...'}
             </div>
           ) : null}
-          <div className="flex gap-4">
+          <div className="flex items-center gap-2 mb-4 text-sm">
+            <span className={`inline-block w-2 h-2 rounded-full ${isRefreshing ? 'bg-yellow-500 animate-pulse' : refreshError ? 'bg-red-500' : 'bg-green-500'}`} />
+            <span className={refreshError ? 'text-red-600' : 'text-gray-600'}>
+              {isRefreshing ? 'Refreshing...' : 
+               refreshError ? `Refresh failed: ${refreshError}` :
+               lastRefreshTime ? `Last refreshed: ${lastRefreshTime.toLocaleTimeString()}` : 
+               'Waiting for first refresh...'}
+            </span>
+          </div>
+
+          <div className="flex gap-4 mb-6">
             <button 
               onClick={() => handlePlayback('play')}
               disabled={isLoading || !fixedPlaylistId || !deviceId || !isReady}
-              className="px-4 py-2 bg-green-500 text-white rounded hover:bg-green-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              className={`px-8 py-4 text-xl font-medium rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
+                playbackState?.is_playing 
+                  ? 'bg-green-600 hover:bg-green-700 text-white' 
+                  : 'bg-green-500 hover:bg-green-600 text-white'
+              }`}
             >
-              {isLoading ? 'Loading...' : 'Play'}
+              {isLoading ? 'Loading...' : playbackState?.is_playing ? 'Playing' : 'Play'}
             </button>
             <button 
               onClick={() => handlePlayback('skip')}
               disabled={isLoading || !deviceId || !isReady}
-              className="px-4 py-2 bg-red-500 text-white rounded hover:bg-red-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              className="px-8 py-4 text-xl font-medium bg-red-500 text-white rounded hover:bg-red-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {isLoading ? 'Loading...' : 'Skip'}
             </button>
           </div>
+
+          {/* Player Stats Section */}
+          {playbackState && (
+            <div className="mb-6 p-4 bg-gray-50 rounded-lg">
+              <h3 className="text-lg font-medium mb-3">Player Stats</h3>
+              
+              {/* Current Track */}
+              {playbackState.item && (
+                <div className="mb-4">
+                  <div className="flex justify-between text-sm text-gray-600 mb-1">
+                    <span>{playbackState.item.name}</span>
+                    <span>{formatTime(playbackState.progress_ms)} / {formatTime(playbackState.item.duration_ms)}</span>
+                  </div>
+                  <div className="w-full bg-gray-200 rounded-full h-2.5">
+                    <div 
+                      className="bg-green-500 h-2.5 rounded-full" 
+                      style={{ width: `${getProgressPercentage()}%` }}
+                    />
+                  </div>
+                </div>
+              )}
+
+              {/* Device Info */}
+              {playbackState.device && (
+                <div className="grid grid-cols-2 gap-4 text-sm mb-4">
+                  <div>
+                    <span className="text-gray-500">Device:</span>
+                    <span className="ml-2">{playbackState.device.name}</span>
+                  </div>
+                  <div>
+                    <span className="text-gray-500">Volume:</span>
+                    <span className="ml-2">{playbackState.device.volume_percent}%</span>
+                  </div>
+                  <div>
+                    <span className="text-gray-500">Shuffle:</span>
+                    <span className="ml-2">{playbackState.shuffle_state ? 'On' : 'Off'}</span>
+                  </div>
+                  <div>
+                    <span className="text-gray-500">Repeat:</span>
+                    <span className="ml-2 capitalize">{playbackState.repeat_state}</span>
+                  </div>
+                </div>
+              )}
+
+              {/* Playlist Stats */}
+              {playlistStats && (
+                <div className="grid grid-cols-2 gap-4 text-sm">
+                  <div>
+                    <span className="text-gray-500">Total Tracks:</span>
+                    <span className="ml-2">{playlistStats.totalTracks}</span>
+                  </div>
+                  <div>
+                    <span className="text-gray-500">Upcoming Tracks:</span>
+                    <span className="ml-2">{playlistStats.upcomingTracksCount}</span>
+                  </div>
+                  <div>
+                    <span className="text-gray-500">Last Action:</span>
+                    <span className="ml-2">{playlistStats.removedTrack ? 'Track Removed' : 'No Changes'}</span>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
         </div>
       </div>
     </div>
