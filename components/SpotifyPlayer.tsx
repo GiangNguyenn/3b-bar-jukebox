@@ -29,6 +29,7 @@ export default function SpotifyPlayer() {
   const reconnectAttempts = useRef(0)
   const MAX_RECONNECT_ATTEMPTS = 3
   const initializationCheckInterval = useRef<NodeJS.Timeout | null>(null)
+  const playlistRefreshInterval = useRef<NodeJS.Timeout | null>(null)
 
   // Function to check if the player is actually ready
   const checkPlayerReady = async () => {
@@ -356,9 +357,32 @@ export default function SpotifyPlayer() {
     await initializationPromise;
   }
 
+  // Function to refresh playlist state
+  const refreshPlaylistState = async () => {
+    if (!deviceId) return;
+    
+    try {
+      // Get current playback state
+      const state = await sendApiRequest<SpotifyPlaybackState>({
+        path: 'me/player',
+        method: 'GET',
+      });
+      
+      if (state?.device?.id === deviceId) {
+        setPlaybackState(state);
+        setIsReady(true);
+      }
+    } catch (error) {
+      console.error('[SpotifyPlayer] Error refreshing playlist state:', error);
+    }
+  };
+
   useEffect(() => {
     // Define the callback before loading the SDK
     window.onSpotifyWebPlaybackSDKReady = initializePlayer
+
+    // Set up playlist refresh interval
+    playlistRefreshInterval.current = setInterval(refreshPlaylistState, 10000); // Refresh every 10 seconds
 
     // Only load the SDK if it hasn't been loaded yet
     if (!document.querySelector('script[src="https://sdk.scdn.co/spotify-player.js"]')) {
@@ -381,6 +405,9 @@ export default function SpotifyPlayer() {
       isMounted.current = false
       if (initializationCheckInterval.current) {
         clearInterval(initializationCheckInterval.current);
+      }
+      if (playlistRefreshInterval.current) {
+        clearInterval(playlistRefreshInterval.current);
       }
       // Don't disconnect the player here as it's a singleton
       // Only clean up the callback
