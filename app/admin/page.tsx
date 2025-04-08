@@ -81,19 +81,27 @@ export default function AdminPage() {
       if (!isMounted) return;
 
       try {
-        setIsRefreshing(true)
-        setRefreshError(null)
-        const response = await fetch('/api/refresh-site')
+        setIsRefreshing(true);
+        setRefreshError(null);
+        
+        console.log('[Admin] Starting site refresh');
+        const response = await fetch('/api/refresh-site');
         if (!isMounted) return;
 
-        const data = await response.json()
+        const data = await response.json();
         if (!isMounted) return;
         
         if (!response.ok) {
-          throw new Error(data.message || 'Failed to refresh site')
+          throw new Error(data.message || 'Failed to refresh site');
         }
         
-        setLastRefreshTime(new Date())
+        console.log('[Admin] Site refresh successful:', {
+          removedTrack: data.diagnosticInfo?.removedTrack,
+          addedTrack: data.diagnosticInfo?.addedTrack,
+          totalTracks: data.diagnosticInfo?.totalTracks
+        });
+        
+        setLastRefreshTime(new Date());
         if (data.diagnosticInfo) {
           setPlaylistStats({
             totalTracks: data.diagnosticInfo.totalTracks,
@@ -101,19 +109,34 @@ export default function AdminPage() {
             removedTrack: data.diagnosticInfo.removedTrack,
             addedTrack: data.diagnosticInfo.addedTrack,
             upcomingTracksPercentage: data.diagnosticInfo.upcomingTracksCount / data.diagnosticInfo.totalTracks * 100
-          })
+          });
+
+          // If the playlist was updated, trigger a player refresh
+          if (data.diagnosticInfo.removedTrack || data.diagnosticInfo.addedTrack) {
+            console.log('[Admin] Playlist updated, triggering player refresh');
+            // Dispatch a custom event to notify the player
+            const event = new CustomEvent('playlistRefresh', {
+              detail: { timestamp: Date.now() }
+            });
+            window.dispatchEvent(event);
+            
+            // Also try to refresh the player directly
+            if (typeof window !== 'undefined' && window.refreshSpotifyPlayer) {
+              window.refreshSpotifyPlayer();
+            }
+          }
         }
       } catch (error) {
-        console.error('Error refreshing site:', error)
+        console.error('[Admin] Error refreshing site:', error);
         if (isMounted) {
-          setRefreshError(error instanceof Error ? error.message : 'Failed to refresh site')
+          setRefreshError(error instanceof Error ? error.message : 'Failed to refresh site');
         }
       } finally {
         if (isMounted) {
-          setIsRefreshing(false)
+          setIsRefreshing(false);
         }
       }
-    }
+    };
 
     // Initial refresh
     refreshSite()
@@ -369,6 +392,16 @@ export default function AdminPage() {
               className="px-8 py-4 text-xl font-medium bg-red-500 text-white rounded hover:bg-red-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {isLoading ? 'Loading...' : 'Skip'}
+            </button>
+            <button
+              onClick={() => {
+                if (typeof window !== 'undefined' && window.refreshSpotifyPlayer) {
+                  window.refreshSpotifyPlayer();
+                }
+              }}
+              className="px-8 py-4 text-xl font-medium bg-blue-500 text-white rounded hover:bg-blue-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Refresh Player
             </button>
           </div>
 
