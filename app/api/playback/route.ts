@@ -90,6 +90,26 @@ export async function POST(request: Request) {
 
     if (action === 'play') {
       try {
+        // Get current playback state to check if another device is playing
+        const currentState = await sendApiRequest<SpotifyPlaybackState>({
+          path: 'me/player',
+          method: 'GET',
+        });
+
+        // If music is already playing on another device, don't take over
+        if (currentState?.is_playing && currentState?.device?.id !== deviceId) {
+          return NextResponse.json(
+            { 
+              error: 'Music is already playing on another device',
+              details: {
+                currentDevice: currentState.device.name,
+                currentTrack: currentState.item?.name
+              }
+            },
+            { status: 409 } // Conflict status code
+          );
+        }
+
         // Transfer playback to our web player with retries
         await transferPlaybackToDevice(deviceId);
 
