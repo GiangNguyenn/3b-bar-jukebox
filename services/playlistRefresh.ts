@@ -13,6 +13,7 @@ export interface PlaylistRefreshService {
     timestamp: string;
     diagnosticInfo?: Record<string, unknown>;
     forceRefresh?: boolean;
+    playerStateRefresh?: boolean;
   }>;
   getUpcomingTracks(playlist: SpotifyPlaylistItem, currentTrackId: string | null): TrackItem[];
   autoRemoveFinishedTrack(params: {
@@ -160,6 +161,7 @@ export class PlaylistRefreshServiceImpl implements PlaylistRefreshService {
     timestamp: string;
     diagnosticInfo?: Record<string, unknown>;
     forceRefresh?: boolean;
+    playerStateRefresh?: boolean;
   }> {
     try {
       const playlist = await this.getFixedPlaylist();
