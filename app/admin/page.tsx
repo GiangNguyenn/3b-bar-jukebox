@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useFixedPlaylist } from '@/hooks/useFixedPlaylist'
 import { useSpotifyPlayer } from '@/hooks/useSpotifyPlayer'
 import SpotifyPlayer from '@/components/SpotifyPlayer'
@@ -18,6 +18,10 @@ export default function AdminPage() {
     upcomingTracksCount: number;
     removedTrack: boolean;
   } | null>(null)
+  const [autoResumeAttempts, setAutoResumeAttempts] = useState(0)
+  const wasPlaying = useRef(false)
+  const lastPlayingTime = useRef<number | null>(null)
+  const MAX_AUTO_RESUME_ATTEMPTS = 3
   const deviceId = useSpotifyPlayer((state) => state.deviceId)
   const isReady = useSpotifyPlayer((state) => state.isReady)
   const { fixedPlaylistId } = useFixedPlaylist()
@@ -73,6 +77,65 @@ export default function AdminPage() {
     const interval = setInterval(fetchPlaybackState, 5000)
     return () => clearInterval(interval)
   }, [])
+
+  useEffect(() => {
+    // Function to check if playback stopped unexpectedly
+    const checkPlaybackContinuity = () => {
+      // If player was playing before but is not playing now
+      if (wasPlaying.current && playbackState && !playbackState.is_playing) {
+        const currentTime = Date.now()
+        const timeSinceLastPlaying = lastPlayingTime.current ? currentTime - lastPlayingTime.current : null
+        
+        // Only auto-resume if it's been less than 5 minutes since it was last playing
+        // This prevents auto-resume at unwanted times (e.g., at the end of the day)
+        if (timeSinceLastPlaying && timeSinceLastPlaying < 5 * 60 * 1000 && autoResumeAttempts < MAX_AUTO_RESUME_ATTEMPTS) {
+          console.log(`Playback stopped unexpectedly. Attempting auto-resume (attempt ${autoResumeAttempts + 1})`)
+          handlePlayback('play')
+          setAutoResumeAttempts(prev => prev + 1)
+        }
+      }
+      
+      // Update wasPlaying reference based on current state
+      if (playbackState?.is_playing) {
+        wasPlaying.current = true
+        lastPlayingTime.current = Date.now()
+        // Reset auto-resume attempts when playing successfully
+        if (autoResumeAttempts > 0) {
+          setAutoResumeAttempts(0)
+        }
+      }
+    }
+    
+    // Check playback continuity when playback state changes
+    if (playbackState) {
+      checkPlaybackContinuity()
+    }
+  }, [playbackState, fixedPlaylistId, deviceId, isReady, autoResumeAttempts])
+
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      // When page becomes visible again
+      if (!document.hidden && wasPlaying.current && deviceId && isReady && fixedPlaylistId) {
+        // Check if music is still playing
+        fetch('/api/playback-state')
+          .then(response => response.ok ? response.json() : null)
+          .then(state => {
+            if (state && !state.is_playing) {
+              console.log('Page became visible, playback stopped while page was hidden. Attempting to resume.')
+              handlePlayback('play')
+            }
+          })
+          .catch(error => {
+            console.error('Error checking playback state on visibility change:', error)
+          })
+      }
+    }
+
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
+    }
+  }, [deviceId, isReady, fixedPlaylistId])
 
   const handlePlayback = async (action: 'play' | 'skip') => {
     try {
