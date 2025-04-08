@@ -362,6 +362,7 @@ export default function SpotifyPlayer() {
     if (!deviceId) return;
     
     try {
+      console.log('[SpotifyPlayer] Refreshing playlist state');
       // Get current playback state
       const state = await sendApiRequest<SpotifyPlaybackState>({
         path: 'me/player',
@@ -369,13 +370,40 @@ export default function SpotifyPlayer() {
       });
       
       if (state?.device?.id === deviceId) {
+        console.log('[SpotifyPlayer] Device is active, updating state:', {
+          isPlaying: state.is_playing,
+          currentTrack: state.item?.name,
+          progress: state.progress_ms
+        });
         setPlaybackState(state);
         setIsReady(true);
+      } else {
+        console.log('[SpotifyPlayer] Device is not active, attempting to reconnect');
+        reconnectPlayer();
       }
     } catch (error) {
       console.error('[SpotifyPlayer] Error refreshing playlist state:', error);
+      // If we get a 404, it means the player is not active
+      if ((error as any)?.status === 404) {
+        reconnectPlayer();
+      }
     }
   };
+
+  // Add a listener for playlist changes
+  useEffect(() => {
+    const handlePlaylistChange = () => {
+      console.log('[SpotifyPlayer] Playlist change detected, refreshing state');
+      refreshPlaylistState();
+    };
+
+    // Listen for custom playlist refresh events
+    window.addEventListener('playlistRefresh', handlePlaylistChange);
+    
+    return () => {
+      window.removeEventListener('playlistRefresh', handlePlaylistChange);
+    };
+  }, [deviceId]);
 
   useEffect(() => {
     // Define the callback before loading the SDK
