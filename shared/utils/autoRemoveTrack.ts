@@ -25,7 +25,10 @@ export async function autoRemoveTrack({
   if (currentTrackIndex === -1 || currentTrackIndex < 5) return false;
 
   const trackToRemove = playlistTracks[0];
-  console.log('[Auto Remove] Removing oldest track:', trackToRemove.track.name);
+  if (!trackToRemove) {
+    console.error('[Auto Remove] No tracks to remove');
+    return false;
+  }
   
   try {
     await handleOperationError(

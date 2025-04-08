@@ -64,7 +64,7 @@ const SearchInput: FC<SearchInputProps> = ({
         type: track.type,
       },
     };
-    console.log('Adding track:', trackItem);
+
     addTrack(trackItem, () => {
       // Only clear search results and close dropdown after successful addition
       setSearchResults([]);
