@@ -175,25 +175,35 @@ export default function SpotifyPlayer() {
         // Add listeners
         player.addListener('ready', async ({ device_id }: { device_id: string }) => {
           if (!isMounted.current) return
+          console.log('[SpotifyPlayer] Player ready event received, device_id:', device_id)
           setDeviceId(device_id)
           
-          // Verify the player is actually ready
-          const isReady = await checkPlayerReady();
-          if (isReady) {
-            setIsReady(true)
-            setError(null)
-            reconnectAttempts.current = 0;
-            // Initial state refresh
-            await refreshPlayerState();
-            // Double check ready state after refresh
-            const finalCheck = await checkPlayerReady();
-            if (finalCheck) {
-              // Force a state update to ensure UI reflects ready state
-              setIsReady(true);
+          try {
+            // Verify the player is actually ready
+            const isReady = await checkPlayerReady();
+            if (isReady) {
+              console.log('[SpotifyPlayer] Player verified as ready')
+              setIsReady(true)
+              setError(null)
+              reconnectAttempts.current = 0;
+              // Initial state refresh
+              await refreshPlayerState();
+              // Double check ready state after refresh
+              const finalCheck = await checkPlayerReady();
+              if (finalCheck) {
+                console.log('[SpotifyPlayer] Final ready check passed')
+                // Force a state update to ensure UI reflects ready state
+                setIsReady(true);
+              } else {
+                console.log('[SpotifyPlayer] Final ready check failed, attempting reconnect')
+                reconnectPlayer();
+              }
             } else {
+              console.log('[SpotifyPlayer] Initial ready check failed, attempting reconnect')
               reconnectPlayer();
             }
-          } else {
+          } catch (error) {
+            console.error('[SpotifyPlayer] Error during ready handler:', error)
             reconnectPlayer();
           }
         })
@@ -207,10 +217,15 @@ export default function SpotifyPlayer() {
 
         player.addListener('player_state_changed', (state: any) => {
           if (!isMounted.current) return
-          setPlaybackState(state)
-          // Update ready state based on device ID match
-          if (state?.device?.id === deviceId) {
-            setIsReady(true);
+          try {
+            console.log('[SpotifyPlayer] State changed:', state)
+            setPlaybackState(state)
+            // Update ready state based on device ID match
+            if (state?.device?.id === deviceId) {
+              setIsReady(true);
+            }
+          } catch (error) {
+            console.error('[SpotifyPlayer] Error handling state change:', error)
           }
         })
 

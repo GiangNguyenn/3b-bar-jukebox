@@ -58,7 +58,7 @@ async function transferPlaybackToDevice(deviceId: string, retryCount = 0): Promi
 
 export async function POST(request: Request) {
   try {
-    const { action, contextUri, deviceId } = await request.json();
+    const { action, contextUri, deviceId, position_ms } = await request.json();
 
     if (!deviceId) {
       return NextResponse.json(
@@ -96,11 +96,14 @@ export async function POST(request: Request) {
         // Wait a bit for the device transfer to take effect
         await new Promise(resolve => setTimeout(resolve, 1000));
 
-        // Then start playback with the playlist
+        // Then start playback with the playlist and position
         const playResponse = await sendApiRequest({
           path: 'me/player/play',
           method: 'PUT',
-          body: contextUri ? { context_uri: contextUri } : {},
+          body: {
+            context_uri: contextUri,
+            position_ms: position_ms
+          },
         });
 
       } catch (error: any) {
@@ -109,7 +112,8 @@ export async function POST(request: Request) {
           message: errorMessage,
           error,
           deviceId,
-          contextUri
+          contextUri,
+          position_ms
         });
         
         // Return a more specific error message
