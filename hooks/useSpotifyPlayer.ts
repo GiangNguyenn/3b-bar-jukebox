@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import { SpotifyPlaybackState } from '@/shared/types'
+import { useCallback } from 'react'
 
 interface SpotifyPlayerState {
   deviceId: string | null
@@ -25,7 +26,6 @@ export const useSpotifyPlayer = create<SpotifyPlayerState>((set) => ({
     lastPlaybackStateUpdate: 0
   },
   setDeviceId: (deviceId) => {
-    console.log('[SpotifyPlayer] Setting deviceId:', deviceId);
     set((state) => ({
       deviceId,
       debug: {
@@ -35,7 +35,6 @@ export const useSpotifyPlayer = create<SpotifyPlayerState>((set) => ({
     }));
   },
   setIsReady: (isReady) => {
-    console.log('[SpotifyPlayer] Setting isReady:', isReady);
     set((state) => ({
       isReady,
       debug: {
@@ -45,7 +44,6 @@ export const useSpotifyPlayer = create<SpotifyPlayerState>((set) => ({
     }));
   },
   setPlaybackState: (playbackState) => {
-    console.log('[SpotifyPlayer] Setting playbackState:', playbackState?.device?.id);
     set((state) => ({
       playbackState,
       debug: {
