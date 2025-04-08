@@ -7,14 +7,8 @@ export async function GET(
   { params }: { params: { id: string } }
 ): Promise<NextResponse<SpotifyPlaylistItem | { error: string }>> {
   try {
-    console.log('[API Playlist] Fetching playlist:', params.id);
     const playlist = await sendApiRequest<SpotifyPlaylistItem>({
       path: `playlists/${params.id}`,
-    });
-    console.log('[API Playlist] Playlist fetched:', {
-      name: playlist.name,
-      id: playlist.id,
-      trackCount: playlist.tracks.items.length
     });
     return NextResponse.json(playlist);
   } catch (error) {
