@@ -14,42 +14,27 @@ export function selectRandomTrack(
   excludedIds: string[], 
   minPopularity: number
 ): TrackDetails | null {
-  console.log(`\nSelecting random track from ${tracks.length} tracks`);
-  console.log(`Excluded IDs: ${excludedIds.join(', ')}`);
-  console.log(`Minimum popularity: ${minPopularity}`);
-
   const candidates = tracks.filter(track => {
     const isExcluded = excludedIds.includes(track.id);
     const meetsPopularity = track.popularity >= minPopularity;
     const isPlayable = track.is_playable === true;
     
     if (!isPlayable) {
-      console.log(`Track "${track.name}" is not playable in current market`);
     }
     if (isExcluded) {
-      console.log(`Track "${track.name}" is excluded`);
     }
     if (!meetsPopularity) {
-      console.log(`Track "${track.name}" does not meet popularity threshold (${track.popularity} < ${minPopularity})`);
     }
 
     return !isExcluded && meetsPopularity && isPlayable;
   });
 
-  console.log(`Found ${candidates.length} candidates after filtering`);
   if (candidates.length === 0) {
-    console.log('No candidates found after filtering');
     return null;
   }
 
   const randomIndex = Math.floor(Math.random() * candidates.length);
   const selectedTrack = candidates[randomIndex];
-  console.log('Selected track:', {
-    name: selectedTrack.name,
-    popularity: selectedTrack.popularity,
-    artist: selectedTrack.artists[0].name,
-    isPlayable: selectedTrack.is_playable
-  });
 
   return selectedTrack;
 }
@@ -67,7 +52,6 @@ export async function searchTracksByGenre(genre: string, market: string = DEFAUL
       throw new Error("Unexpected API response format");
     }
 
-    console.log(`Found ${tracks.length} tracks in search results for genre: ${genre} in market: ${market}`);
     return tracks;
   } catch (error) {
     console.error(`Error searching tracks for genre ${genre}:`, error);
@@ -114,7 +98,6 @@ export async function findSuggestedTrack(
   while (attempts < MAX_GENRE_ATTEMPTS) {
     const genre = getRandomGenre();
     genresTried.push(genre);
-    console.log(`\nAttempt ${attempts + 1}/${MAX_GENRE_ATTEMPTS}: Searching for tracks in genre:`, genre);
 
     try {
       const tracks = await searchTracksByGenre(genre, market);
@@ -127,17 +110,10 @@ export async function findSuggestedTrack(
         isPlayable: t.is_playable
       }));
       allTrackDetails.push(...trackDetails);
-      console.log('Track details:', trackDetails);
 
       const selectedTrack = selectRandomTrack(tracks, allExcludedIds, MIN_TRACK_POPULARITY);
 
       if (selectedTrack) {
-        console.log("Found suitable track:", {
-          name: selectedTrack.name,
-          popularity: selectedTrack.popularity,
-          artist: selectedTrack.artists[0].name,
-          isPlayable: selectedTrack.is_playable
-        });
         return {
           track: selectedTrack,
           searchDetails: {
@@ -150,15 +126,10 @@ export async function findSuggestedTrack(
           }
         };
       }
-
-      console.log(`No suitable track suggestions found for genre: ${genre}`);
-      console.log(`Excluded track IDs: ${excludedTrackIds.join(', ')}`);
-      console.log(`Minimum popularity required: ${MIN_TRACK_POPULARITY}`);
       
       attempts++;
       
       if (attempts < MAX_GENRE_ATTEMPTS) {
-        console.log(`Trying another genre...`);
         // Add a small delay between attempts
         await new Promise(resolve => setTimeout(resolve, 1000));
       }
@@ -171,7 +142,6 @@ export async function findSuggestedTrack(
     }
   }
 
-  console.log(`No suitable tracks found after trying ${MAX_GENRE_ATTEMPTS} genres`);
   return {
     track: null,
     searchDetails: {
