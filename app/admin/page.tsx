@@ -17,22 +17,77 @@ export default function AdminPage() {
     totalTracks: number;
     upcomingTracksCount: number;
     removedTrack: boolean;
+    addedTrack: boolean;
+    upcomingTracksPercentage: number;
   } | null>(null)
   const [autoResumeAttempts, setAutoResumeAttempts] = useState(0)
   const wasPlaying = useRef(false)
   const lastPlayingTime = useRef<number | null>(null)
+  const wakeLock = useRef<WakeLockSentinel | null>(null)
   const MAX_AUTO_RESUME_ATTEMPTS = 3
   const deviceId = useSpotifyPlayer((state) => state.deviceId)
   const isReady = useSpotifyPlayer((state) => state.isReady)
   const { fixedPlaylistId } = useFixedPlaylist()
 
   useEffect(() => {
-    const refreshInterval = setInterval(async () => {
+    let isMounted = true;
+    let timeoutId: NodeJS.Timeout;
+
+    const fetchPlaybackState = async () => {
+      if (!isMounted) return;
+
+      try {
+        const response = await fetch('/api/playback-state')
+        if (!isMounted) return;
+
+        if (response.ok) {
+          const data = await response.json()
+          if (!isMounted) return;
+
+          setPlaybackState(data)
+          
+          // If we were playing and now we're not, and it's not because of another device
+          if (wasPlaying.current && !data.is_playing && data.device?.id === deviceId) {
+            console.log('Playback stopped unexpectedly, attempting to resume')
+            handlePlayback('play')
+          }
+        }
+      } catch (error) {
+        console.error('Error fetching playback state:', error)
+      } finally {
+        // Schedule next check only if component is still mounted
+        if (isMounted) {
+          timeoutId = setTimeout(fetchPlaybackState, 2000)
+        }
+      }
+    }
+
+    // Initial fetch
+    fetchPlaybackState()
+
+    return () => {
+      isMounted = false;
+      if (timeoutId) {
+        clearTimeout(timeoutId)
+      }
+    }
+  }, [deviceId])
+
+  useEffect(() => {
+    let isMounted = true;
+    let refreshInterval: NodeJS.Timeout;
+
+    const refreshSite = async () => {
+      if (!isMounted) return;
+
       try {
         setIsRefreshing(true)
         setRefreshError(null)
         const response = await fetch('/api/refresh-site')
+        if (!isMounted) return;
+
         const data = await response.json()
+        if (!isMounted) return;
         
         if (!response.ok) {
           throw new Error(data.message || 'Failed to refresh site')
@@ -43,112 +98,171 @@ export default function AdminPage() {
           setPlaylistStats({
             totalTracks: data.diagnosticInfo.totalTracks,
             upcomingTracksCount: data.diagnosticInfo.upcomingTracksCount,
-            removedTrack: data.diagnosticInfo.removedTrack
+            removedTrack: data.diagnosticInfo.removedTrack,
+            addedTrack: data.diagnosticInfo.addedTrack,
+            upcomingTracksPercentage: data.diagnosticInfo.upcomingTracksCount / data.diagnosticInfo.totalTracks * 100
           })
         }
       } catch (error) {
         console.error('Error refreshing site:', error)
-        setRefreshError(error instanceof Error ? error.message : 'Failed to refresh site')
+        if (isMounted) {
+          setRefreshError(error instanceof Error ? error.message : 'Failed to refresh site')
+        }
       } finally {
-        setIsRefreshing(false)
+        if (isMounted) {
+          setIsRefreshing(false)
+        }
       }
-    }, 120000) // 2 minutes in milliseconds
+    }
 
-    return () => clearInterval(refreshInterval)
+    // Initial refresh
+    refreshSite()
+
+    // Set up interval for subsequent refreshes
+    refreshInterval = setInterval(refreshSite, 120000) // 2 minutes
+
+    return () => {
+      isMounted = false;
+      if (refreshInterval) {
+        clearInterval(refreshInterval)
+      }
+    }
   }, [])
 
   useEffect(() => {
-    const fetchPlaybackState = async () => {
+    // Update wasPlaying reference based on current state
+    if (playbackState?.is_playing && playbackState.device?.id === deviceId) {
+      wasPlaying.current = true
+      lastPlayingTime.current = Date.now()
+      // Reset auto-resume attempts when playing successfully
+      if (autoResumeAttempts > 0) {
+        setAutoResumeAttempts(0)
+      }
+    } else if (playbackState?.device?.id !== deviceId) {
+      // Clear wasPlaying if another device is active
+      wasPlaying.current = false
+    }
+  }, [playbackState, deviceId])
+
+  // Request wake lock to prevent system sleep
+  useEffect(() => {
+    let wakeLockTimeout: NodeJS.Timeout;
+    let isAndroid = /Android/i.test(navigator.userAgent);
+
+    const requestWakeLock = async () => {
       try {
-        const response = await fetch('/api/playback-state')
-        if (response.ok) {
-          const data = await response.json()
-          setPlaybackState(data)
+        if ('wakeLock' in navigator) {
+          wakeLock.current = await navigator.wakeLock.request('screen')
+          console.log('Wake Lock is active')
+          
+          // On Android, wake lock might be released by the system
+          if (isAndroid) {
+            wakeLock.current.addEventListener('release', () => {
+              console.log('Wake Lock was released by the system, attempting to reacquire')
+              requestWakeLock()
+            })
+          }
         }
-      } catch (error) {
-        console.error('Error fetching playback state:', error)
+      } catch (err) {
+        console.error('Error requesting wake lock:', err)
+        // On Android, retry after a delay if wake lock fails
+        if (isAndroid) {
+          wakeLockTimeout = setTimeout(requestWakeLock, 5000)
+        }
       }
     }
 
-    // Initial fetch
-    fetchPlaybackState()
+    requestWakeLock()
 
-    // Update every 5 seconds
-    const interval = setInterval(fetchPlaybackState, 5000)
-    return () => clearInterval(interval)
+    return () => {
+      if (wakeLockTimeout) {
+        clearTimeout(wakeLockTimeout)
+      }
+      if (wakeLock.current) {
+        wakeLock.current.release()
+          .then(() => {
+            wakeLock.current = null
+            console.log('Wake Lock released')
+          })
+      }
+    }
   }, [])
 
+  // Handle visibility changes with Android-specific handling
   useEffect(() => {
-    // Function to check if playback stopped unexpectedly
-    const checkPlaybackContinuity = async () => {
-      // If player was playing before but is not playing now
-      if (wasPlaying.current && playbackState && !playbackState.is_playing) {
-        const currentTime = Date.now()
-        const timeSinceLastPlaying = lastPlayingTime.current ? currentTime - lastPlayingTime.current : null
-        
-        // Check if music is playing on another device before attempting auto-resume
-        try {
-          const response = await fetch('/api/playback-state')
-          if (response.ok) {
-            const state = await response.json()
-            // If music is playing on another device, don't auto-resume
-            if (state.is_playing && state.device?.id !== deviceId) {
-              console.log('Music is playing on another device, skipping auto-resume')
-              wasPlaying.current = false
-              return
-            }
-          }
-        } catch (error) {
-          console.error('Error checking playback state:', error)
-        }
-        
-        // Only auto-resume if it's been less than 5 minutes since it was last playing
-        // This prevents auto-resume at unwanted times (e.g., at the end of the day)
-        if (timeSinceLastPlaying && timeSinceLastPlaying < 5 * 60 * 1000 && autoResumeAttempts < MAX_AUTO_RESUME_ATTEMPTS) {
-          console.log(`Playback stopped unexpectedly. Attempting auto-resume (attempt ${autoResumeAttempts + 1})`)
-          handlePlayback('play')
-          setAutoResumeAttempts(prev => prev + 1)
-        }
-      }
-      
-      // Update wasPlaying reference based on current state
-      if (playbackState?.is_playing && playbackState.device?.id === deviceId) {
-        wasPlaying.current = true
-        lastPlayingTime.current = Date.now()
-        // Reset auto-resume attempts when playing successfully
-        if (autoResumeAttempts > 0) {
-          setAutoResumeAttempts(0)
-        }
-      }
-    }
-    
-    // Check playback continuity when playback state changes
-    if (playbackState) {
-      checkPlaybackContinuity()
-    }
-  }, [playbackState, fixedPlaylistId, deviceId, isReady, autoResumeAttempts])
+    let isMounted = true;
+    let visibilityTimeout: NodeJS.Timeout;
+    let isAndroid = /Android/i.test(navigator.userAgent);
+    let lastCheckTime = Date.now();
 
-  useEffect(() => {
-    const handleVisibilityChange = () => {
-      // When page becomes visible again
-      if (!document.hidden && wasPlaying.current && deviceId && isReady && fixedPlaylistId) {
-        // Check if music is still playing
-        fetch('/api/playback-state')
-          .then(response => response.ok ? response.json() : null)
-          .then(state => {
-            if (state && !state.is_playing) {
-              console.log('Page became visible, playback stopped while page was hidden. Attempting to resume.')
-              handlePlayback('play')
+    const handleVisibilityChange = async () => {
+      if (!isMounted) return;
+
+      const now = Date.now();
+      // On Android, check more frequently when hidden
+      const checkInterval = isAndroid ? 2000 : 5000;
+
+      if (document.hidden) {
+        // Page is hidden, try to maintain playback
+        if (wasPlaying.current && deviceId && isReady && fixedPlaylistId) {
+          try {
+            const response = await fetch('/api/playback-state')
+            if (!isMounted) return;
+            
+            if (response.ok) {
+              const state = await response.json()
+              if (!isMounted) return;
+              
+              if (!state.is_playing) {
+                console.log('Playback stopped while page was hidden, attempting to resume')
+                handlePlayback('play')
+              }
             }
-          })
-          .catch(error => {
+          } catch (error) {
+            console.error('Error checking playback state while hidden:', error)
+          }
+        }
+      } else {
+        // Page is visible again, check and resume if needed
+        if (wasPlaying.current && deviceId && isReady && fixedPlaylistId) {
+          try {
+            const response = await fetch('/api/playback-state')
+            if (!isMounted) return;
+            
+            if (response.ok) {
+              const state = await response.json()
+              if (!isMounted) return;
+              
+              if (!state.is_playing) {
+                console.log('Page became visible, playback stopped while hidden. Attempting to resume.')
+                handlePlayback('play')
+              }
+            }
+          } catch (error) {
             console.error('Error checking playback state on visibility change:', error)
-          })
+          }
+        }
+      }
+
+      // Schedule next check
+      if (isMounted) {
+        const timeSinceLastCheck = now - lastCheckTime;
+        const delay = Math.max(0, checkInterval - timeSinceLastCheck);
+        visibilityTimeout = setTimeout(handleVisibilityChange, delay);
+        lastCheckTime = now;
       }
     }
 
     document.addEventListener('visibilitychange', handleVisibilityChange)
+    
+    // Start periodic checks
+    visibilityTimeout = setTimeout(handleVisibilityChange, isAndroid ? 2000 : 5000)
+
     return () => {
+      isMounted = false;
+      if (visibilityTimeout) {
+        clearTimeout(visibilityTimeout)
+      }
       document.removeEventListener('visibilitychange', handleVisibilityChange)
     }
   }, [deviceId, isReady, fixedPlaylistId])
@@ -221,7 +335,10 @@ export default function AdminPage() {
           )}
           {!deviceId || !isReady ? (
             <div className="mb-4 p-4 bg-yellow-100 text-yellow-700 rounded">
-              {!deviceId ? 'Waiting for Spotify player to initialize...' : 'Waiting for player to be ready...'}
+              {!deviceId ? 'Waiting for Spotify player to initialize...' : 
+               playbackState?.is_playing && playbackState?.device?.id !== deviceId ? 
+               'Music already playing on another device' : 
+               'Waiting for player to be ready...'}
             </div>
           ) : null}
           <div className="flex items-center gap-2 mb-4 text-sm">
@@ -310,8 +427,16 @@ export default function AdminPage() {
                     <span className="ml-2">{playlistStats.upcomingTracksCount}</span>
                   </div>
                   <div>
+                    <span className="text-gray-500">Upcoming %:</span>
+                    <span className="ml-2">{playlistStats.upcomingTracksPercentage.toFixed(1)}%</span>
+                  </div>
+                  <div>
                     <span className="text-gray-500">Last Action:</span>
-                    <span className="ml-2">{playlistStats.removedTrack ? 'Track Removed' : 'No Changes'}</span>
+                    <span className="ml-2">
+                      {playlistStats.removedTrack ? 'Track Removed' : 
+                       playlistStats.addedTrack ? 'Track Added' : 
+                       'No Changes'}
+                    </span>
                   </div>
                 </div>
               )}

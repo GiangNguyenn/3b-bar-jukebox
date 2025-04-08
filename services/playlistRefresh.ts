@@ -200,7 +200,8 @@ export class PlaylistRefreshServiceImpl implements PlaylistRefreshService {
         upcomingTracksCount: upcomingTracks.length,
         playlistTrackIds: playlist.tracks.items.map(t => t.track.id),
         upcomingTrackIds: upcomingTracks.map(t => t.track.id),
-        removedTrack
+        removedTrack,
+        addedTrack: false
       };
       
       const result = await this.addSuggestedTrackToPlaylist(
@@ -221,6 +222,8 @@ export class PlaylistRefreshServiceImpl implements PlaylistRefreshService {
           forceRefresh: force
         };
       }
+
+      diagnosticInfo.addedTrack = true;
 
       return {
         success: true,
