@@ -2,6 +2,10 @@ import { NextResponse } from "next/server";
 import { handleOperationError, AppError } from "@/shared/utils/errorHandling";
 import { ERROR_MESSAGES } from "@/shared/constants/errors";
 
+// Configure the route to be dynamic
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
 const SPOTIFY_TOKEN_URL = "https://accounts.spotify.com/api/token";
 const CLIENT_ID = process.env.SPOTIFY_CLIENT_ID ?? "";
 const CLIENT_SECRET = process.env.SPOTIFY_CLIENT_SECRET ?? "";

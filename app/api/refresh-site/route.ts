@@ -13,10 +13,6 @@ export async function GET(request: Request) {
     const forceParam = url.searchParams.get('force');
     const shouldForce = forceParam === 'true';
 
-    console.log('Request URL:', request.url);
-    console.log('URL object:', url);
-    console.log('Force param:', forceParam);
-    console.log('Should force:', shouldForce);
 
     const result = await PlaylistRefreshServiceImpl.getInstance().refreshPlaylist(shouldForce);
     
