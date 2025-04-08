@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useFixedPlaylist } from '@/hooks/useFixedPlaylist'
 import { useSpotifyPlayer } from '@/hooks/useSpotifyPlayer'
 import SpotifyPlayer from '@/components/SpotifyPlayer'
@@ -8,9 +8,36 @@ import SpotifyPlayer from '@/components/SpotifyPlayer'
 export default function AdminPage() {
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [lastRefreshTime, setLastRefreshTime] = useState<Date | null>(null)
+  const [isRefreshing, setIsRefreshing] = useState(false)
+  const [refreshError, setRefreshError] = useState<string | null>(null)
   const deviceId = useSpotifyPlayer((state) => state.deviceId)
   const isReady = useSpotifyPlayer((state) => state.isReady)
   const { fixedPlaylistId } = useFixedPlaylist()
+
+  useEffect(() => {
+    const refreshInterval = setInterval(async () => {
+      try {
+        setIsRefreshing(true)
+        setRefreshError(null)
+        const response = await fetch('/api/refresh-site')
+        const data = await response.json()
+        
+        if (!response.ok) {
+          throw new Error(data.message || 'Failed to refresh site')
+        }
+        
+        setLastRefreshTime(new Date())
+      } catch (error) {
+        console.error('Error refreshing site:', error)
+        setRefreshError(error instanceof Error ? error.message : 'Failed to refresh site')
+      } finally {
+        setIsRefreshing(false)
+      }
+    }, 120000) // 2 minutes in milliseconds
+
+    return () => clearInterval(refreshInterval)
+  }, [])
 
   const handlePlayback = async (action: 'play' | 'skip') => {
     try {
@@ -63,6 +90,15 @@ export default function AdminPage() {
               {!deviceId ? 'Waiting for Spotify player to initialize...' : 'Waiting for player to be ready...'}
             </div>
           ) : null}
+          <div className="flex items-center gap-2 mb-4 text-sm">
+            <span className={`inline-block w-2 h-2 rounded-full ${isRefreshing ? 'bg-yellow-500 animate-pulse' : refreshError ? 'bg-red-500' : 'bg-green-500'}`} />
+            <span className={refreshError ? 'text-red-600' : 'text-gray-600'}>
+              {isRefreshing ? 'Refreshing...' : 
+               refreshError ? `Refresh failed: ${refreshError}` :
+               lastRefreshTime ? `Last refreshed: ${lastRefreshTime.toLocaleTimeString()}` : 
+               'Waiting for first refresh...'}
+            </span>
+          </div>
           <div className="flex gap-4">
             <button 
               onClick={() => handlePlayback('play')}
