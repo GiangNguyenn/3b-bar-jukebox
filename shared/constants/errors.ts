@@ -9,6 +9,7 @@ export const ERROR_MESSAGES = {
   FAILED_TO_REMOVE: "Failed to remove track from playlist",
   INVALID_PLAYLIST_DATA: "Invalid playlist data. Please try again.",
   UNAUTHORIZED: "Please log in again to create playlists.",
+  MALFORMED_RESPONSE: "Received malformed response from server",
   GENERIC_ERROR: "An error occurred",
 } as const;
 

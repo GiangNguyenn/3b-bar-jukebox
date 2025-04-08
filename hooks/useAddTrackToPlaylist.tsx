@@ -21,8 +21,6 @@ export const useAddTrackToPlaylist = ({ playlistId }: UseAddTrackToPlaylistProps
 
   const addTrack = async (track: TrackItem, onSuccess?: () => void) => {
     const operation = async (track: TrackItem) => {
-      console.log(`[Add Track] Adding track ${track.track.uri} to playlist ${playlistId}`);
-      
       // Optimistically update UI
       setPendingTracks(prev => new Set(prev).add(track.track.uri));
       
@@ -34,7 +32,6 @@ export const useAddTrackToPlaylist = ({ playlistId }: UseAddTrackToPlaylistProps
             uris: [track.track.uri]
           }
         });
-        console.log('[Add Track] Track added successfully, refreshing playlist');
         onSuccess?.();
       } catch (error) {
         console.error('[Add Track] Error adding track:', error);

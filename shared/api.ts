@@ -23,20 +23,10 @@ export const sendApiRequest = async <T>({
   extraHeaders,
   config = {},
 }: ApiProps): Promise<T> => {
-  console.log("Making API request:", {
-    path,
-    method,
-    baseUrl: SPOTIFY_API_URL,
-    hasBody: !!body,
-    hasExtraHeaders: !!extraHeaders,
-    body: body ? JSON.stringify(body) : undefined
-  });
-
   const authToken = await getSpotifyToken();
   if (!authToken) {
     throw new Error("Failed to get Spotify token");
   }
-  console.log("Got auth token:", "Present");
 
   const headers = {
     "Content-Type": "application/json",
@@ -46,7 +36,6 @@ export const sendApiRequest = async <T>({
 
   try {
     const url = `${SPOTIFY_API_URL}/${path}`;
-    console.log("Making request to:", url);
 
     const response = await fetch(url, {
       method,
@@ -101,11 +90,6 @@ export const sendApiRequest = async <T>({
 
     try {
       const data = await response.json();
-      console.log("API response received:", {
-        status: response.status,
-        hasData: !!data,
-        data: data
-      });
       return data;
     } catch (e) {
       console.error("Failed to parse response as JSON:", e);
@@ -141,11 +125,8 @@ async function getSpotifyToken() {
   const now = Date.now();
 
   if (tokenCache.token && now < tokenCache.expiry) {
-    console.log("Using cached Spotify token from memory");
     return tokenCache.token;
   }
-
-  console.log("Fetching new token...");
   
   // Get the base URL for the token endpoint
   let baseUrl = '';
@@ -160,8 +141,6 @@ async function getSpotifyToken() {
       `https://${process.env.VERCEL_URL}` : 
       process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000';
   }
-  
-  console.log("Using base URL:", baseUrl);
   
   try {
     const response = await fetch(`${baseUrl}/api/token`, {
@@ -190,8 +169,6 @@ async function getSpotifyToken() {
       console.error("Invalid token response:", data);
       throw new Error("Invalid token response");
     }
-
-    console.log("New token fetched successfully");
 
     const newToken = data.access_token;
     const newExpiry = now + data.expires_in * 1000;
