@@ -20,8 +20,6 @@ async function verifyDeviceActive(deviceId: string): Promise<boolean> {
 
 async function transferPlaybackToDevice(deviceId: string, retryCount = 0): Promise<void> {
   try {
-    console.log(`[API Playback] Attempting to transfer playback to device ${deviceId} (attempt ${retryCount + 1}/${MAX_RETRIES})`);
-    
     // First verify the device is still active
     const isDeviceActive = await verifyDeviceActive(deviceId);
     if (!isDeviceActive) {
@@ -46,13 +44,10 @@ async function transferPlaybackToDevice(deviceId: string, retryCount = 0): Promi
     if (state?.device?.id !== deviceId) {
       throw new Error('Device transfer verification failed');
     }
-
-    console.log('[API Playback] Successfully transferred playback to device');
   } catch (error) {
     console.error(`[API Playback] Transfer attempt ${retryCount + 1} failed:`, error);
     
     if (retryCount < MAX_RETRIES - 1) {
-      console.log(`[API Playback] Retrying in ${RETRY_DELAY}ms...`);
       await new Promise(resolve => setTimeout(resolve, RETRY_DELAY));
       return transferPlaybackToDevice(deviceId, retryCount + 1);
     }
@@ -64,10 +59,8 @@ async function transferPlaybackToDevice(deviceId: string, retryCount = 0): Promi
 export async function POST(request: Request) {
   try {
     const { action, contextUri, deviceId } = await request.json();
-    console.log('[API Playback] Request received:', { action, contextUri, deviceId });
 
     if (!deviceId) {
-      console.log('[API Playback] No device ID provided');
       return NextResponse.json(
         { error: 'No active Spotify device found. Please wait for the player to initialize.' },
         { status: 400 }
@@ -77,7 +70,6 @@ export async function POST(request: Request) {
     // Verify the device is still active before proceeding
     const isDeviceActive = await verifyDeviceActive(deviceId);
     if (!isDeviceActive) {
-      console.log('[API Playback] Device is no longer active');
       return NextResponse.json(
         { error: 'The Spotify player is no longer active. Please refresh the page and try again.' },
         { status: 400 }
@@ -91,15 +83,12 @@ export async function POST(request: Request) {
         path: 'me/player',
         method: 'GET',
       });
-      console.log('[API Playback] Current playback state:', currentState);
     } catch (error) {
       console.error('[API Playback] Error getting playback state:', error);
       // Don't throw here, continue with the playback attempt
     }
 
     if (action === 'play') {
-      console.log('[API Playback] Starting playback on device:', deviceId);
-      
       try {
         // Transfer playback to our web player with retries
         await transferPlaybackToDevice(deviceId);
@@ -113,7 +102,6 @@ export async function POST(request: Request) {
           method: 'PUT',
           body: contextUri ? { context_uri: contextUri } : {},
         });
-        console.log('[API Playback] Play response:', playResponse);
 
       } catch (error: any) {
         const errorMessage = error?.message || 'Unknown error';
@@ -140,7 +128,6 @@ export async function POST(request: Request) {
           path: 'me/player/next',
           method: 'POST',
         });
-        console.log('[API Playback] Skip request successful');
       } catch (error: any) {
         console.error('[API Playback] Skip error:', error);
         return NextResponse.json(
