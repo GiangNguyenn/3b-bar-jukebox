@@ -6,22 +6,6 @@ import { useSpotifyPlayer } from '@/hooks/useSpotifyPlayer'
 import SpotifyPlayer from '@/components/SpotifyPlayer'
 import { SpotifyPlaybackState } from '@/shared/types'
 
-// Add WakeLockSentinel type if not already globally defined
-declare global {
-  interface WakeLockSentinel {
-    released: boolean;
-    type: 'screen';
-    release(): Promise<void>;
-    addEventListener(type: 'release', listener: () => void): void;
-    removeEventListener(type: 'release', listener: () => void): void;
-  }
-  interface Navigator {
-    wakeLock?: {
-      request(type: 'screen'): Promise<WakeLockSentinel>;
-    };
-  }
-}
-
 export default function AdminPage() {
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
