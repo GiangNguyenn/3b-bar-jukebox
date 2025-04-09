@@ -6,6 +6,22 @@ import { useSpotifyPlayer } from '@/hooks/useSpotifyPlayer'
 import SpotifyPlayer from '@/components/SpotifyPlayer'
 import { SpotifyPlaybackState } from '@/shared/types'
 
+// Add WakeLockSentinel type if not already globally defined
+declare global {
+  interface WakeLockSentinel {
+    released: boolean;
+    type: 'screen';
+    release(): Promise<void>;
+    addEventListener(type: 'release', listener: () => void): void;
+    removeEventListener(type: 'release', listener: () => void): void;
+  }
+  interface Navigator {
+    wakeLock?: {
+      request(type: 'screen'): Promise<WakeLockSentinel>;
+    };
+  }
+}
+
 export default function AdminPage() {
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -13,21 +29,48 @@ export default function AdminPage() {
   const [isRefreshing, setIsRefreshing] = useState(false)
   const [refreshError, setRefreshError] = useState<string | null>(null)
   const [playbackState, setPlaybackState] = useState<SpotifyPlaybackState | null>(null)
+  const [showReinitialization, setShowReinitialization] = useState(false)
+  const [reinitializationInfo, setReinitializationInfo] = useState<{
+    timestamp: number;
+    currentTrack: string;
+    position: string;
+  } | null>(null)
   const [playlistStats, setPlaylistStats] = useState<{
     totalTracks: number;
     upcomingTracksCount: number;
     removedTrack: boolean;
     addedTrack: boolean;
     upcomingTracksPercentage: number;
+    previousTotalTracks?: number;
   } | null>(null)
-  const [autoResumeAttempts, setAutoResumeAttempts] = useState(0)
-  const wasPlaying = useRef(false)
-  const lastPlayingTime = useRef<number | null>(null)
+  const lastPlaylistSnapshot = useRef<string | null>(null)
   const wakeLock = useRef<WakeLockSentinel | null>(null)
-  const MAX_AUTO_RESUME_ATTEMPTS = 3
   const deviceId = useSpotifyPlayer((state) => state.deviceId)
   const isReady = useSpotifyPlayer((state) => state.isReady)
   const { fixedPlaylistId } = useFixedPlaylist()
+  const [lastCheckTime, setLastCheckTime] = useState<Date | null>(null)
+  const [showNoChanges, setShowNoChanges] = useState(false)
+  const [showPlayerCheck, setShowPlayerCheck] = useState(false)
+  const eventListenersSet = useRef(false)
+
+  // Add a ref to track the previous playlist state
+  const previousPlaylistState = useRef<{
+    totalTracks: number;
+    upcomingTracksCount: number;
+    removedTrack: boolean;
+    addedTrack: boolean;
+  } | null>(null)
+
+  // Function to generate a snapshot of the current playlist state
+  const generatePlaylistSnapshot = (stats: typeof playlistStats) => {
+    if (!stats) return null;
+    return JSON.stringify({
+      totalTracks: stats.totalTracks,
+      upcomingTracksCount: stats.upcomingTracksCount,
+      removedTrack: stats.removedTrack,
+      addedTrack: stats.addedTrack
+    });
+  };
 
   useEffect(() => {
     let isMounted = true;
@@ -45,12 +88,6 @@ export default function AdminPage() {
           if (!isMounted) return;
 
           setPlaybackState(data)
-          
-          // If we were playing and now we're not, and it's not because of another device
-          if (wasPlaying.current && !data.is_playing && data.device?.id === deviceId) {
-            console.log('Playback stopped unexpectedly, attempting to resume')
-            handlePlayback('play')
-          }
         }
       } catch (error) {
         console.error('Error fetching playback state:', error)
@@ -73,108 +110,105 @@ export default function AdminPage() {
     }
   }, [deviceId])
 
+  // Set up initial refresh and interval
   useEffect(() => {
     let isMounted = true;
     let refreshInterval: NodeJS.Timeout;
 
     const refreshSite = async () => {
-      if (!isMounted) return;
-
       try {
         setIsRefreshing(true);
         setRefreshError(null);
+        setLastCheckTime(new Date());
         
         console.log('[Admin] Starting site refresh');
         const response = await fetch('/api/refresh-site');
-        if (!isMounted) return;
-
         const data = await response.json();
-        if (!isMounted) return;
         
         if (!response.ok) {
           throw new Error(data.message || 'Failed to refresh site');
         }
         
-        console.log('[Admin] Site refresh successful:', {
-          removedTrack: data.diagnosticInfo?.removedTrack,
-          addedTrack: data.diagnosticInfo?.addedTrack,
-          totalTracks: data.diagnosticInfo?.totalTracks
-        });
-        
-        setLastRefreshTime(new Date());
         if (data.diagnosticInfo) {
-          setPlaylistStats({
+          console.log('[Admin] Received diagnostic info:', data.diagnosticInfo);
+          const newStats = {
             totalTracks: data.diagnosticInfo.totalTracks,
             upcomingTracksCount: data.diagnosticInfo.upcomingTracksCount,
             removedTrack: data.diagnosticInfo.removedTrack,
             addedTrack: data.diagnosticInfo.addedTrack,
-            upcomingTracksPercentage: data.diagnosticInfo.upcomingTracksCount / data.diagnosticInfo.totalTracks * 100
+            upcomingTracksPercentage: data.diagnosticInfo.upcomingTracksCount / data.diagnosticInfo.totalTracks * 100,
+            previousTotalTracks: previousPlaylistState.current?.totalTracks || 0
+          };
+
+          // Check for changes by comparing with previous state
+          const hasChanges = 
+            data.diagnosticInfo.removedTrack || 
+            data.diagnosticInfo.addedTrack || 
+            (previousPlaylistState.current && 
+             (data.diagnosticInfo.totalTracks !== previousPlaylistState.current.totalTracks ||
+              data.diagnosticInfo.upcomingTracksCount !== previousPlaylistState.current.upcomingTracksCount));
+
+          console.log('[Admin] Playlist change detection:', {
+            hasChanges,
+            current: {
+              totalTracks: data.diagnosticInfo.totalTracks,
+              upcomingTracksCount: data.diagnosticInfo.upcomingTracksCount,
+              removedTrack: data.diagnosticInfo.removedTrack,
+              addedTrack: data.diagnosticInfo.addedTrack
+            },
+            previous: previousPlaylistState.current
           });
 
-          // If the playlist was updated, trigger a player refresh
-          if (data.diagnosticInfo.removedTrack || data.diagnosticInfo.addedTrack) {
-            console.log('[Admin] Playlist updated, triggering player refresh');
-            // Dispatch a custom event to notify the player
-            const event = new CustomEvent('playlistRefresh', {
-              detail: { timestamp: Date.now() }
-            });
-            window.dispatchEvent(event);
-            
-            // Also try to refresh the player directly
-            if (typeof window !== 'undefined' && window.refreshSpotifyPlayer) {
-              window.refreshSpotifyPlayer();
-            }
+          // Update the previous state
+          previousPlaylistState.current = {
+            totalTracks: data.diagnosticInfo.totalTracks,
+            upcomingTracksCount: data.diagnosticInfo.upcomingTracksCount,
+            removedTrack: false, // Reset these flags after detection
+            addedTrack: false   // Reset these flags after detection
+          };
+
+          setPlaylistStats(newStats);
+          setLastRefreshTime(new Date());
+
+          if (hasChanges) {
+            console.log('[Admin] Playlist changes detected, dispatching refresh event');
+            window.dispatchEvent(new CustomEvent('playlistRefresh'));
+          } else {
+            console.log('[Admin] No playlist changes detected');
+            setShowNoChanges(true);
+            setTimeout(() => setShowNoChanges(false), 2000);
           }
         }
       } catch (error) {
         console.error('[Admin] Error refreshing site:', error);
-        if (isMounted) {
-          setRefreshError(error instanceof Error ? error.message : 'Failed to refresh site');
-        }
+        setRefreshError(error instanceof Error ? error.message : 'Failed to refresh site');
       } finally {
-        if (isMounted) {
-          setIsRefreshing(false);
-        }
+        setIsRefreshing(false);
       }
     };
 
     // Initial refresh
-    refreshSite()
+    refreshSite();
 
     // Set up interval for subsequent refreshes
-    refreshInterval = setInterval(refreshSite, 120000) // 2 minutes
+    refreshInterval = setInterval(refreshSite, 120000); // 2 minutes
 
     return () => {
       isMounted = false;
       if (refreshInterval) {
-        clearInterval(refreshInterval)
+        clearInterval(refreshInterval);
       }
-    }
-  }, [])
+    };
+  }, []); // Empty dependency array since we only want to set up once
 
-  useEffect(() => {
-    // Update wasPlaying reference based on current state
-    if (playbackState?.is_playing && playbackState.device?.id === deviceId) {
-      wasPlaying.current = true
-      lastPlayingTime.current = Date.now()
-      // Reset auto-resume attempts when playing successfully
-      if (autoResumeAttempts > 0) {
-        setAutoResumeAttempts(0)
-      }
-    } else if (playbackState?.device?.id !== deviceId) {
-      // Clear wasPlaying if another device is active
-      wasPlaying.current = false
-    }
-  }, [playbackState, deviceId])
-
-  // Request wake lock to prevent system sleep
+  // Keep Wake Lock useEffect
   useEffect(() => {
     let wakeLockTimeout: NodeJS.Timeout;
     let isAndroid = /Android/i.test(navigator.userAgent);
 
     const requestWakeLock = async () => {
       try {
-        if ('wakeLock' in navigator) {
+        if ('wakeLock' in navigator && navigator.wakeLock) {
           wakeLock.current = await navigator.wakeLock.request('screen')
           console.log('Wake Lock is active')
           
@@ -182,12 +216,15 @@ export default function AdminPage() {
           if (isAndroid) {
             wakeLock.current.addEventListener('release', () => {
               console.log('Wake Lock was released by the system, attempting to reacquire')
-              requestWakeLock()
+              // Only reacquire if the component is still mounted and lock is null
+              if (wakeLock.current === null) {
+                 requestWakeLock()
+              }
             })
           }
         }
-      } catch (err) {
-        console.error('Error requesting wake lock:', err)
+      } catch (err: any) {
+        console.error(`Wake Lock Error: ${err.name}, ${err.message}`);
         // On Android, retry after a delay if wake lock fails
         if (isAndroid) {
           wakeLockTimeout = setTimeout(requestWakeLock, 5000)
@@ -211,7 +248,7 @@ export default function AdminPage() {
     }
   }, [])
 
-  // Handle visibility changes with Android-specific handling
+  // Simplified visibility change handler without auto-resume
   useEffect(() => {
     let isMounted = true;
     let visibilityTimeout: NodeJS.Timeout;
@@ -224,48 +261,6 @@ export default function AdminPage() {
       const now = Date.now();
       // On Android, check more frequently when hidden
       const checkInterval = isAndroid ? 2000 : 5000;
-
-      if (document.hidden) {
-        // Page is hidden, try to maintain playback
-        if (wasPlaying.current && deviceId && isReady && fixedPlaylistId) {
-          try {
-            const response = await fetch('/api/playback-state')
-            if (!isMounted) return;
-            
-            if (response.ok) {
-              const state = await response.json()
-              if (!isMounted) return;
-              
-              if (!state.is_playing) {
-                console.log('Playback stopped while page was hidden, attempting to resume')
-                handlePlayback('play')
-              }
-            }
-          } catch (error) {
-            console.error('Error checking playback state while hidden:', error)
-          }
-        }
-      } else {
-        // Page is visible again, check and resume if needed
-        if (wasPlaying.current && deviceId && isReady && fixedPlaylistId) {
-          try {
-            const response = await fetch('/api/playback-state')
-            if (!isMounted) return;
-            
-            if (response.ok) {
-              const state = await response.json()
-              if (!isMounted) return;
-              
-              if (!state.is_playing) {
-                console.log('Page became visible, playback stopped while hidden. Attempting to resume.')
-                handlePlayback('play')
-              }
-            }
-          } catch (error) {
-            console.error('Error checking playback state on visibility change:', error)
-          }
-        }
-      }
 
       // Schedule next check
       if (isMounted) {
@@ -318,8 +313,6 @@ export default function AdminPage() {
         // Special handling for the case where music is playing on another device
         if (response.status === 409) {
           setError(`${data.error}${data.details ? ` (${data.details.currentDevice}: ${data.details.currentTrack})` : ''}`)
-          // Don't attempt auto-resume in this case
-          wasPlaying.current = false
           return
         }
         throw new Error(data.error || data.details?.error?.message || 'Failed to control playback')
@@ -344,6 +337,129 @@ export default function AdminPage() {
     return (playbackState.progress_ms / playbackState.item.duration_ms) * 100
   }
 
+  // Set up event listeners for playlist changes
+  useEffect(() => {
+    console.log('[Admin] Setting up event listeners');
+    
+    const handlePlaylistReinitialized = (e: CustomEvent) => {
+      console.log('[Admin] Received playlistReinitialized event:', e.detail);
+      setReinitializationInfo({
+        timestamp: e.detail.timestamp,
+        currentTrack: e.detail.currentTrack,
+        position: e.detail.position
+      });
+      setShowReinitialization(true);
+      setTimeout(() => setShowReinitialization(false), 2000);
+    };
+
+    const handlePlaylistChangeStatus = async () => {
+      console.log('[Admin] Received getPlaylistChangeStatus event');
+      
+      // If we have no stats yet, trigger a refresh
+      if (!playlistStats) {
+        console.log('[Admin] No playlist stats available, triggering refresh');
+        try {
+          const response = await fetch('/api/refresh-site');
+          const data = await response.json();
+          
+          if (data.diagnosticInfo) {
+            const newStats = {
+              totalTracks: data.diagnosticInfo.totalTracks,
+              upcomingTracksCount: data.diagnosticInfo.upcomingTracksCount,
+              removedTrack: false, // Reset these flags for initial state
+              addedTrack: false,   // Reset these flags for initial state
+              upcomingTracksPercentage: data.diagnosticInfo.upcomingTracksCount / data.diagnosticInfo.totalTracks * 100,
+              previousTotalTracks: 0
+            };
+
+            // Set initial state without triggering a change
+            previousPlaylistState.current = {
+              totalTracks: data.diagnosticInfo.totalTracks,
+              upcomingTracksCount: data.diagnosticInfo.upcomingTracksCount,
+              removedTrack: false,
+              addedTrack: false
+            };
+
+            setPlaylistStats(newStats);
+            
+            // Since this is the first time we're getting stats, we don't want to trigger a change
+            window.dispatchEvent(new CustomEvent('playlistChangeStatus', {
+              detail: { hasChanges: false }
+            }));
+          }
+        } catch (error) {
+          console.error('[Admin] Error fetching initial playlist stats:', error);
+          window.dispatchEvent(new CustomEvent('playlistChangeStatus', {
+            detail: { hasChanges: false }
+          }));
+        }
+        return;
+      }
+
+      // Check for any changes in the playlist
+      const hasChanges = 
+        (playlistStats.removedTrack && !previousPlaylistState.current?.removedTrack) || 
+        (playlistStats.addedTrack && !previousPlaylistState.current?.addedTrack) || 
+        (previousPlaylistState.current && 
+         (playlistStats.totalTracks !== previousPlaylistState.current.totalTracks ||
+          playlistStats.upcomingTracksCount !== previousPlaylistState.current.upcomingTracksCount));
+
+      console.log('[Admin] Playlist change status:', {
+        hasChanges,
+        current: playlistStats,
+        previous: previousPlaylistState.current
+      });
+
+      // Update the previous state after checking for changes
+      if (hasChanges) {
+        previousPlaylistState.current = {
+          totalTracks: playlistStats.totalTracks,
+          upcomingTracksCount: playlistStats.upcomingTracksCount,
+          removedTrack: playlistStats.removedTrack,
+          addedTrack: playlistStats.addedTrack
+        };
+      }
+
+      window.dispatchEvent(new CustomEvent('playlistChangeStatus', {
+        detail: { hasChanges }
+      }));
+    };
+
+    const handlePlaylistChecked = (e: CustomEvent) => {
+      console.log('[Admin] Received playlistChecked event:', e.detail);
+      setShowPlayerCheck(true);
+      setTimeout(() => setShowPlayerCheck(false), 2000);
+    };
+
+    // Add event listeners
+    window.addEventListener('playlistReinitialized', handlePlaylistReinitialized as EventListener);
+    window.addEventListener('getPlaylistChangeStatus', handlePlaylistChangeStatus as EventListener);
+    window.addEventListener('playlistChecked', handlePlaylistChecked as EventListener);
+
+    console.log('[Admin] Event listeners set up successfully');
+
+    return () => {
+      console.log('[Admin] Cleaning up event listeners');
+      window.removeEventListener('playlistReinitialized', handlePlaylistReinitialized as EventListener);
+      window.removeEventListener('getPlaylistChangeStatus', handlePlaylistChangeStatus as EventListener);
+      window.removeEventListener('playlistChecked', handlePlaylistChecked as EventListener);
+    };
+  }, []); // Empty dependency array since we only want to set up once
+
+  // Separate effect to handle playlistStats changes
+  useEffect(() => {
+    if (playlistStats) {
+      console.log('[Admin] Playlist stats updated:', playlistStats);
+      // Update the previous state
+      previousPlaylistState.current = {
+        totalTracks: playlistStats.totalTracks,
+        upcomingTracksCount: playlistStats.upcomingTracksCount,
+        removedTrack: playlistStats.removedTrack,
+        addedTrack: playlistStats.addedTrack
+      };
+    }
+  }, [playlistStats]);
+
   return (
     <div className="container mx-auto px-4 py-8">
       <SpotifyPlayer />
@@ -354,6 +470,41 @@ export default function AdminPage() {
           {error && (
             <div className="mb-4 p-4 bg-red-100 text-red-700 rounded">
               {error}
+            </div>
+          )}
+          {showReinitialization && reinitializationInfo && (
+            <div className="mb-4 p-4 bg-blue-100 text-blue-700 rounded animate-fade-in-out">
+              <div className="font-medium mb-1">Playlist Updated</div>
+              <div className="text-sm">
+                <div>Reinitializing playback at:</div>
+                <div className="ml-2">• Track: {reinitializationInfo.currentTrack}</div>
+                <div className="ml-2">• Position: {reinitializationInfo.position}</div>
+              </div>
+            </div>
+          )}
+          {showNoChanges && (
+            <div className="mb-4 p-4 bg-gray-100 text-gray-600 rounded animate-fade-in-out">
+              <div className="flex items-center gap-2">
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                </svg>
+                <span className="text-sm">No playlist changes detected</span>
+              </div>
+              {lastCheckTime && (
+                <div className="text-xs mt-1 text-gray-500">
+                  Last checked: {lastCheckTime.toLocaleTimeString()}
+                </div>
+              )}
+            </div>
+          )}
+          {showPlayerCheck && (
+            <div className="mb-4 p-4 bg-purple-100 text-purple-600 rounded animate-fade-in-out">
+              <div className="flex items-center gap-2">
+                <svg className="w-4 h-4 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                </svg>
+                <span className="text-sm">Spotify player checking for changes...</span>
+              </div>
             </div>
           )}
           {!deviceId || !isReady ? (
