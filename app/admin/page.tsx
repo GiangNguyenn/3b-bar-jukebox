@@ -94,7 +94,7 @@ export default function AdminPage() {
       } finally {
         // Schedule next check only if component is still mounted
         if (isMounted) {
-          timeoutId = setTimeout(fetchPlaybackState, 2000)
+          timeoutId = setTimeout(fetchPlaybackState, 10000)
         }
       }
     }
