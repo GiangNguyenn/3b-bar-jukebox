@@ -35,6 +35,7 @@ export default function SpotifyPlayer() {
   const checkPlayerReady = async () => {
     const currentDeviceId = useSpotifyPlayer.getState().deviceId;
     if (!currentDeviceId) {
+      console.log('[SpotifyPlayer] No device ID in state, checking player state');
       return false;
     }
     
@@ -64,10 +65,12 @@ export default function SpotifyPlayer() {
           });
           const isReady = newState?.device?.id === currentDeviceId;
           if (isReady) {
+            console.log('[SpotifyPlayer] Player verified as ready after transfer');
             setIsReady(true);
           }
           return isReady;
         } catch (error) {
+          console.error('[SpotifyPlayer] Error transferring playback:', error);
           return false;
         }
       }
@@ -75,10 +78,12 @@ export default function SpotifyPlayer() {
       const isReady = state.device.id === currentDeviceId;
       
       if (isReady) {
+        console.log('[SpotifyPlayer] Player verified as ready');
         setIsReady(true);
       }
       return isReady;
     } catch (error) {
+      console.error('[SpotifyPlayer] Error checking player ready:', error);
       return false;
     }
   };
@@ -359,33 +364,124 @@ export default function SpotifyPlayer() {
 
   // Function to refresh playlist state
   const refreshPlaylistState = async () => {
-    if (!deviceId) return;
+    const currentDeviceId = useSpotifyPlayer.getState().deviceId;
+    if (!currentDeviceId) {
+      console.log('[SpotifyPlayer] No device ID, attempting to reconnect');
+      await reconnectPlayer();
+      return;
+    }
     
     try {
-      console.log('[SpotifyPlayer] Refreshing playlist state');
+      console.log('[SpotifyPlayer] Starting playlist state refresh');
+      
+      // Dispatch check notification at the start
+      console.log('[SpotifyPlayer] Dispatching playlistChecked event');
+      window.dispatchEvent(new CustomEvent('playlistChecked', {
+        detail: {
+          timestamp: Date.now(),
+          hasChanges: false
+        }
+      }));
+
       // Get current playback state
       const state = await sendApiRequest<SpotifyPlaybackState>({
         path: 'me/player',
         method: 'GET',
       });
       
-      if (state?.device?.id === deviceId) {
+      if (state?.device?.id === currentDeviceId) {
         console.log('[SpotifyPlayer] Device is active, updating state:', {
           isPlaying: state.is_playing,
           currentTrack: state.item?.name,
           progress: state.progress_ms
         });
+        
+        // Only reinitialize if we're currently playing and there's an actual playlist change
+        if (state.is_playing && state.context?.uri) {
+          // Check if this refresh was triggered by a playlist change
+          console.log('[SpotifyPlayer] Setting up playlist change status handler');
+          
+          // Set up the response handler first
+          const hasChanges = await new Promise<boolean>((resolve) => {
+            const handler = (e: CustomEvent) => {
+              console.log('[SpotifyPlayer] Received playlistChangeStatus response:', e.detail);
+              window.removeEventListener('playlistChangeStatus', handler as EventListener);
+              resolve(e.detail.hasChanges);
+            };
+            window.addEventListener('playlistChangeStatus', handler as EventListener);
+
+            // Now dispatch the request event
+            console.log('[SpotifyPlayer] Dispatching getPlaylistChangeStatus event');
+            const statusEvent = new CustomEvent('getPlaylistChangeStatus');
+            window.dispatchEvent(statusEvent);
+          });
+
+          if (hasChanges) {
+            console.log('[SpotifyPlayer] Reinitializing playback with updated playlist');
+            try {
+              // Store current state before pausing
+              const currentTrackUri = state.item?.uri;
+              const currentPosition = state.progress_ms;
+              const isPlaying = state.is_playing;
+
+              // First pause playback
+              await sendApiRequest({
+                path: 'me/player/pause',
+                method: 'PUT',
+              });
+
+              // Dispatch event to show reinitialization notification
+              console.log('[SpotifyPlayer] Dispatching playlistReinitialized event');
+              const reinitEvent = new CustomEvent('playlistReinitialized', {
+                detail: {
+                  timestamp: Date.now(),
+                  currentTrack: state.item?.name,
+                  position: state.progress_ms
+                }
+              });
+              window.dispatchEvent(reinitEvent);
+              console.log('[SpotifyPlayer] playlistReinitialized event dispatched');
+
+              // Then resume with the exact same context and position
+              await sendApiRequest({
+                path: 'me/player/play',
+                method: 'PUT',
+                body: {
+                  context_uri: state.context.uri,
+                  position_ms: currentPosition,
+                  offset: {
+                    uri: currentTrackUri
+                  }
+                },
+              });
+
+              // If it wasn't playing before, pause it again
+              if (!isPlaying) {
+                await sendApiRequest({
+                  path: 'me/player/pause',
+                  method: 'PUT',
+                });
+              }
+
+              console.log('[SpotifyPlayer] Playback reinitialized successfully at position:', currentPosition);
+            } catch (error) {
+              console.error('[SpotifyPlayer] Error reinitializing playback:', error);
+            }
+          } else {
+            console.log('[SpotifyPlayer] No playlist changes detected, skipping reinitialization');
+          }
+        }
+        
         setPlaybackState(state);
         setIsReady(true);
       } else {
         console.log('[SpotifyPlayer] Device is not active, attempting to reconnect');
-        reconnectPlayer();
+        await reconnectPlayer();
       }
     } catch (error) {
       console.error('[SpotifyPlayer] Error refreshing playlist state:', error);
-      // If we get a 404, it means the player is not active
       if ((error as any)?.status === 404) {
-        reconnectPlayer();
+        await reconnectPlayer();
       }
     }
   };
@@ -410,7 +506,11 @@ export default function SpotifyPlayer() {
     window.onSpotifyWebPlaybackSDKReady = initializePlayer
 
     // Set up playlist refresh interval
-    playlistRefreshInterval.current = setInterval(refreshPlaylistState, 10000); // Refresh every 10 seconds
+    console.log('[SpotifyPlayer] Setting up playlist refresh interval');
+    playlistRefreshInterval.current = setInterval(async () => {
+      console.log('[SpotifyPlayer] Running scheduled playlist refresh');
+      await refreshPlaylistState();
+    }, 120000); // Refresh every 2 minutes
 
     // Only load the SDK if it hasn't been loaded yet
     if (!document.querySelector('script[src="https://sdk.scdn.co/spotify-player.js"]')) {
