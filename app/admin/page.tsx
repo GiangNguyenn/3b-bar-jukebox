@@ -53,6 +53,11 @@ export default function AdminPage() {
         throw new Error('No playlist configured')
       }
 
+      // Get current track and position
+      const currentState = await fetch('/api/playback-state').then(res => res.json())
+      const currentTrack = currentState?.item?.uri
+      const position_ms = currentState?.progress_ms || 0
+
       const response = await fetch('/api/playback', {
         method: 'POST',
         headers: {
@@ -61,8 +66,10 @@ export default function AdminPage() {
         body: JSON.stringify({
           action,
           deviceId,
-          contextUri: action === 'play' ? `spotify:playlist:${fixedPlaylistId}` : undefined,
-          position_ms: action === 'play' && playbackState?.progress_ms ? playbackState.progress_ms : undefined
+          // Only send contextUri if we don't have a current track to resume from
+          contextUri: action === 'play' && !currentTrack ? `spotify:playlist:${fixedPlaylistId}` : undefined,
+          position_ms: action === 'play' ? position_ms : undefined,
+          offset: action === 'play' && currentTrack ? { uri: currentTrack } : undefined
         }),
       })
 
