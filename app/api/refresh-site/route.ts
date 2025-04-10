@@ -16,7 +16,7 @@ export async function GET(request: Request) {
     const result = await PlaylistRefreshServiceImpl.getInstance().refreshPlaylist(shouldForce);
     
     // Only refresh player state if the playlist was actually updated
-    if (result.success && result.diagnosticInfo?.removedTrack) {
+    if (result.success) {
       console.log('Playlist was updated, refreshing player state');
       
       try {
@@ -28,17 +28,32 @@ export async function GET(request: Request) {
 
         // If there's an active device and it's currently playing
         if (playbackState?.device?.id && playbackState.is_playing) {
-          console.log('Found active playing device, refreshing state');
+          console.log('Found active playing device, reinitializing playback');
           
-          // Instead of transferring playback, just seek to current position
+          // Store current state before pausing
+          const currentTrackUri = playbackState.item?.uri;
           const currentPosition = playbackState.progress_ms;
-          await sendApiRequest({
-            path: `me/player/seek?position_ms=${currentPosition}`,
-            method: 'PUT'
-          });
-        }
+          const contextUri = playbackState.context?.uri;
 
-        result.playerStateRefresh = true;
+          // First pause playback
+          await sendApiRequest({
+            path: 'me/player/pause',
+            method: 'PUT',
+          });
+
+          // Then resume with the exact same context and position
+          await sendApiRequest({
+            path: 'me/player/play',
+            method: 'PUT',
+            body: {
+              context_uri: contextUri,
+              position_ms: currentPosition,
+              offset: currentTrackUri ? { uri: currentTrackUri } : undefined
+            },
+          });
+
+          result.playerStateRefresh = true;
+        }
       } catch (error) {
         console.error('Error refreshing player state:', error);
         // Don't fail the request if player refresh fails
