@@ -26,9 +26,9 @@ export async function GET(request: Request) {
           method: 'GET',
         });
 
-        // If there's an active device and it's currently playing
-        if (playbackState?.device?.id && playbackState.is_playing) {
-          console.log('Found active playing device, reinitializing playback');
+        // If there's an active device
+        if (playbackState?.device?.id) {
+          console.log('Found active device, reinitializing playback');
           
           // Store current state before pausing
           const currentTrackUri = playbackState.item?.uri;
