@@ -5,7 +5,7 @@ import { useSpotifyPlayer } from '@/hooks/useSpotifyPlayer'
 import { useFixedPlaylist } from '@/hooks/useFixedPlaylist'
 import SpotifyPlayer from '@/components/SpotifyPlayer'
 
-const REFRESH_INTERVAL = 120000; // 2 minutes in milliseconds
+const REFRESH_INTERVAL = 180000; // 3 minutes in milliseconds
 
 export default function AdminPage() {
   const [isLoading, setIsLoading] = useState(false)
