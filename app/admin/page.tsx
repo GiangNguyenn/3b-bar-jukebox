@@ -32,6 +32,7 @@ export default function AdminPage() {
     connection: 'good'
   })
   const [recoveryAttempts, setRecoveryAttempts] = useState(0)
+  const [networkErrorCount, setNetworkErrorCount] = useState(0)
   const isReady = useSpotifyPlayer((state) => state.isReady)
   const deviceId = useSpotifyPlayer((state) => state.deviceId)
   const playbackState = useSpotifyPlayer((state) => state.playbackState)
@@ -334,6 +335,48 @@ export default function AdminPage() {
 
     return () => clearInterval(refreshInterval)
   }, [isLoading])
+
+  // Network error recovery
+  useEffect(() => {
+    const attemptNetworkRecovery = async () => {
+      if (networkErrorCount >= 3) {
+        console.log('Max network recovery attempts reached, giving up')
+        return
+      }
+
+      try {
+        console.log(`Attempting network recovery (attempt ${networkErrorCount + 1}/3)`)
+        
+        // Try to refresh the token first
+        const tokenResponse = await fetch('/api/token')
+        if (!tokenResponse.ok) {
+          throw new Error('Token refresh failed')
+        }
+
+        // Then try to get playback state
+        const stateResponse = await fetch('/api/playback-state')
+        if (!stateResponse.ok) {
+          throw new Error('Playback state check failed')
+        }
+
+        // If both succeeded, reset error state
+        setError(null)
+        setNetworkErrorCount(0)
+        setHealthStatus(prev => ({ ...prev, connection: 'good' }))
+        console.log('Network recovery successful')
+      } catch (error) {
+        console.error('Network recovery attempt failed:', error)
+        setNetworkErrorCount(prev => prev + 1)
+        // Schedule next attempt after 5 seconds
+        setTimeout(attemptNetworkRecovery, 5000)
+      }
+    }
+
+    // If we have a network error, start recovery process
+    if (error?.includes('Network error') || error?.includes('Failed to fetch')) {
+      attemptNetworkRecovery()
+    }
+  }, [error, networkErrorCount])
 
   const formatTime = (ms: number) => {
     const seconds = Math.ceil(ms / 1000)
