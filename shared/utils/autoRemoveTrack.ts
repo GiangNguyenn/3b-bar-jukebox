@@ -22,7 +22,7 @@ export async function autoRemoveTrack({
   if (!currentTrackId || !playbackState || !playlistTracks.length) return false;
 
   const currentTrackIndex = playlistTracks.findIndex(track => track.track.id === currentTrackId);
-  if (currentTrackIndex === -1 || currentTrackIndex < 5) return false;
+  if (currentTrackIndex === -1 || currentTrackIndex < 20) return false;
 
   const trackToRemove = playlistTracks[0];
   if (!trackToRemove) {

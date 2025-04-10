@@ -24,7 +24,7 @@ export const useAutoRemoveFinishedTrack = ({
     if (!currentTrackId || !playbackState || isLoading || !playlistTracks.length || !removeTrack) return;
 
     const currentTrackIndex = playlistTracks.findIndex(track => track.track.id === currentTrackId);
-    if (currentTrackIndex === -1 || currentTrackIndex < 5) return;
+    if (currentTrackIndex === -1 || currentTrackIndex < 20) return;
 
     // Clear any pending removal
     if (removalTimeoutRef.current) {
