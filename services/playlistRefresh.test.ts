@@ -1,23 +1,25 @@
-import { PlaylistRefreshServiceImpl } from './playlistRefresh';
-import { SpotifyApiClient } from './spotifyApi';
-import { SpotifyPlaylistItem, TrackItem } from '@/shared/types';
+import { PlaylistRefreshServiceImpl } from './playlistRefresh'
+import { SpotifyApiClient } from './spotifyApi'
+import { SpotifyPlaylistItem, TrackItem } from '@/shared/types'
 
 describe('PlaylistRefreshService', () => {
-  let mockSpotifyApi: SpotifyApiClient;
-  let service: PlaylistRefreshServiceImpl;
+  let mockSpotifyApi: SpotifyApiClient
+  let service: PlaylistRefreshServiceImpl
 
   beforeEach(() => {
     // Reset the singleton instance before each test
-    PlaylistRefreshServiceImpl.resetInstance();
+    PlaylistRefreshServiceImpl.resetInstance()
 
     // Mock Spotify API client
     mockSpotifyApi = {
       getPlaylists: jest.fn().mockResolvedValue({
-        items: [{
-          id: 'playlist1',
-          name: '3B Saigon',
-          tracks: { items: [] }
-        }]
+        items: [
+          {
+            id: 'playlist1',
+            name: '3B Saigon',
+            tracks: { items: [] }
+          }
+        ]
       }),
       getPlaylist: jest.fn().mockResolvedValue({
         id: 'playlist1',
@@ -35,24 +37,24 @@ describe('PlaylistRefreshService', () => {
         currently_playing: null,
         queue: []
       })
-    };
+    }
 
     // Initialize service with mock
-    service = PlaylistRefreshServiceImpl.getInstance();
+    service = PlaylistRefreshServiceImpl.getInstance()
     // @ts-ignore - Override private spotifyApi for testing
-    service['spotifyApi'] = mockSpotifyApi;
-  });
+    service['spotifyApi'] = mockSpotifyApi
+  })
 
   afterEach(() => {
-    jest.clearAllMocks();
-  });
+    jest.clearAllMocks()
+  })
 
   it('should successfully refresh playlist', async () => {
     // Call refresh playlist
-    const result = await service.refreshPlaylist();
+    const result = await service.refreshPlaylist()
 
     // Verify result
-    expect(result.success).toBe(true);
-    expect(result.message).toBe('Track added successfully');
-  });
-}); 
+    expect(result.success).toBe(true)
+    expect(result.message).toBe('Track added successfully')
+  })
+})

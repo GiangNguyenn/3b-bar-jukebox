@@ -32,7 +32,7 @@ export const useSpotifyPlayer = create<SpotifyPlayerState>((set) => ({
         ...state.debug,
         lastDeviceIdUpdate: Date.now()
       }
-    }));
+    }))
   },
   setIsReady: (isReady) => {
     set((state) => ({
@@ -41,7 +41,7 @@ export const useSpotifyPlayer = create<SpotifyPlayerState>((set) => ({
         ...state.debug,
         lastReadyUpdate: Date.now()
       }
-    }));
+    }))
   },
   setPlaybackState: (playbackState) => {
     set((state) => ({
@@ -50,6 +50,6 @@ export const useSpotifyPlayer = create<SpotifyPlayerState>((set) => ({
         ...state.debug,
         lastPlaybackStateUpdate: Date.now()
       }
-    }));
+    }))
   }
-})) 
+}))

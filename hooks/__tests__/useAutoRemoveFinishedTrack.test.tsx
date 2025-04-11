@@ -1,11 +1,11 @@
-import { renderHook, act } from '@testing-library/react-hooks';
-import { useAutoRemoveFinishedTrack } from '../useAutoRemoveFinishedTrack';
-import { TrackItem, SpotifyPlaybackState } from '@/shared/types';
-import { jest } from '@jest/globals';
-import { sendApiRequest } from '@/shared/api';
+import { renderHook, act } from '@testing-library/react-hooks'
+import { useAutoRemoveFinishedTrack } from '../useAutoRemoveFinishedTrack'
+import { TrackItem, SpotifyPlaybackState } from '@/shared/types'
+import { jest } from '@jest/globals'
+import { sendApiRequest } from '@/shared/api'
 
 // Mock fetch globally
-global.fetch = jest.fn(() => 
+global.fetch = jest.fn(() =>
   Promise.resolve({
     ok: true,
     json: () => Promise.resolve({ access_token: 'mock-token' }),
@@ -19,7 +19,7 @@ global.fetch = jest.fn(() =>
     formData: () => Promise.resolve(new FormData()),
     text: () => Promise.resolve('')
   } as Response)
-) as unknown as typeof fetch;
+) as unknown as typeof fetch
 
 // Mock useRemoveTrackFromPlaylist
 jest.mock('../useRemoveTrackFromPlaylist', () => ({
@@ -31,34 +31,39 @@ jest.mock('../useRemoveTrackFromPlaylist', () => ({
         body: {
           tracks: [{ uri: `spotify:track:${track.track.id}` }]
         }
-      });
+      })
     },
     isLoading: false
   })
-}));
+}))
 
 // Mock sendApiRequest
-jest.mock('@/shared/api');
+jest.mock('@/shared/api')
 
-const mockSendApiRequest = sendApiRequest as jest.MockedFunction<typeof sendApiRequest>;
+const mockSendApiRequest = sendApiRequest as jest.MockedFunction<
+  typeof sendApiRequest
+>
 
 beforeEach(() => {
-  jest.clearAllTimers();
-  mockSendApiRequest.mockClear();
+  jest.clearAllTimers()
+  mockSendApiRequest.mockClear()
   mockSendApiRequest.mockImplementation(async (params) => {
-    if (params.path === 'playlists/test-playlist-id/tracks' && params.method === 'DELETE') {
-      return { snapshot_id: 'mock-snapshot-id' } as any;
+    if (
+      params.path === 'playlists/test-playlist-id/tracks' &&
+      params.method === 'DELETE'
+    ) {
+      return { snapshot_id: 'mock-snapshot-id' } as any
     }
-    throw new Error(`Unexpected API call: ${params.path}`);
-  });
-});
+    throw new Error(`Unexpected API call: ${params.path}`)
+  })
+})
 
 afterEach(() => {
-  jest.clearAllTimers();
-  mockSendApiRequest.mockClear();
-});
+  jest.clearAllTimers()
+  mockSendApiRequest.mockClear()
+})
 
-const mockTimers = jest.useFakeTimers();
+const mockTimers = jest.useFakeTimers()
 
 const createMockTrack = (id: string): TrackItem => ({
   added_at: '2024-01-01T00:00:00Z',
@@ -84,28 +89,32 @@ const createMockTrack = (id: string): TrackItem => ({
       release_date_precision: 'day',
       type: 'album',
       uri: 'spotify:album:test',
-      artists: [{
+      artists: [
+        {
+          external_urls: { spotify: 'https://open.spotify.com/artist/test' },
+          href: 'https://api.spotify.com/v1/artists/test',
+          id: 'test',
+          name: 'Test Artist',
+          type: 'artist',
+          uri: 'spotify:artist:test'
+        }
+      ]
+    },
+    artists: [
+      {
         external_urls: { spotify: 'https://open.spotify.com/artist/test' },
         href: 'https://api.spotify.com/v1/artists/test',
         id: 'test',
         name: 'Test Artist',
         type: 'artist',
         uri: 'spotify:artist:test'
-      }]
-    },
-    artists: [{
-      external_urls: { spotify: 'https://open.spotify.com/artist/test' },
-      href: 'https://api.spotify.com/v1/artists/test',
-      id: 'test',
-      name: 'Test Artist',
-      type: 'artist',
-      uri: 'spotify:artist:test'
-    }],
+      }
+    ],
     available_markets: ['US'],
     disc_number: 1,
     duration_ms: 180000,
     explicit: false,
-    external_ids: { 
+    external_ids: {
       isrc: 'MOCK123456789'
     },
     external_urls: { spotify: 'https://open.spotify.com/track/test' },
@@ -120,11 +129,11 @@ const createMockTrack = (id: string): TrackItem => ({
     uri: `spotify:track:${id}`,
     is_local: false
   }
-});
+})
 
 const createMockPlaybackState = (id: string): SpotifyPlaybackState => {
-  const track = createMockTrack(id).track;
-  const { preview_url, ...trackWithoutPreview } = track;
+  const track = createMockTrack(id).track
+  const { preview_url, ...trackWithoutPreview } = track
   return {
     device: {
       id: 'test-device',
@@ -170,33 +179,37 @@ const createMockPlaybackState = (id: string): SpotifyPlaybackState => {
       external_urls: { spotify: 'https://open.spotify.com/playlist/test' },
       uri: 'spotify:playlist:test'
     }
-  };
-};
+  }
+}
 
 describe('useAutoRemoveFinishedTrack', () => {
   beforeEach(() => {
-    jest.clearAllTimers();
-  });
+    jest.clearAllTimers()
+  })
 
   afterEach(() => {
-    jest.clearAllTimers();
-  });
+    jest.clearAllTimers()
+  })
 
-  it('should remove oldest track when current track index is >= 5', async () => {
-    const tracks = Array.from({ length: 10 }, (_, i) => createMockTrack(`track-${i}`));
-    const playbackState = createMockPlaybackState('track-5');
-    
-    renderHook(() => useAutoRemoveFinishedTrack({
-      currentTrackId: 'track-5',
-      playlistTracks: tracks,
-      playbackState,
-      playlistId: 'test-playlist-id'
-    }));
+  it('should remove oldest track when current track index is >= 20', async () => {
+    const tracks = Array.from({ length: 25 }, (_, i) =>
+      createMockTrack(`track-${i}`)
+    )
+    const playbackState = createMockPlaybackState('track-20')
+
+    renderHook(() =>
+      useAutoRemoveFinishedTrack({
+        currentTrackId: 'track-20',
+        playlistTracks: tracks,
+        playbackState,
+        playlistId: 'test-playlist-id'
+      })
+    )
 
     // Fast-forward time by 5 seconds
     act(() => {
-      jest.advanceTimersByTime(5000);
-    });
+      jest.advanceTimersByTime(5000)
+    })
 
     expect(sendApiRequest).toHaveBeenCalledWith({
       path: 'playlists/test-playlist-id/tracks',
@@ -204,43 +217,49 @@ describe('useAutoRemoveFinishedTrack', () => {
       body: {
         tracks: [{ uri: 'spotify:track:track-0' }]
       }
-    });
-  });
+    })
+  })
 
-  it('should not remove any track when current track index is < 5', async () => {
-    const tracks = Array.from({ length: 10 }, (_, i) => createMockTrack(`track-${i}`));
-    const playbackState = createMockPlaybackState('track-3');
-    
-    renderHook(() => useAutoRemoveFinishedTrack({
-      currentTrackId: 'track-3',
-      playlistTracks: tracks,
-      playbackState,
-      playlistId: 'test-playlist-id'
-    }));
+  it('should not remove any track when current track index is < 20', async () => {
+    const tracks = Array.from({ length: 25 }, (_, i) =>
+      createMockTrack(`track-${i}`)
+    )
+    const playbackState = createMockPlaybackState('track-15')
+
+    renderHook(() =>
+      useAutoRemoveFinishedTrack({
+        currentTrackId: 'track-15',
+        playlistTracks: tracks,
+        playbackState,
+        playlistId: 'test-playlist-id'
+      })
+    )
 
     // Fast-forward time by 5 seconds
     act(() => {
-      jest.advanceTimersByTime(5000);
-    });
+      jest.advanceTimersByTime(5000)
+    })
 
-    expect(sendApiRequest).not.toHaveBeenCalled();
-  });
+    expect(sendApiRequest).not.toHaveBeenCalled()
+  })
 
   it('should not remove any track when playlist is empty', async () => {
-    const playbackState = createMockPlaybackState('track-5');
-    
-    renderHook(() => useAutoRemoveFinishedTrack({
-      currentTrackId: 'track-5',
-      playlistTracks: [],
-      playbackState,
-      playlistId: 'test-playlist-id'
-    }));
+    const playbackState = createMockPlaybackState('track-5')
+
+    renderHook(() =>
+      useAutoRemoveFinishedTrack({
+        currentTrackId: 'track-5',
+        playlistTracks: [],
+        playbackState,
+        playlistId: 'test-playlist-id'
+      })
+    )
 
     // Fast-forward time by 5 seconds
     act(() => {
-      jest.advanceTimersByTime(5000);
-    });
+      jest.advanceTimersByTime(5000)
+    })
 
-    expect(sendApiRequest).not.toHaveBeenCalled();
-  });
-}); 
+    expect(sendApiRequest).not.toHaveBeenCalled()
+  })
+})
