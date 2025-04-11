@@ -3,6 +3,7 @@ import { FC, useState } from 'react'
 import { faSearch } from '@fortawesome/free-solid-svg-icons'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import { useAddTrackToPlaylist } from '@/hooks/useAddTrackToPlaylist'
+import Image from 'next/image'
 
 interface SearchInputProps {
   searchQuery: string
@@ -20,16 +21,16 @@ const SearchInput: FC<SearchInputProps> = ({
   setSearchResults,
   playlistId,
   onTrackAdded
-}) => {
+}): JSX.Element => {
   const { addTrack } = useAddTrackToPlaylist({ playlistId })
   const [isOpen, setIsOpen] = useState(false)
 
-  const handleChange = (value: string) => {
+  const handleChange = (value: string): void => {
     setSearchQuery(value)
     setIsOpen(true)
   }
 
-  const handleAddTrack = (track: TrackDetails) => {
+  const handleAddTrack = (track: TrackDetails): void => {
     const trackItem: TrackItem = {
       added_at: new Date().toISOString(),
       added_by: {
@@ -64,7 +65,7 @@ const SearchInput: FC<SearchInputProps> = ({
       }
     }
 
-    addTrack(trackItem, () => {
+    void addTrack(trackItem, () => {
       // Only clear search results and close dropdown after successful addition
       setSearchResults([])
       setSearchQuery('')
@@ -105,9 +106,11 @@ const SearchInput: FC<SearchInputProps> = ({
                     className='relative cursor-pointer select-none bg-gray-100 py-2 pl-3 pr-9 hover:bg-gray-200'
                   >
                     <div className='flex items-center'>
-                      <img
+                      <Image
                         src={track.album.images[2].url}
                         alt={track.name}
+                        width={32}
+                        height={32}
                         className='h-8 w-8 flex-shrink-0 rounded-full'
                       />
                       <div className='ml-3'>

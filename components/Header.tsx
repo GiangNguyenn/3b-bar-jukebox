@@ -46,11 +46,11 @@ declare global {
   }
 }
 
-const Header = () => {
+const Header = (): JSX.Element => {
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const handleLogoClick = async () => {
+  const handleLogoClick = async (): Promise<void> => {
     try {
       setIsLoading(true)
       setError(null)
@@ -75,8 +75,8 @@ const Header = () => {
       if (!response.ok) {
         const data = (await response.json()) as ApiErrorResponse
         const errorMessage =
-          data.error ||
-          data.details?.errorMessage ||
+          data.error ??
+          data.details?.errorMessage ??
           'Failed to suggest a track'
         console.error('API error:', {
           status: response.status,
@@ -148,7 +148,12 @@ const Header = () => {
 
   return (
     <div className='flex flex-col items-center justify-center space-y-4 p-4'>
-      <div className='relative cursor-pointer' onClick={handleLogoClick}>
+      <div 
+        className='relative cursor-pointer' 
+        onClick={() => {
+          void handleLogoClick()
+        }}
+      >
         <Image
           src={logo}
           width={100}
