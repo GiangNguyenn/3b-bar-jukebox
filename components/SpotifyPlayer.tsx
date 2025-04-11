@@ -626,7 +626,7 @@ export default function SpotifyPlayer() {
   }, [deviceId])
 
   if (error) {
-    return <div className="rounded bg-red-100 p-4 text-red-700">{error}</div>
+    return <div className='rounded bg-red-100 p-4 text-red-700'>{error}</div>
   }
 
   return null

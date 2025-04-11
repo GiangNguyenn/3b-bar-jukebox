@@ -3,8 +3,8 @@ import { faGear } from '@fortawesome/free-solid-svg-icons'
 
 export default function Loading() {
   return (
-    <div className="relative flex h-screen items-center justify-center bg-[var(--color-bg)]">
-      <FontAwesomeIcon className="h-16 w-16 animate-spin" icon={faGear} />
+    <div className='relative flex h-screen items-center justify-center bg-[var(--color-bg)]'>
+      <FontAwesomeIcon className='h-16 w-16 animate-spin' icon={faGear} />
     </div>
   )
 }

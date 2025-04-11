@@ -149,24 +149,24 @@ const Header = () => {
   }
 
   return (
-    <div className="flex flex-col items-center justify-center space-y-4 p-4">
-      <div className="relative cursor-pointer" onClick={handleLogoClick}>
+    <div className='flex flex-col items-center justify-center space-y-4 p-4'>
+      <div className='relative cursor-pointer' onClick={handleLogoClick}>
         <Image
           src={logo}
           width={100}
           height={100}
-          alt="3B SAIGON JUKEBOX Logo"
+          alt='3B SAIGON JUKEBOX Logo'
           priority
           className={`transition-transform duration-200 hover:scale-105 ${isLoading ? 'animate-spin' : ''}`}
         />
       </div>
-      <h1 className="text-center font-[family-name:var(--font-belgrano)] text-4xl leading-tight text-primary-100">
+      <h1 className='text-center font-[family-name:var(--font-belgrano)] text-4xl leading-tight text-primary-100'>
         3B SAIGON JUKEBOX
       </h1>
       {error && (
-        <div className="text-white fixed bottom-4 right-4 max-w-md rounded bg-red-500 px-4 py-2 shadow-lg">
-          <p className="font-bold">Error:</p>
-          <p className="text-sm">{error}</p>
+        <div className='text-white fixed bottom-4 right-4 max-w-md rounded bg-red-500 px-4 py-2 shadow-lg'>
+          <p className='font-bold'>Error:</p>
+          <p className='text-sm'>{error}</p>
         </div>
       )}
     </div>
