@@ -12,7 +12,6 @@ const DEVICE_CHECK_INTERVAL = 10000 // 10 seconds in milliseconds
 const MAX_RECOVERY_ATTEMPTS = 3
 const RECOVERY_DELAY = 5000 // 5 seconds between recovery attempts
 const TOKEN_CHECK_INTERVAL = 300000 // 5 minutes in milliseconds
-const REFRESH_DEBOUNCE = 5000 // 5 seconds debounce time
 
 interface HealthStatus {
   device: 'healthy' | 'unresponsive' | 'disconnected'
@@ -21,7 +20,16 @@ interface HealthStatus {
   connection: 'good' | 'unstable' | 'poor'
 }
 
-export default function AdminPage() {
+interface TokenResponse {
+  expires_in: number
+}
+
+interface RefreshResponse {
+  message?: string
+  success: boolean
+}
+
+export default function AdminPage(): JSX.Element {
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [timeUntilRefresh, setTimeUntilRefresh] = useState(REFRESH_INTERVAL)
@@ -35,7 +43,6 @@ export default function AdminPage() {
   const [networkErrorCount, setNetworkErrorCount] = useState(0)
   const isReady = useSpotifyPlayer((state) => state.isReady)
   const deviceId = useSpotifyPlayer((state) => state.deviceId)
-  const playbackState = useSpotifyPlayer((state) => state.playbackState)
   const { fixedPlaylistId } = useFixedPlaylist()
   const wakeLock = useRef<WakeLockSentinel | null>(null)
   const lastRefreshTime = useRef<number>(Date.now())
@@ -44,19 +51,18 @@ export default function AdminPage() {
   const recoveryTimeout = useRef<NodeJS.Timeout | null>(null)
   const tokenCheckInterval = useRef<NodeJS.Timeout | null>(null)
   const responseTimes = useRef<number[]>([])
-  const refreshTimeout = useRef<NodeJS.Timeout | null>(null)
   const isRefreshing = useRef<boolean>(false)
 
   // Check token validity
   useEffect(() => {
-    const checkToken = async () => {
+    const checkToken = async (): Promise<void> => {
       try {
         const response = await fetch('/api/token')
         if (!response.ok) {
           setHealthStatus((prev) => ({ ...prev, token: 'error' }))
           return
         }
-        const { expires_in } = await response.json()
+        const { expires_in } = await response.json() as TokenResponse
 
         // If token is about to expire (less than 5 minutes), refresh it
         if (expires_in <= 300) {
@@ -85,10 +91,12 @@ export default function AdminPage() {
       }
     }
 
-    tokenCheckInterval.current = setInterval(checkToken, TOKEN_CHECK_INTERVAL)
-    checkToken() // Initial check
+    tokenCheckInterval.current = setInterval(() => {
+      void checkToken()
+    }, TOKEN_CHECK_INTERVAL)
+    void checkToken() // Initial check
 
-    return () => {
+    return (): void => {
       if (tokenCheckInterval.current) {
         clearInterval(tokenCheckInterval.current)
       }
@@ -96,7 +104,7 @@ export default function AdminPage() {
   }, [])
 
   // Track response times for connection quality
-  const trackResponseTime = async (operation: () => Promise<any>) => {
+  const trackResponseTime = async <T,>(operation: () => Promise<T>): Promise<void> => {
     const start = performance.now()
     try {
       await operation()
@@ -118,13 +126,14 @@ export default function AdminPage() {
               : 'poor'
       }))
     } catch (error) {
+      console.error('Response time tracking failed:', error)
       setHealthStatus((prev) => ({ ...prev, connection: 'poor' }))
     }
   }
 
   // Device health check and recovery
   useEffect(() => {
-    const checkDeviceHealth = async () => {
+    const checkDeviceHealth = async (): Promise<void> => {
       if (!deviceId) {
         setHealthStatus((prev) => ({ ...prev, device: 'disconnected' }))
         return
@@ -136,7 +145,7 @@ export default function AdminPage() {
         if (!response.ok) {
           throw new Error('Failed to get playback state')
         }
-        const state = await response.json()
+        const state = await response.json() as SpotifyPlaybackState
 
         if (!state?.device?.id) {
           setHealthStatus((prev) => ({ ...prev, device: 'disconnected' }))
@@ -162,13 +171,11 @@ export default function AdminPage() {
       })
     }
 
-    // Start periodic checks
-    deviceCheckInterval.current = setInterval(
-      checkDeviceHealth,
-      DEVICE_CHECK_INTERVAL
-    )
+    deviceCheckInterval.current = setInterval(() => {
+      void checkDeviceHealth()
+    }, DEVICE_CHECK_INTERVAL)
 
-    return () => {
+    return (): void => {
       if (deviceCheckInterval.current) {
         clearInterval(deviceCheckInterval.current)
       }
@@ -177,7 +184,7 @@ export default function AdminPage() {
 
   // Device health check and recovery
   useEffect(() => {
-    const attemptRecovery = async () => {
+    const attemptRecovery = async (): Promise<void> => {
       if (recoveryAttempts >= MAX_RECOVERY_ATTEMPTS) {
         console.log('Max recovery attempts reached, giving up')
         return
@@ -220,18 +227,22 @@ export default function AdminPage() {
 
         // If recovery failed, schedule next attempt
         setRecoveryAttempts((prev) => prev + 1)
-        recoveryTimeout.current = setTimeout(attemptRecovery, RECOVERY_DELAY)
+        recoveryTimeout.current = setTimeout(() => {
+          void attemptRecovery()
+        }, RECOVERY_DELAY)
       } catch (error) {
         console.error('Recovery attempt failed:', error)
         setRecoveryAttempts((prev) => prev + 1)
-        recoveryTimeout.current = setTimeout(attemptRecovery, RECOVERY_DELAY)
+        recoveryTimeout.current = setTimeout(() => {
+          void attemptRecovery()
+        }, RECOVERY_DELAY)
       }
     }
 
-    const checkDeviceHealth = async () => {
+    const checkDeviceHealth = async (): Promise<void> => {
       if (!deviceId) {
         setHealthStatus((prev) => ({ ...prev, device: 'disconnected' }))
-        attemptRecovery()
+        void attemptRecovery()
         return
       }
 
@@ -243,37 +254,30 @@ export default function AdminPage() {
 
         if (!state?.device?.id) {
           setHealthStatus((prev) => ({ ...prev, device: 'disconnected' }))
-          attemptRecovery()
+          void attemptRecovery()
           return
         }
 
         if (state.device.id !== deviceId) {
           setHealthStatus((prev) => ({ ...prev, device: 'disconnected' }))
-          attemptRecovery()
+          void attemptRecovery()
           return
         }
 
-        // If we got a response and the device matches, it's healthy
         setHealthStatus((prev) => ({ ...prev, device: 'healthy' }))
         setRecoveryAttempts(0)
-        lastDeviceCheckTime.current = Date.now()
       } catch (error) {
-        // If we can't get a response, check if it's been too long
-        const timeSinceLastCheck = Date.now() - lastDeviceCheckTime.current
-        if (timeSinceLastCheck > DEVICE_CHECK_INTERVAL * 3) {
-          setHealthStatus((prev) => ({ ...prev, device: 'unresponsive' }))
-          attemptRecovery()
-        }
+        console.error('Device health check failed:', error)
+        setHealthStatus((prev) => ({ ...prev, device: 'unresponsive' }))
+        void attemptRecovery()
       }
     }
 
-    // Start periodic checks
-    deviceCheckInterval.current = setInterval(
-      checkDeviceHealth,
-      DEVICE_CHECK_INTERVAL
-    )
+    deviceCheckInterval.current = setInterval(() => {
+      void checkDeviceHealth()
+    }, DEVICE_CHECK_INTERVAL)
 
-    return () => {
+    return (): void => {
       if (deviceCheckInterval.current) {
         clearInterval(deviceCheckInterval.current)
       }
@@ -283,27 +287,24 @@ export default function AdminPage() {
     }
   }, [deviceId, recoveryAttempts])
 
-  // Keep screen on with Wake Lock
+  // Request wake lock to prevent device sleep
   useEffect(() => {
-    const requestWakeLock = async () => {
+    const requestWakeLock = async (): Promise<void> => {
       try {
         if ('wakeLock' in navigator) {
           wakeLock.current = await navigator.wakeLock.request('screen')
-          console.log('Screen will stay on')
+          console.log('Wake Lock is active')
         }
-      } catch (err) {
-        console.error('Wake Lock Error:', err)
+      } catch (error) {
+        console.error('Failed to request wake lock:', error)
       }
     }
 
-    requestWakeLock()
+    void requestWakeLock()
 
-    return () => {
+    return (): void => {
       if (wakeLock.current) {
-        wakeLock.current.release().then(() => {
-          wakeLock.current = null
-          console.log('Screen can now sleep')
-        })
+        void wakeLock.current.release()
       }
     }
   }, [])
@@ -318,165 +319,122 @@ export default function AdminPage() {
 
       // Trigger refresh when timer reaches zero and not already refreshing
       if (remainingTime === 0 && !isRefreshing.current) {
-        handleRefresh()
+        void handleRefresh()
       }
     }, 1000)
 
-    return () => clearInterval(timer)
+    return (): void => clearInterval(timer)
   }, [])
 
   // Automatic periodic refresh every 2 minutes
   useEffect(() => {
-    const refreshInterval = setInterval(async () => {
+    const refreshInterval = setInterval((): void => {
       if (!isLoading) {
         // Don't refresh if already loading
-        try {
-          setIsLoading(true)
-          const response = await fetch('/api/refresh-site')
-          const data = await response.json()
+        void (async (): Promise<void> => {
+          try {
+            setIsLoading(true)
+            const response = await fetch('/api/refresh-site')
+            const data = await response.json() as RefreshResponse
 
-          if (!response.ok) {
-            console.error(
-              'Auto refresh failed:',
-              data.message || 'Failed to refresh site'
-            )
-            return
+            if (!response.ok) {
+              console.error(
+                'Auto refresh failed:',
+                data.message ?? 'Failed to refresh site'
+              )
+              return
+            }
+
+            // Dispatch refresh event for the player to handle
+            window.dispatchEvent(new CustomEvent('playlistRefresh'))
+            console.log('Auto refresh completed successfully')
+            lastRefreshTime.current = Date.now()
+          } catch (err) {
+            console.error('Auto refresh error:', err)
+          } finally {
+            setIsLoading(false)
           }
-
-          // Dispatch refresh event for the player to handle
-          window.dispatchEvent(new CustomEvent('playlistRefresh'))
-          console.log('Auto refresh completed successfully')
-          lastRefreshTime.current = Date.now()
-        } catch (err) {
-          console.error('Auto refresh error:', err)
-        } finally {
-          setIsLoading(false)
-        }
+        })()
       }
     }, REFRESH_INTERVAL)
 
-    return () => clearInterval(refreshInterval)
+    return (): void => clearInterval(refreshInterval)
   }, [isLoading])
 
-  // Network error recovery
+  // Network error handling and recovery
   useEffect(() => {
-    const attemptNetworkRecovery = async () => {
+    const handleNetworkError = (): void => {
+      setNetworkErrorCount((prev) => prev + 1)
       if (networkErrorCount >= 3) {
-        console.log('Max network recovery attempts reached, giving up')
-        return
+        setHealthStatus((prev) => ({ ...prev, connection: 'poor' }))
+        void attemptNetworkRecovery()
       }
+    }
 
+    const attemptNetworkRecovery = async (): Promise<void> => {
       try {
-        console.log(
-          `Attempting network recovery (attempt ${networkErrorCount + 1}/3)`
-        )
-
-        // Try to refresh the token first
-        const tokenResponse = await fetch('/api/token')
-        if (!tokenResponse.ok) {
-          throw new Error('Token refresh failed')
+        const response = await fetch('/api/playback-state')
+        if (!response.ok) {
+          throw new Error('Network error')
         }
-
-        // Then try to get playback state
-        const stateResponse = await fetch('/api/playback-state')
-        if (!stateResponse.ok) {
-          throw new Error('Playback state check failed')
-        }
-
-        // If both succeeded, reset error state
-        setError(null)
         setNetworkErrorCount(0)
         setHealthStatus((prev) => ({ ...prev, connection: 'good' }))
-        console.log('Network recovery successful')
       } catch (error) {
-        console.error('Network recovery attempt failed:', error)
+        console.error('Network recovery failed:', error)
         setNetworkErrorCount((prev) => prev + 1)
-        // Schedule next attempt after 5 seconds
-        setTimeout(attemptNetworkRecovery, 5000)
+        if (networkErrorCount >= 3) {
+          setHealthStatus((prev) => ({ ...prev, connection: 'poor' }))
+        }
       }
     }
 
-    // If we have a network error, start recovery process
-    if (
-      error?.includes('Network error') ||
-      error?.includes('Failed to fetch')
-    ) {
-      attemptNetworkRecovery()
-    }
-  }, [error, networkErrorCount])
+    window.addEventListener('offline', handleNetworkError)
+    window.addEventListener('online', () => void attemptNetworkRecovery())
 
-  const formatTime = (ms: number) => {
-    const seconds = Math.ceil(ms / 1000)
-    const minutes = Math.floor(seconds / 60)
-    const remainingSeconds = seconds % 60
-    return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`
+    return (): void => {
+      window.removeEventListener('offline', handleNetworkError)
+      window.removeEventListener('online', () => void attemptNetworkRecovery())
+    }
+  }, [networkErrorCount])
+
+  const formatTime = (ms: number): string => {
+    const minutes = Math.floor(ms / 60000)
+    const seconds = Math.floor((ms % 60000) / 1000)
+    return `${minutes}:${seconds.toString().padStart(2, '0')}`
   }
 
-  const handlePlayback = async (action: 'play' | 'skip') => {
+  const handlePlayback = async (action: 'play' | 'skip'): Promise<void> => {
     try {
       setIsLoading(true)
       setError(null)
 
-      if (!deviceId) {
-        throw new Error('No active Spotify device found')
-      }
-
-      if (action === 'play' && !fixedPlaylistId) {
-        throw new Error('No playlist configured')
-      }
-
-      // Get current track and position
-      const currentState = await fetch('/api/playback-state').then((res) =>
-        res.json()
-      )
-      const currentTrack = currentState?.item?.uri
-      const position_ms = currentState?.progress_ms || 0
-
-      const response = await fetch('/api/playback', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          action,
-          deviceId,
-          // Only send contextUri if we don't have a current track to resume from
-          contextUri:
-            action === 'play' && !currentTrack
-              ? `spotify:playlist:${fixedPlaylistId}`
-              : undefined,
-          position_ms: action === 'play' ? position_ms : undefined,
-          offset:
-            action === 'play' && currentTrack
-              ? { uri: currentTrack }
-              : undefined
+      if (action === 'play') {
+        await sendApiRequest({
+          path: 'me/player/play',
+          method: 'PUT',
+          body: {
+            context_uri: `spotify:playlist:${fixedPlaylistId}`
+          }
         })
-      })
-
-      if (!response.ok) {
-        const data = await response.json()
-        // Special handling for the case where music is playing on another device
-        if (response.status === 409) {
-          setError(
-            `${data.error}${data.details ? ` (${data.details.currentDevice}: ${data.details.currentTrack})` : ''}`
-          )
-          return
-        }
-        throw new Error(data.error ?? 'Failed to control playback')
+      } else {
+        await sendApiRequest({
+          path: 'me/player/next',
+          method: 'POST'
+        })
       }
-    } catch (err) {
-      setError(
-        err instanceof Error ? err.message : 'Failed to control playback'
-      )
+
+      setHealthStatus((prev) => ({ ...prev, playback: 'playing' }))
+    } catch (error) {
+      console.error('Playback control failed:', error)
+      setError('Failed to control playback')
+      setHealthStatus((prev) => ({ ...prev, playback: 'error' }))
     } finally {
       setIsLoading(false)
     }
   }
 
-  const handleRefresh = async () => {
-    // Prevent multiple simultaneous refreshes
+  const handleRefresh = async (): Promise<void> => {
     if (isRefreshing.current) {
-      console.log('Refresh already in progress, skipping')
       return
     }
 
@@ -485,31 +443,18 @@ export default function AdminPage() {
       setIsLoading(true)
       setError(null)
 
-      // Clear any pending refresh timeout
-      if (refreshTimeout.current) {
-        clearTimeout(refreshTimeout.current)
-        refreshTimeout.current = null
+      if (typeof window.refreshSpotifyPlayer === 'function') {
+        await window.refreshSpotifyPlayer()
       }
 
-      const response = await fetch('/api/refresh-site')
-      const data = await response.json()
-
-      if (!response.ok) {
-        throw new Error(data.message || 'Failed to refresh site')
-      }
-
-      // Dispatch refresh event for the player to handle
-      window.dispatchEvent(new CustomEvent('playlistRefresh'))
+      setTimeUntilRefresh(REFRESH_INTERVAL)
       lastRefreshTime.current = Date.now()
-      setTimeUntilRefresh(REFRESH_INTERVAL) // Reset the timer
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to refresh site')
+    } catch (error) {
+      console.error('Refresh failed:', error)
+      setError('Failed to refresh player')
     } finally {
       setIsLoading(false)
-      // Add a small delay before allowing the next refresh
-      refreshTimeout.current = setTimeout(() => {
-        isRefreshing.current = false
-      }, REFRESH_DEBOUNCE)
+      isRefreshing.current = false
     }
   }
 
@@ -628,7 +573,7 @@ export default function AdminPage() {
 
         <div className='flex gap-4'>
           <button
-            onClick={() => handlePlayback('play')}
+            onClick={() => void handlePlayback('play')}
             disabled={isLoading || !deviceId || !isReady || !fixedPlaylistId}
             className={`flex-1 rounded px-6 py-3 font-semibold ${
               isLoading || !deviceId || !isReady || !fixedPlaylistId
@@ -640,7 +585,7 @@ export default function AdminPage() {
           </button>
 
           <button
-            onClick={() => handlePlayback('skip')}
+            onClick={() => void handlePlayback('skip')}
             disabled={isLoading || !deviceId || !isReady}
             className={`flex-1 rounded px-6 py-3 font-semibold ${
               isLoading || !deviceId || !isReady
@@ -652,7 +597,7 @@ export default function AdminPage() {
           </button>
 
           <button
-            onClick={handleRefresh}
+            onClick={() => void handleRefresh()}
             disabled={isLoading}
             className={`flex-1 rounded px-6 py-3 font-semibold ${
               isLoading
