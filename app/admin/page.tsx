@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { useSpotifyPlayer } from '@/hooks/useSpotifyPlayer'
 import { useFixedPlaylist } from '@/hooks/useFixedPlaylist'
-import SpotifyPlayer from '@/components/SpotifyPlayer'
+import { SpotifyPlayer } from '@/components/SpotifyPlayer'
 import { sendApiRequest } from '@/shared/api'
 import { SpotifyPlaybackState } from '@/shared/types'
 

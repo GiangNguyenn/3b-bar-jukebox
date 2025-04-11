@@ -82,6 +82,9 @@ export default function RootLayout({
 }>) {
   return (
     <html lang='en' className=''>
+      <head>
+        <script src="https://sdk.scdn.co/spotify-player.js" />
+      </head>
       <body className={`${belgrano.variable} min-h-screen antialiased`}>
         <Header />
         {children}
