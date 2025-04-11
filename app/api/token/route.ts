@@ -1,9 +1,9 @@
 import { NextResponse } from "next/server";
-import { handleOperationError, AppError } from "@/shared/utils/errorHandling";
+import { AppError } from "@/shared/utils/errorHandling";
 import { ERROR_MESSAGES } from "@/shared/constants/errors";
 
 // Configure the route to be dynamic
-export const dynamic = 'force-dynamic';
+export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
 const SPOTIFY_TOKEN_URL = "https://accounts.spotify.com/api/token";
@@ -14,14 +14,24 @@ const refreshToken = process.env.SPOTIFY_REFRESH_TOKEN ?? "";
 export async function GET() {
   try {
     if (!refreshToken) {
-      throw new AppError(ERROR_MESSAGES.UNAUTHORIZED, undefined, "TokenRefresh");
+      throw new AppError(
+        ERROR_MESSAGES.UNAUTHORIZED,
+        undefined,
+        "TokenRefresh",
+      );
     }
 
     if (!CLIENT_ID || !CLIENT_SECRET) {
-      throw new AppError(ERROR_MESSAGES.UNAUTHORIZED, undefined, "TokenRefresh");
+      throw new AppError(
+        ERROR_MESSAGES.UNAUTHORIZED,
+        undefined,
+        "TokenRefresh",
+      );
     }
 
-    const auth = Buffer.from(`${CLIENT_ID}:${CLIENT_SECRET}`).toString('base64');
+    const auth = Buffer.from(`${CLIENT_ID}:${CLIENT_SECRET}`).toString(
+      "base64",
+    );
 
     const response = await fetch(SPOTIFY_TOKEN_URL, {
       method: "POST",
@@ -38,41 +48,40 @@ export async function GET() {
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
-      console.error('\n[ERROR] Failed to refresh token:', {
+      console.error("\n[ERROR] Failed to refresh token:", {
         status: response.status,
         statusText: response.statusText,
         error: errorData,
-        headers: Object.fromEntries(response.headers.entries())
+        headers: Object.fromEntries(response.headers.entries()),
       });
-      
+
       throw new AppError(
         ERROR_MESSAGES.UNAUTHORIZED,
         {
           status: response.status,
           statusText: response.statusText,
-          error: errorData
+          error: errorData,
         },
-        "TokenRefresh"
+        "TokenRefresh",
       );
     }
 
     const data = await response.json();
-    
+
     return NextResponse.json(data);
   } catch (error) {
-    console.error('\n[ERROR] Unexpected error in token refresh:', error);
-    const appError = error instanceof AppError ? error : new AppError(
-      ERROR_MESSAGES.GENERIC_ERROR,
-      error,
-      "TokenRefresh"
-    );
-    
+    console.error("\n[ERROR] Unexpected error in token refresh:", error);
+    const appError =
+      error instanceof AppError
+        ? error
+        : new AppError(ERROR_MESSAGES.GENERIC_ERROR, error, "TokenRefresh");
+
     return NextResponse.json(
-      { 
+      {
         error: appError.message,
-        details: appError.originalError
+        details: appError.originalError,
       },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }

@@ -3,7 +3,7 @@ interface ApiProps {
   method?: "GET" | "POST" | "PUT" | "DELETE" | "PATCH";
   body?: any;
   extraHeaders?: Record<string, string>;
-  config?: Omit<RequestInit, 'method' | 'headers' | 'body'>;
+  config?: Omit<RequestInit, "method" | "headers" | "body">;
 }
 
 interface SpotifyErrorResponse {
@@ -14,7 +14,8 @@ interface SpotifyErrorResponse {
   };
 }
 
-const SPOTIFY_API_URL = process.env.NEXT_PUBLIC_SPOTIFY_BASE_URL || "https://api.spotify.com/v1";
+const SPOTIFY_API_URL =
+  process.env.NEXT_PUBLIC_SPOTIFY_BASE_URL || "https://api.spotify.com/v1";
 
 export const sendApiRequest = async <T>({
   path,
@@ -52,19 +53,22 @@ export const sendApiRequest = async <T>({
         errorData = null;
       }
 
-      const errorMessage = errorData?.error?.message || `HTTP error! status: ${response.status}`;
+      const errorMessage =
+        errorData?.error?.message || `HTTP error! status: ${response.status}`;
       console.error("API request failed:", {
         status: response.status,
         statusText: response.statusText,
         error: errorData,
         url,
         method,
-        requestBody: body ? JSON.stringify(body) : undefined
+        requestBody: body ? JSON.stringify(body) : undefined,
       });
 
       // Handle specific error cases
       if (response.status === 401) {
-        throw new Error("Authentication failed. Please try refreshing the page.");
+        throw new Error(
+          "Authentication failed. Please try refreshing the page.",
+        );
       } else if (response.status === 403) {
         throw new Error("You don't have permission to perform this action.");
       } else if (response.status === 404) {
@@ -72,7 +76,9 @@ export const sendApiRequest = async <T>({
       } else if (response.status === 429) {
         throw new Error("Too many requests. Please try again later.");
       } else if (response.status >= 500) {
-        throw new Error("Spotify service is currently unavailable. Please try again later.");
+        throw new Error(
+          "Spotify service is currently unavailable. Please try again later.",
+        );
       }
 
       throw new Error(errorMessage);
@@ -84,7 +90,7 @@ export const sendApiRequest = async <T>({
     }
 
     // Only try to parse JSON if we have content
-    if (response.headers.get('content-length') === '0') {
+    if (response.headers.get("content-length") === "0") {
       return {} as T;
     }
 
@@ -97,19 +103,24 @@ export const sendApiRequest = async <T>({
     }
   } catch (error) {
     console.error("API request failed:", {
-      error: error instanceof Error ? {
-        name: error.name,
-        message: error.message,
-        stack: error.stack
-      } : error,
+      error:
+        error instanceof Error
+          ? {
+              name: error.name,
+              message: error.message,
+              stack: error.stack,
+            }
+          : error,
       url: `${SPOTIFY_API_URL}/${path}`,
       method,
-      requestBody: body ? JSON.stringify(body) : undefined
+      requestBody: body ? JSON.stringify(body) : undefined,
     });
 
     // Handle network errors
-    if (error instanceof TypeError && error.message === 'Failed to fetch') {
-      throw new Error("Network error. Please check your internet connection and try again.");
+    if (error instanceof TypeError && error.message === "Failed to fetch") {
+      throw new Error(
+        "Network error. Please check your internet connection and try again.",
+      );
     }
 
     throw error;
@@ -127,26 +138,26 @@ async function getSpotifyToken() {
   if (tokenCache.token && now < tokenCache.expiry) {
     return tokenCache.token;
   }
-  
+
   // Get the base URL for the token endpoint
-  let baseUrl = '';
-  
+  let baseUrl = "";
+
   // Check if we're in a browser environment
-  if (typeof window !== 'undefined') {
+  if (typeof window !== "undefined") {
     // In browser, use the current origin
     baseUrl = window.location.origin;
   } else {
     // In server-side code, use environment variable or default
-    baseUrl = process.env.VERCEL_URL ? 
-      `https://${process.env.VERCEL_URL}` : 
-      process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000';
+    baseUrl = process.env.VERCEL_URL
+      ? `https://${process.env.VERCEL_URL}`
+      : process.env.NEXT_PUBLIC_BASE_URL || "http://localhost:3000";
   }
-  
+
   try {
     const response = await fetch(`${baseUrl}/api/token`, {
-      cache: 'no-store',
+      cache: "no-store",
       headers: {
-        'Content-Type': 'application/json',
+        "Content-Type": "application/json",
       },
     });
 
@@ -159,7 +170,7 @@ async function getSpotifyToken() {
         url: `${baseUrl}/api/token`,
         environment: process.env.NODE_ENV,
         vercelUrl: process.env.VERCEL_URL,
-        baseUrl
+        baseUrl,
       });
       throw new Error(errorData.error || "Failed to fetch Spotify token");
     }
@@ -179,14 +190,17 @@ async function getSpotifyToken() {
     return newToken;
   } catch (error) {
     console.error("Error fetching token:", {
-      error: error instanceof Error ? {
-        name: error.name,
-        message: error.message,
-        stack: error.stack
-      } : error,
+      error:
+        error instanceof Error
+          ? {
+              name: error.name,
+              message: error.message,
+              stack: error.stack,
+            }
+          : error,
       baseUrl,
       environment: process.env.NODE_ENV,
-      vercelUrl: process.env.VERCEL_URL
+      vercelUrl: process.env.VERCEL_URL,
     });
     throw error;
   }

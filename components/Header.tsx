@@ -42,7 +42,7 @@ interface PlaylistRefreshEvent extends CustomEvent {
 
 declare global {
   interface WindowEventMap {
-    'playlistRefresh': PlaylistRefreshEvent;
+    playlistRefresh: PlaylistRefreshEvent;
   }
 }
 
@@ -54,78 +54,97 @@ const Header = () => {
     try {
       setIsLoading(true);
       setError(null);
-      
+
       // Log environment info
-      console.log('Making request from:', {
+      console.log("Making request from:", {
         environment: process.env.NODE_ENV,
         baseUrl: process.env.NEXT_PUBLIC_BASE_URL,
         vercelUrl: process.env.VERCEL_URL,
-        windowLocation: typeof window !== 'undefined' ? window.location.origin : 'server-side'
+        windowLocation:
+          typeof window !== "undefined"
+            ? window.location.origin
+            : "server-side",
       });
 
-      const response = await fetch('/api/refresh-site', {
-        method: 'GET',
+      const response = await fetch("/api/refresh-site", {
+        method: "GET",
         headers: {
-          'Content-Type': 'application/json',
+          "Content-Type": "application/json",
         },
-        credentials: 'include',
+        credentials: "include",
       });
-      
+
       if (!response.ok) {
-        const data = await response.json() as ApiErrorResponse;
-        const errorMessage = data.error || data.details?.errorMessage || 'Failed to suggest a track';
-        console.error('API error:', {
+        const data = (await response.json()) as ApiErrorResponse;
+        const errorMessage =
+          data.error ||
+          data.details?.errorMessage ||
+          "Failed to suggest a track";
+        console.error("API error:", {
           status: response.status,
           statusText: response.statusText,
-          data
+          data,
         });
         throw new Error(errorMessage);
       }
-      
-      const data = await response.json() as TrackSuggestionResponse;
-      console.log('Track suggestion response:', data);
+
+      const data = (await response.json()) as TrackSuggestionResponse;
+      console.log("Track suggestion response:", data);
 
       // If track was successfully added, dispatch a refresh event
       if (data.success) {
-        console.log('Dispatching playlist refresh event...');
+        console.log("Dispatching playlist refresh event...");
         try {
           // Create and dispatch the event
-          const event = new CustomEvent<PlaylistRefreshEvent['detail']>('playlistRefresh', {
-            detail: { timestamp: Date.now() },
-            bubbles: true,
-            composed: true
-          });
-          
+          const event = new CustomEvent<PlaylistRefreshEvent["detail"]>(
+            "playlistRefresh",
+            {
+              detail: { timestamp: Date.now() },
+              bubbles: true,
+              composed: true,
+            },
+          );
+
           // Dispatch from both window and document to ensure maximum compatibility
           window.dispatchEvent(event);
           document.dispatchEvent(event);
-          
-          console.log('Playlist refresh event dispatched successfully');
+
+          console.log("Playlist refresh event dispatched successfully");
         } catch (eventError) {
-          console.error('Error dispatching playlist refresh event:', eventError);
+          console.error(
+            "Error dispatching playlist refresh event:",
+            eventError,
+          );
         }
       } else {
-        console.log('Track was not successfully added, not dispatching refresh event');
+        console.log(
+          "Track was not successfully added, not dispatching refresh event",
+        );
       }
     } catch (error) {
-      console.error('Error suggesting track:', error);
-      let errorMessage = 'Failed to suggest a track';
-      
+      console.error("Error suggesting track:", error);
+      let errorMessage = "Failed to suggest a track";
+
       if (error instanceof Error) {
         // Handle network errors
-        if (error.message.includes('Failed to fetch') || error.message.includes('NetworkError')) {
-          errorMessage = 'Network error. Please check your connection and try again.';
+        if (
+          error.message.includes("Failed to fetch") ||
+          error.message.includes("NetworkError")
+        ) {
+          errorMessage =
+            "Network error. Please check your connection and try again.";
         } else {
           errorMessage = error.message;
         }
-        
+
         // Log additional error details
-        if ('details' in error) {
-          const errorDetails = (error as Error & { details: ErrorDetails }).details;
-          console.error('Error details:', errorDetails);
+        if ("details" in error) {
+          const errorDetails = (error as Error & { details: ErrorDetails })
+            .details;
+          console.error("Error details:", errorDetails);
         }
       }
-      
+
       setError(errorMessage);
     } finally {
       setIsLoading(false);
@@ -141,7 +160,7 @@ const Header = () => {
           height={100}
           alt="3B SAIGON JUKEBOX Logo"
           priority
-          className={`transition-transform duration-200 hover:scale-105 ${isLoading ? 'animate-spin' : ''}`}
+          className={`transition-transform duration-200 hover:scale-105 ${isLoading ? "animate-spin" : ""}`}
         />
       </div>
       <h1 className="text-4xl text-center text-primary-100 font-[family-name:var(--font-belgrano)] leading-tight">

@@ -1,7 +1,7 @@
-import { useEffect, useRef } from 'react';
-import { useRemoveTrackFromPlaylist } from './useRemoveTrackFromPlaylist';
-import { TrackItem, SpotifyPlaybackState } from '@/shared/types';
-import { autoRemoveTrack } from '@/shared/utils/autoRemoveTrack';
+import { useEffect, useRef } from "react";
+import { useRemoveTrackFromPlaylist } from "./useRemoveTrackFromPlaylist";
+import { TrackItem, SpotifyPlaybackState } from "@/shared/types";
+import { autoRemoveTrack } from "@/shared/utils/autoRemoveTrack";
 
 interface UseAutoRemoveFinishedTrackProps {
   currentTrackId: string | null;
@@ -14,16 +14,25 @@ export const useAutoRemoveFinishedTrack = ({
   currentTrackId,
   playlistTracks,
   playbackState,
-  playlistId
+  playlistId,
 }: UseAutoRemoveFinishedTrackProps) => {
   const { removeTrack, isLoading } = useRemoveTrackFromPlaylist();
   const lastRemovalTimeRef = useRef<number>(0);
   const removalTimeoutRef = useRef<NodeJS.Timeout>();
 
   useEffect(() => {
-    if (!currentTrackId || !playbackState || isLoading || !playlistTracks.length || !removeTrack) return;
+    if (
+      !currentTrackId ||
+      !playbackState ||
+      isLoading ||
+      !playlistTracks.length ||
+      !removeTrack
+    )
+      return;
 
-    const currentTrackIndex = playlistTracks.findIndex(track => track.track.id === currentTrackId);
+    const currentTrackIndex = playlistTracks.findIndex(
+      (track) => track.track.id === currentTrackId,
+    );
     if (currentTrackIndex === -1 || currentTrackIndex < 20) return;
 
     // Clear any pending removal
@@ -43,11 +52,18 @@ export const useAutoRemoveFinishedTrack = ({
           playbackState,
           onSuccess: () => {
             lastRemovalTimeRef.current = now;
-          }
+          },
         });
       }
     }, 5000);
-  }, [currentTrackId, playlistTracks, playbackState, removeTrack, isLoading, playlistId]);
+  }, [
+    currentTrackId,
+    playlistTracks,
+    playbackState,
+    removeTrack,
+    isLoading,
+    playlistId,
+  ]);
 
   // Cleanup timeout on unmount
   useEffect(() => {
@@ -57,4 +73,4 @@ export const useAutoRemoveFinishedTrack = ({
       }
     };
   }, []);
-}; 
+};

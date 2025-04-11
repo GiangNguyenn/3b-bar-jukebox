@@ -13,4 +13,4 @@ export const ERROR_MESSAGES = {
   GENERIC_ERROR: "An error occurred",
 } as const;
 
-export type ErrorMessage = typeof ERROR_MESSAGES[keyof typeof ERROR_MESSAGES]; 
+export type ErrorMessage = (typeof ERROR_MESSAGES)[keyof typeof ERROR_MESSAGES];

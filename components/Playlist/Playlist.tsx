@@ -17,30 +17,30 @@ const Playlist: React.FC<IPlaylistProps> = memo(({ tracks }) => {
   const currentTrackId = playbackState?.item?.id ?? null;
   const previousTrackIdRef = useRef<string | null>(null);
   const { fixedPlaylistId } = useFixedPlaylist();
-  const { data: playlist, refetchPlaylist } = useGetPlaylist(fixedPlaylistId ?? "");
+  const { refetchPlaylist } = useGetPlaylist(fixedPlaylistId ?? "");
 
   // Use the auto-remove hook
   useAutoRemoveFinishedTrack({
     currentTrackId,
     playlistTracks: tracks,
     playbackState: playbackState ?? null,
-    playlistId: fixedPlaylistId ?? ''
+    playlistId: fixedPlaylistId ?? "",
   });
 
-  const upcomingTracks = useMemo(() => 
-    filterUpcomingTracks(tracks, currentTrackId) ?? [], 
-    [tracks, currentTrackId]
+  const upcomingTracks = useMemo(
+    () => filterUpcomingTracks(tracks, currentTrackId) ?? [],
+    [tracks, currentTrackId],
   );
 
-  const shouldRemoveOldest = useMemo(() => 
-    currentTrackId && tracks.length > 5,
-    [currentTrackId, tracks.length]
+  const shouldRemoveOldest = useMemo(
+    () => currentTrackId && tracks.length > 5,
+    [currentTrackId, tracks.length],
   );
 
   // Check for playlist changes every 30 seconds
   useEffect(() => {
     const interval = setInterval(() => {
-      console.log('[Playlist] Checking for playlist changes');
+      console.log("[Playlist] Checking for playlist changes");
       refetchPlaylist();
     }, 30000);
 
@@ -50,27 +50,27 @@ const Playlist: React.FC<IPlaylistProps> = memo(({ tracks }) => {
   // Only refresh when current track changes
   useEffect(() => {
     if (currentTrackId !== previousTrackIdRef.current) {
-      console.log('[Playlist] Track changed, refreshing:', {
+      console.log("[Playlist] Track changed, refreshing:", {
         previous: previousTrackIdRef.current,
-        current: currentTrackId
+        current: currentTrackId,
       });
       previousTrackIdRef.current = currentTrackId;
       refetchPlaylist();
     }
   }, [currentTrackId, refetchPlaylist]);
 
-  console.log('[Playlist] Component data:', {
+  console.log("[Playlist] Component data:", {
     totalTracks: tracks.length,
     currentTrackId,
     upcomingTracksLength: upcomingTracks?.length ?? 0,
     shouldRemoveOldest,
-    tracks
+    tracks,
   });
 
   // If no track is currently playing, show all tracks
-  const tracksToShow = useMemo(() => 
-    currentTrackId ? upcomingTracks : tracks,
-    [currentTrackId, upcomingTracks, tracks]
+  const tracksToShow = useMemo(
+    () => (currentTrackId ? upcomingTracks : tracks),
+    [currentTrackId, upcomingTracks, tracks],
   );
 
   if (!tracksToShow?.length) {
@@ -95,7 +95,7 @@ const Playlist: React.FC<IPlaylistProps> = memo(({ tracks }) => {
       <div className="flex w-full sm:w-10/12 md:w-8/12 lg:w-9/12 bg-primary-100 shadow-md rounded-lg overflow-hidden mx-auto">
         <div className="flex flex-col w-full">
           <NowPlaying nowPlaying={playbackState} />
-          
+
           <div className="flex flex-col p-5">
             <div className="border-b pb-1 flex justify-between items-center mb-2">
               <span className="text-base font-semibold uppercase text-gray-700">
@@ -112,6 +112,6 @@ const Playlist: React.FC<IPlaylistProps> = memo(({ tracks }) => {
   );
 });
 
-Playlist.displayName = 'Playlist';
+Playlist.displayName = "Playlist";
 
 export default Playlist;

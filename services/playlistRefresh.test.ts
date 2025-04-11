@@ -1,8 +1,8 @@
-import { PlaylistRefreshServiceImpl } from './playlistRefresh';
-import { SpotifyApiClient } from './spotifyApi';
-import { SpotifyPlaylistItem, TrackItem } from '@/shared/types';
+import { PlaylistRefreshServiceImpl } from "./playlistRefresh";
+import { SpotifyApiClient } from "./spotifyApi";
+import { SpotifyPlaylistItem, TrackItem } from "@/shared/types";
 
-describe('PlaylistRefreshService', () => {
+describe("PlaylistRefreshService", () => {
   let mockSpotifyApi: SpotifyApiClient;
   let service: PlaylistRefreshServiceImpl;
 
@@ -13,46 +13,48 @@ describe('PlaylistRefreshService', () => {
     // Mock Spotify API client
     mockSpotifyApi = {
       getPlaylists: jest.fn().mockResolvedValue({
-        items: [{
-          id: 'playlist1',
-          name: '3B Saigon',
-          tracks: { items: [] }
-        }]
+        items: [
+          {
+            id: "playlist1",
+            name: "3B Saigon",
+            tracks: { items: [] },
+          },
+        ],
       }),
       getPlaylist: jest.fn().mockResolvedValue({
-        id: 'playlist1',
-        name: '3B Saigon',
-        tracks: { items: [] }
+        id: "playlist1",
+        name: "3B Saigon",
+        tracks: { items: [] },
       }),
       getCurrentlyPlaying: jest.fn().mockResolvedValue({
-        item: { id: 'track1' }
+        item: { id: "track1" },
       }),
       addTrackToPlaylist: jest.fn().mockResolvedValue(undefined),
       getPlaybackState: jest.fn().mockResolvedValue({
-        is_playing: true
+        is_playing: true,
       }),
       getQueue: jest.fn().mockResolvedValue({
         currently_playing: null,
-        queue: []
-      })
+        queue: [],
+      }),
     };
 
     // Initialize service with mock
     service = PlaylistRefreshServiceImpl.getInstance();
     // @ts-ignore - Override private spotifyApi for testing
-    service['spotifyApi'] = mockSpotifyApi;
+    service["spotifyApi"] = mockSpotifyApi;
   });
 
   afterEach(() => {
     jest.clearAllMocks();
   });
 
-  it('should successfully refresh playlist', async () => {
+  it("should successfully refresh playlist", async () => {
     // Call refresh playlist
     const result = await service.refreshPlaylist();
 
     // Verify result
     expect(result.success).toBe(true);
-    expect(result.message).toBe('Track added successfully');
+    expect(result.message).toBe("Track added successfully");
   });
-}); 
+});

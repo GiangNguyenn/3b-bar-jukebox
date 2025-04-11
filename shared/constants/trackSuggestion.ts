@@ -8,11 +8,11 @@ export const DEBOUNCE_MS = 10000;
 // 30–50: Mid-tier popularity — known, but not hits
 // 50–70: Popular, frequently streamed
 // 70–90: Very popular — likely to be hits or viral tracks
-// 90–100: Global megahits 
+// 90–100: Global megahits
 export const MIN_TRACK_POPULARITY = 50;
 
 // Default market for track search (Vietnam)
-export const DEFAULT_MARKET = 'VN';
+export const DEFAULT_MARKET = "VN";
 
 // API endpoints
 export const SPOTIFY_SEARCH_ENDPOINT = "search";
@@ -43,9 +43,9 @@ export const FALLBACK_GENRES = [
   "Indie Rock",
   "Soul",
   "Alternative Pop",
-  "Funk"
+  "Funk",
 ] as const;
 
 // Configuration
 export const MAX_PLAYLIST_LENGTH = 2;
-export const TRACK_SEARCH_LIMIT = 50; 
+export const TRACK_SEARCH_LIMIT = 50;

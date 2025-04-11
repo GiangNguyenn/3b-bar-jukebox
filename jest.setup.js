@@ -1,4 +1,4 @@
-require('@testing-library/jest-dom');
+require("@testing-library/jest-dom");
 
 // Ensure jest is available globally
 global.jest = {
@@ -47,19 +47,19 @@ global.jest = {
     spy.mock = { calls: [], results: [] };
     return spy;
   },
-  moduleRegistry: new Map()
+  moduleRegistry: new Map(),
 };
 
-const React = require('react');
-const ReactDOM = require('react-dom');
+const React = require("react");
+const ReactDOM = require("react-dom");
 
 // Mock React.useState and other hooks
 global.React = React;
 global.ReactDOM = ReactDOM;
 
 // Mock React hooks
-jest.mock('react', () => {
-  const actualReact = jest.requireActual('react');
+jest.mock("react", () => {
+  const actualReact = jest.requireActual("react");
   return {
     ...actualReact,
     useState: (initialValue) => actualReact.useState(initialValue),
@@ -69,8 +69,8 @@ jest.mock('react', () => {
 });
 
 // Mock ReactDOM
-jest.mock('react-dom', () => {
-  const actualReactDOM = jest.requireActual('react-dom');
+jest.mock("react-dom", () => {
+  const actualReactDOM = jest.requireActual("react-dom");
   return {
     ...actualReactDOM,
     createRoot: () => ({
@@ -82,18 +82,18 @@ jest.mock('react-dom', () => {
 
 // Mock the Request constructor
 global.Request = jest.fn().mockImplementation((url) => ({
-  url
+  url,
 }));
 
 // Mock the URL constructor
 global.URL = jest.fn().mockImplementation((url) => ({
   searchParams: {
-    get: jest.fn()
-  }
+    get: jest.fn(),
+  },
 }));
 
 // Mock the Response constructor
 global.Response = jest.fn().mockImplementation((body, init) => ({
   ...init,
-  json: () => Promise.resolve(body)
-})); 
+  json: () => Promise.resolve(body),
+}));
