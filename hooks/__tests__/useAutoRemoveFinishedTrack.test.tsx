@@ -191,15 +191,15 @@ describe('useAutoRemoveFinishedTrack', () => {
     jest.clearAllTimers()
   })
 
-  it('should remove oldest track when current track index is >= 5', async () => {
-    const tracks = Array.from({ length: 10 }, (_, i) =>
+  it('should remove oldest track when current track index is >= 20', async () => {
+    const tracks = Array.from({ length: 25 }, (_, i) =>
       createMockTrack(`track-${i}`)
     )
-    const playbackState = createMockPlaybackState('track-5')
+    const playbackState = createMockPlaybackState('track-20')
 
     renderHook(() =>
       useAutoRemoveFinishedTrack({
-        currentTrackId: 'track-5',
+        currentTrackId: 'track-20',
         playlistTracks: tracks,
         playbackState,
         playlistId: 'test-playlist-id'
@@ -220,15 +220,15 @@ describe('useAutoRemoveFinishedTrack', () => {
     })
   })
 
-  it('should not remove any track when current track index is < 5', async () => {
-    const tracks = Array.from({ length: 10 }, (_, i) =>
+  it('should not remove any track when current track index is < 20', async () => {
+    const tracks = Array.from({ length: 25 }, (_, i) =>
       createMockTrack(`track-${i}`)
     )
-    const playbackState = createMockPlaybackState('track-3')
+    const playbackState = createMockPlaybackState('track-15')
 
     renderHook(() =>
       useAutoRemoveFinishedTrack({
-        currentTrackId: 'track-3',
+        currentTrackId: 'track-15',
         playlistTracks: tracks,
         playbackState,
         playlistId: 'test-playlist-id'
