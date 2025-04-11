@@ -78,43 +78,43 @@ const SearchInput: FC<SearchInputProps> = ({
   }
 
   return (
-    <div className="relative flex w-full flex-wrap gap-4 rounded-lg sm:w-10/12 md:w-8/12 md:flex-nowrap lg:w-9/12">
-      <div className="relative flex-1">
-        <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
-          <FontAwesomeIcon icon={faSearch} className="text-gray-400" />
+    <div className='relative flex w-full flex-wrap gap-4 rounded-lg sm:w-10/12 md:w-8/12 md:flex-nowrap lg:w-9/12'>
+      <div className='relative flex-1'>
+        <div className='pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3'>
+          <FontAwesomeIcon icon={faSearch} className='text-gray-400' />
         </div>
         <input
-          type="text"
+          type='text'
           value={searchQuery}
           onChange={(e) => handleChange(e.target.value)}
-          placeholder="What do you want to listen to?"
-          className="bg-white block w-full rounded-lg border border-gray-300 py-2 pl-10 pr-3 leading-5 placeholder-gray-500 focus:border-blue-500 focus:placeholder-gray-400 focus:outline-none focus:ring-1 focus:ring-blue-500 sm:text-sm"
-          aria-label="Search for songs, albums, or artists"
+          placeholder='What do you want to listen to?'
+          className='bg-white block w-full rounded-lg border border-gray-300 py-2 pl-10 pr-3 leading-5 placeholder-gray-500 focus:border-blue-500 focus:placeholder-gray-400 focus:outline-none focus:ring-1 focus:ring-blue-500 sm:text-sm'
+          aria-label='Search for songs, albums, or artists'
         />
         {isOpen && searchResults.length > 0 && (
           <div
-            className="bg-white absolute z-50 mt-1 max-h-60 w-full overflow-auto rounded-md border border-gray-200 shadow-lg"
+            className='bg-white absolute z-50 mt-1 max-h-60 w-full overflow-auto rounded-md border border-gray-200 shadow-lg'
             style={{ isolation: 'isolate' }}
           >
-            <div className="bg-white rounded-md">
-              <ul className="overflow-auto py-1 text-base focus:outline-none sm:text-sm">
+            <div className='bg-white rounded-md'>
+              <ul className='overflow-auto py-1 text-base focus:outline-none sm:text-sm'>
                 {searchResults.map((track) => (
                   <li
                     key={track.id}
                     onClick={() => handleAddTrack(track)}
-                    className="relative cursor-pointer select-none bg-gray-100 py-2 pl-3 pr-9 hover:bg-gray-200"
+                    className='relative cursor-pointer select-none bg-gray-100 py-2 pl-3 pr-9 hover:bg-gray-200'
                   >
-                    <div className="flex items-center">
+                    <div className='flex items-center'>
                       <img
                         src={track.album.images[2].url}
                         alt={track.name}
-                        className="h-8 w-8 flex-shrink-0 rounded-full"
+                        className='h-8 w-8 flex-shrink-0 rounded-full'
                       />
-                      <div className="ml-3">
-                        <p className="text-sm font-medium text-gray-900 dark:text-gray-100">
+                      <div className='ml-3'>
+                        <p className='text-sm font-medium text-gray-900 dark:text-gray-100'>
                           {track.name}
                         </p>
-                        <p className="text-xs text-gray-500 dark:text-gray-400">
+                        <p className='text-xs text-gray-500 dark:text-gray-400'>
                           {track.artists.map((artist, index) => (
                             <span key={index}>
                               {artist.name}

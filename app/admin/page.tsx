@@ -514,29 +514,29 @@ export default function AdminPage() {
   }
 
   return (
-    <div className="text-white min-h-screen bg-black p-4">
+    <div className='text-white min-h-screen bg-black p-4'>
       <SpotifyPlayer />
 
-      <div className="mx-auto max-w-xl space-y-4">
-        <h1 className="mb-8 text-2xl font-bold">Admin Controls</h1>
+      <div className='mx-auto max-w-xl space-y-4'>
+        <h1 className='mb-8 text-2xl font-bold'>Admin Controls</h1>
 
         {error && (
-          <div className="mb-4 rounded border border-red-500 bg-red-900/50 p-4 text-red-100">
+          <div className='mb-4 rounded border border-red-500 bg-red-900/50 p-4 text-red-100'>
             {error}
           </div>
         )}
 
-        <div className="flex items-center gap-2 rounded-lg border border-gray-800 bg-gray-900/50 p-4">
+        <div className='flex items-center gap-2 rounded-lg border border-gray-800 bg-gray-900/50 p-4'>
           <div
             className={`h-3 w-3 rounded-full ${isReady ? 'animate-pulse bg-green-500' : 'bg-yellow-500'}`}
           />
-          <span className="font-medium">
+          <span className='font-medium'>
             {isReady ? 'Player Ready' : 'Player Initializing...'}
           </span>
         </div>
 
-        <div className="space-y-4">
-          <div className="flex items-center gap-2 rounded-lg border border-gray-800 bg-gray-900/50 p-4">
+        <div className='space-y-4'>
+          <div className='flex items-center gap-2 rounded-lg border border-gray-800 bg-gray-900/50 p-4'>
             <div
               className={`h-3 w-3 rounded-full ${
                 healthStatus.device === 'healthy'
@@ -546,7 +546,7 @@ export default function AdminPage() {
                     : 'bg-red-500'
               }`}
             />
-            <span className="font-medium">
+            <span className='font-medium'>
               {healthStatus.device === 'healthy'
                 ? 'Device Connected'
                 : healthStatus.device === 'unresponsive'
@@ -557,7 +557,7 @@ export default function AdminPage() {
             </span>
           </div>
 
-          <div className="flex items-center gap-2 rounded-lg border border-gray-800 bg-gray-900/50 p-4">
+          <div className='flex items-center gap-2 rounded-lg border border-gray-800 bg-gray-900/50 p-4'>
             <div
               className={`h-3 w-3 rounded-full ${
                 healthStatus.playback === 'playing'
@@ -569,7 +569,7 @@ export default function AdminPage() {
                       : 'bg-gray-500'
               }`}
             />
-            <span className="font-medium">
+            <span className='font-medium'>
               {healthStatus.playback === 'playing'
                 ? 'Playback Active'
                 : healthStatus.playback === 'paused'
@@ -580,7 +580,7 @@ export default function AdminPage() {
             </span>
           </div>
 
-          <div className="flex items-center gap-2 rounded-lg border border-gray-800 bg-gray-900/50 p-4">
+          <div className='flex items-center gap-2 rounded-lg border border-gray-800 bg-gray-900/50 p-4'>
             <div
               className={`h-3 w-3 rounded-full ${
                 healthStatus.token === 'valid'
@@ -590,7 +590,7 @@ export default function AdminPage() {
                     : 'bg-red-500'
               }`}
             />
-            <span className="font-medium">
+            <span className='font-medium'>
               {healthStatus.token === 'valid'
                 ? 'Token Valid'
                 : healthStatus.token === 'expired'
@@ -599,7 +599,7 @@ export default function AdminPage() {
             </span>
           </div>
 
-          <div className="flex items-center gap-2 rounded-lg border border-gray-800 bg-gray-900/50 p-4">
+          <div className='flex items-center gap-2 rounded-lg border border-gray-800 bg-gray-900/50 p-4'>
             <div
               className={`h-3 w-3 rounded-full ${
                 healthStatus.connection === 'good'
@@ -609,7 +609,7 @@ export default function AdminPage() {
                     : 'bg-red-500'
               }`}
             />
-            <span className="font-medium">
+            <span className='font-medium'>
               {healthStatus.connection === 'good'
                 ? 'Connection Good'
                 : healthStatus.connection === 'unstable'
@@ -619,14 +619,14 @@ export default function AdminPage() {
           </div>
         </div>
 
-        <div className="flex items-center gap-2 rounded-lg border border-gray-800 bg-gray-900/50 p-4">
-          <div className="h-3 w-3 animate-pulse rounded-full bg-blue-500" />
-          <span className="font-medium">
+        <div className='flex items-center gap-2 rounded-lg border border-gray-800 bg-gray-900/50 p-4'>
+          <div className='h-3 w-3 animate-pulse rounded-full bg-blue-500' />
+          <span className='font-medium'>
             Next refresh in: {formatTime(timeUntilRefresh)}
           </span>
         </div>
 
-        <div className="flex gap-4">
+        <div className='flex gap-4'>
           <button
             onClick={() => handlePlayback('play')}
             disabled={isLoading || !deviceId || !isReady || !fixedPlaylistId}

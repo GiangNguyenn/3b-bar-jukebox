@@ -64,7 +64,6 @@ describe('PlaylistRefreshService', () => {
         is_playing: true,
       }),
     }
-
     ;(SpotifyApiService.getInstance as jest.Mock).mockReturnValue(
       mockSpotifyApi,
     )

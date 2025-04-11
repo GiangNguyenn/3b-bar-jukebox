@@ -104,7 +104,7 @@ const Home = memo(() => {
   })
 
   return (
-    <div className="items-center justify-items-center space-y-3 p-4 pt-10 font-mono">
+    <div className='items-center justify-items-center space-y-3 p-4 pt-10 font-mono'>
       <SearchInput {...searchInputProps} />
       <Playlist tracks={tracks.items} />
     </div>
