@@ -5,6 +5,13 @@ import { SpotifyPlaybackState } from '@/shared/types'
 const MAX_RETRIES = 3
 const RETRY_DELAY = 1000 // 1 second
 
+interface PlaybackRequest {
+  action: 'play' | 'skip'
+  contextUri?: string
+  deviceId?: string
+  position_ms?: number
+}
+
 async function verifyDeviceActive(deviceId: string): Promise<boolean> {
   try {
     const state = await sendApiRequest<SpotifyPlaybackState>({
@@ -62,9 +69,9 @@ async function transferPlaybackToDevice(
   }
 }
 
-export async function POST(request: Request) {
+export async function POST(request: Request): Promise<NextResponse> {
   try {
-    const { action, contextUri, deviceId, position_ms } = await request.json()
+    const { action, contextUri, deviceId, position_ms } = await request.json() as PlaybackRequest
 
     if (!deviceId) {
       return NextResponse.json(
@@ -88,18 +95,6 @@ export async function POST(request: Request) {
       )
     }
 
-    // Get current playback state first
-    let currentState: SpotifyPlaybackState | null = null
-    try {
-      currentState = await sendApiRequest<SpotifyPlaybackState>({
-        path: 'me/player',
-        method: 'GET'
-      })
-    } catch (error) {
-      console.error('[API Playback] Error getting playback state:', error)
-      // Don't throw here, continue with the playback attempt
-    }
-
     if (action === 'play') {
       try {
         // Get current playback state to check if another device is playing
@@ -114,7 +109,7 @@ export async function POST(request: Request) {
             {
               error: 'Music is already playing on another device',
               details: {
-                currentDevice: currentState.device.name,
+                currentDevice: currentState.device?.name,
                 currentTrack: currentState.item?.name
               }
             },
@@ -129,7 +124,7 @@ export async function POST(request: Request) {
         await new Promise((resolve) => setTimeout(resolve, 1000))
 
         // Then start playback with the playlist and position
-        const playResponse = await sendApiRequest({
+        await sendApiRequest({
           path: 'me/player/play',
           method: 'PUT',
           body: {
@@ -137,8 +132,8 @@ export async function POST(request: Request) {
             position_ms: position_ms
           }
         })
-      } catch (error: any) {
-        const errorMessage = error?.message ?? 'Unknown error'
+      } catch (error: unknown) {
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error'
         console.error('[API Playback] Detailed playback error:', {
           message: errorMessage,
           error,
@@ -151,7 +146,7 @@ export async function POST(request: Request) {
         return NextResponse.json(
           {
             error: `Failed to control playback: ${errorMessage}`,
-            details: error?.response?.data ?? error?.response ?? error
+            details: error
           },
           { status: 500 }
         )
@@ -163,12 +158,13 @@ export async function POST(request: Request) {
           path: 'me/player/next',
           method: 'POST'
         })
-      } catch (error: any) {
+      } catch (error: unknown) {
         console.error('[API Playback] Skip error:', error)
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error'
         return NextResponse.json(
           {
-            error: `Failed to skip track: ${error?.message ?? 'Unknown error'}`,
-            details: error?.response?.data ?? error?.response ?? error
+            error: `Failed to skip track: ${errorMessage}`,
+            details: error
           },
           { status: 500 }
         )
@@ -176,17 +172,17 @@ export async function POST(request: Request) {
     }
 
     return NextResponse.json({ success: true })
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('[API Playback] Top level error:', {
       error,
-      message: error?.message ?? 'Unknown error',
-      stack: error?.stack,
-      response: error?.response?.data
+      message: error instanceof Error ? error.message : 'Unknown error',
+      stack: error instanceof Error ? error.stack : undefined
     })
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error'
     return NextResponse.json(
       {
-        error: `Playback control failed: ${error?.message ?? 'Unknown error'}`,
-        details: error?.response?.data ?? error?.response ?? error
+        error: `Playback control failed: ${errorMessage}`,
+        details: error
       },
       { status: 500 }
     )
