@@ -26,12 +26,12 @@ const Home = memo(() => {
     createPlaylist,
     fixedPlaylistId,
     isLoading: isCreatingPlaylist,
-    isInitialFetchComplete,
+    isInitialFetchComplete
   } = useFixedPlaylist()
   const {
     playlist,
     isLoading: isLoadingPlaylist,
-    refreshPlaylist,
+    refreshPlaylist
   } = usePlaylist(fixedPlaylistId ?? '')
   const [searchQuery, setSearchQuery] = useState('')
   const [searchResults, setSearchResults] = useState<TrackDetails[]>([])
@@ -48,7 +48,7 @@ const Home = memo(() => {
     createPlaylist,
     fixedPlaylistId,
     isCreatingPlaylist,
-    isInitialFetchComplete,
+    isInitialFetchComplete
   ])
 
   const handleTrackAdded = useMemo(
@@ -61,7 +61,7 @@ const Home = memo(() => {
         })
       }, 1000)
     },
-    [refreshPlaylist],
+    [refreshPlaylist]
   )
 
   const [debouncedSearchQuery] = useDebounce(searchQuery, 300)
@@ -86,9 +86,9 @@ const Home = memo(() => {
       searchResults,
       setSearchResults,
       playlistId: fixedPlaylistId ?? '',
-      onTrackAdded: handleTrackAdded,
+      onTrackAdded: handleTrackAdded
     }),
-    [searchQuery, searchResults, fixedPlaylistId, handleTrackAdded],
+    [searchQuery, searchResults, fixedPlaylistId, handleTrackAdded]
   )
 
   if (isLoadingPlaylist || !playlist || !fixedPlaylistId) {
@@ -100,7 +100,7 @@ const Home = memo(() => {
   console.log('[Page] Playlist data:', {
     totalTracks: tracks.total,
     tracksItems: tracks.items,
-    tracksItemsLength: tracks.items.length,
+    tracksItemsLength: tracks.items.length
   })
 
   return (

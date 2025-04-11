@@ -1,7 +1,7 @@
 import {
   SpotifyPlaylistItem,
   SpotifyPlaybackState,
-  TrackItem,
+  TrackItem
 } from '@/shared/types'
 import { sendApiRequest } from '@/shared/api'
 import { handleOperationError } from '@/shared/utils/errorHandling'
@@ -31,9 +31,9 @@ export class SpotifyApiService implements SpotifyApiClient {
     return handleOperationError(
       async () =>
         this.apiClient<{ items: SpotifyPlaylistItem[] }>({
-          path: 'me/playlists',
+          path: 'me/playlists'
         }),
-      'SpotifyApi.getPlaylists',
+      'SpotifyApi.getPlaylists'
     )
   }
 
@@ -41,9 +41,9 @@ export class SpotifyApiService implements SpotifyApiClient {
     return handleOperationError(
       async () =>
         this.apiClient<SpotifyPlaylistItem>({
-          path: `playlists/${playlistId}`,
+          path: `playlists/${playlistId}`
         }),
-      'SpotifyApi.getPlaylist',
+      'SpotifyApi.getPlaylist'
     )
   }
 
@@ -51,15 +51,15 @@ export class SpotifyApiService implements SpotifyApiClient {
     return handleOperationError(
       async () =>
         this.apiClient<SpotifyPlaybackState>({
-          path: 'me/player/currently-playing',
+          path: 'me/player/currently-playing'
         }),
-      'SpotifyApi.getCurrentlyPlaying',
+      'SpotifyApi.getCurrentlyPlaying'
     )
   }
 
   async addTrackToPlaylist(
     playlistId: string,
-    trackUri: string,
+    trackUri: string
   ): Promise<void> {
     const formattedUri = trackUri.startsWith('spotify:track:')
       ? trackUri
@@ -71,10 +71,10 @@ export class SpotifyApiService implements SpotifyApiClient {
           path: `playlists/${playlistId}/tracks`,
           method: 'POST',
           body: {
-            uris: [formattedUri],
-          },
+            uris: [formattedUri]
+          }
         }),
-      'SpotifyApi.addTrackToPlaylist',
+      'SpotifyApi.addTrackToPlaylist'
     )
   }
 
@@ -82,9 +82,9 @@ export class SpotifyApiService implements SpotifyApiClient {
     return handleOperationError(
       async () =>
         this.apiClient<SpotifyPlaybackState>({
-          path: 'me/player',
+          path: 'me/player'
         }),
-      'SpotifyApi.getPlaybackState',
+      'SpotifyApi.getPlaybackState'
     )
   }
 
@@ -92,9 +92,9 @@ export class SpotifyApiService implements SpotifyApiClient {
     return handleOperationError(
       async () =>
         this.apiClient<{ queue: SpotifyPlaybackState[] }>({
-          path: 'me/player/queue',
+          path: 'me/player/queue'
         }),
-      'SpotifyApi.getQueue',
+      'SpotifyApi.getQueue'
     )
   }
 }

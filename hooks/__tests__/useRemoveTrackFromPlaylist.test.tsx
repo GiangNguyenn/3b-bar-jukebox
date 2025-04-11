@@ -22,7 +22,7 @@ describe('useRemoveTrackFromPlaylist', () => {
       href: 'https://api.spotify.com/v1/users/test',
       id: 'test-user',
       type: 'user',
-      uri: 'spotify:user:test',
+      uri: 'spotify:user:test'
     },
     is_local: false,
     track: {
@@ -35,8 +35,8 @@ describe('useRemoveTrackFromPlaylist', () => {
           href: 'https://api.spotify.com/v1/artists/test',
           id: 'test-artist',
           type: 'artist',
-          uri: 'spotify:artist:test',
-        },
+          uri: 'spotify:artist:test'
+        }
       ],
       album: {
         name: 'Test Album',
@@ -44,8 +44,8 @@ describe('useRemoveTrackFromPlaylist', () => {
           {
             url: 'test.jpg',
             height: 640,
-            width: 640,
-          },
+            width: 640
+          }
         ],
         album_type: 'album',
         total_tracks: 1,
@@ -64,9 +64,9 @@ describe('useRemoveTrackFromPlaylist', () => {
             href: 'https://api.spotify.com/v1/artists/test',
             id: 'test-artist',
             type: 'artist',
-            uri: 'spotify:artist:test',
-          },
-        ],
+            uri: 'spotify:artist:test'
+          }
+        ]
       },
       duration_ms: 180000,
       explicit: false,
@@ -81,21 +81,21 @@ describe('useRemoveTrackFromPlaylist', () => {
       available_markets: ['US'],
       disc_number: 1,
       external_ids: {},
-      is_playable: true,
-    },
+      is_playable: true
+    }
   }
 
   beforeEach(() => {
     jest.clearAllMocks()
     ;(useFixedPlaylist as jest.Mock).mockReturnValue({
       fixedPlaylistId: mockPlaylistId,
-      error: null,
+      error: null
     })
     ;(useGetPlaylist as jest.Mock).mockReturnValue({
       data: null,
       isLoading: false,
       isError: false,
-      refetchPlaylist: jest.fn(),
+      refetchPlaylist: jest.fn()
     })
     mockSendApiRequest.mockResolvedValue({})
   })
@@ -106,7 +106,7 @@ describe('useRemoveTrackFromPlaylist', () => {
       data: null,
       isLoading: false,
       isError: false,
-      refetchPlaylist: mockRefetchPlaylist,
+      refetchPlaylist: mockRefetchPlaylist
     })
 
     const { result } = renderHook(() => useRemoveTrackFromPlaylist())
@@ -121,7 +121,7 @@ describe('useRemoveTrackFromPlaylist', () => {
     expect(mockSendApiRequest).toHaveBeenCalledWith({
       path: `playlists/${mockPlaylistId}/tracks`,
       method: 'DELETE',
-      body: { tracks: [{ uri: mockTrack.track.uri }] },
+      body: { tracks: [{ uri: mockTrack.track.uri }] }
     })
     expect(mockRefetchPlaylist).toHaveBeenCalled()
   })
@@ -132,7 +132,7 @@ describe('useRemoveTrackFromPlaylist', () => {
       data: null,
       isLoading: false,
       isError: false,
-      refetchPlaylist: mockRefetchPlaylist,
+      refetchPlaylist: mockRefetchPlaylist
     })
     mockSendApiRequest.mockRejectedValue(new Error('Failed to remove track'))
 
@@ -143,7 +143,7 @@ describe('useRemoveTrackFromPlaylist', () => {
 
     await act(async () => {
       await expect(result.current.removeTrack!(mockTrack)).rejects.toThrow(
-        'Failed to remove track',
+        'Failed to remove track'
       )
     })
   })
@@ -151,7 +151,7 @@ describe('useRemoveTrackFromPlaylist', () => {
   it('should handle missing playlist ID', async () => {
     ;(useFixedPlaylist as jest.Mock).mockReturnValue({
       fixedPlaylistId: null,
-      error: null,
+      error: null
     })
 
     const { result } = renderHook(() => useRemoveTrackFromPlaylist())

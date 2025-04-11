@@ -24,17 +24,17 @@ const Playlist: React.FC<IPlaylistProps> = memo(({ tracks }) => {
     currentTrackId,
     playlistTracks: tracks,
     playbackState: playbackState ?? null,
-    playlistId: fixedPlaylistId ?? '',
+    playlistId: fixedPlaylistId ?? ''
   })
 
   const upcomingTracks = useMemo(
     () => filterUpcomingTracks(tracks, currentTrackId) ?? [],
-    [tracks, currentTrackId],
+    [tracks, currentTrackId]
   )
 
   const shouldRemoveOldest = useMemo(
     () => currentTrackId && tracks.length > 5,
-    [currentTrackId, tracks.length],
+    [currentTrackId, tracks.length]
   )
 
   // Check for playlist changes every 30 seconds
@@ -52,7 +52,7 @@ const Playlist: React.FC<IPlaylistProps> = memo(({ tracks }) => {
     if (currentTrackId !== previousTrackIdRef.current) {
       console.log('[Playlist] Track changed, refreshing:', {
         previous: previousTrackIdRef.current,
-        current: currentTrackId,
+        current: currentTrackId
       })
       previousTrackIdRef.current = currentTrackId
       refetchPlaylist()
@@ -64,13 +64,13 @@ const Playlist: React.FC<IPlaylistProps> = memo(({ tracks }) => {
     currentTrackId,
     upcomingTracksLength: upcomingTracks?.length ?? 0,
     shouldRemoveOldest,
-    tracks,
+    tracks
   })
 
   // If no track is currently playing, show all tracks
   const tracksToShow = useMemo(
     () => (currentTrackId ? upcomingTracks : tracks),
-    [currentTrackId, upcomingTracks, tracks],
+    [currentTrackId, upcomingTracks, tracks]
   )
 
   if (!tracksToShow?.length) {

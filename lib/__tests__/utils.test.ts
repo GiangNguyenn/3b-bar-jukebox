@@ -4,7 +4,7 @@ import { TrackItem, SpotifyPlaybackState } from '@/shared/types'
 describe('filterUpcomingTracks', () => {
   const createMockTrack = (
     id: string,
-    duration: number = 180000,
+    duration: number = 180000
   ): TrackItem => ({
     added_at: new Date().toISOString(),
     added_by: {
@@ -12,7 +12,7 @@ describe('filterUpcomingTracks', () => {
       href: 'https://api.spotify.com/v1/users/test',
       id: 'test-user',
       type: 'user',
-      uri: 'spotify:user:test',
+      uri: 'spotify:user:test'
     },
     is_local: false,
     track: {
@@ -36,9 +36,9 @@ describe('filterUpcomingTracks', () => {
             id: 'test-artist',
             name: 'Test Artist',
             type: 'artist',
-            uri: 'spotify:artist:test',
-          },
-        ],
+            uri: 'spotify:artist:test'
+          }
+        ]
       },
       artists: [
         {
@@ -47,8 +47,8 @@ describe('filterUpcomingTracks', () => {
           id: 'test-artist',
           name: 'Test Artist',
           type: 'artist',
-          uri: 'spotify:artist:test',
-        },
+          uri: 'spotify:artist:test'
+        }
       ],
       available_markets: ['US'],
       disc_number: 1,
@@ -57,7 +57,7 @@ describe('filterUpcomingTracks', () => {
       external_ids: {
         isrc: 'TEST123456789',
         ean: 'TEST123456789',
-        upc: 'TEST123456789',
+        upc: 'TEST123456789'
       },
       external_urls: { spotify: 'https://open.spotify.com/track/test' },
       href: 'https://api.spotify.com/v1/tracks/test',
@@ -69,14 +69,14 @@ describe('filterUpcomingTracks', () => {
       track_number: 1,
       type: 'track',
       uri: `spotify:track:${id}`,
-      is_local: false,
-    },
+      is_local: false
+    }
   })
 
   const createMockPlaybackState = (
     trackId: string,
     progress: number,
-    isPlaying: boolean = true,
+    isPlaying: boolean = true
   ): SpotifyPlaybackState => {
     const track = createMockTrack(trackId)
     return {
@@ -88,7 +88,7 @@ describe('filterUpcomingTracks', () => {
         name: 'Test Device',
         type: 'Computer',
         volume_percent: 50,
-        supports_volume: true,
+        supports_volume: true
       },
       repeat_state: 'off',
       shuffle_state: false,
@@ -96,7 +96,7 @@ describe('filterUpcomingTracks', () => {
         type: 'playlist',
         href: 'https://api.spotify.com/v1/playlists/test',
         external_urls: { spotify: 'https://open.spotify.com/playlist/test' },
-        uri: 'spotify:playlist:test',
+        uri: 'spotify:playlist:test'
       },
       timestamp: Date.now(),
       progress_ms: progress,
@@ -111,7 +111,7 @@ describe('filterUpcomingTracks', () => {
         external_ids: {
           isrc: 'TEST123456789',
           ean: 'TEST123456789',
-          upc: 'TEST123456789',
+          upc: 'TEST123456789'
         },
         external_urls: track.track.external_urls,
         href: track.track.href,
@@ -124,7 +124,7 @@ describe('filterUpcomingTracks', () => {
         track_number: track.track.track_number,
         type: track.track.type,
         uri: track.track.uri,
-        is_local: track.track.is_local,
+        is_local: track.track.is_local
       },
       currently_playing_type: 'track',
       actions: {
@@ -137,8 +137,8 @@ describe('filterUpcomingTracks', () => {
         toggling_repeat_context: false,
         toggling_shuffle: false,
         toggling_repeat_track: false,
-        transferring_playback: false,
-      },
+        transferring_playback: false
+      }
     }
   }
 
@@ -146,7 +146,7 @@ describe('filterUpcomingTracks', () => {
     const tracks = [
       createMockTrack('track1'),
       createMockTrack('track2'),
-      createMockTrack('track3'),
+      createMockTrack('track3')
     ]
 
     const result = filterUpcomingTracks(tracks, null)
@@ -157,7 +157,7 @@ describe('filterUpcomingTracks', () => {
     const tracks = [
       createMockTrack('track1'),
       createMockTrack('track2'),
-      createMockTrack('track3'),
+      createMockTrack('track3')
     ]
 
     const result = filterUpcomingTracks(tracks, 'non-existent-track')
@@ -168,7 +168,7 @@ describe('filterUpcomingTracks', () => {
     const tracks = [
       createMockTrack('track1'),
       createMockTrack('track2'),
-      createMockTrack('track3'),
+      createMockTrack('track3')
     ]
 
     const result = filterUpcomingTracks(tracks, 'track1')
@@ -180,7 +180,7 @@ describe('filterUpcomingTracks', () => {
       createMockTrack('track1'),
       createMockTrack('track2'),
       createMockTrack('track1'),
-      createMockTrack('track3'),
+      createMockTrack('track3')
     ]
 
     const result = filterUpcomingTracks(tracks, 'track1')
@@ -192,7 +192,7 @@ describe('filterUpcomingTracks', () => {
       createMockTrack('track1', 180000),
       createMockTrack('track2', 180000),
       createMockTrack('track1', 180000),
-      createMockTrack('track3', 180000),
+      createMockTrack('track3', 180000)
     ]
 
     const nowPlaying = createMockPlaybackState('track1', 90000)
@@ -205,7 +205,7 @@ describe('filterUpcomingTracks', () => {
       createMockTrack('track1', 180000),
       createMockTrack('track2', 180000),
       createMockTrack('track1', 180000),
-      createMockTrack('track3', 180000),
+      createMockTrack('track3', 180000)
     ]
 
     const nowPlaying = createMockPlaybackState('track1', 179000)
@@ -217,7 +217,7 @@ describe('filterUpcomingTracks', () => {
     const tracks = [
       createMockTrack('track1', 180000),
       createMockTrack('track2', 180000),
-      createMockTrack('track3', 180000),
+      createMockTrack('track3', 180000)
     ]
 
     const nowPlaying = createMockPlaybackState('track1', 90000, false)
@@ -229,7 +229,7 @@ describe('filterUpcomingTracks', () => {
     const tracks = [
       createMockTrack('track1', 180000),
       createMockTrack('track2', 180000),
-      createMockTrack('track3', 180000),
+      createMockTrack('track3', 180000)
     ]
 
     const nowPlaying = createMockPlaybackState('track1', 0)

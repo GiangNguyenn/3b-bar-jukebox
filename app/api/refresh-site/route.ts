@@ -14,7 +14,7 @@ export async function GET(request: Request) {
 
     const result =
       await PlaylistRefreshServiceImpl.getInstance().refreshPlaylist(
-        shouldForce,
+        shouldForce
       )
 
     // Only refresh player state if the playlist was actually updated
@@ -25,7 +25,7 @@ export async function GET(request: Request) {
         // Get the current playback state
         const playbackState = await sendApiRequest<SpotifyPlaybackState>({
           path: 'me/player',
-          method: 'GET',
+          method: 'GET'
         })
 
         // If there's an active device
@@ -40,7 +40,7 @@ export async function GET(request: Request) {
           // First pause playback
           await sendApiRequest({
             path: 'me/player/pause',
-            method: 'PUT',
+            method: 'PUT'
           })
 
           // Then resume with the exact same context and position
@@ -50,8 +50,8 @@ export async function GET(request: Request) {
             body: {
               context_uri: contextUri,
               position_ms: currentPosition,
-              offset: currentTrackUri ? { uri: currentTrackUri } : undefined,
-            },
+              offset: currentTrackUri ? { uri: currentTrackUri } : undefined
+            }
           })
 
           result.playerStateRefresh = true
@@ -63,18 +63,18 @@ export async function GET(request: Request) {
     }
 
     return NextResponse.json(result, {
-      status: result.success ? 200 : 500,
+      status: result.success ? 200 : 500
     })
   } catch (error) {
     console.error('Error in refresh route:', error)
     return NextResponse.json(
       {
         success: false,
-        message: error instanceof Error ? error.message : 'Unknown error',
+        message: error instanceof Error ? error.message : 'Unknown error'
       },
       {
-        status: 500,
-      },
+        status: 500
+      }
     )
   }
 }

@@ -24,8 +24,8 @@ const Playlist: React.FC<IPlaylistProps> = ({ tracks }) => {
       // Visual feedback that refresh was successful
       window.dispatchEvent(
         new CustomEvent('playlistRefresh', {
-          detail: { timestamp: Date.now() },
-        }),
+          detail: { timestamp: Date.now() }
+        })
       )
     } catch (error) {
       console.error('Error refreshing site:', error)

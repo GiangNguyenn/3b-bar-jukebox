@@ -11,8 +11,8 @@ const QueueItem: FC<IQueueItemProps> = ({ track }) => {
     track: {
       name,
       album: { images },
-      artists,
-    },
+      artists
+    }
   } = track
 
   return (

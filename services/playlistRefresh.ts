@@ -1,12 +1,12 @@
 import {
   SpotifyPlaylistItem,
   TrackItem,
-  SpotifyPlaybackState,
+  SpotifyPlaybackState
 } from '@/shared/types'
 import { SpotifyApiClient, SpotifyApiService } from './spotifyApi'
 import {
   COOLDOWN_MS,
-  MAX_PLAYLIST_LENGTH,
+  MAX_PLAYLIST_LENGTH
 } from '@/shared/constants/trackSuggestion'
 import { findSuggestedTrack } from '@/services/trackSuggestion'
 import { filterUpcomingTracks } from '@/lib/utils'
@@ -24,7 +24,7 @@ export interface PlaylistRefreshService {
   }>
   getUpcomingTracks(
     playlist: SpotifyPlaylistItem,
-    currentTrackId: string | null,
+    currentTrackId: string | null
   ): TrackItem[]
   autoRemoveFinishedTrack(params: {
     playlistId: string
@@ -42,7 +42,7 @@ export class PlaylistRefreshServiceImpl implements PlaylistRefreshService {
   private readonly RETRY_DELAY_MS = 1000
 
   private constructor(
-    private readonly spotifyApi: SpotifyApiClient = SpotifyApiService.getInstance(),
+    private readonly spotifyApi: SpotifyApiClient = SpotifyApiService.getInstance()
   ) {}
 
   public static getInstance(): PlaylistRefreshServiceImpl {
@@ -60,7 +60,7 @@ export class PlaylistRefreshServiceImpl implements PlaylistRefreshService {
   private async getFixedPlaylist(): Promise<SpotifyPlaylistItem | null> {
     const playlists = await this.spotifyApi.getPlaylists()
     const fixedPlaylist = playlists.items.find(
-      (playlist) => playlist.name === this.FIXED_PLAYLIST_NAME,
+      (playlist) => playlist.name === this.FIXED_PLAYLIST_NAME
     )
 
     if (!fixedPlaylist) {
@@ -82,7 +82,7 @@ export class PlaylistRefreshServiceImpl implements PlaylistRefreshService {
         return {
           id: null,
           error:
-            'Spotify authentication failed. Please check your access token.',
+            'Spotify authentication failed. Please check your access token.'
         }
       }
       return { id: null }
@@ -91,7 +91,7 @@ export class PlaylistRefreshServiceImpl implements PlaylistRefreshService {
 
   private async tryAddTrack(
     trackUri: string,
-    playlistId: string,
+    playlistId: string
   ): Promise<boolean> {
     try {
       await this.spotifyApi.addTrackToPlaylist(playlistId, trackUri)
@@ -105,7 +105,7 @@ export class PlaylistRefreshServiceImpl implements PlaylistRefreshService {
     upcomingTracks: TrackItem[],
     playlistId: string,
     currentTrackId: string | null,
-    allPlaylistTracks: TrackItem[],
+    allPlaylistTracks: TrackItem[]
   ): Promise<{ success: boolean; error?: string; searchDetails?: unknown }> {
     const existingTrackIds = allPlaylistTracks.map((t) => t.track.id)
     const now = Date.now()
@@ -126,7 +126,7 @@ export class PlaylistRefreshServiceImpl implements PlaylistRefreshService {
       while (!success && retryCount < this.MAX_RETRIES) {
         const result = await findSuggestedTrack(
           existingTrackIds,
-          currentTrackId,
+          currentTrackId
         )
 
         if (!result.track) {
@@ -140,7 +140,7 @@ export class PlaylistRefreshServiceImpl implements PlaylistRefreshService {
         if (!success) {
           retryCount++
           await new Promise((resolve) =>
-            setTimeout(resolve, this.RETRY_DELAY_MS * Math.pow(2, retryCount)),
+            setTimeout(resolve, this.RETRY_DELAY_MS * Math.pow(2, retryCount))
           )
         }
       }
@@ -154,14 +154,14 @@ export class PlaylistRefreshServiceImpl implements PlaylistRefreshService {
     } catch (error) {
       return {
         success: false,
-        error: error instanceof Error ? error.message : 'Unknown error',
+        error: error instanceof Error ? error.message : 'Unknown error'
       }
     }
   }
 
   getUpcomingTracks(
     playlist: SpotifyPlaylistItem,
-    currentTrackId: string | null,
+    currentTrackId: string | null
   ): TrackItem[] {
     return filterUpcomingTracks(playlist.tracks.items, currentTrackId)
   }
@@ -182,11 +182,11 @@ export class PlaylistRefreshServiceImpl implements PlaylistRefreshService {
           onError: (error) => {
             console.error(
               '[PlaylistRefresh] Error removing finished track:',
-              error,
+              error
             )
-          },
+          }
         }),
-      'PlaylistRefresh.autoRemoveFinishedTrack',
+      'PlaylistRefresh.autoRemoveFinishedTrack'
     )
   }
 
@@ -205,7 +205,7 @@ export class PlaylistRefreshServiceImpl implements PlaylistRefreshService {
         return {
           success: false,
           message: `No playlist found with name: ${this.FIXED_PLAYLIST_NAME}`,
-          timestamp: new Date().toISOString(),
+          timestamp: new Date().toISOString()
         }
       }
 
@@ -216,7 +216,7 @@ export class PlaylistRefreshServiceImpl implements PlaylistRefreshService {
         return {
           success: false,
           message: playbackError,
-          timestamp: new Date().toISOString(),
+          timestamp: new Date().toISOString()
         }
       }
 
@@ -227,7 +227,7 @@ export class PlaylistRefreshServiceImpl implements PlaylistRefreshService {
         playlistId: playlist.id,
         currentTrackId,
         playlistTracks: playlist.tracks.items,
-        playbackState,
+        playbackState
       })
 
       const diagnosticInfo = {
@@ -237,14 +237,14 @@ export class PlaylistRefreshServiceImpl implements PlaylistRefreshService {
         playlistTrackIds: playlist.tracks.items.map((t) => t.track.id),
         upcomingTrackIds: upcomingTracks.map((t) => t.track.id),
         removedTrack,
-        addedTrack: false,
+        addedTrack: false
       }
 
       const result = await this.addSuggestedTrackToPlaylist(
         upcomingTracks,
         playlist.id,
         currentTrackId,
-        playlist.tracks.items,
+        playlist.tracks.items
       )
 
       if (!result.success) {
@@ -256,7 +256,7 @@ export class PlaylistRefreshServiceImpl implements PlaylistRefreshService {
               : result.error || 'Failed to add track',
           timestamp: new Date().toISOString(),
           diagnosticInfo,
-          forceRefresh: force,
+          forceRefresh: force
         }
       }
 
@@ -267,13 +267,13 @@ export class PlaylistRefreshServiceImpl implements PlaylistRefreshService {
         message: 'Track added successfully',
         timestamp: new Date().toISOString(),
         diagnosticInfo,
-        forceRefresh: force,
+        forceRefresh: force
       }
     } catch (error) {
       return {
         success: false,
         message: error instanceof Error ? error.message : 'Unknown error',
-        timestamp: new Date().toISOString(),
+        timestamp: new Date().toISOString()
       }
     }
   }

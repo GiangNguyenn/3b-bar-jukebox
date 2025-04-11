@@ -7,9 +7,9 @@ import { ERROR_MESSAGES } from '@/shared/constants/errors'
 jest.mock('@/services/playlistRefresh', () => ({
   PlaylistRefreshServiceImpl: {
     getInstance: jest.fn().mockReturnValue({
-      refreshPlaylist: jest.fn(),
-    }),
-  },
+      refreshPlaylist: jest.fn()
+    })
+  }
 }))
 
 // Mock NextResponse
@@ -17,9 +17,9 @@ jest.mock('next/server', () => ({
   NextResponse: {
     json: jest.fn().mockImplementation((data, init) => ({
       ...init,
-      json: () => Promise.resolve(data),
-    })),
-  },
+      json: () => Promise.resolve(data)
+    }))
+  }
 }))
 
 describe('GET /api/refresh-site', () => {
@@ -35,17 +35,17 @@ describe('GET /api/refresh-site', () => {
       fullUrl = `${fullUrl}?${searchParams}`
     }
     return new Request(fullUrl, {
-      method: 'GET',
+      method: 'GET'
     })
   }
 
   // Mock URL class
   const mockSearchParams = {
-    get: jest.fn(),
+    get: jest.fn()
   }
 
   const mockUrl = {
-    searchParams: mockSearchParams,
+    searchParams: mockSearchParams
   }
 
   // @ts-ignore
@@ -123,7 +123,7 @@ describe('GET /api/refresh-site', () => {
     expect(response.status).toBe(500)
     expect(await response.json()).toEqual({
       success: false,
-      message: 'Invalid URL',
+      message: 'Invalid URL'
     })
   })
 
@@ -132,7 +132,7 @@ describe('GET /api/refresh-site', () => {
     const mockRefreshPlaylist = PlaylistRefreshServiceImpl.getInstance()
       .refreshPlaylist as jest.Mock
     mockRefreshPlaylist.mockRejectedValueOnce(
-      new AppError(ERROR_MESSAGES.FAILED_TO_LOAD, 'RefreshError'),
+      new AppError(ERROR_MESSAGES.FAILED_TO_LOAD, 'RefreshError')
     )
 
     const request = createRequest('/api/refresh-site')
@@ -141,7 +141,7 @@ describe('GET /api/refresh-site', () => {
     expect(response.status).toBe(500)
     expect(await response.json()).toEqual({
       success: false,
-      message: 'Failed to load playlist',
+      message: 'Failed to load playlist'
     })
   })
 
@@ -157,7 +157,7 @@ describe('GET /api/refresh-site', () => {
     expect(response.status).toBe(500)
     expect(await response.json()).toEqual({
       success: false,
-      message: 'Unexpected error',
+      message: 'Unexpected error'
     })
   })
 })

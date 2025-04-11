@@ -21,11 +21,11 @@ type TrackOperation = (track: TrackItem) => Promise<void>
 export const useTrackOperation = ({
   playlistId,
   playlistError = false,
-  refetchPlaylist,
+  refetchPlaylist
 }: UseTrackOperationProps): TrackOperationState & {
   executeOperation: (
     operation: TrackOperation,
-    track: TrackItem,
+    track: TrackItem
   ) => Promise<void>
 } => {
   const [isLoading, setIsLoading] = useState(false)
@@ -44,7 +44,7 @@ export const useTrackOperation = ({
       setIsSuccess(false)
     } else if (playlistError) {
       setError(
-        new AppError(ERROR_MESSAGES.FAILED_TO_LOAD, null, 'TrackOperation'),
+        new AppError(ERROR_MESSAGES.FAILED_TO_LOAD, null, 'TrackOperation')
       )
       setIsSuccess(false)
     }
@@ -52,13 +52,13 @@ export const useTrackOperation = ({
 
   const executeOperation = async (
     operation: TrackOperation,
-    track: TrackItem,
+    track: TrackItem
   ) => {
     if (!playlistId) {
       const error = new AppError(
         ERROR_MESSAGES.NO_PLAYLIST,
         null,
-        'TrackOperation',
+        'TrackOperation'
       )
       setError(error)
       setIsSuccess(false)
@@ -69,7 +69,7 @@ export const useTrackOperation = ({
       const error = new AppError(
         ERROR_MESSAGES.FAILED_TO_LOAD,
         null,
-        'TrackOperation',
+        'TrackOperation'
       )
       setError(error)
       setIsSuccess(false)
@@ -92,7 +92,7 @@ export const useTrackOperation = ({
           setError(error)
           setIsSuccess(false)
           throw error
-        },
+        }
       )
     } finally {
       setIsLoading(false)
@@ -103,6 +103,6 @@ export const useTrackOperation = ({
     isLoading,
     error,
     isSuccess,
-    executeOperation,
+    executeOperation
   }
 }

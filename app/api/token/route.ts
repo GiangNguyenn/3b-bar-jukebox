@@ -27,13 +27,13 @@ export async function GET() {
       method: 'POST',
       headers: {
         Authorization: `Basic ${auth}`,
-        'Content-Type': 'application/x-www-form-urlencoded',
+        'Content-Type': 'application/x-www-form-urlencoded'
       },
       body: new URLSearchParams({
         grant_type: 'refresh_token',
-        refresh_token: refreshToken,
+        refresh_token: refreshToken
       }),
-      cache: 'no-store',
+      cache: 'no-store'
     })
 
     if (!response.ok) {
@@ -42,7 +42,7 @@ export async function GET() {
         status: response.status,
         statusText: response.statusText,
         error: errorData,
-        headers: Object.fromEntries(response.headers.entries()),
+        headers: Object.fromEntries(response.headers.entries())
       })
 
       throw new AppError(
@@ -50,9 +50,9 @@ export async function GET() {
         {
           status: response.status,
           statusText: response.statusText,
-          error: errorData,
+          error: errorData
         },
-        'TokenRefresh',
+        'TokenRefresh'
       )
     }
 
@@ -69,9 +69,9 @@ export async function GET() {
     return NextResponse.json(
       {
         error: appError.message,
-        details: appError.originalError,
+        details: appError.originalError
       },
-      { status: 500 },
+      { status: 500 }
     )
   }
 }

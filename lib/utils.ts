@@ -10,7 +10,7 @@ export function cn(...inputs: ClassValue[]): string {
 export const filterUpcomingTracks = (
   playlistTracks: TrackItem[],
   currentTrackId: string | null,
-  _nowPlaying?: SpotifyPlaybackState,
+  _nowPlaying?: SpotifyPlaybackState
 ): TrackItem[] => {
   if (!currentTrackId) {
     return playlistTracks // If no track is playing, return all tracks

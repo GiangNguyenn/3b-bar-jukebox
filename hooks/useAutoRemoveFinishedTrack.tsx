@@ -14,7 +14,7 @@ export const useAutoRemoveFinishedTrack = ({
   currentTrackId,
   playlistTracks,
   playbackState,
-  playlistId,
+  playlistId
 }: UseAutoRemoveFinishedTrackProps) => {
   const { removeTrack, isLoading } = useRemoveTrackFromPlaylist()
   const lastRemovalTimeRef = useRef<number>(0)
@@ -31,7 +31,7 @@ export const useAutoRemoveFinishedTrack = ({
       return
 
     const currentTrackIndex = playlistTracks.findIndex(
-      (track) => track.track.id === currentTrackId,
+      (track) => track.track.id === currentTrackId
     )
     if (currentTrackIndex === -1 || currentTrackIndex < 20) return
 
@@ -52,7 +52,7 @@ export const useAutoRemoveFinishedTrack = ({
           playbackState,
           onSuccess: () => {
             lastRemovalTimeRef.current = now
-          },
+          }
         })
       }
     }, 5000)
@@ -62,7 +62,7 @@ export const useAutoRemoveFinishedTrack = ({
     playbackState,
     removeTrack,
     isLoading,
-    playlistId,
+    playlistId
   ])
 
   // Cleanup timeout on unmount

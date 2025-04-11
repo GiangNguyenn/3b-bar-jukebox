@@ -5,19 +5,19 @@ import {
   SpotifyPlaybackState,
   SpotifyPlaylistItem,
   TrackItem,
-  TrackDetails,
+  TrackDetails
 } from '@/shared/types'
 
 // Mock sendApiRequest
 jest.mock('@/shared/api', () => ({
-  sendApiRequest: jest.fn().mockResolvedValue({}),
+  sendApiRequest: jest.fn().mockResolvedValue({})
 }))
 
 // Mock SpotifyApiService
 jest.mock('../spotifyApi', () => ({
   SpotifyApiService: {
-    getInstance: jest.fn(),
-  },
+    getInstance: jest.fn()
+  }
 }))
 
 // Mock findSuggestedTrack
@@ -26,10 +26,10 @@ jest.mock('@/services/trackSuggestion', () => ({
     track: {
       id: 'suggestedTrack1',
       uri: 'spotify:track:suggestedTrack1',
-      name: 'Suggested Track',
+      name: 'Suggested Track'
     },
-    searchDetails: {},
-  }),
+    searchDetails: {}
+  })
 }))
 
 describe('PlaylistRefreshService', () => {
@@ -47,25 +47,25 @@ describe('PlaylistRefreshService', () => {
           {
             id: 'playlist1',
             name: '3B Saigon',
-            tracks: { items: [] },
-          },
-        ],
+            tracks: { items: [] }
+          }
+        ]
       }),
       getPlaylist: jest.fn().mockResolvedValue({
         id: 'playlist1',
         name: '3B Saigon',
-        tracks: { items: [] },
+        tracks: { items: [] }
       }),
       getCurrentlyPlaying: jest.fn().mockResolvedValue({
-        item: { id: 'track1' },
+        item: { id: 'track1' }
       }),
       addTrackToPlaylist: jest.fn().mockResolvedValue(undefined),
       getPlaybackState: jest.fn().mockResolvedValue({
-        is_playing: true,
-      }),
+        is_playing: true
+      })
     }
     ;(SpotifyApiService.getInstance as jest.Mock).mockReturnValue(
-      mockSpotifyApi,
+      mockSpotifyApi
     )
     mockFindSuggestedTrack = findSuggestedTrack as jest.Mock
   })
@@ -85,13 +85,13 @@ describe('PlaylistRefreshService', () => {
   it('should exclude current track and all playlist tracks from suggestions', async () => {
     const mockCurrentTrack = {
       item: { id: 'currentTrack' },
-      is_playing: true,
+      is_playing: true
     } as SpotifyPlaybackState
     const mockPlaylist = {
       name: '3B Saigon',
       tracks: {
-        items: [{ track: { id: 'track1' } }, { track: { id: 'track2' } }],
-      },
+        items: [{ track: { id: 'track1' } }, { track: { id: 'track2' } }]
+      }
     } as SpotifyPlaylistItem
     const mockSuggestedTrack = {
       added_at: '2024-04-06T00:00:00Z',
@@ -100,13 +100,13 @@ describe('PlaylistRefreshService', () => {
         href: 'https://api.spotify.com/v1/users/user1',
         id: 'user1',
         type: 'user',
-        uri: 'spotify:user:user1',
+        uri: 'spotify:user:user1'
       },
       is_local: false,
       track: {
         id: 'suggestedTrack',
-        uri: 'spotify:track:suggestedTrack',
-      } as TrackDetails,
+        uri: 'spotify:track:suggestedTrack'
+      } as TrackDetails
     } as TrackItem
 
     // Mock the service methods
@@ -116,7 +116,7 @@ describe('PlaylistRefreshService', () => {
     mockSpotifyApi.getPlaybackState.mockResolvedValue(mockCurrentTrack)
     mockSpotifyApi.addTrackToPlaylist.mockResolvedValue(undefined)
     mockFindSuggestedTrack.mockResolvedValue({
-      track: mockSuggestedTrack.track,
+      track: mockSuggestedTrack.track
     })
 
     // Create service instance
@@ -128,7 +128,7 @@ describe('PlaylistRefreshService', () => {
     // Verify that findSuggestedTrack was called with all playlist track IDs and current track ID
     expect(mockFindSuggestedTrack).toHaveBeenCalledWith(
       ['track1', 'track2'],
-      'currentTrack',
+      'currentTrack'
     )
   })
 
@@ -140,9 +140,9 @@ describe('PlaylistRefreshService', () => {
         items: [
           { track: { id: 'track1' } },
           { track: { id: 'track2' } },
-          { track: { id: 'track3' } },
-        ],
-      },
+          { track: { id: 'track3' } }
+        ]
+      }
     } as SpotifyPlaylistItem
 
     const result = service.getUpcomingTracks(playlist, 'track1')
@@ -157,25 +157,25 @@ describe('PlaylistRefreshService', () => {
       currentTrackId: 'track6', // Current track is at index 5
       playlistTracks: [
         {
-          track: { id: 'track1', uri: 'spotify:track:track1', name: 'Track 1' },
+          track: { id: 'track1', uri: 'spotify:track:track1', name: 'Track 1' }
         },
         {
-          track: { id: 'track2', uri: 'spotify:track:track2', name: 'Track 2' },
+          track: { id: 'track2', uri: 'spotify:track:track2', name: 'Track 2' }
         },
         {
-          track: { id: 'track3', uri: 'spotify:track:track3', name: 'Track 3' },
+          track: { id: 'track3', uri: 'spotify:track:track3', name: 'Track 3' }
         },
         {
-          track: { id: 'track4', uri: 'spotify:track:track4', name: 'Track 4' },
+          track: { id: 'track4', uri: 'spotify:track:track4', name: 'Track 4' }
         },
         {
-          track: { id: 'track5', uri: 'spotify:track:track5', name: 'Track 5' },
+          track: { id: 'track5', uri: 'spotify:track:track5', name: 'Track 5' }
         },
         {
-          track: { id: 'track6', uri: 'spotify:track:track6', name: 'Track 6' },
-        },
+          track: { id: 'track6', uri: 'spotify:track:track6', name: 'Track 6' }
+        }
       ] as TrackItem[],
-      playbackState: { is_playing: true } as any,
+      playbackState: { is_playing: true } as any
     })
 
     expect(result).toBe(true)

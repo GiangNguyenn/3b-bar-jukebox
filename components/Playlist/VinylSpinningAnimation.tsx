@@ -8,7 +8,7 @@ interface IVinylSpinningAnimationProps {
 
 const VinylSpinningAnimation: React.FC<IVinylSpinningAnimationProps> = ({
   is_playing,
-  albumCover,
+  albumCover
 }) => {
   return (
     <div className='relative flex items-center justify-center p-2'>

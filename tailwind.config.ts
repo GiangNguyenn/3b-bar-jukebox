@@ -5,20 +5,20 @@ const config: Config = {
   content: [
     './pages/**/*.{js,ts,jsx,tsx,mdx}',
     './components/**/*.{js,ts,jsx,tsx,mdx}',
-    './app/**/*.{js,ts,jsx,tsx,mdx}',
+    './app/**/*.{js,ts,jsx,tsx,mdx}'
   ],
   theme: {
     extend: {
       animation: {
         glow: 'glow 1.5s infinite',
-        spinSlow: 'spin 5s linear infinite',
+        spinSlow: 'spin 5s linear infinite'
       },
       colors: {
         background: 'hsl(var(--background))',
         foreground: 'hsl(var(--foreground))',
         card: {
           DEFAULT: 'hsl(var(--card))',
-          foreground: 'hsl(var(--card-foreground))',
+          foreground: 'hsl(var(--card-foreground))'
         },
         primary: {
           50: 'hsl(40, 88%, 95%)', // Lightest Gold
@@ -30,7 +30,7 @@ const config: Config = {
           600: 'hsl(40, 88%, 35%)',
           700: 'hsl(40, 88%, 25%)',
           800: 'hsl(40, 88%, 15%)',
-          900: 'hsl(40, 88%, 10%)', // Darkest Gold
+          900: 'hsl(40, 88%, 10%)' // Darkest Gold
         },
         secondary: {
           50: 'hsl(360, 65%, 95%)',
@@ -42,7 +42,7 @@ const config: Config = {
           600: 'hsl(360, 65%, 35%)',
           700: 'hsl(360, 65%, 25%)',
           800: 'hsl(360, 65%, 15%)',
-          900: 'hsl(360, 65%, 10%)',
+          900: 'hsl(360, 65%, 10%)'
         },
         white: {
           50: 'hsl(45, 50%, 98%)', // Lightest warm white
@@ -54,19 +54,19 @@ const config: Config = {
           600: 'hsl(45, 50%, 70%)',
           700: 'hsl(45, 50%, 60%)',
           800: 'hsl(45, 50%, 50%)',
-          900: 'hsl(45, 50%, 40%)', // Darkest warm beige
+          900: 'hsl(45, 50%, 40%)' // Darkest warm beige
         },
         muted: {
           DEFAULT: 'hsl(var(--muted))',
-          foreground: 'hsl(var(--muted-foreground))',
+          foreground: 'hsl(var(--muted-foreground))'
         },
         accent: {
           DEFAULT: 'hsl(var(--accent))',
-          foreground: 'hsl(var(--accent-foreground))',
+          foreground: 'hsl(var(--accent-foreground))'
         },
         destructive: {
           DEFAULT: 'hsl(var(--destructive))',
-          foreground: 'hsl(var(--destructive-foreground))',
+          foreground: 'hsl(var(--destructive-foreground))'
         },
         border: 'hsl(var(--border))',
         input: 'hsl(var(--input))',
@@ -76,16 +76,16 @@ const config: Config = {
           '2': 'hsl(var(--chart-2))',
           '3': 'hsl(var(--chart-3))',
           '4': 'hsl(var(--chart-4))',
-          '5': 'hsl(var(--chart-5))',
-        },
+          '5': 'hsl(var(--chart-5))'
+        }
       },
       borderRadius: {
         lg: 'var(--radius)',
         md: 'calc(var(--radius) - 2px)',
-        sm: 'calc(var(--radius) - 4px)',
-      },
-    },
+        sm: 'calc(var(--radius) - 4px)'
+      }
+    }
   },
-  plugins: [require('tailwindcss-animate')],
+  plugins: [require('tailwindcss-animate')]
 }
 export default config

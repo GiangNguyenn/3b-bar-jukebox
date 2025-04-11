@@ -17,7 +17,7 @@ import Header from '@/components/Header'
 const belgrano = Belgrano({
   weight: '400',
   subsets: ['latin'],
-  variable: '--font-belgrano',
+  variable: '--font-belgrano'
 })
 
 export const metadata: Metadata = {
@@ -31,7 +31,7 @@ export const metadata: Metadata = {
   formatDetection: {
     email: false,
     address: false,
-    telephone: false,
+    telephone: false
   },
   openGraph: {
     type: 'website',
@@ -45,16 +45,16 @@ export const metadata: Metadata = {
         url: '/images/og-image.jpg', // You'll need to add this image
         width: 1200,
         height: 630,
-        alt: '3B SAIGON JUKEBOX - A boutique beer & music experience',
-      },
-    ],
+        alt: '3B SAIGON JUKEBOX - A boutique beer & music experience'
+      }
+    ]
   },
   twitter: {
     card: 'summary_large_image',
     title: '3B SAIGON JUKEBOX',
     description: 'A boutique beer & music experience',
     images: ['/images/og-image.jpg'], // Same image as OpenGraph
-    creator: '@3bsaigon', // Add your Twitter handle if you have one
+    creator: '@3bsaigon' // Add your Twitter handle if you have one
   },
   robots: {
     index: true,
@@ -64,19 +64,19 @@ export const metadata: Metadata = {
       follow: true,
       'max-video-preview': -1,
       'max-image-preview': 'large',
-      'max-snippet': -1,
-    },
+      'max-snippet': -1
+    }
   },
   verification: {
-    google: 'your-google-site-verification', // Add your Google Search Console verification code
+    google: 'your-google-site-verification' // Add your Google Search Console verification code
   },
   alternates: {
-    canonical: 'https://3bsaigonjukebox.com', // Add your actual domain
-  },
+    canonical: 'https://3bsaigonjukebox.com' // Add your actual domain
+  }
 }
 
 export default function RootLayout({
-  children,
+  children
 }: Readonly<{
   children: React.ReactNode
 }>) {

@@ -10,7 +10,7 @@ interface UseAddTrackToPlaylistProps {
 }
 
 export const useAddTrackToPlaylist = ({
-  playlistId,
+  playlistId
 }: UseAddTrackToPlaylistProps) => {
   const { isError: playlistError, refetchPlaylist } = useGetPlaylist(playlistId)
   const [pendingTracks, setPendingTracks] = useState<Set<string>>(new Set())
@@ -18,7 +18,7 @@ export const useAddTrackToPlaylist = ({
   const { isLoading, error, isSuccess, executeOperation } = useTrackOperation({
     playlistId,
     playlistError,
-    refetchPlaylist,
+    refetchPlaylist
   })
 
   const addTrack = async (track: TrackItem, onSuccess?: () => void) => {
@@ -31,8 +31,8 @@ export const useAddTrackToPlaylist = ({
           path: `playlists/${playlistId}/tracks`,
           method: 'POST',
           body: {
-            uris: [track.track.uri],
-          },
+            uris: [track.track.uri]
+          }
         })
         onSuccess?.()
       } catch (error) {
@@ -66,6 +66,6 @@ export const useAddTrackToPlaylist = ({
     isLoading,
     error,
     isSuccess,
-    pendingTracks: Array.from(pendingTracks),
+    pendingTracks: Array.from(pendingTracks)
   }
 }

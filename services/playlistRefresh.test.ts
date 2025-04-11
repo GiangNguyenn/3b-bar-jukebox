@@ -17,26 +17,26 @@ describe('PlaylistRefreshService', () => {
           {
             id: 'playlist1',
             name: '3B Saigon',
-            tracks: { items: [] },
-          },
-        ],
+            tracks: { items: [] }
+          }
+        ]
       }),
       getPlaylist: jest.fn().mockResolvedValue({
         id: 'playlist1',
         name: '3B Saigon',
-        tracks: { items: [] },
+        tracks: { items: [] }
       }),
       getCurrentlyPlaying: jest.fn().mockResolvedValue({
-        item: { id: 'track1' },
+        item: { id: 'track1' }
       }),
       addTrackToPlaylist: jest.fn().mockResolvedValue(undefined),
       getPlaybackState: jest.fn().mockResolvedValue({
-        is_playing: true,
+        is_playing: true
       }),
       getQueue: jest.fn().mockResolvedValue({
         currently_playing: null,
-        queue: [],
-      }),
+        queue: []
+      })
     }
 
     // Initialize service with mock

@@ -17,8 +17,8 @@ global.fetch = jest.fn(() =>
     arrayBuffer: () => Promise.resolve(new ArrayBuffer(0)),
     blob: () => Promise.resolve(new Blob()),
     formData: () => Promise.resolve(new FormData()),
-    text: () => Promise.resolve(''),
-  } as Response),
+    text: () => Promise.resolve('')
+  } as Response)
 ) as unknown as typeof fetch
 
 // Mock useRemoveTrackFromPlaylist
@@ -29,12 +29,12 @@ jest.mock('../useRemoveTrackFromPlaylist', () => ({
         path: 'playlists/test-playlist-id/tracks',
         method: 'DELETE',
         body: {
-          tracks: [{ uri: `spotify:track:${track.track.id}` }],
-        },
+          tracks: [{ uri: `spotify:track:${track.track.id}` }]
+        }
       })
     },
-    isLoading: false,
-  }),
+    isLoading: false
+  })
 }))
 
 // Mock sendApiRequest
@@ -72,7 +72,7 @@ const createMockTrack = (id: string): TrackItem => ({
     href: 'https://api.spotify.com/v1/users/test',
     id: 'test',
     type: 'user',
-    uri: 'spotify:user:test',
+    uri: 'spotify:user:test'
   },
   is_local: false,
   track: {
@@ -96,9 +96,9 @@ const createMockTrack = (id: string): TrackItem => ({
           id: 'test',
           name: 'Test Artist',
           type: 'artist',
-          uri: 'spotify:artist:test',
-        },
-      ],
+          uri: 'spotify:artist:test'
+        }
+      ]
     },
     artists: [
       {
@@ -107,15 +107,15 @@ const createMockTrack = (id: string): TrackItem => ({
         id: 'test',
         name: 'Test Artist',
         type: 'artist',
-        uri: 'spotify:artist:test',
-      },
+        uri: 'spotify:artist:test'
+      }
     ],
     available_markets: ['US'],
     disc_number: 1,
     duration_ms: 180000,
     explicit: false,
     external_ids: {
-      isrc: 'MOCK123456789',
+      isrc: 'MOCK123456789'
     },
     external_urls: { spotify: 'https://open.spotify.com/track/test' },
     href: 'https://api.spotify.com/v1/tracks/test',
@@ -127,8 +127,8 @@ const createMockTrack = (id: string): TrackItem => ({
     track_number: 1,
     type: 'track',
     uri: `spotify:track:${id}`,
-    is_local: false,
-  },
+    is_local: false
+  }
 })
 
 const createMockPlaybackState = (id: string): SpotifyPlaybackState => {
@@ -143,7 +143,7 @@ const createMockPlaybackState = (id: string): SpotifyPlaybackState => {
       name: 'Test Device',
       type: 'Computer',
       volume_percent: 50,
-      supports_volume: true,
+      supports_volume: true
     },
     repeat_state: 'off',
     shuffle_state: false,
@@ -156,9 +156,9 @@ const createMockPlaybackState = (id: string): SpotifyPlaybackState => {
       external_ids: {
         isrc: 'MOCK123456789',
         ean: '1234567890123',
-        upc: '123456789012',
+        upc: '123456789012'
       },
-      preview_url: 'https://p.scdn.co/mp3-preview/test',
+      preview_url: 'https://p.scdn.co/mp3-preview/test'
     },
     currently_playing_type: 'track',
     actions: {
@@ -171,14 +171,14 @@ const createMockPlaybackState = (id: string): SpotifyPlaybackState => {
       toggling_repeat_context: false,
       toggling_shuffle: false,
       toggling_repeat_track: false,
-      transferring_playback: false,
+      transferring_playback: false
     },
     context: {
       type: 'playlist',
       href: 'https://api.spotify.com/v1/playlists/test',
       external_urls: { spotify: 'https://open.spotify.com/playlist/test' },
-      uri: 'spotify:playlist:test',
-    },
+      uri: 'spotify:playlist:test'
+    }
   }
 }
 
@@ -193,7 +193,7 @@ describe('useAutoRemoveFinishedTrack', () => {
 
   it('should remove oldest track when current track index is >= 5', async () => {
     const tracks = Array.from({ length: 10 }, (_, i) =>
-      createMockTrack(`track-${i}`),
+      createMockTrack(`track-${i}`)
     )
     const playbackState = createMockPlaybackState('track-5')
 
@@ -202,8 +202,8 @@ describe('useAutoRemoveFinishedTrack', () => {
         currentTrackId: 'track-5',
         playlistTracks: tracks,
         playbackState,
-        playlistId: 'test-playlist-id',
-      }),
+        playlistId: 'test-playlist-id'
+      })
     )
 
     // Fast-forward time by 5 seconds
@@ -215,14 +215,14 @@ describe('useAutoRemoveFinishedTrack', () => {
       path: 'playlists/test-playlist-id/tracks',
       method: 'DELETE',
       body: {
-        tracks: [{ uri: 'spotify:track:track-0' }],
-      },
+        tracks: [{ uri: 'spotify:track:track-0' }]
+      }
     })
   })
 
   it('should not remove any track when current track index is < 5', async () => {
     const tracks = Array.from({ length: 10 }, (_, i) =>
-      createMockTrack(`track-${i}`),
+      createMockTrack(`track-${i}`)
     )
     const playbackState = createMockPlaybackState('track-3')
 
@@ -231,8 +231,8 @@ describe('useAutoRemoveFinishedTrack', () => {
         currentTrackId: 'track-3',
         playlistTracks: tracks,
         playbackState,
-        playlistId: 'test-playlist-id',
-      }),
+        playlistId: 'test-playlist-id'
+      })
     )
 
     // Fast-forward time by 5 seconds
@@ -251,8 +251,8 @@ describe('useAutoRemoveFinishedTrack', () => {
         currentTrackId: 'track-5',
         playlistTracks: [],
         playbackState,
-        playlistId: 'test-playlist-id',
-      }),
+        playlistId: 'test-playlist-id'
+      })
     )
 
     // Fast-forward time by 5 seconds

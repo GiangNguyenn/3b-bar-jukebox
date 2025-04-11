@@ -43,7 +43,7 @@ export const FALLBACK_GENRES = [
   'Indie Rock',
   'Soul',
   'Alternative Pop',
-  'Funk',
+  'Funk'
 ] as const
 
 // Configuration

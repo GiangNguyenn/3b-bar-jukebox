@@ -4,7 +4,7 @@ import { ERROR_MESSAGES, ErrorMessage } from '@/shared/constants/errors'
 import useSWR from 'swr'
 import {
   handleApiError,
-  handleOperationError,
+  handleOperationError
 } from '@/shared/utils/errorHandling'
 
 const userId = process.env.NEXT_PUBLIC_SPOTIFY_USER_ID ?? ''
@@ -13,7 +13,7 @@ export const useGetPlaylist = (id: string) => {
   const fetcher = async () => {
     if (!id) return null
     return sendApiRequest<SpotifyPlaylistItem>({
-      path: `users/${userId}/playlists/${id}`,
+      path: `users/${userId}/playlists/${id}`
     })
   }
 
@@ -24,15 +24,15 @@ export const useGetPlaylist = (id: string) => {
       await mutate(
         async () => {
           const newData = await sendApiRequest<SpotifyPlaylistItem>({
-            path: `users/${userId}/playlists/${id}`,
+            path: `users/${userId}/playlists/${id}`
           })
           return newData
         },
         {
           revalidate: false,
           populateCache: true,
-          rollbackOnError: true,
-        },
+          rollbackOnError: true
+        }
       )
     }, 'Get Playlist')
   }
@@ -41,6 +41,6 @@ export const useGetPlaylist = (id: string) => {
     data,
     isLoading: !error && !data,
     isError: error,
-    refetchPlaylist,
+    refetchPlaylist
   }
 }
