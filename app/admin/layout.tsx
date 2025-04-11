@@ -1,14 +1,14 @@
-import { Metadata } from "next";
+import { Metadata } from 'next'
 
 export const metadata: Metadata = {
-  title: "Admin Dashboard",
-  description: "Admin dashboard for managing the jukebox",
-};
+  title: 'Admin Dashboard',
+  description: 'Admin dashboard for managing the jukebox',
+}
 
 export default function AdminLayout({
   children,
 }: {
-  children: React.ReactNode;
+  children: React.ReactNode
 }) {
-  return children;
+  return children
 }

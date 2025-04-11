@@ -2,39 +2,39 @@ import {
   SpotifyPlaylistItem,
   SpotifyPlaybackState,
   TrackItem,
-} from "@/shared/types";
-import { sendApiRequest } from "@/shared/api";
-import { handleOperationError } from "@/shared/utils/errorHandling";
+} from '@/shared/types'
+import { sendApiRequest } from '@/shared/api'
+import { handleOperationError } from '@/shared/utils/errorHandling'
 
 export interface SpotifyApiClient {
-  getPlaylists(): Promise<{ items: SpotifyPlaylistItem[] }>;
-  getPlaylist(playlistId: string): Promise<SpotifyPlaylistItem>;
-  getCurrentlyPlaying(): Promise<SpotifyPlaybackState>;
-  addTrackToPlaylist(playlistId: string, trackUri: string): Promise<void>;
-  getPlaybackState(): Promise<SpotifyPlaybackState>;
-  getQueue(): Promise<{ queue: SpotifyPlaybackState[] }>;
+  getPlaylists(): Promise<{ items: SpotifyPlaylistItem[] }>
+  getPlaylist(playlistId: string): Promise<SpotifyPlaylistItem>
+  getCurrentlyPlaying(): Promise<SpotifyPlaybackState>
+  addTrackToPlaylist(playlistId: string, trackUri: string): Promise<void>
+  getPlaybackState(): Promise<SpotifyPlaybackState>
+  getQueue(): Promise<{ queue: SpotifyPlaybackState[] }>
 }
 
 export class SpotifyApiService implements SpotifyApiClient {
-  private static instance: SpotifyApiService;
+  private static instance: SpotifyApiService
 
   private constructor(private readonly apiClient = sendApiRequest) {}
 
   public static getInstance(): SpotifyApiService {
     if (!SpotifyApiService.instance) {
-      SpotifyApiService.instance = new SpotifyApiService();
+      SpotifyApiService.instance = new SpotifyApiService()
     }
-    return SpotifyApiService.instance;
+    return SpotifyApiService.instance
   }
 
   async getPlaylists(): Promise<{ items: SpotifyPlaylistItem[] }> {
     return handleOperationError(
       async () =>
         this.apiClient<{ items: SpotifyPlaylistItem[] }>({
-          path: "me/playlists",
+          path: 'me/playlists',
         }),
-      "SpotifyApi.getPlaylists",
-    );
+      'SpotifyApi.getPlaylists',
+    )
   }
 
   async getPlaylist(playlistId: string): Promise<SpotifyPlaylistItem> {
@@ -43,58 +43,58 @@ export class SpotifyApiService implements SpotifyApiClient {
         this.apiClient<SpotifyPlaylistItem>({
           path: `playlists/${playlistId}`,
         }),
-      "SpotifyApi.getPlaylist",
-    );
+      'SpotifyApi.getPlaylist',
+    )
   }
 
   async getCurrentlyPlaying(): Promise<SpotifyPlaybackState> {
     return handleOperationError(
       async () =>
         this.apiClient<SpotifyPlaybackState>({
-          path: "me/player/currently-playing",
+          path: 'me/player/currently-playing',
         }),
-      "SpotifyApi.getCurrentlyPlaying",
-    );
+      'SpotifyApi.getCurrentlyPlaying',
+    )
   }
 
   async addTrackToPlaylist(
     playlistId: string,
     trackUri: string,
   ): Promise<void> {
-    const formattedUri = trackUri.startsWith("spotify:track:")
+    const formattedUri = trackUri.startsWith('spotify:track:')
       ? trackUri
-      : `spotify:track:${trackUri}`;
+      : `spotify:track:${trackUri}`
 
     return handleOperationError(
       async () =>
         this.apiClient({
           path: `playlists/${playlistId}/tracks`,
-          method: "POST",
+          method: 'POST',
           body: {
             uris: [formattedUri],
           },
         }),
-      "SpotifyApi.addTrackToPlaylist",
-    );
+      'SpotifyApi.addTrackToPlaylist',
+    )
   }
 
   async getPlaybackState(): Promise<SpotifyPlaybackState> {
     return handleOperationError(
       async () =>
         this.apiClient<SpotifyPlaybackState>({
-          path: "me/player",
+          path: 'me/player',
         }),
-      "SpotifyApi.getPlaybackState",
-    );
+      'SpotifyApi.getPlaybackState',
+    )
   }
 
   async getQueue(): Promise<{ queue: SpotifyPlaybackState[] }> {
     return handleOperationError(
       async () =>
         this.apiClient<{ queue: SpotifyPlaybackState[] }>({
-          path: "me/player/queue",
+          path: 'me/player/queue',
         }),
-      "SpotifyApi.getQueue",
-    );
+      'SpotifyApi.getQueue',
+    )
   }
 }
