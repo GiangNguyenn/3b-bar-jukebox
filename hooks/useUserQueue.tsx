@@ -19,7 +19,7 @@ export const useUserQueue = (id: string) => {
       (error) => {
         console.error(`[User Queue] Error fetching queue:`, error);
         throw new AppError(ERROR_MESSAGES.FAILED_TO_LOAD, error, "UserQueue");
-      }
+      },
     );
   };
 

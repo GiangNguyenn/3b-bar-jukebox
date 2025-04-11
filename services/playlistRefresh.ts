@@ -1,9 +1,16 @@
-import { SpotifyPlaylistItem, TrackItem, SpotifyPlaybackState } from "@/shared/types";
+import {
+  SpotifyPlaylistItem,
+  TrackItem,
+  SpotifyPlaybackState,
+} from "@/shared/types";
 import { SpotifyApiClient, SpotifyApiService } from "./spotifyApi";
-import { COOLDOWN_MS, MAX_PLAYLIST_LENGTH } from "@/shared/constants/trackSuggestion";
+import {
+  COOLDOWN_MS,
+  MAX_PLAYLIST_LENGTH,
+} from "@/shared/constants/trackSuggestion";
 import { findSuggestedTrack } from "@/services/trackSuggestion";
 import { filterUpcomingTracks } from "@/lib/utils";
-import { autoRemoveTrack } from '@/shared/utils/autoRemoveTrack';
+import { autoRemoveTrack } from "@/shared/utils/autoRemoveTrack";
 import { handleOperationError } from "@/shared/utils/errorHandling";
 
 export interface PlaylistRefreshService {
@@ -15,7 +22,10 @@ export interface PlaylistRefreshService {
     forceRefresh?: boolean;
     playerStateRefresh?: boolean;
   }>;
-  getUpcomingTracks(playlist: SpotifyPlaylistItem, currentTrackId: string | null): TrackItem[];
+  getUpcomingTracks(
+    playlist: SpotifyPlaylistItem,
+    currentTrackId: string | null,
+  ): TrackItem[];
   autoRemoveFinishedTrack(params: {
     playlistId: string;
     currentTrackId: string | null;
@@ -32,7 +42,7 @@ export class PlaylistRefreshServiceImpl implements PlaylistRefreshService {
   private readonly RETRY_DELAY_MS = 1000;
 
   private constructor(
-    private readonly spotifyApi: SpotifyApiClient = SpotifyApiService.getInstance()
+    private readonly spotifyApi: SpotifyApiClient = SpotifyApiService.getInstance(),
   ) {}
 
   public static getInstance(): PlaylistRefreshServiceImpl {
@@ -50,7 +60,7 @@ export class PlaylistRefreshServiceImpl implements PlaylistRefreshService {
   private async getFixedPlaylist(): Promise<SpotifyPlaylistItem | null> {
     const playlists = await this.spotifyApi.getPlaylists();
     const fixedPlaylist = playlists.items.find(
-      (playlist) => playlist.name === this.FIXED_PLAYLIST_NAME
+      (playlist) => playlist.name === this.FIXED_PLAYLIST_NAME,
     );
 
     if (!fixedPlaylist) {
@@ -60,19 +70,29 @@ export class PlaylistRefreshServiceImpl implements PlaylistRefreshService {
     return this.spotifyApi.getPlaylist(fixedPlaylist.id);
   }
 
-  private async getCurrentlyPlaying(): Promise<{ id: string | null; error?: string }> {
+  private async getCurrentlyPlaying(): Promise<{
+    id: string | null;
+    error?: string;
+  }> {
     try {
       const response = await this.spotifyApi.getCurrentlyPlaying();
       return { id: response.item?.id ?? null };
     } catch (error) {
-      if (error instanceof Error && error.message.includes('401')) {
-        return { id: null, error: 'Spotify authentication failed. Please check your access token.' };
+      if (error instanceof Error && error.message.includes("401")) {
+        return {
+          id: null,
+          error:
+            "Spotify authentication failed. Please check your access token.",
+        };
       }
       return { id: null };
     }
   }
 
-  private async tryAddTrack(trackUri: string, playlistId: string): Promise<boolean> {
+  private async tryAddTrack(
+    trackUri: string,
+    playlistId: string,
+  ): Promise<boolean> {
     try {
       await this.spotifyApi.addTrackToPlaylist(playlistId, trackUri);
       return true;
@@ -85,11 +105,11 @@ export class PlaylistRefreshServiceImpl implements PlaylistRefreshService {
     upcomingTracks: TrackItem[],
     playlistId: string,
     currentTrackId: string | null,
-    allPlaylistTracks: TrackItem[]
+    allPlaylistTracks: TrackItem[],
   ): Promise<{ success: boolean; error?: string; searchDetails?: unknown }> {
-    const existingTrackIds = allPlaylistTracks.map(t => t.track.id);
+    const existingTrackIds = allPlaylistTracks.map((t) => t.track.id);
     const now = Date.now();
-    
+
     if (now - this.lastAddTime < COOLDOWN_MS) {
       return { success: false, error: "In cooldown period" };
     }
@@ -104,8 +124,11 @@ export class PlaylistRefreshServiceImpl implements PlaylistRefreshService {
       let searchDetails: unknown;
 
       while (!success && retryCount < this.MAX_RETRIES) {
-        const result = await findSuggestedTrack(existingTrackIds, currentTrackId);
-        
+        const result = await findSuggestedTrack(
+          existingTrackIds,
+          currentTrackId,
+        );
+
         if (!result.track) {
           retryCount++;
           continue;
@@ -113,10 +136,12 @@ export class PlaylistRefreshServiceImpl implements PlaylistRefreshService {
 
         success = await this.tryAddTrack(result.track.uri, playlistId);
         searchDetails = result.searchDetails;
-        
+
         if (!success) {
           retryCount++;
-          await new Promise(resolve => setTimeout(resolve, this.RETRY_DELAY_MS * Math.pow(2, retryCount)));
+          await new Promise((resolve) =>
+            setTimeout(resolve, this.RETRY_DELAY_MS * Math.pow(2, retryCount)),
+          );
         }
       }
 
@@ -127,11 +152,17 @@ export class PlaylistRefreshServiceImpl implements PlaylistRefreshService {
 
       return { success: false, error: "Failed to add track after retries" };
     } catch (error) {
-      return { success: false, error: error instanceof Error ? error.message : "Unknown error" };
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : "Unknown error",
+      };
     }
   }
 
-  getUpcomingTracks(playlist: SpotifyPlaylistItem, currentTrackId: string | null): TrackItem[] {
+  getUpcomingTracks(
+    playlist: SpotifyPlaylistItem,
+    currentTrackId: string | null,
+  ): TrackItem[] {
     return filterUpcomingTracks(playlist.tracks.items, currentTrackId);
   }
 
@@ -142,16 +173,22 @@ export class PlaylistRefreshServiceImpl implements PlaylistRefreshService {
     playbackState: SpotifyPlaybackState | null;
   }): Promise<boolean> {
     return handleOperationError(
-      async () => autoRemoveTrack({
-        ...params,
-        onSuccess: () => {
-          console.log('[PlaylistRefresh] Successfully removed finished track');
-        },
-        onError: (error) => {
-          console.error('[PlaylistRefresh] Error removing finished track:', error);
-        }
-      }),
-      'PlaylistRefresh.autoRemoveFinishedTrack'
+      async () =>
+        autoRemoveTrack({
+          ...params,
+          onSuccess: () => {
+            console.log(
+              "[PlaylistRefresh] Successfully removed finished track",
+            );
+          },
+          onError: (error) => {
+            console.error(
+              "[PlaylistRefresh] Error removing finished track:",
+              error,
+            );
+          },
+        }),
+      "PlaylistRefresh.autoRemoveFinishedTrack",
     );
   }
 
@@ -165,61 +202,63 @@ export class PlaylistRefreshServiceImpl implements PlaylistRefreshService {
   }> {
     try {
       const playlist = await this.getFixedPlaylist();
-      
+
       if (!playlist) {
         return {
           success: false,
           message: `No playlist found with name: ${this.FIXED_PLAYLIST_NAME}`,
-          timestamp: new Date().toISOString()
+          timestamp: new Date().toISOString(),
         };
       }
 
-      const { id: currentTrackId, error: playbackError } = await this.getCurrentlyPlaying();
-      
+      const { id: currentTrackId, error: playbackError } =
+        await this.getCurrentlyPlaying();
+
       if (playbackError) {
         return {
           success: false,
           message: playbackError,
-          timestamp: new Date().toISOString()
+          timestamp: new Date().toISOString(),
         };
       }
-      
+
       const upcomingTracks = this.getUpcomingTracks(playlist, currentTrackId);
-      
+
       const playbackState = await this.spotifyApi.getPlaybackState();
       const removedTrack = await this.autoRemoveFinishedTrack({
         playlistId: playlist.id,
         currentTrackId,
         playlistTracks: playlist.tracks.items,
-        playbackState
+        playbackState,
       });
-      
+
       const diagnosticInfo = {
         currentTrackId,
         totalTracks: playlist.tracks.items.length,
         upcomingTracksCount: upcomingTracks.length,
-        playlistTrackIds: playlist.tracks.items.map(t => t.track.id),
-        upcomingTrackIds: upcomingTracks.map(t => t.track.id),
+        playlistTrackIds: playlist.tracks.items.map((t) => t.track.id),
+        upcomingTrackIds: upcomingTracks.map((t) => t.track.id),
         removedTrack,
-        addedTrack: false
+        addedTrack: false,
       };
-      
+
       const result = await this.addSuggestedTrackToPlaylist(
         upcomingTracks,
         playlist.id,
         currentTrackId,
-        playlist.tracks.items
+        playlist.tracks.items,
       );
-      
+
       if (!result.success) {
         return {
           success: true,
-          message: result.error === "Playlist too long" 
-            ? `Playlist has reached maximum length of ${MAX_PLAYLIST_LENGTH} tracks. No new tracks needed.`
-            : result.error || "Failed to add track",
+          message:
+            result.error === "Playlist too long"
+              ? `Playlist has reached maximum length of ${MAX_PLAYLIST_LENGTH} tracks. No new tracks needed.`
+              : result.error || "Failed to add track",
           timestamp: new Date().toISOString(),
           diagnosticInfo,
-          forceRefresh: force
+          forceRefresh: force,
         };
       }
 
@@ -227,17 +266,17 @@ export class PlaylistRefreshServiceImpl implements PlaylistRefreshService {
 
       return {
         success: true,
-        message: 'Track added successfully',
+        message: "Track added successfully",
         timestamp: new Date().toISOString(),
         diagnosticInfo,
-        forceRefresh: force
+        forceRefresh: force,
       };
     } catch (error) {
       return {
         success: false,
         message: error instanceof Error ? error.message : "Unknown error",
-        timestamp: new Date().toISOString()
+        timestamp: new Date().toISOString(),
       };
     }
   }
-} 
+}

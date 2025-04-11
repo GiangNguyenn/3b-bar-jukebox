@@ -11,18 +11,14 @@ export const useFixedPlaylist = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<ErrorMessage | null>(null);
   const [isInitialFetchComplete, setIsInitialFetchComplete] = useState(false);
-  
-  const {
-    data: playlists,
-    isError,
-    refetchPlaylists,
-  } = useMyPlaylists();
+
+  const { data: playlists, isError, refetchPlaylists } = useMyPlaylists();
 
   // Check for existing playlist whenever playlists data changes
   useEffect(() => {
     if (playlists?.items) {
       const existingPlaylist = playlists.items.find(
-        (playlist) => playlist.name === FIXED_PLAYLIST_NAME
+        (playlist) => playlist.name === FIXED_PLAYLIST_NAME,
       );
       if (existingPlaylist) {
         setFixedPlaylistId(existingPlaylist.id);
@@ -39,7 +35,7 @@ export const useFixedPlaylist = () => {
         await refetchPlaylists();
         setIsInitialFetchComplete(true);
       } catch (error) {
-        console.error('[Fixed Playlist] Error fetching playlists:', error);
+        console.error("[Fixed Playlist] Error fetching playlists:", error);
         setIsInitialFetchComplete(true);
         setError(ERROR_MESSAGES.FAILED_TO_LOAD);
       }
@@ -52,13 +48,13 @@ export const useFixedPlaylist = () => {
     return null;
   };
 
-  return { 
+  return {
     fixedPlaylistId,
-    createPlaylist, 
-    playlists, 
-    isLoading, 
-    error, 
+    createPlaylist,
+    playlists,
+    isLoading,
+    error,
     isError,
-    isInitialFetchComplete 
+    isInitialFetchComplete,
   };
 };

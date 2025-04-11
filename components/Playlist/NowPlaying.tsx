@@ -7,7 +7,7 @@ interface INowPlayingProps {
 }
 
 const NowPlaying: React.FC<INowPlayingProps> = memo(({ nowPlaying }) => {
-  if (!nowPlaying || !nowPlaying.item) {
+  if (!nowPlaying?.item) {
     return (
       <div className="flex flex-col sm:flex-row p-2 items-center justify-start bg-white shadow-lg rounded-lg">
         <VinylSpinningAnimation is_playing={nowPlaying?.is_playing ?? false} />
@@ -44,6 +44,6 @@ const NowPlaying: React.FC<INowPlayingProps> = memo(({ nowPlaying }) => {
   );
 });
 
-NowPlaying.displayName = 'NowPlaying';
+NowPlaying.displayName = "NowPlaying";
 
 export default NowPlaying;

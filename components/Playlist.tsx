@@ -17,16 +17,18 @@ const Playlist: React.FC<IPlaylistProps> = ({ tracks }) => {
   const handleRefresh = async () => {
     try {
       setIsRefreshing(true);
-      const response = await fetch('/api/refresh-site');
+      const response = await fetch("/api/refresh-site");
       if (!response.ok) {
-        throw new Error('Failed to refresh site');
+        throw new Error("Failed to refresh site");
       }
       // Visual feedback that refresh was successful
-      window.dispatchEvent(new CustomEvent('playlistRefresh', {
-        detail: { timestamp: Date.now() }
-      }));
+      window.dispatchEvent(
+        new CustomEvent("playlistRefresh", {
+          detail: { timestamp: Date.now() },
+        }),
+      );
     } catch (error) {
-      console.error('Error refreshing site:', error);
+      console.error("Error refreshing site:", error);
     } finally {
       setIsRefreshing(false);
     }
@@ -57,7 +59,7 @@ const Playlist: React.FC<IPlaylistProps> = ({ tracks }) => {
       <div className="flex w-full sm:w-10/12 md:w-8/12 lg:w-9/12 bg-primary-100 shadow-md rounded-lg overflow-hidden mx-auto">
         <div className="flex flex-col w-full">
           <NowPlaying nowPlaying={playbackState} />
-          
+
           <div className="flex flex-col p-5">
             <div className="border-b pb-1 flex justify-between items-center mb-2">
               <span className="text-base font-semibold uppercase text-gray-700">
@@ -68,13 +70,14 @@ const Playlist: React.FC<IPlaylistProps> = ({ tracks }) => {
                 disabled={isRefreshing}
                 className={`
                   px-3 py-1 rounded text-sm font-medium
-                  ${isRefreshing
-                    ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                    : 'bg-blue-600 text-white hover:bg-blue-500'
+                  ${
+                    isRefreshing
+                      ? "bg-gray-300 text-gray-500 cursor-not-allowed"
+                      : "bg-blue-600 text-white hover:bg-blue-500"
                   }
                 `}
               >
-                {isRefreshing ? 'Refreshing...' : 'Refresh'}
+                {isRefreshing ? "Refreshing..." : "Refresh"}
               </button>
             </div>
             {tracksToShow.map((track) => (
@@ -87,4 +90,4 @@ const Playlist: React.FC<IPlaylistProps> = ({ tracks }) => {
   );
 };
 
-export default Playlist; 
+export default Playlist;

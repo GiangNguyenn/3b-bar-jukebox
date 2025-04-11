@@ -23,7 +23,7 @@ const QueueItem: FC<IQueueItemProps> = ({ track }) => {
         src={images[0].url}
         width={40}
         height={40}
-        style={{ objectFit: 'cover' }}
+        style={{ objectFit: "cover" }}
       />
       <div className="flex flex-col px-2 w-full">
         <span className="text-sm text-secondary-500 capitalize font-semibold pt-1">

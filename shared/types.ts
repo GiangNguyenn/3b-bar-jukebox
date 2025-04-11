@@ -235,6 +235,6 @@ export type UserQueue = {
       track_number: number;
       type: string;
       uri: string;
-    }
+    },
   ];
 };

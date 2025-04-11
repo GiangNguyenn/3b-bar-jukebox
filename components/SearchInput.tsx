@@ -3,7 +3,6 @@ import { FC, useState } from "react";
 import { faSearch } from "@fortawesome/free-solid-svg-icons";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { useAddTrackToPlaylist } from "@/hooks/useAddTrackToPlaylist";
-import { Portal } from "@headlessui/react";
 
 interface SearchInputProps {
   searchQuery: string;
@@ -72,8 +71,8 @@ const SearchInput: FC<SearchInputProps> = ({
       setIsOpen(false);
       // Call the callback instead of dispatching an event
       onTrackAdded?.();
-    }).catch(error => {
-      console.error('Failed to add track:', error);
+    }).catch((error) => {
+      console.error("Failed to add track:", error);
       // Keep search results visible if there was an error
     });
   };
@@ -93,7 +92,10 @@ const SearchInput: FC<SearchInputProps> = ({
           aria-label="Search for songs, albums, or artists"
         />
         {isOpen && searchResults.length > 0 && (
-          <div className="absolute z-50 w-full mt-1 bg-white rounded-md shadow-lg max-h-60 overflow-auto border border-gray-200" style={{ isolation: 'isolate' }}>
+          <div
+            className="absolute z-50 w-full mt-1 bg-white rounded-md shadow-lg max-h-60 overflow-auto border border-gray-200"
+            style={{ isolation: "isolate" }}
+          >
             <div className="bg-white rounded-md">
               <ul className="py-1 text-base overflow-auto focus:outline-none sm:text-sm">
                 {searchResults.map((track) => (
@@ -109,7 +111,9 @@ const SearchInput: FC<SearchInputProps> = ({
                         className="h-8 w-8 rounded-full flex-shrink-0"
                       />
                       <div className="ml-3">
-                        <p className="text-sm font-medium text-gray-900 dark:text-gray-100">{track.name}</p>
+                        <p className="text-sm font-medium text-gray-900 dark:text-gray-100">
+                          {track.name}
+                        </p>
                         <p className="text-xs text-gray-500 dark:text-gray-400">
                           {track.artists.map((artist, index) => (
                             <span key={index}>

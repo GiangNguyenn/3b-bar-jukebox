@@ -23,7 +23,8 @@ const belgrano = Belgrano({
 export const metadata: Metadata = {
   title: "3B SAIGON JUKEBOX",
   description: "A boutique beer & music experience",
-  keywords: "jukebox, live music, craft beer, Saigon, Ho Chi Minh City, bar, music venue",
+  keywords:
+    "jukebox, live music, craft beer, Saigon, Ho Chi Minh City, bar, music venue",
   authors: [{ name: "3B Saigon" }],
   creator: "3B Saigon",
   publisher: "3B Saigon",

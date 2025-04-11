@@ -2,7 +2,11 @@ import { useCallback, useState } from "react";
 import { sendApiRequest } from "../shared/api";
 import { TrackDetails } from "@/shared/types";
 import { ERROR_MESSAGES } from "@/shared/constants/errors";
-import { handleApiError, handleOperationError, AppError } from "@/shared/utils/errorHandling";
+import {
+  handleApiError,
+  handleOperationError,
+  AppError,
+} from "@/shared/utils/errorHandling";
 
 export interface SpotifySearchRequest {
   query: string;
@@ -33,22 +37,27 @@ const useSearchTracks = () => {
     try {
       const response = await handleOperationError(
         async () => {
-          const result = await sendApiRequest<{ tracks: SpotifySearchResponse }>({
+          const result = await sendApiRequest<{
+            tracks: SpotifySearchResponse;
+          }>({
             path: `search?q=${query}&type=track&limit=20`,
             method: "GET",
           });
-          
+
           if (!result.tracks?.items) {
-            throw new AppError(ERROR_MESSAGES.MALFORMED_RESPONSE, 'SearchTracks');
+            throw new AppError(
+              ERROR_MESSAGES.MALFORMED_RESPONSE,
+              "SearchTracks",
+            );
           }
-          
+
           return result.tracks.items;
         },
-        'SearchTracks',
+        "SearchTracks",
         (error) => {
-          console.error('[Search Tracks] Error during search:', error);
+          console.error("[Search Tracks] Error during search:", error);
           setError(error);
-        }
+        },
       );
 
       return response ?? [];
@@ -64,4 +73,3 @@ const useSearchTracks = () => {
 };
 
 export default useSearchTracks;
-

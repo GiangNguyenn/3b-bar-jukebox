@@ -13,24 +13,35 @@ const useNowPlayingTrack = () => {
         });
         return response;
       },
-      'useNowPlayingTrack',
+      "useNowPlayingTrack",
       (error) => {
-        console.error('[useNowPlayingTrack] Error fetching current track:', error);
-      }
+        console.error(
+          "[useNowPlayingTrack] Error fetching current track:",
+          error,
+        );
+      },
     );
   };
 
-  const { data, error, mutate, isLoading } = useSWR("currently-playing-state", fetcher, {
-    revalidateOnFocus: false,
-    revalidateOnReconnect: false,
-    revalidateIfStale: false,
-    refreshInterval: 10000, // Check every 10 seconds
-  });
+  const { data, error, mutate, isLoading } = useSWR(
+    "currently-playing-state",
+    fetcher,
+    {
+      revalidateOnFocus: false,
+      revalidateOnReconnect: false,
+      revalidateIfStale: false,
+      refreshInterval: 10000, // Check every 10 seconds
+    },
+  );
 
   return {
     data,
     isLoading: isLoading || error,
-    error: error ? (error instanceof AppError ? error : new AppError(error.message, error, 'useNowPlayingTrack')) : null,
+    error: error
+      ? error instanceof AppError
+        ? error
+        : new AppError(error.message, error, "useNowPlayingTrack")
+      : null,
     refetchPlaylists: mutate,
   };
 };
