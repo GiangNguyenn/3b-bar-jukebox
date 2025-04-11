@@ -47,7 +47,7 @@ global.jest = {
     spy.mock = { calls: [], results: [] }
     return spy
   },
-  moduleRegistry: new Map(),
+  moduleRegistry: new Map()
 }
 
 const React = require('react')
@@ -64,7 +64,7 @@ jest.mock('react', () => {
     ...actualReact,
     useState: (initialValue) => actualReact.useState(initialValue),
     useEffect: (callback, deps) => actualReact.useEffect(callback, deps),
-    useContext: (context) => actualReact.useContext(context),
+    useContext: (context) => actualReact.useContext(context)
   }
 })
 
@@ -75,25 +75,25 @@ jest.mock('react-dom', () => {
     ...actualReactDOM,
     createRoot: () => ({
       render: jest.fn(),
-      unmount: jest.fn(),
-    }),
+      unmount: jest.fn()
+    })
   }
 })
 
 // Mock the Request constructor
 global.Request = jest.fn().mockImplementation((url) => ({
-  url,
+  url
 }))
 
 // Mock the URL constructor
 global.URL = jest.fn().mockImplementation((url) => ({
   searchParams: {
-    get: jest.fn(),
-  },
+    get: jest.fn()
+  }
 }))
 
 // Mock the Response constructor
 global.Response = jest.fn().mockImplementation((body, init) => ({
   ...init,
-  json: () => Promise.resolve(body),
+  json: () => Promise.resolve(body)
 }))

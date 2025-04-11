@@ -29,7 +29,7 @@ export default function AdminPage() {
     device: 'healthy',
     playback: 'stopped',
     token: 'valid',
-    connection: 'good',
+    connection: 'good'
   })
   const [recoveryAttempts, setRecoveryAttempts] = useState(0)
   const [networkErrorCount, setNetworkErrorCount] = useState(0)
@@ -62,7 +62,7 @@ export default function AdminPage() {
         if (expires_in <= 300) {
           try {
             const refreshResponse = await fetch('/api/refresh-token', {
-              method: 'POST',
+              method: 'POST'
             })
             if (!refreshResponse.ok) {
               throw new Error('Failed to refresh token')
@@ -76,7 +76,7 @@ export default function AdminPage() {
         } else {
           setHealthStatus((prev) => ({
             ...prev,
-            token: expires_in > 300 ? 'valid' : 'expired',
+            token: expires_in > 300 ? 'valid' : 'expired'
           }))
         }
       } catch (error) {
@@ -115,7 +115,7 @@ export default function AdminPage() {
             ? 'good'
             : avgResponseTime < 1000
               ? 'unstable'
-              : 'poor',
+              : 'poor'
       }))
     } catch (error) {
       setHealthStatus((prev) => ({ ...prev, connection: 'poor' }))
@@ -156,7 +156,7 @@ export default function AdminPage() {
             ? 'playing'
             : state.item
               ? 'paused'
-              : 'stopped',
+              : 'stopped'
         }))
         lastDeviceCheckTime.current = Date.now()
       })
@@ -165,7 +165,7 @@ export default function AdminPage() {
     // Start periodic checks
     deviceCheckInterval.current = setInterval(
       checkDeviceHealth,
-      DEVICE_CHECK_INTERVAL,
+      DEVICE_CHECK_INTERVAL
     )
 
     return () => {
@@ -185,7 +185,7 @@ export default function AdminPage() {
 
       try {
         console.log(
-          `Attempting device recovery (attempt ${recoveryAttempts + 1}/${MAX_RECOVERY_ATTEMPTS})`,
+          `Attempting device recovery (attempt ${recoveryAttempts + 1}/${MAX_RECOVERY_ATTEMPTS})`
         )
 
         // First, try to transfer playback to our device
@@ -195,8 +195,8 @@ export default function AdminPage() {
             method: 'PUT',
             body: {
               device_ids: [deviceId],
-              play: false,
-            },
+              play: false
+            }
           })
         }
 
@@ -208,7 +208,7 @@ export default function AdminPage() {
         // Check if recovery was successful
         const state = await sendApiRequest<SpotifyPlaybackState>({
           path: 'me/player',
-          method: 'GET',
+          method: 'GET'
         })
 
         if (state?.device?.id === deviceId) {
@@ -238,7 +238,7 @@ export default function AdminPage() {
       try {
         const state = await sendApiRequest<SpotifyPlaybackState>({
           path: 'me/player',
-          method: 'GET',
+          method: 'GET'
         })
 
         if (!state?.device?.id) {
@@ -270,7 +270,7 @@ export default function AdminPage() {
     // Start periodic checks
     deviceCheckInterval.current = setInterval(
       checkDeviceHealth,
-      DEVICE_CHECK_INTERVAL,
+      DEVICE_CHECK_INTERVAL
     )
 
     return () => {
@@ -338,7 +338,7 @@ export default function AdminPage() {
           if (!response.ok) {
             console.error(
               'Auto refresh failed:',
-              data.message || 'Failed to refresh site',
+              data.message || 'Failed to refresh site'
             )
             return
           }
@@ -368,7 +368,7 @@ export default function AdminPage() {
 
       try {
         console.log(
-          `Attempting network recovery (attempt ${networkErrorCount + 1}/3)`,
+          `Attempting network recovery (attempt ${networkErrorCount + 1}/3)`
         )
 
         // Try to refresh the token first
@@ -427,7 +427,7 @@ export default function AdminPage() {
 
       // Get current track and position
       const currentState = await fetch('/api/playback-state').then((res) =>
-        res.json(),
+        res.json()
       )
       const currentTrack = currentState?.item?.uri
       const position_ms = currentState?.progress_ms || 0
@@ -435,7 +435,7 @@ export default function AdminPage() {
       const response = await fetch('/api/playback', {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json',
+          'Content-Type': 'application/json'
         },
         body: JSON.stringify({
           action,
@@ -449,8 +449,8 @@ export default function AdminPage() {
           offset:
             action === 'play' && currentTrack
               ? { uri: currentTrack }
-              : undefined,
-        }),
+              : undefined
+        })
       })
 
       if (!response.ok) {
@@ -458,7 +458,7 @@ export default function AdminPage() {
         // Special handling for the case where music is playing on another device
         if (response.status === 409) {
           setError(
-            `${data.error}${data.details ? ` (${data.details.currentDevice}: ${data.details.currentTrack})` : ''}`,
+            `${data.error}${data.details ? ` (${data.details.currentDevice}: ${data.details.currentTrack})` : ''}`
           )
           return
         }
@@ -466,7 +466,7 @@ export default function AdminPage() {
       }
     } catch (err) {
       setError(
-        err instanceof Error ? err.message : 'Failed to control playback',
+        err instanceof Error ? err.message : 'Failed to control playback'
       )
     } finally {
       setIsLoading(false)

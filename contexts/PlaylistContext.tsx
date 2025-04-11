@@ -10,7 +10,7 @@ interface PlaylistContextType {
 }
 
 const PlaylistContext = createContext<PlaylistContextType | undefined>(
-  undefined,
+  undefined
 )
 
 export const PlaylistProvider = ({ children }: { children: ReactNode }) => {

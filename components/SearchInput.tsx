@@ -19,7 +19,7 @@ const SearchInput: FC<SearchInputProps> = ({
   searchResults,
   setSearchResults,
   playlistId,
-  onTrackAdded,
+  onTrackAdded
 }) => {
   const { addTrack } = useAddTrackToPlaylist({ playlistId })
   const [isOpen, setIsOpen] = useState(false)
@@ -38,8 +38,8 @@ const SearchInput: FC<SearchInputProps> = ({
         uri: 'spotify:user:user',
         href: 'https://api.spotify.com/v1/users/user',
         external_urls: {
-          spotify: 'https://open.spotify.com/user/user',
-        },
+          spotify: 'https://open.spotify.com/user/user'
+        }
       },
       is_local: false,
       track: {
@@ -60,8 +60,8 @@ const SearchInput: FC<SearchInputProps> = ({
         popularity: track.popularity,
         preview_url: track.preview_url,
         track_number: track.track_number,
-        type: track.type,
-      },
+        type: track.type
+      }
     }
 
     addTrack(trackItem, () => {

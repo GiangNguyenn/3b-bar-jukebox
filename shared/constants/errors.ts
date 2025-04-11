@@ -10,7 +10,7 @@ export const ERROR_MESSAGES = {
   INVALID_PLAYLIST_DATA: 'Invalid playlist data. Please try again.',
   UNAUTHORIZED: 'Please log in again to create playlists.',
   MALFORMED_RESPONSE: 'Received malformed response from server',
-  GENERIC_ERROR: 'An error occurred',
+  GENERIC_ERROR: 'An error occurred'
 } as const
 
 export type ErrorMessage = (typeof ERROR_MESSAGES)[keyof typeof ERROR_MESSAGES]

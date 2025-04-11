@@ -23,7 +23,7 @@ const mockTrack: TrackItem = {
     href: 'https://api.spotify.com/v1/users/test',
     id: 'test-user',
     type: 'user',
-    uri: 'spotify:user:test',
+    uri: 'spotify:user:test'
   },
   is_local: false,
   track: {
@@ -36,8 +36,8 @@ const mockTrack: TrackItem = {
         href: 'https://api.spotify.com/v1/artists/test',
         id: 'test-artist',
         type: 'artist',
-        uri: 'spotify:artist:test',
-      },
+        uri: 'spotify:artist:test'
+      }
     ],
     album: {
       name: 'Test Album',
@@ -45,8 +45,8 @@ const mockTrack: TrackItem = {
         {
           url: 'test.jpg',
           height: 640,
-          width: 640,
-        },
+          width: 640
+        }
       ],
       album_type: 'album',
       total_tracks: 1,
@@ -65,9 +65,9 @@ const mockTrack: TrackItem = {
           href: 'https://api.spotify.com/v1/artists/test',
           id: 'test-artist',
           type: 'artist',
-          uri: 'spotify:artist:test',
-        },
-      ],
+          uri: 'spotify:artist:test'
+        }
+      ]
     },
     duration_ms: 180000,
     explicit: false,
@@ -82,8 +82,8 @@ const mockTrack: TrackItem = {
     available_markets: ['US'],
     disc_number: 1,
     external_ids: {},
-    is_playable: true,
-  },
+    is_playable: true
+  }
 }
 
 describe('useAddTrackToPlaylist', () => {
@@ -93,7 +93,7 @@ describe('useAddTrackToPlaylist', () => {
       data: undefined,
       isLoading: false,
       isError: false,
-      refetchPlaylist: jest.fn(),
+      refetchPlaylist: jest.fn()
     })
   })
 
@@ -101,7 +101,7 @@ describe('useAddTrackToPlaylist', () => {
     mockSendApiRequest.mockResolvedValueOnce({})
 
     const { result } = renderHook(() =>
-      useAddTrackToPlaylist({ playlistId: 'test-playlist-id' }),
+      useAddTrackToPlaylist({ playlistId: 'test-playlist-id' })
     )
 
     await act(async () => {
@@ -112,8 +112,8 @@ describe('useAddTrackToPlaylist', () => {
       path: 'playlists/test-playlist-id/tracks',
       method: 'POST',
       body: {
-        uris: [mockTrack.track.uri],
-      },
+        uris: [mockTrack.track.uri]
+      }
     })
     expect(result.current.isSuccess).toBe(true)
     expect(result.current.error).toBeNull()
@@ -123,7 +123,7 @@ describe('useAddTrackToPlaylist', () => {
     mockSendApiRequest.mockRejectedValueOnce(new Error('API Error'))
 
     const { result } = renderHook(() =>
-      useAddTrackToPlaylist({ playlistId: 'test-playlist-id' }),
+      useAddTrackToPlaylist({ playlistId: 'test-playlist-id' })
     )
 
     await act(async () => {
@@ -137,7 +137,7 @@ describe('useAddTrackToPlaylist', () => {
 
   it('should handle missing playlist ID', async () => {
     const { result } = renderHook(() =>
-      useAddTrackToPlaylist({ playlistId: '' }),
+      useAddTrackToPlaylist({ playlistId: '' })
     )
 
     await act(async () => {
@@ -154,11 +154,11 @@ describe('useAddTrackToPlaylist', () => {
       data: undefined,
       isLoading: false,
       isError: true,
-      refetchPlaylist: jest.fn(),
+      refetchPlaylist: jest.fn()
     })
 
     const { result } = renderHook(() =>
-      useAddTrackToPlaylist({ playlistId: 'test-playlist-id' }),
+      useAddTrackToPlaylist({ playlistId: 'test-playlist-id' })
     )
 
     await act(async () => {

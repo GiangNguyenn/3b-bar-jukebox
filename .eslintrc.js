@@ -4,12 +4,12 @@ module.exports = {
       files: ['*.ts', '*.tsx'],
       parser: '@typescript-eslint/parser',
       parserOptions: {
-        project: './tsconfig.json',
+        project: './tsconfig.json'
       },
       plugins: ['@typescript-eslint', 'unused-imports'],
       extends: [
         'plugin:@typescript-eslint/recommended',
-        'plugin:@typescript-eslint/recommended-requiring-type-checking',
+        'plugin:@typescript-eslint/recommended-requiring-type-checking'
       ],
       rules: {
         'unused-imports/no-unused-imports': 'error',
@@ -19,17 +19,17 @@ module.exports = {
             vars: 'all',
             varsIgnorePattern: '^_',
             args: 'after-used',
-            argsIgnorePattern: '^_',
-          },
-        ],
-      },
-    },
+            argsIgnorePattern: '^_'
+          }
+        ]
+      }
+    }
   ],
 
   extends: [
     'next/core-web-vitals',
     'plugin:@typescript-eslint/recommended',
-    'plugin:@typescript-eslint/recommended-requiring-type-checking',
+    'plugin:@typescript-eslint/recommended-requiring-type-checking'
   ],
   rules: {
     // Allow implicit return types where TypeScript can infer them
@@ -46,7 +46,7 @@ module.exports = {
     '@typescript-eslint/dot-notation': ['error', { allowKeywords: true }],
     '@typescript-eslint/no-empty-function': [
       'error',
-      { allow: ['arrowFunctions'] },
+      { allow: ['arrowFunctions'] }
     ],
     'unused-imports/no-unused-vars': [
       'warn',
@@ -54,8 +54,8 @@ module.exports = {
         vars: 'all',
         varsIgnorePattern: '^_',
         args: 'after-used',
-        argsIgnorePattern: '^_',
-      },
-    ],
-  },
+        argsIgnorePattern: '^_'
+      }
+    ]
+  }
 }

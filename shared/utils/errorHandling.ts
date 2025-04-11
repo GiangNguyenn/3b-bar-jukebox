@@ -15,7 +15,7 @@ export class AppError extends Error {
   constructor(
     public message: ErrorMessage,
     public originalError?: unknown,
-    public context?: string,
+    public context?: string
   ) {
     super(message)
     this.name = 'AppError'
@@ -49,7 +49,7 @@ export const handleApiError = (error: unknown, context: string): AppError => {
 export const handleOperationError = async <T>(
   operation: () => Promise<T>,
   context: string,
-  onError?: (error: AppError) => void,
+  onError?: (error: AppError) => void
 ): Promise<T> => {
   try {
     return await operation()

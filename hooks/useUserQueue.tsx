@@ -11,7 +11,7 @@ export const useUserQueue = (id: string) => {
     return handleOperationError(
       async () => {
         const response = await sendApiRequest<UserQueue>({
-          path: `me/player/queue`,
+          path: `me/player/queue`
         })
         return response
       },
@@ -19,7 +19,7 @@ export const useUserQueue = (id: string) => {
       (error) => {
         console.error(`[User Queue] Error fetching queue:`, error)
         throw new AppError(ERROR_MESSAGES.FAILED_TO_LOAD, error, 'UserQueue')
-      },
+      }
     )
   }
 
@@ -29,6 +29,6 @@ export const useUserQueue = (id: string) => {
     data,
     isLoading: !error && !data,
     error: error instanceof AppError ? error : null,
-    refetchPlaylist: mutate,
+    refetchPlaylist: mutate
   }
 }

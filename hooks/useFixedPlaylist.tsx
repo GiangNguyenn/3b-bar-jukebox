@@ -18,7 +18,7 @@ export const useFixedPlaylist = () => {
   useEffect(() => {
     if (playlists?.items) {
       const existingPlaylist = playlists.items.find(
-        (playlist) => playlist.name === FIXED_PLAYLIST_NAME,
+        (playlist) => playlist.name === FIXED_PLAYLIST_NAME
       )
       if (existingPlaylist) {
         setFixedPlaylistId(existingPlaylist.id)
@@ -55,6 +55,6 @@ export const useFixedPlaylist = () => {
     isLoading,
     error,
     isError,
-    isInitialFetchComplete,
+    isInitialFetchComplete
   }
 }

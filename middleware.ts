@@ -10,14 +10,14 @@ export function middleware(request: NextRequest) {
     return NextResponse.json(
       {
         success: false,
-        error: 'Method not allowed. Only GET requests are accepted.',
+        error: 'Method not allowed. Only GET requests are accepted.'
       },
-      { status: 405 },
+      { status: 405 }
     )
   }
   return NextResponse.next()
 }
 
 export const config = {
-  matcher: '/api/refresh-site',
+  matcher: '/api/refresh-site'
 }

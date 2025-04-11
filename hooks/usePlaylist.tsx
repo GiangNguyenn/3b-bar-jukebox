@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import {
   SpotifyPlaylistItem,
   TrackItem,
-  SpotifyPlaybackState,
+  SpotifyPlaybackState
 } from '@/shared/types'
 import { ERROR_MESSAGES } from '@/shared/constants/errors'
 import { filterUpcomingTracks } from '@/lib/utils'
@@ -16,14 +16,14 @@ const fetcher = async (playlistId: string) => {
   return handleOperationError(
     async () => {
       const result = await sendApiRequest<SpotifyPlaylistItem>({
-        path: `playlists/${playlistId}`,
+        path: `playlists/${playlistId}`
       })
       return result
     },
     'PlaylistFetcher',
     (error) => {
       console.error(`[Playlist] Error fetching playlist ${playlistId}:`, error)
-    },
+    }
   )
 }
 
@@ -31,14 +31,14 @@ const currentlyPlayingFetcher = async () => {
   return handleOperationError(
     async () => {
       const result = await sendApiRequest<SpotifyPlaybackState>({
-        path: 'me/player/currently-playing',
+        path: 'me/player/currently-playing'
       })
       return result
     },
     'CurrentlyPlayingFetcher',
     (error) => {
       console.error('[Playlist] Error fetching currently playing track:', error)
-    },
+    }
   )
 }
 
@@ -46,15 +46,15 @@ export const usePlaylist = (playlistId: string | null) => {
   const {
     data: playlist,
     error,
-    mutate: refreshPlaylist,
+    mutate: refreshPlaylist
   } = useSWR(
     playlistId ? `playlist-${playlistId}` : null,
     () => fetcher(playlistId ?? ''),
     {
       refreshInterval: 10000, // Refresh every 10 seconds
       revalidateOnFocus: true,
-      revalidateOnReconnect: true,
-    },
+      revalidateOnReconnect: true
+    }
   )
 
   // Get currently playing track
@@ -64,8 +64,8 @@ export const usePlaylist = (playlistId: string | null) => {
     {
       refreshInterval: 10000, // Refresh every 10 seconds
       revalidateOnFocus: true,
-      revalidateOnReconnect: true,
-    },
+      revalidateOnReconnect: true
+    }
   )
 
   // Filter upcoming tracks
@@ -80,7 +80,7 @@ export const usePlaylist = (playlistId: string | null) => {
     } catch (error) {
       console.error(
         `[Playlist] Error refreshing playlist ${playlistId}:`,
-        error,
+        error
       )
       throw error
     }
@@ -95,6 +95,6 @@ export const usePlaylist = (playlistId: string | null) => {
         ? error
         : new AppError(ERROR_MESSAGES.FAILED_TO_LOAD, error, 'usePlaylist')
       : null,
-    refreshPlaylist: handleRefresh,
+    refreshPlaylist: handleRefresh
   }
 }

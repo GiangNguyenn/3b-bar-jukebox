@@ -5,14 +5,14 @@ import {
   MIN_TRACK_POPULARITY,
   SPOTIFY_SEARCH_ENDPOINT,
   TRACK_SEARCH_LIMIT,
-  DEFAULT_MARKET,
+  DEFAULT_MARKET
 } from '@/shared/constants/trackSuggestion'
 
 // Utility: Select a random track from a filtered list
 export function selectRandomTrack(
   tracks: TrackDetails[],
   excludedIds: string[],
-  minPopularity: number,
+  minPopularity: number
 ): TrackDetails | null {
   const candidates = tracks.filter((track) => {
     const isExcluded = excludedIds.includes(track.id)
@@ -41,7 +41,7 @@ export function selectRandomTrack(
 
 export async function searchTracksByGenre(
   genre: string,
-  market: string = DEFAULT_MARKET,
+  market: string = DEFAULT_MARKET
 ): Promise<TrackDetails[]> {
   try {
     const currentYear = new Date().getFullYear()
@@ -49,7 +49,7 @@ export async function searchTracksByGenre(
       tracks: { items: TrackDetails[] }
     }>({
       path: `${SPOTIFY_SEARCH_ENDPOINT}?q=genre:${encodeURIComponent(genre)}&type=track&limit=${TRACK_SEARCH_LIMIT}&market=${market}`,
-      method: 'GET',
+      method: 'GET'
     })
 
     const tracks = response.tracks?.items
@@ -88,7 +88,7 @@ export interface TrackSearchResult {
 export async function findSuggestedTrack(
   excludedTrackIds: string[],
   currentTrackId?: string | null,
-  market: string = DEFAULT_MARKET,
+  market: string = DEFAULT_MARKET
 ): Promise<TrackSearchResult> {
   const MAX_GENRE_ATTEMPTS = 3
   let attempts = 0
@@ -117,14 +117,14 @@ export async function findSuggestedTrack(
         name: t.name,
         popularity: t.popularity,
         isExcluded: allExcludedIds.includes(t.id),
-        isPlayable: t.is_playable,
+        isPlayable: t.is_playable
       }))
       allTrackDetails.push(...trackDetails)
 
       const selectedTrack = selectRandomTrack(
         tracks,
         allExcludedIds,
-        MIN_TRACK_POPULARITY,
+        MIN_TRACK_POPULARITY
       )
 
       if (selectedTrack) {
@@ -136,8 +136,8 @@ export async function findSuggestedTrack(
             excludedTrackIds: allExcludedIds,
             minPopularity: MIN_TRACK_POPULARITY,
             genresTried,
-            trackDetails: allTrackDetails,
-          },
+            trackDetails: allTrackDetails
+          }
         }
       }
 
@@ -164,7 +164,7 @@ export async function findSuggestedTrack(
       excludedTrackIds: allExcludedIds,
       minPopularity: MIN_TRACK_POPULARITY,
       genresTried,
-      trackDetails: allTrackDetails,
-    },
+      trackDetails: allTrackDetails
+    }
   }
 }

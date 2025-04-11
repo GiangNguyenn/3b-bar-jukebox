@@ -9,7 +9,7 @@ async function verifyDeviceActive(deviceId: string): Promise<boolean> {
   try {
     const state = await sendApiRequest<SpotifyPlaybackState>({
       path: 'me/player',
-      method: 'GET',
+      method: 'GET'
     })
     return state?.device?.id === deviceId
   } catch (error) {
@@ -20,7 +20,7 @@ async function verifyDeviceActive(deviceId: string): Promise<boolean> {
 
 async function transferPlaybackToDevice(
   deviceId: string,
-  retryCount = 0,
+  retryCount = 0
 ): Promise<void> {
   try {
     // First verify the device is still active
@@ -34,14 +34,14 @@ async function transferPlaybackToDevice(
       method: 'PUT',
       body: {
         device_ids: [deviceId],
-        play: false,
-      },
+        play: false
+      }
     })
 
     // Verify the transfer was successful
     const state = await sendApiRequest<SpotifyPlaybackState>({
       path: 'me/player',
-      method: 'GET',
+      method: 'GET'
     })
 
     if (state?.device?.id !== deviceId) {
@@ -50,7 +50,7 @@ async function transferPlaybackToDevice(
   } catch (error) {
     console.error(
       `[API Playback] Transfer attempt ${retryCount + 1} failed:`,
-      error,
+      error
     )
 
     if (retryCount < MAX_RETRIES - 1) {
@@ -70,9 +70,9 @@ export async function POST(request: Request) {
       return NextResponse.json(
         {
           error:
-            'No active Spotify device found. Please wait for the player to initialize.',
+            'No active Spotify device found. Please wait for the player to initialize.'
         },
-        { status: 400 },
+        { status: 400 }
       )
     }
 
@@ -82,9 +82,9 @@ export async function POST(request: Request) {
       return NextResponse.json(
         {
           error:
-            'The Spotify player is no longer active. Please refresh the page and try again.',
+            'The Spotify player is no longer active. Please refresh the page and try again.'
         },
-        { status: 400 },
+        { status: 400 }
       )
     }
 
@@ -93,7 +93,7 @@ export async function POST(request: Request) {
     try {
       currentState = await sendApiRequest<SpotifyPlaybackState>({
         path: 'me/player',
-        method: 'GET',
+        method: 'GET'
       })
     } catch (error) {
       console.error('[API Playback] Error getting playback state:', error)
@@ -105,7 +105,7 @@ export async function POST(request: Request) {
         // Get current playback state to check if another device is playing
         const currentState = await sendApiRequest<SpotifyPlaybackState>({
           path: 'me/player',
-          method: 'GET',
+          method: 'GET'
         })
 
         // If music is already playing on another device, don't take over
@@ -115,10 +115,10 @@ export async function POST(request: Request) {
               error: 'Music is already playing on another device',
               details: {
                 currentDevice: currentState.device.name,
-                currentTrack: currentState.item?.name,
-              },
+                currentTrack: currentState.item?.name
+              }
             },
-            { status: 409 }, // Conflict status code
+            { status: 409 } // Conflict status code
           )
         }
 
@@ -134,8 +134,8 @@ export async function POST(request: Request) {
           method: 'PUT',
           body: {
             context_uri: contextUri,
-            position_ms: position_ms,
-          },
+            position_ms: position_ms
+          }
         })
       } catch (error: any) {
         const errorMessage = error?.message ?? 'Unknown error'
@@ -144,16 +144,16 @@ export async function POST(request: Request) {
           error,
           deviceId,
           contextUri,
-          position_ms,
+          position_ms
         })
 
         // Return a more specific error message
         return NextResponse.json(
           {
             error: `Failed to control playback: ${errorMessage}`,
-            details: error?.response?.data ?? error?.response ?? error,
+            details: error?.response?.data ?? error?.response ?? error
           },
-          { status: 500 },
+          { status: 500 }
         )
       }
     } else if (action === 'skip') {
@@ -161,16 +161,16 @@ export async function POST(request: Request) {
         // The skip endpoint returns 204 No Content, so we don't need to parse the response
         await sendApiRequest({
           path: 'me/player/next',
-          method: 'POST',
+          method: 'POST'
         })
       } catch (error: any) {
         console.error('[API Playback] Skip error:', error)
         return NextResponse.json(
           {
             error: `Failed to skip track: ${error?.message ?? 'Unknown error'}`,
-            details: error?.response?.data ?? error?.response ?? error,
+            details: error?.response?.data ?? error?.response ?? error
           },
-          { status: 500 },
+          { status: 500 }
         )
       }
     }
@@ -181,14 +181,14 @@ export async function POST(request: Request) {
       error,
       message: error?.message ?? 'Unknown error',
       stack: error?.stack,
-      response: error?.response?.data,
+      response: error?.response?.data
     })
     return NextResponse.json(
       {
         error: `Playback control failed: ${error?.message ?? 'Unknown error'}`,
-        details: error?.response?.data ?? error?.response ?? error,
+        details: error?.response?.data ?? error?.response ?? error
       },
-      { status: 500 },
+      { status: 500 }
     )
   }
 }

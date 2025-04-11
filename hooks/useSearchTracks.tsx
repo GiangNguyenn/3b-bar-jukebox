@@ -5,7 +5,7 @@ import { ERROR_MESSAGES } from '@/shared/constants/errors'
 import {
   handleApiError,
   handleOperationError,
-  AppError,
+  AppError
 } from '@/shared/utils/errorHandling'
 
 export interface SpotifySearchRequest {
@@ -41,13 +41,13 @@ const useSearchTracks = () => {
             tracks: SpotifySearchResponse
           }>({
             path: `search?q=${query}&type=track&limit=20`,
-            method: 'GET',
+            method: 'GET'
           })
 
           if (!result.tracks?.items) {
             throw new AppError(
               ERROR_MESSAGES.MALFORMED_RESPONSE,
-              'SearchTracks',
+              'SearchTracks'
             )
           }
 
@@ -57,7 +57,7 @@ const useSearchTracks = () => {
         (error) => {
           console.error('[Search Tracks] Error during search:', error)
           setError(error)
-        },
+        }
       )
 
       return response ?? []

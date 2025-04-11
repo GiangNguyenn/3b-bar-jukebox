@@ -22,7 +22,7 @@ export const sendApiRequest = async <T>({
   method = 'GET',
   body,
   extraHeaders,
-  config = {},
+  config = {}
 }: ApiProps): Promise<T> => {
   const authToken = await getSpotifyToken()
   if (!authToken) {
@@ -32,7 +32,7 @@ export const sendApiRequest = async <T>({
   const headers = {
     'Content-Type': 'application/json',
     Authorization: `Bearer ${authToken}`,
-    ...(extraHeaders && { ...extraHeaders }),
+    ...(extraHeaders && { ...extraHeaders })
   }
 
   try {
@@ -42,7 +42,7 @@ export const sendApiRequest = async <T>({
       method,
       headers,
       body: body ? JSON.stringify(body) : undefined,
-      ...config,
+      ...config
     })
 
     if (!response.ok) {
@@ -61,13 +61,13 @@ export const sendApiRequest = async <T>({
         error: errorData,
         url,
         method,
-        requestBody: body ? JSON.stringify(body) : undefined,
+        requestBody: body ? JSON.stringify(body) : undefined
       })
 
       // Handle specific error cases
       if (response.status === 401) {
         throw new Error(
-          'Authentication failed. Please try refreshing the page.',
+          'Authentication failed. Please try refreshing the page.'
         )
       } else if (response.status === 403) {
         throw new Error("You don't have permission to perform this action.")
@@ -77,7 +77,7 @@ export const sendApiRequest = async <T>({
         throw new Error('Too many requests. Please try again later.')
       } else if (response.status >= 500) {
         throw new Error(
-          'Spotify service is currently unavailable. Please try again later.',
+          'Spotify service is currently unavailable. Please try again later.'
         )
       }
 
@@ -108,18 +108,18 @@ export const sendApiRequest = async <T>({
           ? {
               name: error.name,
               message: error.message,
-              stack: error.stack,
+              stack: error.stack
             }
           : error,
       url: `${SPOTIFY_API_URL}/${path}`,
       method,
-      requestBody: body ? JSON.stringify(body) : undefined,
+      requestBody: body ? JSON.stringify(body) : undefined
     })
 
     // Handle network errors
     if (error instanceof TypeError && error.message === 'Failed to fetch') {
       throw new Error(
-        'Network error. Please check your internet connection and try again.',
+        'Network error. Please check your internet connection and try again.'
       )
     }
 
@@ -129,7 +129,7 @@ export const sendApiRequest = async <T>({
 
 const tokenCache: { token: string | null; expiry: number } = {
   token: null,
-  expiry: 0,
+  expiry: 0
 }
 
 async function getSpotifyToken() {
@@ -157,8 +157,8 @@ async function getSpotifyToken() {
     const response = await fetch(`${baseUrl}/api/token`, {
       cache: 'no-store',
       headers: {
-        'Content-Type': 'application/json',
-      },
+        'Content-Type': 'application/json'
+      }
     })
 
     if (!response.ok) {
@@ -170,7 +170,7 @@ async function getSpotifyToken() {
         url: `${baseUrl}/api/token`,
         environment: process.env.NODE_ENV,
         vercelUrl: process.env.VERCEL_URL,
-        baseUrl,
+        baseUrl
       })
       throw new Error(errorData.error || 'Failed to fetch Spotify token')
     }
@@ -195,12 +195,12 @@ async function getSpotifyToken() {
           ? {
               name: error.name,
               message: error.message,
-              stack: error.stack,
+              stack: error.stack
             }
           : error,
       baseUrl,
       environment: process.env.NODE_ENV,
-      vercelUrl: process.env.VERCEL_URL,
+      vercelUrl: process.env.VERCEL_URL
     })
     throw error
   }

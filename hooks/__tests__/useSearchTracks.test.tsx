@@ -22,8 +22,8 @@ describe('useSearchTracks', () => {
         href: 'https://api.spotify.com/v1/artists/test',
         id: 'test-artist',
         type: 'artist',
-        uri: 'spotify:artist:test',
-      },
+        uri: 'spotify:artist:test'
+      }
     ],
     album: {
       name: 'Test Album',
@@ -31,8 +31,8 @@ describe('useSearchTracks', () => {
         {
           url: 'test.jpg',
           height: 640,
-          width: 640,
-        },
+          width: 640
+        }
       ],
       album_type: 'album',
       total_tracks: 1,
@@ -51,9 +51,9 @@ describe('useSearchTracks', () => {
           href: 'https://api.spotify.com/v1/artists/test',
           id: 'test-artist',
           type: 'artist',
-          uri: 'spotify:artist:test',
-        },
-      ],
+          uri: 'spotify:artist:test'
+        }
+      ]
     },
     duration_ms: 180000,
     explicit: false,
@@ -68,7 +68,7 @@ describe('useSearchTracks', () => {
     available_markets: ['US'],
     disc_number: 1,
     external_ids: {},
-    is_playable: true,
+    is_playable: true
   }
 
   beforeEach(() => {
@@ -93,7 +93,7 @@ describe('useSearchTracks', () => {
 
     expect(mockSendApiRequest).toHaveBeenCalledWith({
       path: 'search?q=test query&type=track&limit=20',
-      method: 'GET',
+      method: 'GET'
     })
     expect(searchResult).toEqual([mockTrack])
     expect(result.current.isLoading).toBe(false)

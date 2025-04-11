@@ -9,7 +9,7 @@ export async function GET() {
   try {
     const playbackState = await sendApiRequest<SpotifyPlaybackState>({
       path: 'me/player',
-      method: 'GET',
+      method: 'GET'
     })
 
     return NextResponse.json(playbackState)
@@ -17,7 +17,7 @@ export async function GET() {
     console.error('Error fetching playback state:', error)
     return NextResponse.json(
       { error: 'Failed to fetch playback state' },
-      { status: 500 },
+      { status: 500 }
     )
   }
 }

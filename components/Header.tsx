@@ -61,17 +61,15 @@ const Header = () => {
         baseUrl: process.env.NEXT_PUBLIC_BASE_URL,
         vercelUrl: process.env.VERCEL_URL,
         windowLocation:
-          typeof window !== 'undefined'
-            ? window.location.origin
-            : 'server-side',
+          typeof window !== 'undefined' ? window.location.origin : 'server-side'
       })
 
       const response = await fetch('/api/refresh-site', {
         method: 'GET',
         headers: {
-          'Content-Type': 'application/json',
+          'Content-Type': 'application/json'
         },
-        credentials: 'include',
+        credentials: 'include'
       })
 
       if (!response.ok) {
@@ -83,7 +81,7 @@ const Header = () => {
         console.error('API error:', {
           status: response.status,
           statusText: response.statusText,
-          data,
+          data
         })
         throw new Error(errorMessage)
       }
@@ -101,8 +99,8 @@ const Header = () => {
             {
               detail: { timestamp: Date.now() },
               bubbles: true,
-              composed: true,
-            },
+              composed: true
+            }
           )
 
           // Dispatch from both window and document to ensure maximum compatibility
@@ -115,7 +113,7 @@ const Header = () => {
         }
       } else {
         console.log(
-          'Track was not successfully added, not dispatching refresh event',
+          'Track was not successfully added, not dispatching refresh event'
         )
       }
     } catch (error) {

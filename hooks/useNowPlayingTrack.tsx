@@ -9,7 +9,7 @@ const useNowPlayingTrack = () => {
     return handleOperationError(
       async () => {
         const response = await sendApiRequest<SpotifyPlaybackState>({
-          path: 'me/player/currently-playing',
+          path: 'me/player/currently-playing'
         })
         return response
       },
@@ -17,9 +17,9 @@ const useNowPlayingTrack = () => {
       (error) => {
         console.error(
           '[useNowPlayingTrack] Error fetching current track:',
-          error,
+          error
         )
-      },
+      }
     )
   }
 
@@ -30,8 +30,8 @@ const useNowPlayingTrack = () => {
       revalidateOnFocus: false,
       revalidateOnReconnect: false,
       revalidateIfStale: false,
-      refreshInterval: 10000, // Check every 10 seconds
-    },
+      refreshInterval: 10000 // Check every 10 seconds
+    }
   )
 
   return {
@@ -42,7 +42,7 @@ const useNowPlayingTrack = () => {
         ? error
         : new AppError(error.message, error, 'useNowPlayingTrack')
       : null,
-    refetchPlaylists: mutate,
+    refetchPlaylists: mutate
   }
 }
 
