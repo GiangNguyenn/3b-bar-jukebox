@@ -1,75 +1,75 @@
-import { useCallback, useState } from "react";
-import { sendApiRequest } from "../shared/api";
-import { TrackDetails } from "@/shared/types";
-import { ERROR_MESSAGES } from "@/shared/constants/errors";
+import { useCallback, useState } from 'react'
+import { sendApiRequest } from '../shared/api'
+import { TrackDetails } from '@/shared/types'
+import { ERROR_MESSAGES } from '@/shared/constants/errors'
 import {
   handleApiError,
   handleOperationError,
   AppError,
-} from "@/shared/utils/errorHandling";
+} from '@/shared/utils/errorHandling'
 
 export interface SpotifySearchRequest {
-  query: string;
-  type: string;
-  limit?: number;
-  offset?: number;
-  market?: string;
+  query: string
+  type: string
+  limit?: number
+  offset?: number
+  market?: string
 }
 
 interface SpotifySearchResponse {
-  href: string;
-  limit: number;
-  next: string | null;
-  offset: number;
-  previous: string | null;
-  total: number;
-  items: TrackDetails[];
+  href: string
+  limit: number
+  next: string | null
+  offset: number
+  previous: string | null
+  total: number
+  items: TrackDetails[]
 }
 
 const useSearchTracks = () => {
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<AppError | null>(null);
+  const [isLoading, setIsLoading] = useState(false)
+  const [error, setError] = useState<AppError | null>(null)
 
   const searchTracks = useCallback(async (query: string) => {
-    setIsLoading(true);
-    setError(null);
+    setIsLoading(true)
+    setError(null)
 
     try {
       const response = await handleOperationError(
         async () => {
           const result = await sendApiRequest<{
-            tracks: SpotifySearchResponse;
+            tracks: SpotifySearchResponse
           }>({
             path: `search?q=${query}&type=track&limit=20`,
-            method: "GET",
-          });
+            method: 'GET',
+          })
 
           if (!result.tracks?.items) {
             throw new AppError(
               ERROR_MESSAGES.MALFORMED_RESPONSE,
-              "SearchTracks",
-            );
+              'SearchTracks',
+            )
           }
 
-          return result.tracks.items;
+          return result.tracks.items
         },
-        "SearchTracks",
+        'SearchTracks',
         (error) => {
-          console.error("[Search Tracks] Error during search:", error);
-          setError(error);
+          console.error('[Search Tracks] Error during search:', error)
+          setError(error)
         },
-      );
+      )
 
-      return response ?? [];
+      return response ?? []
     } catch (error) {
       // Error is already handled by handleOperationError
-      return [];
+      return []
     } finally {
-      setIsLoading(false);
+      setIsLoading(false)
     }
-  }, []);
+  }, [])
 
-  return { searchTracks, isLoading, error };
-};
+  return { searchTracks, isLoading, error }
+}
 
-export default useSearchTracks;
+export default useSearchTracks

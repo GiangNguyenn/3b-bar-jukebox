@@ -1,23 +1,23 @@
-"use client";
-import { useFixedPlaylist } from "@/hooks/useFixedPlaylist";
-import { usePlaylist } from "@/hooks/usePlaylist";
-import { useEffect, useState, useMemo, memo } from "react";
-import useSearchTracks from "../hooks/useSearchTracks";
-import { TrackDetails } from "@/shared/types";
-import Playlist from "@/components/Playlist/Playlist";
-import Loading from "./loading";
-import SearchInput from "@/components/SearchInput";
-import { useDebounce } from "use-debounce";
+'use client'
+import { useFixedPlaylist } from '@/hooks/useFixedPlaylist'
+import { usePlaylist } from '@/hooks/usePlaylist'
+import { useEffect, useState, useMemo, memo } from 'react'
+import useSearchTracks from '../hooks/useSearchTracks'
+import { TrackDetails } from '@/shared/types'
+import Playlist from '@/components/Playlist/Playlist'
+import Loading from './loading'
+import SearchInput from '@/components/SearchInput'
+import { useDebounce } from 'use-debounce'
 
 interface PlaylistRefreshEvent extends CustomEvent {
   detail: {
-    timestamp: number;
-  };
+    timestamp: number
+  }
 }
 
 declare global {
   interface WindowEventMap {
-    playlistRefresh: PlaylistRefreshEvent;
+    playlistRefresh: PlaylistRefreshEvent
   }
 }
 
@@ -27,57 +27,57 @@ const Home = memo(() => {
     fixedPlaylistId,
     isLoading: isCreatingPlaylist,
     isInitialFetchComplete,
-  } = useFixedPlaylist();
+  } = useFixedPlaylist()
   const {
     playlist,
     isLoading: isLoadingPlaylist,
     refreshPlaylist,
-  } = usePlaylist(fixedPlaylistId ?? "");
-  const [searchQuery, setSearchQuery] = useState("");
-  const [searchResults, setSearchResults] = useState<TrackDetails[]>([]);
-  const { searchTracks } = useSearchTracks();
+  } = usePlaylist(fixedPlaylistId ?? '')
+  const [searchQuery, setSearchQuery] = useState('')
+  const [searchResults, setSearchResults] = useState<TrackDetails[]>([])
+  const { searchTracks } = useSearchTracks()
 
   useEffect(() => {
-    (async () => {
+    ;(async () => {
       if (!fixedPlaylistId && !isCreatingPlaylist && isInitialFetchComplete) {
-        console.log("[Fixed Playlist] Created new playlist");
-        await createPlaylist();
+        console.log('[Fixed Playlist] Created new playlist')
+        await createPlaylist()
       }
-    })();
+    })()
   }, [
     createPlaylist,
     fixedPlaylistId,
     isCreatingPlaylist,
     isInitialFetchComplete,
-  ]);
+  ])
 
   const handleTrackAdded = useMemo(
     () => async () => {
       // Add a small delay to ensure the track is added to Spotify
       setTimeout(() => {
-        console.log("Refreshing playlist after delay...");
+        console.log('Refreshing playlist after delay...')
         refreshPlaylist().catch((error) => {
-          console.error("Error refreshing playlist:", error);
-        });
-      }, 1000);
+          console.error('Error refreshing playlist:', error)
+        })
+      }, 1000)
     },
     [refreshPlaylist],
-  );
+  )
 
-  const [debouncedSearchQuery] = useDebounce(searchQuery, 300);
+  const [debouncedSearchQuery] = useDebounce(searchQuery, 300)
 
   useEffect(() => {
     const searchTrackDebounce = async () => {
-      if (debouncedSearchQuery !== "") {
-        const tracks = await searchTracks(debouncedSearchQuery);
-        setSearchResults(tracks);
+      if (debouncedSearchQuery !== '') {
+        const tracks = await searchTracks(debouncedSearchQuery)
+        setSearchResults(tracks)
       } else {
-        setSearchResults([]);
+        setSearchResults([])
       }
-    };
+    }
 
-    searchTrackDebounce();
-  }, [debouncedSearchQuery, searchTracks]);
+    searchTrackDebounce()
+  }, [debouncedSearchQuery, searchTracks])
 
   const searchInputProps = useMemo(
     () => ({
@@ -85,32 +85,32 @@ const Home = memo(() => {
       setSearchQuery,
       searchResults,
       setSearchResults,
-      playlistId: fixedPlaylistId ?? "",
+      playlistId: fixedPlaylistId ?? '',
       onTrackAdded: handleTrackAdded,
     }),
     [searchQuery, searchResults, fixedPlaylistId, handleTrackAdded],
-  );
+  )
 
   if (isLoadingPlaylist || !playlist || !fixedPlaylistId) {
-    return <Loading />;
+    return <Loading />
   }
 
-  const { tracks } = playlist;
+  const { tracks } = playlist
 
-  console.log("[Page] Playlist data:", {
+  console.log('[Page] Playlist data:', {
     totalTracks: tracks.total,
     tracksItems: tracks.items,
     tracksItemsLength: tracks.items.length,
-  });
+  })
 
   return (
     <div className="items-center justify-items-center space-y-3 p-4 pt-10 font-mono">
       <SearchInput {...searchInputProps} />
       <Playlist tracks={tracks.items} />
     </div>
-  );
-});
+  )
+})
 
-Home.displayName = "Home";
+Home.displayName = 'Home'
 
-export default Home;
+export default Home

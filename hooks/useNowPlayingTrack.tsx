@@ -1,30 +1,30 @@
-import { sendApiRequest } from "@/shared/api";
-import { SpotifyPlaybackState } from "@/shared/types";
-import { handleOperationError, AppError } from "@/shared/utils/errorHandling";
-import React from "react";
-import useSWR from "swr";
+import { sendApiRequest } from '@/shared/api'
+import { SpotifyPlaybackState } from '@/shared/types'
+import { handleOperationError, AppError } from '@/shared/utils/errorHandling'
+import React from 'react'
+import useSWR from 'swr'
 
 const useNowPlayingTrack = () => {
   const fetcher = async () => {
     return handleOperationError(
       async () => {
         const response = await sendApiRequest<SpotifyPlaybackState>({
-          path: "me/player/currently-playing",
-        });
-        return response;
+          path: 'me/player/currently-playing',
+        })
+        return response
       },
-      "useNowPlayingTrack",
+      'useNowPlayingTrack',
       (error) => {
         console.error(
-          "[useNowPlayingTrack] Error fetching current track:",
+          '[useNowPlayingTrack] Error fetching current track:',
           error,
-        );
+        )
       },
-    );
-  };
+    )
+  }
 
   const { data, error, mutate, isLoading } = useSWR(
-    "currently-playing-state",
+    'currently-playing-state',
     fetcher,
     {
       revalidateOnFocus: false,
@@ -32,7 +32,7 @@ const useNowPlayingTrack = () => {
       revalidateIfStale: false,
       refreshInterval: 10000, // Check every 10 seconds
     },
-  );
+  )
 
   return {
     data,
@@ -40,10 +40,10 @@ const useNowPlayingTrack = () => {
     error: error
       ? error instanceof AppError
         ? error
-        : new AppError(error.message, error, "useNowPlayingTrack")
+        : new AppError(error.message, error, 'useNowPlayingTrack')
       : null,
     refetchPlaylists: mutate,
-  };
-};
+  }
+}
 
-export default useNowPlayingTrack;
+export default useNowPlayingTrack
