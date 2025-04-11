@@ -15,19 +15,19 @@ jest.mock('@/services/playlistRefresh', () => ({
 // Mock NextResponse
 jest.mock('next/server', () => ({
   NextResponse: {
-    json: jest.fn().mockImplementation((data, init) => ({
+    json: jest.fn().mockImplementation((data: unknown, init?: { status?: number }): Response => ({
       ...init,
       json: () => Promise.resolve(data)
-    }))
+    } as Response))
   }
 }))
 
 describe('GET /api/refresh-site', () => {
-  beforeEach(() => {
+  beforeEach((): void => {
     jest.clearAllMocks()
   })
 
-  const createRequest = (path: string, params?: Record<string, string>) => {
+  const createRequest = (path: string, params?: Record<string, string>): Request => {
     const baseUrl = 'http://localhost:3000'
     let fullUrl = `${baseUrl}${path}`
     if (params) {
@@ -48,14 +48,14 @@ describe('GET /api/refresh-site', () => {
     searchParams: mockSearchParams
   }
 
-  // @ts-ignore
+  // @ts-expect-error - Mocking global URL
   global.URL = jest.fn().mockImplementation(() => mockUrl)
 
-  beforeEach(() => {
+  beforeEach((): void => {
     mockSearchParams.get.mockReset()
   })
 
-  it('should return success response when refresh is successful', async () => {
+  it('should return success response when refresh is successful', async (): Promise<void> => {
     mockSearchParams.get.mockReturnValue(null)
     const mockRefreshPlaylist = PlaylistRefreshServiceImpl.getInstance()
       .refreshPlaylist as jest.Mock
@@ -69,7 +69,7 @@ describe('GET /api/refresh-site', () => {
     expect(mockRefreshPlaylist).toHaveBeenCalledWith(false)
   })
 
-  it('should return error response when refresh fails', async () => {
+  it('should return error response when refresh fails', async (): Promise<void> => {
     mockSearchParams.get.mockReturnValue(null)
     const mockRefreshPlaylist = PlaylistRefreshServiceImpl.getInstance()
       .refreshPlaylist as jest.Mock
@@ -83,7 +83,7 @@ describe('GET /api/refresh-site', () => {
     expect(mockRefreshPlaylist).toHaveBeenCalledWith(false)
   })
 
-  it('should handle force parameter when set to true', async () => {
+  it('should handle force parameter when set to true', async (): Promise<void> => {
     mockSearchParams.get.mockReturnValue('true')
     const mockRefreshPlaylist = PlaylistRefreshServiceImpl.getInstance()
       .refreshPlaylist as jest.Mock
@@ -97,7 +97,7 @@ describe('GET /api/refresh-site', () => {
     expect(mockRefreshPlaylist).toHaveBeenCalledWith(true)
   })
 
-  it('should handle force parameter when set to false', async () => {
+  it('should handle force parameter when set to false', async (): Promise<void> => {
     mockSearchParams.get.mockReturnValue('false')
     const mockRefreshPlaylist = PlaylistRefreshServiceImpl.getInstance()
       .refreshPlaylist as jest.Mock
@@ -111,7 +111,7 @@ describe('GET /api/refresh-site', () => {
     expect(mockRefreshPlaylist).toHaveBeenCalledWith(false)
   })
 
-  it('should handle invalid URL gracefully', async () => {
+  it('should handle invalid URL gracefully', async (): Promise<void> => {
     mockSearchParams.get.mockReturnValue(null)
     const mockRefreshPlaylist = PlaylistRefreshServiceImpl.getInstance()
       .refreshPlaylist as jest.Mock
@@ -127,7 +127,7 @@ describe('GET /api/refresh-site', () => {
     })
   })
 
-  it('should handle service errors gracefully', async () => {
+  it('should handle service errors gracefully', async (): Promise<void> => {
     mockSearchParams.get.mockReturnValue(null)
     const mockRefreshPlaylist = PlaylistRefreshServiceImpl.getInstance()
       .refreshPlaylist as jest.Mock
@@ -145,7 +145,7 @@ describe('GET /api/refresh-site', () => {
     })
   })
 
-  it('should handle unexpected errors gracefully', async () => {
+  it('should handle unexpected errors gracefully', async (): Promise<void> => {
     mockSearchParams.get.mockReturnValue(null)
     const mockRefreshPlaylist = PlaylistRefreshServiceImpl.getInstance()
       .refreshPlaylist as jest.Mock
