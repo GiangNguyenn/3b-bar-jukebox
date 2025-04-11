@@ -1,8 +1,9 @@
-import { useState, useRef, useCallback } from 'react'
+import { useState, useRef, useCallback, useEffect } from 'react'
 import { useSpotifyPlayer } from './useSpotifyPlayer'
 import { sendApiRequest } from '@/shared/api'
 import { SpotifyPlaybackState } from '@/shared/types'
 import type { SpotifyPlayerInstance } from '@/types/spotify'
+import { debounce } from '@/lib/utils'
 
 // Singleton to track initialization state
 let isInitialized = false
@@ -432,6 +433,30 @@ export function useSpotifyPlayerState(): UseSpotifyPlayerStateReturn {
       }
     }
   }, [reconnectPlayer])
+
+  const debouncedRefreshPlaylistState = useCallback(
+    debounce(async () => {
+      await refreshPlaylistState()
+    }, 60000), // 1 minute
+    [refreshPlaylistState]
+  )
+
+  useEffect(() => {
+    if (playlistRefreshInterval.current) {
+      clearInterval(playlistRefreshInterval.current)
+    }
+
+    // Set up the debounced refresh interval
+    playlistRefreshInterval.current = setInterval(() => {
+      debouncedRefreshPlaylistState()
+    }, 10000) // Check every 10 seconds, but actual refresh will be debounced to 1 minute
+
+    return () => {
+      if (playlistRefreshInterval.current) {
+        clearInterval(playlistRefreshInterval.current)
+      }
+    }
+  }, [debouncedRefreshPlaylistState])
 
   return {
     error,
