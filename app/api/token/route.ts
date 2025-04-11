@@ -11,7 +11,20 @@ const CLIENT_ID = process.env.SPOTIFY_CLIENT_ID ?? ''
 const CLIENT_SECRET = process.env.SPOTIFY_CLIENT_SECRET ?? ''
 const refreshToken = process.env.SPOTIFY_REFRESH_TOKEN ?? ''
 
-export async function GET() {
+interface SpotifyTokenResponse {
+  access_token: string
+  token_type: string
+  scope: string
+  expires_in: number
+  refresh_token?: string
+}
+
+interface ErrorResponse {
+  error: string
+  details?: unknown
+}
+
+export async function GET(): Promise<NextResponse<SpotifyTokenResponse | ErrorResponse>> {
   try {
     if (!refreshToken) {
       throw new AppError(ERROR_MESSAGES.UNAUTHORIZED, undefined, 'TokenRefresh')
@@ -37,7 +50,7 @@ export async function GET() {
     })
 
     if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}))
+      const errorData = await response.json().catch(() => ({})) as Record<string, unknown>
       console.error('\n[ERROR] Failed to refresh token:', {
         status: response.status,
         statusText: response.statusText,
@@ -56,7 +69,7 @@ export async function GET() {
       )
     }
 
-    const data = await response.json()
+    const data = await response.json() as SpotifyTokenResponse
 
     return NextResponse.json(data)
   } catch (error) {

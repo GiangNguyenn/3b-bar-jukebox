@@ -9,12 +9,12 @@ interface IPlaylistProps {
   tracks: TrackItem[]
 }
 
-const Playlist: React.FC<IPlaylistProps> = ({ tracks }) => {
+const Playlist: React.FC<IPlaylistProps> = ({ tracks }): JSX.Element => {
   const { data: playbackState } = useNowPlayingTrack()
   const currentTrackId = playbackState?.item?.id ?? null
   const [isRefreshing, setIsRefreshing] = useState(false)
 
-  const handleRefresh = async () => {
+  const handleRefresh = async (): Promise<void> => {
     try {
       setIsRefreshing(true)
       const response = await fetch('/api/refresh-site')
@@ -66,7 +66,9 @@ const Playlist: React.FC<IPlaylistProps> = ({ tracks }) => {
                 UPCOMING TRACKS
               </span>
               <button
-                onClick={handleRefresh}
+                onClick={() => {
+                  void handleRefresh()
+                }}
                 disabled={isRefreshing}
                 className={`rounded px-3 py-1 text-sm font-medium ${
                   isRefreshing

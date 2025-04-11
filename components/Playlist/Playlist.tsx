@@ -1,3 +1,5 @@
+'use client'
+
 import { TrackItem } from '@/shared/types'
 import React, { useEffect, useRef, memo, useMemo } from 'react'
 import QueueItem from './QueueItem'
@@ -12,7 +14,7 @@ interface IPlaylistProps {
   tracks: TrackItem[]
 }
 
-const Playlist: React.FC<IPlaylistProps> = memo(({ tracks }) => {
+const Playlist: React.FC<IPlaylistProps> = memo(({ tracks }): JSX.Element => {
   const { data: playbackState } = useNowPlayingTrack()
   const currentTrackId = playbackState?.item?.id ?? null
   const previousTrackIdRef = useRef<string | null>(null)
@@ -28,34 +30,38 @@ const Playlist: React.FC<IPlaylistProps> = memo(({ tracks }) => {
   })
 
   const upcomingTracks = useMemo(
-    () => filterUpcomingTracks(tracks, currentTrackId) ?? [],
+    (): TrackItem[] => filterUpcomingTracks(tracks, currentTrackId) ?? [],
     [tracks, currentTrackId]
   )
 
   const shouldRemoveOldest = useMemo(
-    () => currentTrackId && tracks.length > 5,
+    (): boolean => Boolean(currentTrackId) && tracks.length > 20,
     [currentTrackId, tracks.length]
   )
 
   // Check for playlist changes every 30 seconds
-  useEffect(() => {
-    const interval = setInterval(() => {
+  useEffect((): (() => void) => {
+    const interval = setInterval((): void => {
       console.log('[Playlist] Checking for playlist changes')
-      refetchPlaylist()
+      void refetchPlaylist().catch((error) => {
+        console.error('[Playlist] Error refreshing playlist:', error)
+      })
     }, 30000)
 
-    return () => clearInterval(interval)
+    return (): void => clearInterval(interval)
   }, [refetchPlaylist])
 
   // Only refresh when current track changes
-  useEffect(() => {
+  useEffect((): void => {
     if (currentTrackId !== previousTrackIdRef.current) {
       console.log('[Playlist] Track changed, refreshing:', {
         previous: previousTrackIdRef.current,
         current: currentTrackId
       })
       previousTrackIdRef.current = currentTrackId
-      refetchPlaylist()
+      void refetchPlaylist().catch((error) => {
+        console.error('[Playlist] Error refreshing playlist:', error)
+      })
     }
   }, [currentTrackId, refetchPlaylist])
 
@@ -69,7 +75,7 @@ const Playlist: React.FC<IPlaylistProps> = memo(({ tracks }) => {
 
   // If no track is currently playing, show all tracks
   const tracksToShow = useMemo(
-    () => (currentTrackId ? upcomingTracks : tracks),
+    (): TrackItem[] => (currentTrackId ? upcomingTracks : tracks),
     [currentTrackId, upcomingTracks, tracks]
   )
 

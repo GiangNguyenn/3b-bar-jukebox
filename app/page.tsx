@@ -21,7 +21,7 @@ declare global {
   }
 }
 
-const Home = memo(() => {
+const Home = memo((): JSX.Element => {
   const {
     createPlaylist,
     fixedPlaylistId,
@@ -38,12 +38,18 @@ const Home = memo(() => {
   const { searchTracks } = useSearchTracks()
 
   useEffect(() => {
-    ;(async () => {
+    const initPlaylist = async (): Promise<void> => {
       if (!fixedPlaylistId && !isCreatingPlaylist && isInitialFetchComplete) {
         console.log('[Fixed Playlist] Created new playlist')
-        await createPlaylist()
+        try {
+          await createPlaylist()
+        } catch (error) {
+          console.error('[Fixed Playlist] Error creating playlist:', error)
+        }
       }
-    })()
+    }
+
+    void initPlaylist()
   }, [
     createPlaylist,
     fixedPlaylistId,
@@ -52,11 +58,11 @@ const Home = memo(() => {
   ])
 
   const handleTrackAdded = useMemo(
-    () => async () => {
+    () => (): void => {
       // Add a small delay to ensure the track is added to Spotify
       setTimeout(() => {
         console.log('Refreshing playlist after delay...')
-        refreshPlaylist().catch((error) => {
+        void refreshPlaylist().catch((error) => {
           console.error('Error refreshing playlist:', error)
         })
       }, 1000)
@@ -67,16 +73,21 @@ const Home = memo(() => {
   const [debouncedSearchQuery] = useDebounce(searchQuery, 300)
 
   useEffect(() => {
-    const searchTrackDebounce = async () => {
-      if (debouncedSearchQuery !== '') {
-        const tracks = await searchTracks(debouncedSearchQuery)
-        setSearchResults(tracks)
-      } else {
+    const searchTrackDebounce = async (): Promise<void> => {
+      try {
+        if (debouncedSearchQuery !== '') {
+          const tracks = await searchTracks(debouncedSearchQuery)
+          setSearchResults(tracks)
+        } else {
+          setSearchResults([])
+        }
+      } catch (error) {
+        console.error('[Search] Error searching tracks:', error)
         setSearchResults([])
       }
     }
 
-    searchTrackDebounce()
+    void searchTrackDebounce()
   }, [debouncedSearchQuery, searchTracks])
 
   const searchInputProps = useMemo(

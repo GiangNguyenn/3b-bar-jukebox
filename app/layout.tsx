@@ -1,5 +1,6 @@
 import type { Metadata } from 'next'
 import { Belgrano } from 'next/font/google'
+import Script from 'next/script'
 import './globals.css'
 import Header from '@/components/Header'
 
@@ -79,11 +80,11 @@ export default function RootLayout({
   children
 }: Readonly<{
   children: React.ReactNode
-}>) {
+}>): JSX.Element {
   return (
     <html lang='en' className=''>
       <head>
-        <script src="https://sdk.scdn.co/spotify-player.js" />
+        <Script src="https://sdk.scdn.co/spotify-player.js" strategy="afterInteractive" />
       </head>
       <body className={`${belgrano.variable} min-h-screen antialiased`}>
         <Header />

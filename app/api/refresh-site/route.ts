@@ -6,7 +6,13 @@ import { PlaylistRefreshServiceImpl } from '@/services/playlistRefresh'
 import { sendApiRequest } from '@/shared/api'
 import { SpotifyPlaybackState } from '@/shared/types'
 
-export async function GET(request: Request) {
+interface RefreshResponse {
+  success: boolean
+  message?: string
+  playerStateRefresh?: boolean
+}
+
+export async function GET(request: Request): Promise<NextResponse<RefreshResponse>> {
   try {
     const url = new URL(request.url)
     const forceParam = url.searchParams.get('force')
