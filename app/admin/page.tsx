@@ -14,7 +14,7 @@ const DEVICE_CHECK_INTERVAL = {
   poor: 10000 // 10 seconds
 }
 const MAX_RECOVERY_ATTEMPTS = 3
-const TOKEN_CHECK_INTERVAL = 300000 // 5 minutes in milliseconds
+const TOKEN_CHECK_INTERVAL = 120000 // 2 minutes in milliseconds
 
 interface HealthStatus {
   device: 'healthy' | 'unresponsive' | 'disconnected'
@@ -63,10 +63,19 @@ export default function AdminPage(): JSX.Element {
   const maxRecoveryAttempts = 5
   const baseDelay = 2000 // 2 seconds
 
-  // Check token validity
+  // Check token validity and refresh if needed
   useEffect(() => {
     const checkToken = async (): Promise<void> => {
       try {
+        // First check if token is valid by making an API request
+        await sendApiRequest<{ items: any[] }>({
+          path: '/me/playlists',
+          method: 'GET'
+        })
+        console.log('[Token Health] Token is valid')
+        setHealthStatus((prev) => ({ ...prev, token: 'valid' }))
+
+        // Then check if token needs refresh
         const response = await fetch('/api/token')
         if (!response.ok) {
           setHealthStatus((prev) => ({ ...prev, token: 'error' }))
@@ -89,11 +98,6 @@ export default function AdminPage(): JSX.Element {
             console.error('Token refresh failed:', error)
             setHealthStatus((prev) => ({ ...prev, token: 'error' }))
           }
-        } else {
-          setHealthStatus((prev) => ({
-            ...prev,
-            token: expires_in > 300 ? 'valid' : 'expired'
-          }))
         }
       } catch (error) {
         console.error('Token check failed:', error)
