@@ -7,4 +7,10 @@ window.onSpotifyWebPlaybackSDKReady = () => {
 const script = document.createElement('script')
 script.src = 'https://sdk.scdn.co/spotify-player.js'
 script.async = true
+script.onerror = () => {
+  console.error('Failed to load Spotify Web Playback SDK')
+  window.dispatchEvent(new CustomEvent('playerError', {
+    detail: { error: { message: 'Failed to load SDK' } }
+  }))
+}
 document.body.appendChild(script) 

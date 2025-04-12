@@ -14,7 +14,6 @@ const DEVICE_CHECK_INTERVAL = {
   poor: 10000 // 10 seconds
 }
 const MAX_RECOVERY_ATTEMPTS = 3
-const RECOVERY_DELAY = 5000 // 5 seconds between recovery attempts
 const TOKEN_CHECK_INTERVAL = 300000 // 5 minutes in milliseconds
 
 interface HealthStatus {
@@ -61,6 +60,8 @@ export default function AdminPage(): JSX.Element {
   const recoveryTimeout = useRef<NodeJS.Timeout | null>(null)
   const tokenCheckInterval = useRef<NodeJS.Timeout | null>(null)
   const isRefreshing = useRef<boolean>(false)
+  const maxRecoveryAttempts = 5
+  const baseDelay = 2000 // 2 seconds
 
   // Check token validity
   useEffect(() => {
@@ -113,57 +114,58 @@ export default function AdminPage(): JSX.Element {
   }, [])
 
   const attemptRecovery = useCallback(async (): Promise<void> => {
-    if (recoveryAttempts >= MAX_RECOVERY_ATTEMPTS) {
+    if (recoveryAttempts >= maxRecoveryAttempts) {
       console.log('Max recovery attempts reached, giving up')
       return
     }
 
     try {
-      console.log(`Attempting device recovery (attempt ${recoveryAttempts + 1}/${MAX_RECOVERY_ATTEMPTS})`)
+      console.log(`Attempting player recovery (attempt ${recoveryAttempts + 1}/${maxRecoveryAttempts})`)
       
-      // First, try to transfer playback to our device
-      if (deviceId) {
-        await sendApiRequest({
-          path: 'me/player',
-          method: 'PUT',
-          body: {
-            device_ids: [deviceId],
-            play: false
-          }
-        })
-      }
-
-      // Then refresh the player state
+      // First, try to refresh the player state
       if (typeof window.refreshSpotifyPlayer === 'function') {
         await window.refreshSpotifyPlayer()
       }
 
-      // Check if recovery was successful
-      const state = await sendApiRequest<SpotifyPlaybackState>({
-        path: 'me/player',
-        method: 'GET'
-      })
-
-      if (state?.device?.id === deviceId) {
-        console.log('Device recovery successful')
-        setHealthStatus((prev) => ({ ...prev, device: 'healthy' }))
-        setRecoveryAttempts(0)
-        return
+      // Then try to reconnect the player
+      if (typeof window.spotifyPlayerInstance?.connect === 'function') {
+        await window.spotifyPlayerInstance.connect()
       }
 
-      // If recovery failed, schedule next attempt
-      setRecoveryAttempts((prev) => prev + 1)
-      recoveryTimeout.current = setTimeout(() => {
-        void attemptRecovery()
-      }, RECOVERY_DELAY)
+      // If we get here, recovery was successful
+      setHealthStatus((prev) => ({ ...prev, device: 'healthy' }))
+      setRecoveryAttempts(0)
     } catch (error) {
       console.error('Recovery attempt failed:', error)
       setRecoveryAttempts((prev) => prev + 1)
+      
+      // Calculate delay with exponential backoff
+      const delay = baseDelay * Math.pow(2, recoveryAttempts)
       recoveryTimeout.current = setTimeout(() => {
         void attemptRecovery()
-      }, RECOVERY_DELAY)
+      }, delay)
     }
-  }, [deviceId, recoveryAttempts, setHealthStatus, setRecoveryAttempts])
+  }, [recoveryAttempts])
+
+  // Listen for player verification errors
+  useEffect(() => {
+    const handlePlayerError = (event: CustomEvent<{ error?: { message?: string } }>): void => {
+      if (event.detail?.error?.message?.includes('Player verification failed')) {
+        console.error('Player verification failed, attempting recovery')
+        setHealthStatus((prev) => ({ ...prev, device: 'unresponsive' }))
+        void attemptRecovery()
+      }
+    }
+
+    window.addEventListener('playerError', handlePlayerError as EventListener)
+
+    return (): void => {
+      window.removeEventListener('playerError', handlePlayerError as EventListener)
+      if (recoveryTimeout.current) {
+        clearTimeout(recoveryTimeout.current)
+      }
+    }
+  }, [attemptRecovery])
 
   // Device health check and recovery
   useEffect(() => {
