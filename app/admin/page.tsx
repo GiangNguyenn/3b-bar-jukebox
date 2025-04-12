@@ -5,7 +5,7 @@ import { useSpotifyPlayer } from '@/hooks/useSpotifyPlayer'
 import { useFixedPlaylist } from '@/hooks/useFixedPlaylist'
 import { SpotifyPlayer } from '@/components/SpotifyPlayer'
 import { sendApiRequest } from '@/shared/api'
-import { SpotifyPlaybackState } from '@/shared/types'
+import { SpotifyPlaybackState, SpotifyPlaylistItem } from '@/shared/types'
 
 const REFRESH_INTERVAL = 180000 // 3 minutes in milliseconds
 const DEVICE_CHECK_INTERVAL = {
@@ -68,7 +68,7 @@ export default function AdminPage(): JSX.Element {
     const checkToken = async (): Promise<void> => {
       try {
         // First check if token is valid by making an API request
-        await sendApiRequest<{ items: any[] }>({
+        await sendApiRequest<{ items: SpotifyPlaylistItem[] }>({
           path: '/me/playlists',
           method: 'GET'
         })
