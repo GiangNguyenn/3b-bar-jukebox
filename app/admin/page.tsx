@@ -78,7 +78,20 @@ export default function AdminPage(): JSX.Element {
         // Then check if token needs refresh
         const response = await fetch('/api/token')
         if (!response.ok) {
-          setHealthStatus((prev) => ({ ...prev, token: 'error' }))
+          // If token check fails, try to refresh it
+          try {
+            const refreshResponse = await fetch('/api/refresh-token', {
+              method: 'POST'
+            })
+            if (!refreshResponse.ok) {
+              throw new Error('Failed to refresh token')
+            }
+            console.log('Token refreshed successfully')
+            setHealthStatus((prev) => ({ ...prev, token: 'valid' }))
+          } catch (error) {
+            console.error('Token refresh failed:', error)
+            setHealthStatus((prev) => ({ ...prev, token: 'error' }))
+          }
           return
         }
         const { expires_in } = (await response.json()) as TokenResponse
@@ -101,7 +114,20 @@ export default function AdminPage(): JSX.Element {
         }
       } catch (error) {
         console.error('Token check failed:', error)
-        setHealthStatus((prev) => ({ ...prev, token: 'error' }))
+        // If initial check fails, try to refresh the token
+        try {
+          const refreshResponse = await fetch('/api/refresh-token', {
+            method: 'POST'
+          })
+          if (!refreshResponse.ok) {
+            throw new Error('Failed to refresh token')
+          }
+          console.log('Token refreshed successfully')
+          setHealthStatus((prev) => ({ ...prev, token: 'valid' }))
+        } catch (refreshError) {
+          console.error('Token refresh failed:', refreshError)
+          setHealthStatus((prev) => ({ ...prev, token: 'error' }))
+        }
       }
     }
 
