@@ -534,7 +534,7 @@ export default function AdminPage(): JSX.Element {
                       ? 'Playback Error'
                       : 'Playback Stopped'}
               </span>
-              {playbackInfo && playbackInfo.currentTrack && (
+              {playbackInfo?.currentTrack && (
                 <span className='text-sm text-gray-400'>
                   - <span className='font-medium text-white'>{playbackInfo.currentTrack}</span> ({formatTime(playbackInfo.progress)})
                 </span>
