@@ -65,13 +65,17 @@ export default function AdminPage(): JSX.Element {
       try {
         console.log('[Token Check] Starting token validation check')
         // First check if token is valid by making an API request
-        const response = await sendApiRequest<{ items: SpotifyPlaylistItem[] }>({
-          path: '/me/playlists',
-          method: 'GET'
-        })
-        
+        const response = await sendApiRequest<{ items: SpotifyPlaylistItem[] }>(
+          {
+            path: '/me/playlists',
+            method: 'GET'
+          }
+        )
+
         if (response) {
-          console.log('[Token Check] Token is valid - successfully fetched playlists')
+          console.log(
+            '[Token Check] Token is valid - successfully fetched playlists'
+          )
           setHealthStatus((prev) => ({ ...prev, token: 'valid' }))
           return
         }
@@ -87,29 +91,33 @@ export default function AdminPage(): JSX.Element {
           method: 'GET',
           cache: 'no-store'
         })
-        
+
         if (refreshResponse.ok) {
           console.log('[Token Check] Token refresh successful')
           setHealthStatus((prev) => ({ ...prev, token: 'valid' }))
           return
         }
-        
-        console.log('[Token Check] Token refresh failed, checking playback state')
+
+        console.log(
+          '[Token Check] Token refresh failed, checking playback state'
+        )
         // If refresh fails, check if we can still play music
         const playbackState = await sendApiRequest<SpotifyPlaybackState>({
           path: 'me/player',
           method: 'GET'
         })
-        
+
         if (playbackState?.is_playing) {
           // If music is playing, token is actually valid despite refresh failure
           console.log('[Token Check] Token is valid - music is playing')
           setHealthStatus((prev) => ({ ...prev, token: 'valid' }))
           return
         }
-        
+
         // Only set token to error if we can't play music
-        console.error('[Token Check] Token refresh failed and music not playing')
+        console.error(
+          '[Token Check] Token refresh failed and music not playing'
+        )
         setHealthStatus((prev) => ({ ...prev, token: 'error' }))
       } catch (error) {
         console.error('[Token Check] Token refresh failed with error:', error)
@@ -126,7 +134,10 @@ export default function AdminPage(): JSX.Element {
             return
           }
         } catch (playbackError) {
-          console.error('[Token Check] Final playback check failed:', playbackError)
+          console.error(
+            '[Token Check] Final playback check failed:',
+            playbackError
+          )
           setHealthStatus((prev) => ({ ...prev, token: 'error' }))
         }
       }
