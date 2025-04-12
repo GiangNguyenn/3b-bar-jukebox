@@ -5,7 +5,9 @@ import { SpotifyPlaybackState } from '@/shared/types'
 export const dynamic = 'force-dynamic'
 export const revalidate = 0
 
-export async function GET(): Promise<NextResponse<SpotifyPlaybackState | { error: string }>> {
+export async function GET(): Promise<
+  NextResponse<SpotifyPlaybackState | { error: string }>
+> {
   try {
     const playbackState = await sendApiRequest<SpotifyPlaybackState>({
       path: 'me/player',

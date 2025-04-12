@@ -16,10 +16,13 @@ jest.mock('@/services/playlistRefresh', () => ({
 // Mock NextResponse
 jest.mock('next/server', () => ({
   NextResponse: {
-    json: jest.fn().mockImplementation((data: unknown, init?: { status?: number }): Response => ({
-      ...init,
-      json: () => Promise.resolve(data)
-    } as Response))
+    json: jest.fn().mockImplementation(
+      (data: unknown, init?: { status?: number }): Response =>
+        ({
+          ...init,
+          json: () => Promise.resolve(data)
+        }) as Response
+    )
   }
 }))
 
@@ -28,7 +31,10 @@ describe('GET /api/refresh-site', () => {
     jest.clearAllMocks()
   })
 
-  const createRequest = (path: string, params?: Record<string, string>): Request => {
+  const createRequest = (
+    path: string,
+    params?: Record<string, string>
+  ): Request => {
     const baseUrl = 'http://localhost:3000'
     let fullUrl = `${baseUrl}${path}`
     if (params) {

@@ -71,7 +71,8 @@ async function transferPlaybackToDevice(
 
 export async function POST(request: Request): Promise<NextResponse> {
   try {
-    const { action, contextUri, deviceId, position_ms } = await request.json() as PlaybackRequest
+    const { action, contextUri, deviceId, position_ms } =
+      (await request.json()) as PlaybackRequest
 
     if (!deviceId) {
       return NextResponse.json(
@@ -133,7 +134,8 @@ export async function POST(request: Request): Promise<NextResponse> {
           }
         })
       } catch (error: unknown) {
-        const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+        const errorMessage =
+          error instanceof Error ? error.message : 'Unknown error'
         console.error('[API Playback] Detailed playback error:', {
           message: errorMessage,
           error,
@@ -160,7 +162,8 @@ export async function POST(request: Request): Promise<NextResponse> {
         })
       } catch (error: unknown) {
         console.error('[API Playback] Skip error:', error)
-        const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+        const errorMessage =
+          error instanceof Error ? error.message : 'Unknown error'
         return NextResponse.json(
           {
             error: `Failed to skip track: ${errorMessage}`,
@@ -178,7 +181,8 @@ export async function POST(request: Request): Promise<NextResponse> {
       message: error instanceof Error ? error.message : 'Unknown error',
       stack: error instanceof Error ? error.stack : undefined
     })
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+    const errorMessage =
+      error instanceof Error ? error.message : 'Unknown error'
     return NextResponse.json(
       {
         error: `Playback control failed: ${errorMessage}`,

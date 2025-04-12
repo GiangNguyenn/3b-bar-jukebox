@@ -17,6 +17,12 @@ interface SpotifyErrorResponse {
 const SPOTIFY_API_URL =
   process.env.NEXT_PUBLIC_SPOTIFY_BASE_URL || 'https://api.spotify.com/v1'
 
+const DEBOUNCE_TIME = 10000 // 10 seconds in milliseconds
+const requestCache = new Map<
+  string,
+  { promise: Promise<any>; timestamp: number }
+>()
+
 export const sendApiRequest = async <T>({
   path,
   method = 'GET',
@@ -24,6 +30,16 @@ export const sendApiRequest = async <T>({
   extraHeaders,
   config = {}
 }: ApiProps): Promise<T> => {
+  const cacheKey = `${method}:${path}:${JSON.stringify(body)}`
+  const now = Date.now()
+
+  // Check if we have a cached request that's still valid
+  const cachedRequest = requestCache.get(cacheKey)
+  if (cachedRequest && now - cachedRequest.timestamp < DEBOUNCE_TIME) {
+    console.log(`[API] Using cached request for ${cacheKey}`)
+    return cachedRequest.promise
+  }
+
   const authToken = await getSpotifyToken()
   if (!authToken) {
     throw new Error('Failed to get Spotify token')
@@ -35,96 +51,116 @@ export const sendApiRequest = async <T>({
     ...(extraHeaders && { ...extraHeaders })
   }
 
-  try {
-    const url = `${SPOTIFY_API_URL}/${path}`
+  const makeRequest = async (): Promise<T> => {
+    try {
+      const url = `${SPOTIFY_API_URL}/${path}`
 
-    const response = await fetch(url, {
-      method,
-      headers,
-      body: body ? JSON.stringify(body) : undefined,
-      ...config
-    })
+      const response = await fetch(url, {
+        method,
+        headers,
+        body: body ? JSON.stringify(body) : undefined,
+        ...config
+      })
 
-    if (!response.ok) {
-      let errorData
-      try {
-        errorData = await response.json()
-      } catch (e) {
-        errorData = null
+      if (!response.ok) {
+        let errorData
+        try {
+          errorData = await response.json()
+        } catch (e) {
+          errorData = null
+        }
+
+        const errorMessage =
+          errorData?.error?.message || `HTTP error! status: ${response.status}`
+        console.error('API request failed:', {
+          status: response.status,
+          statusText: response.statusText,
+          error: errorData,
+          url,
+          method,
+          requestBody: body ? JSON.stringify(body) : undefined
+        })
+
+        // Handle specific error cases
+        if (response.status === 401) {
+          throw new Error(
+            'Authentication failed. Please try refreshing the page.'
+          )
+        } else if (response.status === 403) {
+          throw new Error("You don't have permission to perform this action.")
+        } else if (response.status === 404) {
+          throw new Error('The requested resource was not found.')
+        } else if (response.status === 429) {
+          throw new Error('Too many requests. Please try again later.')
+        } else if (response.status >= 500) {
+          throw new Error(
+            'Spotify service is currently unavailable. Please try again later.'
+          )
+        }
+
+        throw new Error(errorMessage)
       }
 
-      const errorMessage =
-        errorData?.error?.message || `HTTP error! status: ${response.status}`
+      // Handle 204 No Content responses
+      if (response.status === 204) {
+        return {} as T
+      }
+
+      // Only try to parse JSON if we have content
+      if (response.headers.get('content-length') === '0') {
+        return {} as T
+      }
+
+      try {
+        const data = await response.json()
+        return data
+      } catch (e) {
+        console.error('Failed to parse response as JSON:', e)
+        return {} as T
+      }
+    } catch (error) {
       console.error('API request failed:', {
-        status: response.status,
-        statusText: response.statusText,
-        error: errorData,
-        url,
+        error:
+          error instanceof Error
+            ? {
+                name: error.name,
+                message: error.message,
+                stack: error.stack
+              }
+            : error,
+        url: `${SPOTIFY_API_URL}/${path}`,
         method,
         requestBody: body ? JSON.stringify(body) : undefined
       })
 
-      // Handle specific error cases
-      if (response.status === 401) {
+      // Handle network errors
+      if (error instanceof TypeError && error.message === 'Failed to fetch') {
         throw new Error(
-          'Authentication failed. Please try refreshing the page.'
-        )
-      } else if (response.status === 403) {
-        throw new Error("You don't have permission to perform this action.")
-      } else if (response.status === 404) {
-        throw new Error('The requested resource was not found.')
-      } else if (response.status === 429) {
-        throw new Error('Too many requests. Please try again later.')
-      } else if (response.status >= 500) {
-        throw new Error(
-          'Spotify service is currently unavailable. Please try again later.'
+          'Network error. Please check your internet connection and try again.'
         )
       }
 
-      throw new Error(errorMessage)
+      throw error
     }
-
-    // Handle 204 No Content responses
-    if (response.status === 204) {
-      return {} as T
-    }
-
-    // Only try to parse JSON if we have content
-    if (response.headers.get('content-length') === '0') {
-      return {} as T
-    }
-
-    try {
-      const data = await response.json()
-      return data
-    } catch (e) {
-      console.error('Failed to parse response as JSON:', e)
-      return {} as T
-    }
-  } catch (error) {
-    console.error('API request failed:', {
-      error:
-        error instanceof Error
-          ? {
-              name: error.name,
-              message: error.message,
-              stack: error.stack
-            }
-          : error,
-      url: `${SPOTIFY_API_URL}/${path}`,
-      method,
-      requestBody: body ? JSON.stringify(body) : undefined
-    })
-
-    // Handle network errors
-    if (error instanceof TypeError && error.message === 'Failed to fetch') {
-      throw new Error(
-        'Network error. Please check your internet connection and try again.'
-      )
-    }
-
-    throw error
   }
+
+  // Create a new promise for this request
+  const requestPromise = makeRequest()
+
+  // Cache the promise and timestamp
+  requestCache.set(cacheKey, {
+    promise: requestPromise,
+    timestamp: now
+  })
+
+  // Clean up old cache entries
+  requestCache.forEach((value, key) => {
+    if (now - value.timestamp >= DEBOUNCE_TIME) {
+      requestCache.delete(key)
+    }
+  })
+
+  return requestPromise
 }
 
 const tokenCache: { token: string | null; expiry: number } = {
