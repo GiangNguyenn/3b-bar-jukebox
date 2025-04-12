@@ -12,7 +12,9 @@ interface RefreshResponse {
   playerStateRefresh?: boolean
 }
 
-export async function GET(request: Request): Promise<NextResponse<RefreshResponse>> {
+export async function GET(
+  request: Request
+): Promise<NextResponse<RefreshResponse>> {
   try {
     const url = new URL(request.url)
     const forceParam = url.searchParams.get('force')

@@ -9,8 +9,10 @@ script.src = 'https://sdk.scdn.co/spotify-player.js'
 script.async = true
 script.onerror = () => {
   console.error('Failed to load Spotify Web Playback SDK')
-  window.dispatchEvent(new CustomEvent('playerError', {
-    detail: { error: { message: 'Failed to load SDK' } }
-  }))
+  window.dispatchEvent(
+    new CustomEvent('playerError', {
+      detail: { error: { message: 'Failed to load SDK' } }
+    })
+  )
 }
-document.body.appendChild(script) 
+document.body.appendChild(script)

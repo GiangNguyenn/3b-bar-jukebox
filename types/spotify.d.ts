@@ -21,4 +21,4 @@ export interface SpotifyPlayerInstance {
   removeListener(eventName: string, callback: (event: any) => void): void
 }
 
-export {} 
+export {}

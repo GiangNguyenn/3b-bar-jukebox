@@ -148,8 +148,8 @@ const Header = (): JSX.Element => {
 
   return (
     <div className='flex flex-col items-center justify-center space-y-4 p-4'>
-      <div 
-        className='relative cursor-pointer' 
+      <div
+        className='relative cursor-pointer'
         onClick={() => {
           void handleLogoClick()
         }}
