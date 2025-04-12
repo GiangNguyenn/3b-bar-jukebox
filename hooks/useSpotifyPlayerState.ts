@@ -44,33 +44,33 @@ export function useSpotifyPlayerState(): UseSpotifyPlayerStateReturn {
 
   // Track ready state changes
   useEffect(() => {
-    const unsubscribe = useSpotifyPlayer.subscribe(
-      (state) => {
-        if (state.isReady !== lastReadyState.current) {
-          console.log('[SpotifyPlayer] Ready state changed:', {
-            from: lastReadyState.current,
-            to: state.isReady,
-            deviceId: state.deviceId,
-            playbackState: state.playbackState
-          })
-          lastReadyState.current = state.isReady
-        }
+    const unsubscribe = useSpotifyPlayer.subscribe((state) => {
+      if (state.isReady !== lastReadyState.current) {
+        console.log('[SpotifyPlayer] Ready state changed:', {
+          from: lastReadyState.current,
+          to: state.isReady,
+          deviceId: state.deviceId,
+          playbackState: state.playbackState
+        })
+        lastReadyState.current = state.isReady
       }
-    )
+    })
     return () => unsubscribe()
   }, [])
 
   const checkPlayerReady = useCallback(async (): Promise<boolean> => {
     const currentDeviceId = useSpotifyPlayer.getState().deviceId
     if (!currentDeviceId) {
-      console.log('[SpotifyPlayer] No device ID in state, checking player state')
+      console.log(
+        '[SpotifyPlayer] No device ID in state, checking player state'
+      )
       return false
     }
 
     try {
       // Add a small delay to allow the SDK to fully initialize
-      await new Promise(resolve => setTimeout(resolve, 1000))
-      
+      await new Promise((resolve) => setTimeout(resolve, 1000))
+
       const state = await sendApiRequest<SpotifyPlaybackState>({
         path: 'me/player',
         method: 'GET'
@@ -132,7 +132,7 @@ export function useSpotifyPlayerState(): UseSpotifyPlayerStateReturn {
       })
 
       // Add a delay before connecting to ensure SDK is fully loaded
-      await new Promise(resolve => setTimeout(resolve, 1000))
+      await new Promise((resolve) => setTimeout(resolve, 1000))
 
       const connected = await player.connect()
       if (!connected) {
@@ -144,72 +144,92 @@ export function useSpotifyPlayerState(): UseSpotifyPlayerStateReturn {
       isInitialized = true
 
       // Set up event listeners after successful connection
-      player.addListener('ready', async ({ device_id }: { device_id: string }) => {
-        if (!isMounted.current) return
-        console.log('[SpotifyPlayer] Player ready event received, device_id:', device_id)
-        setDeviceId(device_id)
-        
-        // Add a delay before checking ready state
-        await new Promise(resolve => setTimeout(resolve, 2000))
-        
-        try {
-          const state = await sendApiRequest<SpotifyPlaybackState>({
-            path: 'me/player',
-            method: 'GET'
-          })
+      player.addListener(
+        'ready',
+        async ({ device_id }: { device_id: string }) => {
+          if (!isMounted.current) return
+          console.log(
+            '[SpotifyPlayer] Player ready event received, device_id:',
+            device_id
+          )
+          setDeviceId(device_id)
 
-          if (state?.device?.id === device_id && state.device.is_active) {
-            console.log('[SpotifyPlayer] Player verified as ready')
-            setIsReady(true)
-          } else {
-            console.log('[SpotifyPlayer] Player not active, attempting to transfer playback')
-            await sendApiRequest({
+          // Add a delay before checking ready state
+          await new Promise((resolve) => setTimeout(resolve, 2000))
+
+          try {
+            const state = await sendApiRequest<SpotifyPlaybackState>({
               path: 'me/player',
-              method: 'PUT',
-              body: {
-                device_ids: [device_id],
-                play: false
-              }
+              method: 'GET'
             })
-            setIsReady(true)
+
+            if (state?.device?.id === device_id && state.device.is_active) {
+              console.log('[SpotifyPlayer] Player verified as ready')
+              setIsReady(true)
+            } else {
+              console.log(
+                '[SpotifyPlayer] Player not active, attempting to transfer playback'
+              )
+              await sendApiRequest({
+                path: 'me/player',
+                method: 'PUT',
+                body: {
+                  device_ids: [device_id],
+                  play: false
+                }
+              })
+              setIsReady(true)
+            }
+          } catch (error) {
+            console.error('[SpotifyPlayer] Error during ready handler:', error)
+            setIsReady(false)
           }
-        } catch (error) {
-          console.error('[SpotifyPlayer] Error during ready handler:', error)
+        }
+      )
+
+      player.addListener(
+        'player_state_changed',
+        (state: SpotifyPlaybackState) => {
+          if (!isMounted.current) return
+          try {
+            console.log('[SpotifyPlayer] State changed:', state)
+            setPlaybackState(state)
+            if (state?.device?.id) {
+              setDeviceId(state.device.id)
+              setIsReady(state.device.is_active)
+            }
+          } catch (error) {
+            console.error('[SpotifyPlayer] Error handling state change:', error)
+          }
+        }
+      )
+
+      player.addListener(
+        'initialization_error',
+        ({ message }: { message: string }) => {
+          if (!isMounted.current) return
+          setError(`Failed to initialize: ${message}`)
           setIsReady(false)
         }
-      })
+      )
 
-      player.addListener('player_state_changed', (state: SpotifyPlaybackState) => {
-        if (!isMounted.current) return
-        try {
-          console.log('[SpotifyPlayer] State changed:', state)
-          setPlaybackState(state)
-          if (state?.device?.id) {
-            setDeviceId(state.device.id)
-            setIsReady(state.device.is_active)
-          }
-        } catch (error) {
-          console.error('[SpotifyPlayer] Error handling state change:', error)
+      player.addListener(
+        'authentication_error',
+        ({ message }: { message: string }) => {
+          if (!isMounted.current) return
+          setError(`Failed to authenticate: ${message}`)
+          setIsReady(false)
         }
-      })
+      )
 
-      player.addListener('initialization_error', ({ message }: { message: string }) => {
-        if (!isMounted.current) return
-        setError(`Failed to initialize: ${message}`)
-        setIsReady(false)
-      })
-
-      player.addListener('authentication_error', ({ message }: { message: string }) => {
-        if (!isMounted.current) return
-        setError(`Failed to authenticate: ${message}`)
-        setIsReady(false)
-      })
-
-      player.addListener('account_error', ({ message }: { message: string }) => {
-        if (!isMounted.current) return
-        setError(`Failed to validate Spotify account: ${message}`)
-        setIsReady(false)
-      })
+      player.addListener(
+        'account_error',
+        ({ message }: { message: string }) => {
+          if (!isMounted.current) return
+          setError(`Failed to validate Spotify account: ${message}`)
+          setIsReady(false)
+        }
+      )
 
       if (initializationCheckInterval.current) {
         clearInterval(initializationCheckInterval.current)
@@ -226,13 +246,31 @@ export function useSpotifyPlayerState(): UseSpotifyPlayerStateReturn {
       }, 10000)
     } catch (_error) {
       if (!isMounted.current) return
-      setError(_error instanceof Error ? _error.message : 'Failed to initialize Spotify player')
+      setError(
+        _error instanceof Error
+          ? _error.message
+          : 'Failed to initialize Spotify player'
+      )
       setIsReady(false)
     }
-  }, [isInitialized, playerInstance, isMounted, setError, setIsReady, checkPlayerReady, deviceId, setDeviceId, setPlaybackState])
+  }, [
+    isInitialized,
+    playerInstance,
+    isMounted,
+    setError,
+    setIsReady,
+    checkPlayerReady,
+    deviceId,
+    setDeviceId,
+    setPlaybackState
+  ])
 
   const reconnectPlayer = useCallback(async (): Promise<void> => {
-    if (!isMounted.current || reconnectAttempts.current >= MAX_RECONNECT_ATTEMPTS) return
+    if (
+      !isMounted.current ||
+      reconnectAttempts.current >= MAX_RECONNECT_ATTEMPTS
+    )
+      return
 
     reconnectAttempts.current++
 
@@ -251,7 +289,9 @@ export function useSpotifyPlayerState(): UseSpotifyPlayerStateReturn {
       if (reconnectAttempts.current < MAX_RECONNECT_ATTEMPTS) {
         setTimeout(reconnectPlayer, 2000)
       } else {
-        setError('Failed to reconnect to Spotify player after multiple attempts')
+        setError(
+          'Failed to reconnect to Spotify player after multiple attempts'
+        )
       }
     }
   }, [isMounted, playerInstance, initializePlayer, setError])
@@ -308,23 +348,38 @@ export function useSpotifyPlayerState(): UseSpotifyPlayerStateReturn {
         })
 
         if (state.is_playing && state.context?.uri) {
-          console.log('[SpotifyPlayer] Setting up playlist change status handler')
+          console.log(
+            '[SpotifyPlayer] Setting up playlist change status handler'
+          )
 
           const hasChanges = await new Promise<boolean>((resolve) => {
             const handler = (e: CustomEvent) => {
-              console.log('[SpotifyPlayer] Received playlistChangeStatus response:', e.detail)
-              window.removeEventListener('playlistChangeStatus', handler as EventListener)
+              console.log(
+                '[SpotifyPlayer] Received playlistChangeStatus response:',
+                e.detail
+              )
+              window.removeEventListener(
+                'playlistChangeStatus',
+                handler as EventListener
+              )
               resolve(e.detail.hasChanges)
             }
-            window.addEventListener('playlistChangeStatus', handler as EventListener)
+            window.addEventListener(
+              'playlistChangeStatus',
+              handler as EventListener
+            )
 
-            console.log('[SpotifyPlayer] Dispatching getPlaylistChangeStatus event')
+            console.log(
+              '[SpotifyPlayer] Dispatching getPlaylistChangeStatus event'
+            )
             const statusEvent = new CustomEvent('getPlaylistChangeStatus')
             window.dispatchEvent(statusEvent)
           })
 
           if (hasChanges) {
-            console.log('[SpotifyPlayer] Reinitializing playback with updated playlist')
+            console.log(
+              '[SpotifyPlayer] Reinitializing playback with updated playlist'
+            )
             try {
               const currentTrackUri = state.item?.uri
               const currentPosition = state.progress_ms
@@ -354,14 +409,21 @@ export function useSpotifyPlayerState(): UseSpotifyPlayerStateReturn {
 
               console.log('[SpotifyPlayer] Playback reinitialized successfully')
             } catch (error) {
-              console.error('[SpotifyPlayer] Error reinitializing playback:', error)
+              console.error(
+                '[SpotifyPlayer] Error reinitializing playback:',
+                error
+              )
             }
           }
         }
       }
     } catch (_error) {
       console.error('[SpotifyPlayer] Error refreshing playlist state:', _error)
-      if (_error instanceof Error && 'status' in _error && _error.status === 404) {
+      if (
+        _error instanceof Error &&
+        'status' in _error &&
+        _error.status === 404
+      ) {
         await reconnectPlayer()
       }
     }
@@ -409,4 +471,4 @@ export function useSpotifyPlayerState(): UseSpotifyPlayerStateReturn {
     refreshPlayerState,
     refreshPlaylistState
   }
-} 
+}

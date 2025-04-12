@@ -24,7 +24,9 @@ interface ErrorResponse {
   details?: unknown
 }
 
-export async function GET(): Promise<NextResponse<SpotifyTokenResponse | ErrorResponse>> {
+export async function GET(): Promise<
+  NextResponse<SpotifyTokenResponse | ErrorResponse>
+> {
   try {
     if (!refreshToken) {
       throw new AppError(ERROR_MESSAGES.UNAUTHORIZED, undefined, 'TokenRefresh')
@@ -50,7 +52,10 @@ export async function GET(): Promise<NextResponse<SpotifyTokenResponse | ErrorRe
     })
 
     if (!response.ok) {
-      const errorData = await response.json().catch(() => ({})) as Record<string, unknown>
+      const errorData = (await response.json().catch(() => ({}))) as Record<
+        string,
+        unknown
+      >
       console.error('\n[ERROR] Failed to refresh token:', {
         status: response.status,
         statusText: response.statusText,
@@ -69,7 +74,7 @@ export async function GET(): Promise<NextResponse<SpotifyTokenResponse | ErrorRe
       )
     }
 
-    const data = await response.json() as SpotifyTokenResponse
+    const data = (await response.json()) as SpotifyTokenResponse
 
     return NextResponse.json(data)
   } catch (error) {

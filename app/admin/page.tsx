@@ -72,7 +72,7 @@ export default function AdminPage(): JSX.Element {
           setHealthStatus((prev) => ({ ...prev, token: 'error' }))
           return
         }
-        const { expires_in } = await response.json() as TokenResponse
+        const { expires_in } = (await response.json()) as TokenResponse
 
         // If token is about to expire (less than 5 minutes), refresh it
         if (expires_in <= 300) {
@@ -120,8 +120,10 @@ export default function AdminPage(): JSX.Element {
     }
 
     try {
-      console.log(`Attempting player recovery (attempt ${recoveryAttempts + 1}/${maxRecoveryAttempts})`)
-      
+      console.log(
+        `Attempting player recovery (attempt ${recoveryAttempts + 1}/${maxRecoveryAttempts})`
+      )
+
       // First, try to refresh the player state
       if (typeof window.refreshSpotifyPlayer === 'function') {
         await window.refreshSpotifyPlayer()
@@ -138,7 +140,7 @@ export default function AdminPage(): JSX.Element {
     } catch (error) {
       console.error('Recovery attempt failed:', error)
       setRecoveryAttempts((prev) => prev + 1)
-      
+
       // Calculate delay with exponential backoff
       const delay = baseDelay * Math.pow(2, recoveryAttempts)
       recoveryTimeout.current = setTimeout(() => {
@@ -149,8 +151,12 @@ export default function AdminPage(): JSX.Element {
 
   // Listen for player verification errors
   useEffect(() => {
-    const handlePlayerError = (event: CustomEvent<{ error?: { message?: string } }>): void => {
-      if (event.detail?.error?.message?.includes('Player verification failed')) {
+    const handlePlayerError = (
+      event: CustomEvent<{ error?: { message?: string } }>
+    ): void => {
+      if (
+        event.detail?.error?.message?.includes('Player verification failed')
+      ) {
         console.error('Player verification failed, attempting recovery')
         setHealthStatus((prev) => ({ ...prev, device: 'unresponsive' }))
         void attemptRecovery()
@@ -160,7 +166,10 @@ export default function AdminPage(): JSX.Element {
     window.addEventListener('playerError', handlePlayerError as EventListener)
 
     return (): void => {
-      window.removeEventListener('playerError', handlePlayerError as EventListener)
+      window.removeEventListener(
+        'playerError',
+        handlePlayerError as EventListener
+      )
       if (recoveryTimeout.current) {
         clearTimeout(recoveryTimeout.current)
       }
@@ -252,7 +261,7 @@ export default function AdminPage(): JSX.Element {
           try {
             setIsLoading(true)
             const response = await fetch('/api/refresh-site')
-            const data = await response.json() as RefreshResponse
+            const data = (await response.json()) as RefreshResponse
 
             if (!response.ok) {
               console.error(
@@ -341,10 +350,16 @@ export default function AdminPage(): JSX.Element {
       }))
     }
 
-    window.addEventListener('playbackUpdate', handlePlaybackUpdate as EventListener)
+    window.addEventListener(
+      'playbackUpdate',
+      handlePlaybackUpdate as EventListener
+    )
 
     return (): void => {
-      window.removeEventListener('playbackUpdate', handlePlaybackUpdate as EventListener)
+      window.removeEventListener(
+        'playbackUpdate',
+        handlePlaybackUpdate as EventListener
+      )
     }
   }, [])
 
@@ -367,7 +382,10 @@ export default function AdminPage(): JSX.Element {
         })
 
         // If we have a current track in the fixed playlist, resume from that position
-        if (state?.context?.uri === `spotify:playlist:${fixedPlaylistId}` && state?.item) {
+        if (
+          state?.context?.uri === `spotify:playlist:${fixedPlaylistId}` &&
+          state?.item
+        ) {
           await sendApiRequest({
             path: 'me/player/play',
             method: 'PUT',
@@ -399,19 +417,19 @@ export default function AdminPage(): JSX.Element {
       console.error('Playback control failed:', error)
       setError('Failed to control playback')
       setHealthStatus((prev) => ({ ...prev, playback: 'error' }))
-      
+
       // Attempt automatic recovery
       try {
         // First try to refresh the player state
         if (typeof window.refreshSpotifyPlayer === 'function') {
           await window.refreshSpotifyPlayer()
         }
-        
+
         // Then try to reconnect the player
         if (typeof window.spotifyPlayerInstance?.connect === 'function') {
           await window.spotifyPlayerInstance.connect()
         }
-        
+
         // Finally try the original playback action again
         if (action === 'play') {
           await sendApiRequest({
@@ -427,7 +445,7 @@ export default function AdminPage(): JSX.Element {
             method: 'POST'
           })
         }
-        
+
         // If we get here, recovery was successful
         setError(null)
         setHealthStatus((prev) => ({ ...prev, playback: 'playing' }))
@@ -451,7 +469,7 @@ export default function AdminPage(): JSX.Element {
       setError(null)
 
       const response = await fetch('/api/refresh-site')
-      const data = await response.json() as RefreshResponse
+      const data = (await response.json()) as RefreshResponse
 
       if (!response.ok) {
         throw new Error(data.message ?? 'Failed to refresh site')
@@ -538,7 +556,11 @@ export default function AdminPage(): JSX.Element {
               </span>
               {playbackInfo?.currentTrack && (
                 <span className='text-sm text-gray-400'>
-                  - <span className='font-medium text-white'>{playbackInfo.currentTrack}</span> ({formatTime(playbackInfo.progress)})
+                  -{' '}
+                  <span className='text-white font-medium'>
+                    {playbackInfo.currentTrack}
+                  </span>{' '}
+                  ({formatTime(playbackInfo.progress)})
                 </span>
               )}
             </div>
@@ -589,21 +611,21 @@ export default function AdminPage(): JSX.Element {
             <button
               onClick={() => void handlePlayback('play')}
               disabled={isLoading || !isReady}
-              className='flex-1 rounded-lg bg-green-600 px-4 py-2 font-medium text-white transition-colors hover:bg-green-700 disabled:cursor-not-allowed disabled:opacity-50'
+              className='text-white flex-1 rounded-lg bg-green-600 px-4 py-2 font-medium transition-colors hover:bg-green-700 disabled:cursor-not-allowed disabled:opacity-50'
             >
               {isLoading ? 'Loading...' : 'Play'}
             </button>
             <button
               onClick={() => void handlePlayback('skip')}
               disabled={isLoading || !isReady}
-              className='flex-1 rounded-lg bg-blue-600 px-4 py-2 font-medium text-white transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50'
+              className='text-white flex-1 rounded-lg bg-blue-600 px-4 py-2 font-medium transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50'
             >
               {isLoading ? 'Loading...' : 'Skip'}
             </button>
             <button
               onClick={() => void handleRefresh()}
               disabled={isLoading || !isReady}
-              className='flex-1 rounded-lg bg-purple-600 px-4 py-2 font-medium text-white transition-colors hover:bg-purple-700 disabled:cursor-not-allowed disabled:opacity-50'
+              className='text-white flex-1 rounded-lg bg-purple-600 px-4 py-2 font-medium transition-colors hover:bg-purple-700 disabled:cursor-not-allowed disabled:opacity-50'
             >
               {isLoading ? 'Loading...' : 'Refresh'}
             </button>

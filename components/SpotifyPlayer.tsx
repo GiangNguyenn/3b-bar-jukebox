@@ -24,7 +24,9 @@ export function SpotifyPlayer(): React.ReactElement | null {
     reconnectPlayer,
     refreshPlaylistState
   } = useSpotifyPlayerState()
-  const [playbackState, setPlaybackState] = useState<'playing' | 'paused' | 'stopped'>('stopped')
+  const [playbackState, setPlaybackState] = useState<
+    'playing' | 'paused' | 'stopped'
+  >('stopped')
 
   useEffect(() => {
     isMounted.current = true
@@ -61,7 +63,7 @@ export function SpotifyPlayer(): React.ReactElement | null {
           path: 'me/player',
           method: 'GET'
         })
-        
+
         if (state?.is_playing) {
           setPlaybackState('playing')
           // Dispatch playback update event
@@ -123,12 +125,12 @@ export function SpotifyPlayer(): React.ReactElement | null {
   if (error) {
     const retryCount = reconnectAttempts?.current ?? 0
     return (
-      <div className="text-red-500">
+      <div className='text-red-500'>
         <p>Error: {error}</p>
         {retryCount < MAX_RECONNECT_ATTEMPTS && (
           <button
             onClick={(): void => void reconnectPlayer()}
-            className="mt-2 px-4 py-2 bg-red-500 text-white rounded hover:bg-red-600"
+            className='text-white mt-2 rounded bg-red-500 px-4 py-2 hover:bg-red-600'
           >
             Retry Connection
           </button>
