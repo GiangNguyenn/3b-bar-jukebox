@@ -58,6 +58,8 @@ export default function AdminPage(): JSX.Element {
   const isRefreshing = useRef<boolean>(false)
   const maxRecoveryAttempts = 5
   const baseDelay = 2000 // 2 seconds
+  const [consoleLogs, setConsoleLogs] = useState<string[]>([])
+  const [uptime, setUptime] = useState(0)
 
   // Check token validity and refresh if needed
   useEffect(() => {
@@ -408,6 +410,66 @@ export default function AdminPage(): JSX.Element {
     }
   }, [])
 
+  // Capture console logs
+  useEffect(() => {
+    const originalConsoleLog = console.log
+    const originalConsoleError = console.error
+
+    const formatArg = (arg: unknown): string => {
+      if (arg === null) return 'null'
+      if (typeof arg === 'undefined') return 'undefined'
+      if (typeof arg === 'string') return arg
+      if (typeof arg === 'number') return arg.toString()
+      if (typeof arg === 'boolean') return arg.toString()
+      if (typeof arg === 'object') {
+        try {
+          if (arg instanceof Error) return arg.message
+          if (arg instanceof Date) return arg.toISOString()
+          const stringified = JSON.stringify(arg)
+          if (stringified === undefined) return '[Object]'
+          return stringified
+        } catch {
+          return '[Object]'
+        }
+      }
+      if (typeof arg === 'function') return '[Function]'
+      if (typeof arg === 'symbol') return arg.toString()
+      if (typeof arg === 'bigint') return arg.toString()
+      return '[Unknown]'
+    }
+
+    console.log = (...args: unknown[]): void => {
+      originalConsoleLog(...args)
+      setConsoleLogs(prev => {
+        const newLog = args.map(formatArg).join(' ')
+        return [...prev.slice(-9), newLog]
+      })
+    }
+
+    console.error = (...args: unknown[]): void => {
+      originalConsoleError(...args)
+      setConsoleLogs(prev => {
+        const newLog = args.map(formatArg).join(' ')
+        return [...prev.slice(-9), `[ERROR] ${newLog}`]
+      })
+    }
+
+    return (): void => {
+      console.log = originalConsoleLog
+      console.error = originalConsoleError
+    }
+  }, [])
+
+  // Uptime timer
+  useEffect(() => {
+    const startTime = Date.now()
+    const timer = setInterval((): void => {
+      setUptime(Date.now() - startTime)
+    }, 1000)
+
+    return (): void => clearInterval(timer)
+  }, [])
+
   const formatTime = (ms: number): string => {
     const minutes = Math.floor(ms / 60000)
     const seconds = Math.floor((ms % 60000) / 1000)
@@ -548,7 +610,7 @@ export default function AdminPage(): JSX.Element {
 
         <div className='flex items-center gap-2 rounded-lg border border-gray-800 bg-gray-900/50 p-4'>
           <div
-            className={`h-3 w-3 rounded-full ${isReady ? 'animate-pulse bg-green-500' : 'bg-yellow-500'}`}
+            className={`h-3 w-3 rounded-full ${isReady ? 'bg-green-500' : 'bg-yellow-500'}`}
           />
           <span className='font-medium'>
             {isReady ? 'Player Ready' : 'Player Initializing...'}
@@ -581,7 +643,7 @@ export default function AdminPage(): JSX.Element {
             <div
               className={`h-3 w-3 rounded-full ${
                 healthStatus.playback === 'playing'
-                  ? 'bg-green-500'
+                  ? 'animate-pulse bg-green-500'
                   : healthStatus.playback === 'paused'
                     ? 'bg-yellow-500'
                     : healthStatus.playback === 'error'
@@ -676,7 +738,20 @@ export default function AdminPage(): JSX.Element {
             </button>
           </div>
           <div className='text-center text-sm text-gray-400'>
-            Next auto-refresh in {formatTime(timeUntilRefresh)}
+            <div className='flex justify-between'>
+              <span>Uptime: {formatTime(uptime)}</span>
+              <span>Next auto-refresh in {formatTime(timeUntilRefresh)}</span>
+            </div>
+          </div>
+          <div className='mt-4 rounded-lg border border-gray-800 bg-gray-900/50 p-4'>
+            <h3 className='mb-2 text-sm font-medium text-gray-400'>Recent Console Logs</h3>
+            <div className='max-h-40 overflow-y-auto font-mono text-xs [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]'>
+              {consoleLogs.map((log, index) => (
+                <div key={index} className='py-1'>
+                  {log}
+                </div>
+              ))}
+            </div>
           </div>
         </div>
       </div>
