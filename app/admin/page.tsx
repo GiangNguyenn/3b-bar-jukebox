@@ -397,6 +397,42 @@ export default function AdminPage(): JSX.Element {
       console.error('Playback control failed:', error)
       setError('Failed to control playback')
       setHealthStatus((prev) => ({ ...prev, playback: 'error' }))
+      
+      // Attempt automatic recovery
+      try {
+        // First try to refresh the player state
+        if (typeof window.refreshSpotifyPlayer === 'function') {
+          await window.refreshSpotifyPlayer()
+        }
+        
+        // Then try to reconnect the player
+        if (typeof window.spotifyPlayerInstance?.connect === 'function') {
+          await window.spotifyPlayerInstance.connect()
+        }
+        
+        // Finally try the original playback action again
+        if (action === 'play') {
+          await sendApiRequest({
+            path: 'me/player/play',
+            method: 'PUT',
+            body: {
+              context_uri: `spotify:playlist:${fixedPlaylistId}`
+            }
+          })
+        } else {
+          await sendApiRequest({
+            path: 'me/player/next',
+            method: 'POST'
+          })
+        }
+        
+        // If we get here, recovery was successful
+        setError(null)
+        setHealthStatus((prev) => ({ ...prev, playback: 'playing' }))
+      } catch (recoveryError) {
+        console.error('Recovery attempt failed:', recoveryError)
+        // Keep the original error state if recovery fails
+      }
     } finally {
       setIsLoading(false)
     }
