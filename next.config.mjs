@@ -3,11 +3,11 @@ const nextConfig = {
   async rewrites() {
     return [
       {
-        source: "/api/auth/:path*",
-        destination: "/api/auth",
-      },
-    ];
-  },
-};
+        source: '/api/auth/:path*',
+        destination: '/api/auth'
+      }
+    ]
+  }
+}
 
-export default nextConfig;
+export default nextConfig
