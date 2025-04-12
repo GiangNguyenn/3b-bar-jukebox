@@ -1,7 +1,15 @@
 'use client'
 
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useSpotifyPlayerState } from '@/hooks/useSpotifyPlayerState'
+import { sendApiRequest } from '@/shared/api'
+import { SpotifyPlaybackState } from '@/shared/types'
+
+const PLAYBACK_INTERVALS = {
+  playing: 15000, // 15 seconds when playing
+  paused: 30000, // 30 seconds when paused
+  stopped: 60000 // 60 seconds when stopped
+}
 
 export function SpotifyPlayer(): React.ReactElement | null {
   const isMounted = useRef(true)
@@ -16,6 +24,7 @@ export function SpotifyPlayer(): React.ReactElement | null {
     reconnectPlayer,
     refreshPlaylistState
   } = useSpotifyPlayerState()
+  const [playbackState, setPlaybackState] = useState<'playing' | 'paused' | 'stopped'>('stopped')
 
   useEffect(() => {
     isMounted.current = true
@@ -44,14 +53,72 @@ export function SpotifyPlayer(): React.ReactElement | null {
   }, [initializePlayer, initializationCheckInterval, playlistRefreshInterval])
 
   useEffect(() => {
-    const interval = deviceId ? setInterval((): void => void refreshPlaylistState(), 5000) : null
+    if (!deviceId) return
+
+    const updatePlaybackState = async (): Promise<void> => {
+      try {
+        const state = await sendApiRequest<SpotifyPlaybackState>({
+          path: 'me/player',
+          method: 'GET'
+        })
+        
+        if (state?.is_playing) {
+          setPlaybackState('playing')
+          // Dispatch playback update event
+          window.dispatchEvent(
+            new CustomEvent('playbackUpdate', {
+              detail: {
+                isPlaying: true,
+                currentTrack: state.item?.name ?? '',
+                progress: state.progress_ms ?? 0
+              }
+            })
+          )
+        } else if (state?.item) {
+          setPlaybackState('paused')
+          // Dispatch playback update event
+          window.dispatchEvent(
+            new CustomEvent('playbackUpdate', {
+              detail: {
+                isPlaying: false,
+                currentTrack: state.item.name,
+                progress: state.progress_ms ?? 0
+              }
+            })
+          )
+        } else {
+          setPlaybackState('stopped')
+          // Dispatch playback update event
+          window.dispatchEvent(
+            new CustomEvent('playbackUpdate', {
+              detail: {
+                isPlaying: false,
+                currentTrack: '',
+                progress: 0
+              }
+            })
+          )
+        }
+      } catch (error) {
+        console.error('[SpotifyPlayer] Error updating playback state:', error)
+      }
+    }
+
+    // Initial state update
+    void updatePlaybackState()
+
+    // Set up interval based on current playback state
+    const interval = setInterval(() => {
+      void updatePlaybackState()
+      void refreshPlaylistState()
+    }, PLAYBACK_INTERVALS[playbackState])
 
     return (): void => {
       if (interval) {
         clearInterval(interval)
       }
     }
-  }, [deviceId, refreshPlaylistState])
+  }, [deviceId, refreshPlaylistState, playbackState])
 
   if (error) {
     const retryCount = reconnectAttempts?.current ?? 0
