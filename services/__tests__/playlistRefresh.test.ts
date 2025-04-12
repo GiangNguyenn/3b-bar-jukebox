@@ -156,10 +156,10 @@ describe('PlaylistRefreshService', () => {
       playlistId: 'playlist1',
       currentTrackId: 'track21', // Current track is at index 20
       playlistTracks: Array.from({ length: 25 }, (_, i) => ({
-        track: { 
-          id: `track${i + 1}`, 
-          uri: `spotify:track:track${i + 1}`, 
-          name: `Track ${i + 1}` 
+        track: {
+          id: `track${i + 1}`,
+          uri: `spotify:track:track${i + 1}`,
+          name: `Track ${i + 1}`
         }
       })) as TrackItem[],
       playbackState: { is_playing: true } as any
