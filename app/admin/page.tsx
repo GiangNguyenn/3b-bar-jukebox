@@ -29,10 +29,6 @@ interface PlaybackInfo {
   progress: number
 }
 
-interface TokenResponse {
-  expires_in: number
-}
-
 interface RefreshResponse {
   message?: string
   success: boolean
@@ -67,74 +63,82 @@ export default function AdminPage(): JSX.Element {
   useEffect(() => {
     const checkToken = async (): Promise<void> => {
       try {
+        console.log('[Token Check] Starting token validation check')
         // First check if token is valid by making an API request
-        await sendApiRequest<{ items: SpotifyPlaylistItem[] }>({
+        const response = await sendApiRequest<{ items: SpotifyPlaylistItem[] }>({
           path: '/me/playlists',
           method: 'GET'
         })
-        console.log('[Token Health] Token is valid')
-        setHealthStatus((prev) => ({ ...prev, token: 'valid' }))
-
-        // Then check if token needs refresh
-        const response = await fetch('/api/token')
-        if (!response.ok) {
-          // If token check fails, try to refresh it
-          try {
-            const refreshResponse = await fetch('/api/refresh-token', {
-              method: 'POST'
-            })
-            if (!refreshResponse.ok) {
-              throw new Error('Failed to refresh token')
-            }
-            console.log('Token refreshed successfully')
-            setHealthStatus((prev) => ({ ...prev, token: 'valid' }))
-          } catch (error) {
-            console.error('Token refresh failed:', error)
-            setHealthStatus((prev) => ({ ...prev, token: 'error' }))
-          }
+        
+        if (response) {
+          console.log('[Token Check] Token is valid - successfully fetched playlists')
+          setHealthStatus((prev) => ({ ...prev, token: 'valid' }))
           return
         }
-        const { expires_in } = (await response.json()) as TokenResponse
-
-        // If token is about to expire (less than 5 minutes), refresh it
-        if (expires_in <= 300) {
-          try {
-            const refreshResponse = await fetch('/api/refresh-token', {
-              method: 'POST'
-            })
-            if (!refreshResponse.ok) {
-              throw new Error('Failed to refresh token')
-            }
-            console.log('Token refreshed successfully')
-            setHealthStatus((prev) => ({ ...prev, token: 'valid' }))
-          } catch (error) {
-            console.error('Token refresh failed:', error)
-            setHealthStatus((prev) => ({ ...prev, token: 'error' }))
-          }
-        }
       } catch (error) {
-        console.error('Token check failed:', error)
-        // If initial check fails, try to refresh the token
-        try {
-          const refreshResponse = await fetch('/api/refresh-token', {
-            method: 'POST'
-          })
-          if (!refreshResponse.ok) {
-            throw new Error('Failed to refresh token')
-          }
-          console.log('Token refreshed successfully')
+        console.error('[Token Check] Initial token validation failed:', error)
+        // Don't immediately set token to error, try to refresh first
+      }
+
+      // If token check fails, try to refresh it
+      try {
+        console.log('[Token Check] Attempting token refresh')
+        const refreshResponse = await fetch('/api/token', {
+          method: 'GET',
+          cache: 'no-store'
+        })
+        
+        if (refreshResponse.ok) {
+          console.log('[Token Check] Token refresh successful')
           setHealthStatus((prev) => ({ ...prev, token: 'valid' }))
-        } catch (refreshError) {
-          console.error('Token refresh failed:', refreshError)
+          return
+        }
+        
+        console.log('[Token Check] Token refresh failed, checking playback state')
+        // If refresh fails, check if we can still play music
+        const playbackState = await sendApiRequest<SpotifyPlaybackState>({
+          path: 'me/player',
+          method: 'GET'
+        })
+        
+        if (playbackState?.is_playing) {
+          // If music is playing, token is actually valid despite refresh failure
+          console.log('[Token Check] Token is valid - music is playing')
+          setHealthStatus((prev) => ({ ...prev, token: 'valid' }))
+          return
+        }
+        
+        // Only set token to error if we can't play music
+        console.error('[Token Check] Token refresh failed and music not playing')
+        setHealthStatus((prev) => ({ ...prev, token: 'error' }))
+      } catch (error) {
+        console.error('[Token Check] Token refresh failed with error:', error)
+        // Only set token to error if we can't play music
+        try {
+          console.log('[Token Check] Final attempt - checking playback state')
+          const playbackState = await sendApiRequest<SpotifyPlaybackState>({
+            path: 'me/player',
+            method: 'GET'
+          })
+          if (playbackState?.is_playing) {
+            console.log('[Token Check] Token is valid - music is playing')
+            setHealthStatus((prev) => ({ ...prev, token: 'valid' }))
+            return
+          }
+        } catch (playbackError) {
+          console.error('[Token Check] Final playback check failed:', playbackError)
           setHealthStatus((prev) => ({ ...prev, token: 'error' }))
         }
       }
     }
 
+    // Initial check
+    void checkToken()
+
+    // Set up interval
     tokenCheckInterval.current = setInterval(() => {
       void checkToken()
     }, TOKEN_CHECK_INTERVAL)
-    void checkToken() // Initial check
 
     return (): void => {
       if (tokenCheckInterval.current) {
