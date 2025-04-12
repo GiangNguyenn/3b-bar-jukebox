@@ -440,7 +440,7 @@ export default function AdminPage(): JSX.Element {
 
     console.log = (...args: unknown[]): void => {
       originalConsoleLog(...args)
-      setConsoleLogs(prev => {
+      setConsoleLogs((prev) => {
         const newLog = args.map(formatArg).join(' ')
         return [...prev.slice(-9), newLog]
       })
@@ -448,7 +448,7 @@ export default function AdminPage(): JSX.Element {
 
     console.error = (...args: unknown[]): void => {
       originalConsoleError(...args)
-      setConsoleLogs(prev => {
+      setConsoleLogs((prev) => {
         const newLog = args.map(formatArg).join(' ')
         return [...prev.slice(-9), `[ERROR] ${newLog}`]
       })
@@ -744,8 +744,10 @@ export default function AdminPage(): JSX.Element {
             </div>
           </div>
           <div className='mt-4 rounded-lg border border-gray-800 bg-gray-900/50 p-4'>
-            <h3 className='mb-2 text-sm font-medium text-gray-400'>Recent Console Logs</h3>
-            <div className='max-h-40 overflow-y-auto font-mono text-xs [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]'>
+            <h3 className='mb-2 text-sm font-medium text-gray-400'>
+              Recent Console Logs
+            </h3>
+            <div className='max-h-40 overflow-y-auto font-mono text-xs [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden'>
               {consoleLogs.map((log, index) => (
                 <div key={index} className='py-1'>
                   {log}
