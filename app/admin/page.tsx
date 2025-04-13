@@ -16,6 +16,8 @@ const DEVICE_CHECK_INTERVAL = {
 }
 const MAX_RECOVERY_ATTEMPTS = 3
 const TOKEN_CHECK_INTERVAL = 120000 // 2 minutes in milliseconds
+const TOKEN_REFRESH_THRESHOLD = 300000 // 5 minutes in milliseconds
+const TOKEN_EXPIRATION_BUFFER = 60000 // 1 minute buffer
 
 interface HealthStatus {
   device: 'healthy' | 'unresponsive' | 'disconnected' | 'unknown'
@@ -67,19 +69,61 @@ export default function AdminPage(): JSX.Element {
     scope: string
     type: string
     remainingTime: number
+    lastActualRefresh: number
   }>({
     lastRefresh: 0,
     expiresIn: 0,
     scope: '',
     type: '',
-    remainingTime: 0
+    remainingTime: 0,
+    lastActualRefresh: 0
   })
+
+  const formatTokenTime = (timestamp: number): string => {
+    if (!timestamp) return 'Never'
+    const date = new Date(timestamp)
+    return date.toLocaleTimeString(undefined, {
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: true
+    })
+  }
 
   // Check token validity and refresh if needed
   useEffect(() => {
     const checkToken = async (): Promise<void> => {
       try {
-        // First check if token is valid by making an API request
+        // First check if token is about to expire
+        const now = Date.now()
+        const timeUntilExpiration = tokenInfo.lastRefresh + tokenInfo.expiresIn - now
+
+        // If token is about to expire, refresh it proactively
+        if (timeUntilExpiration < TOKEN_REFRESH_THRESHOLD) {
+          console.log('[Token] Proactively refreshing token (expires in:', formatTimeRemaining(timeUntilExpiration), ')')
+          const refreshResponse = await fetch('/api/token', {
+            method: 'GET',
+            cache: 'no-store'
+          })
+
+          if (refreshResponse.ok) {
+            const data = await refreshResponse.json()
+            const newRefreshTime = Date.now()
+            setTokenInfo((prev) => ({
+              ...prev,
+              lastRefresh: newRefreshTime,
+              expiresIn: data.expires_in * 1000,
+              scope: data.scope,
+              type: data.token_type,
+              lastActualRefresh: newRefreshTime,
+              remainingTime: data.expires_in * 1000
+            }))
+            setHealthStatus((prev) => ({ ...prev, token: 'valid' }))
+            return
+          }
+        }
+
+        // If token is not about to expire, validate it
         const response = await sendApiRequest<{ items: SpotifyPlaylistItem[] }>(
           {
             path: '/me/playlists',
@@ -92,11 +136,11 @@ export default function AdminPage(): JSX.Element {
           return
         }
       } catch (error) {
-        console.error('[Token] Initial token validation failed:', error)
+        console.error('[Token] Validation failed:', error)
         // Don't immediately set token to error, try to refresh first
       }
 
-      // If token check fails, try to refresh it
+      // If we get here, either validation failed or proactive refresh failed
       try {
         const refreshResponse = await fetch('/api/token', {
           method: 'GET',
@@ -105,13 +149,17 @@ export default function AdminPage(): JSX.Element {
 
         if (refreshResponse.ok) {
           const data = await refreshResponse.json()
-          setTokenInfo({
-            lastRefresh: Date.now(),
+          const now = Date.now()
+          console.log('[Token] Refreshed at:', new Date(now).toISOString())
+          setTokenInfo((prev) => ({
+            ...prev,
+            lastRefresh: now,
             expiresIn: data.expires_in * 1000,
             scope: data.scope,
             type: data.token_type,
-            remainingTime: 0
-          })
+            lastActualRefresh: now,
+            remainingTime: data.expires_in * 1000
+          }))
           setHealthStatus((prev) => ({ ...prev, token: 'valid' }))
           return
         }
@@ -163,7 +211,7 @@ export default function AdminPage(): JSX.Element {
         clearInterval(tokenCheckInterval.current)
       }
     }
-  }, [])
+  }, [tokenInfo.lastRefresh, tokenInfo.expiresIn])
 
   const attemptRecovery = useCallback(async (): Promise<void> => {
     if (recoveryAttempts >= maxRecoveryAttempts) {
@@ -472,7 +520,7 @@ export default function AdminPage(): JSX.Element {
     return (): void => clearInterval(timer)
   }, [])
 
-  // Update token info when token is refreshed
+  // Update token info display
   useEffect(() => {
     const updateTokenInfo = async (): Promise<void> => {
       try {
@@ -481,25 +529,18 @@ export default function AdminPage(): JSX.Element {
         const now = Date.now()
         const remainingTime = Math.max(0, data.lastRefresh + data.expiresIn - now)
         
-        // Update token status based on remaining time
-        if (remainingTime <= 0) {
-          setHealthStatus((prev) => ({ ...prev, token: 'expired' }))
-        } else if (remainingTime < 300000) { // Less than 5 minutes remaining
-          setHealthStatus((prev) => ({ ...prev, token: 'expired' }))
-        } else {
-          setHealthStatus((prev) => ({ ...prev, token: 'valid' }))
-        }
-
-        setTokenInfo({
+        // If this is the first time we're getting token info, set lastActualRefresh
+        setTokenInfo((prev) => ({
+          ...prev,
           lastRefresh: data.lastRefresh,
           expiresIn: data.expiresIn,
           scope: data.scope,
           type: data.type,
-          remainingTime
-        })
+          remainingTime,
+          lastActualRefresh: prev.lastActualRefresh || data.lastRefresh
+        }))
       } catch (error) {
         console.error('[Token] Failed to fetch token info:', error)
-        setHealthStatus((prev) => ({ ...prev, token: 'error' }))
       }
     }
 
@@ -596,6 +637,21 @@ export default function AdminPage(): JSX.Element {
     if (minutes < 60) return `${minutes}m ago`
     const hours = Math.floor(minutes / 60)
     return `${hours}h ${minutes % 60}m ago`
+  }
+
+  const formatTokenExpiration = (lastRefresh: number, expiresIn: number): string => {
+    const expirationTime = lastRefresh + expiresIn
+    const now = Date.now()
+    const remainingTime = Math.max(0, expirationTime - now)
+    const expirationDate = new Date(expirationTime)
+    return `${formatTimeRemaining(remainingTime)} (${expirationDate.toLocaleTimeString()})`
+  }
+
+  const formatTokenScope = (scope: string): string => {
+    return scope
+      .split(' ')
+      .map((s) => s.replace(/-/g, ' '))
+      .join('\n')
   }
 
   const handlePlayback = async (action: 'play' | 'skip'): Promise<void> => {
@@ -824,13 +880,18 @@ export default function AdminPage(): JSX.Element {
                 <div className='invisible absolute left-0 top-0 z-10 rounded-lg bg-gray-800 p-2 text-xs text-gray-200 shadow-lg transition-all duration-200 group-hover:visible'>
                   <div className='whitespace-nowrap'>
                     <div>
-                      Expires in: {formatTimeRemaining(tokenInfo.remainingTime)}
+                      Token expires: {formatTokenExpiration(tokenInfo.lastRefresh, tokenInfo.expiresIn)}
                     </div>
                     <div>
-                      Last refresh: {formatTimeAgo(tokenInfo.lastRefresh)}
+                      Last token refresh: {formatTokenTime(tokenInfo.lastActualRefresh)}
                     </div>
-                    <div>Scope: {tokenInfo.scope}</div>
-                    <div>Type: {tokenInfo.type}</div>
+                    <div className='text-gray-400 text-[10px]'>
+                      (Display updates every 30s)
+                    </div>
+                    <div className='mt-1'>
+                      <div className='font-medium'>Permissions:</div>
+                      <div className='whitespace-pre'>{formatTokenScope(tokenInfo.scope)}</div>
+                    </div>
                   </div>
                 </div>
                 <svg
