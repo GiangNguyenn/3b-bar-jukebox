@@ -193,7 +193,9 @@ export function useSpotifyPlayerState(): UseSpotifyPlayerStateReturn {
           if (!isMounted.current) return
           try {
             const track = state.item
-            console.log(`[SpotifyPlayer] ${track?.name} - ${state.is_playing ? 'Playing' : 'Paused'}`)
+            console.log(
+              `[SpotifyPlayer] ${track?.name} - ${state.is_playing ? 'Playing' : 'Paused'}`
+            )
             setPlaybackState(state)
             if (state?.device?.id) {
               setDeviceId(state.device.id)
@@ -457,7 +459,9 @@ export function useSpotifyPlayerState(): UseSpotifyPlayerStateReturn {
   const handleStateChange = (state: SpotifyPlaybackState): void => {
     if (state) {
       const track = state.item
-      console.log(`[SpotifyPlayer] ${track?.name} - ${state.is_playing ? 'Playing' : 'Paused'}`)
+      console.log(
+        `[SpotifyPlayer] ${track?.name} - ${state.is_playing ? 'Playing' : 'Paused'}`
+      )
       setPlaybackState(state)
     }
   }
