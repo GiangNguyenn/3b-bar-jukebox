@@ -79,6 +79,8 @@ export default function AdminPage(): JSX.Element {
     lastActualRefresh: 0
   })
 
+  const lastTokenUpdate = useRef<number>(0)
+
   const formatTokenTime = (timestamp: number): string => {
     if (!timestamp) return 'Never'
     const date = new Date(timestamp)
@@ -524,12 +526,22 @@ export default function AdminPage(): JSX.Element {
   useEffect(() => {
     const updateTokenInfo = async (): Promise<void> => {
       try {
+        const now = Date.now()
+        // Only update if it's been at least 30 seconds since the last update
+        if (now - lastTokenUpdate.current < 30000) {
+          return
+        }
+
         const response = await fetch('/api/token-info')
         const data = await response.json()
-        const now = Date.now()
         const remainingTime = Math.max(0, data.lastRefresh + data.expiresIn - now)
         
-        // If this is the first time we're getting token info, set lastActualRefresh
+        console.log('[Token] Updating token info:', {
+          lastRefresh: new Date(data.lastRefresh).toISOString(),
+          expiresIn: formatTimeRemaining(data.expiresIn),
+          remainingTime: formatTimeRemaining(remainingTime)
+        })
+        
         setTokenInfo((prev) => ({
           ...prev,
           lastRefresh: data.lastRefresh,
@@ -539,25 +551,23 @@ export default function AdminPage(): JSX.Element {
           remainingTime,
           lastActualRefresh: prev.lastActualRefresh || data.lastRefresh
         }))
+
+        lastTokenUpdate.current = now
       } catch (error) {
         console.error('[Token] Failed to fetch token info:', error)
       }
     }
 
     // Initial update
-    if (healthStatus.token === 'valid' || healthStatus.token === 'expired') {
-      void updateTokenInfo()
-    }
+    void updateTokenInfo()
 
     // Set up interval for regular updates
     const interval = setInterval(() => {
-      if (healthStatus.token === 'valid' || healthStatus.token === 'expired') {
-        void updateTokenInfo()
-      }
+      void updateTokenInfo()
     }, 30000) // Update every 30 seconds
 
     return () => clearInterval(interval)
-  }, [healthStatus.token])
+  }, [])
 
   // Network connection monitoring
   useEffect(() => {
@@ -640,11 +650,8 @@ export default function AdminPage(): JSX.Element {
   }
 
   const formatTokenExpiration = (lastRefresh: number, expiresIn: number): string => {
-    const expirationTime = lastRefresh + expiresIn
-    const now = Date.now()
-    const remainingTime = Math.max(0, expirationTime - now)
-    const expirationDate = new Date(expirationTime)
-    return `${formatTimeRemaining(remainingTime)} (${expirationDate.toLocaleTimeString()})`
+    const expirationDate = new Date(lastRefresh + expiresIn)
+    return expirationDate.toLocaleTimeString()
   }
 
   const formatTokenScope = (scope: string): string => {
@@ -884,9 +891,6 @@ export default function AdminPage(): JSX.Element {
                     </div>
                     <div>
                       Last token refresh: {formatTokenTime(tokenInfo.lastActualRefresh)}
-                    </div>
-                    <div className='text-gray-400 text-[10px]'>
-                      (Display updates every 30s)
                     </div>
                     <div className='mt-1'>
                       <div className='font-medium'>Permissions:</div>
