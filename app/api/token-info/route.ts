@@ -15,10 +15,13 @@ interface TokenInfo {
 
 export async function GET(): Promise<NextResponse<TokenInfo>> {
   try {
-    const response = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL}/api/token`, {
-      method: 'GET',
-      cache: 'no-store'
-    })
+    const response = await fetch(
+      `${process.env.NEXT_PUBLIC_BASE_URL}/api/token`,
+      {
+        method: 'GET',
+        cache: 'no-store'
+      }
+    )
 
     if (!response.ok) {
       console.error('[TokenInfo] Token endpoint failed:', {
@@ -53,4 +56,4 @@ export async function GET(): Promise<NextResponse<TokenInfo>> {
       { status: 500 }
     )
   }
-} 
+}
