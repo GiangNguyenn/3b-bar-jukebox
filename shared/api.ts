@@ -53,7 +53,7 @@ export const sendApiRequest = async <T>({
 
   const makeRequest = async (): Promise<T> => {
     try {
-      const url = `${SPOTIFY_API_URL}/${path}`
+      const url = `${SPOTIFY_API_URL}${path.startsWith('/') ? path : `/${path}`}`
 
       const response = await fetch(url, {
         method,

@@ -15,16 +15,25 @@ interface TokenInfo {
 
 export async function GET(): Promise<NextResponse<TokenInfo>> {
   try {
-    const response = await fetch('/api/token', {
+    const response = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL}/api/token`, {
       method: 'GET',
       cache: 'no-store'
     })
 
     if (!response.ok) {
+      console.error('[TokenInfo] Token endpoint failed:', {
+        status: response.status,
+        statusText: response.statusText
+      })
       throw new AppError(ERROR_MESSAGES.UNAUTHORIZED)
     }
 
     const data = await response.json()
+
+    if (!data.access_token) {
+      console.error('[TokenInfo] Invalid token response:', data)
+      throw new AppError(ERROR_MESSAGES.UNAUTHORIZED)
+    }
 
     return NextResponse.json({
       lastRefresh: Date.now(),
