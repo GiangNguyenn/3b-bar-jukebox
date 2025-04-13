@@ -112,7 +112,8 @@ export default function AdminPage(): JSX.Element {
       try {
         // First check if token is about to expire
         const now = Date.now()
-        const timeUntilExpiration = tokenInfo.lastRefresh + tokenInfo.expiresIn - now
+        const timeUntilExpiration =
+          tokenInfo.lastRefresh + tokenInfo.expiresIn - now
 
         // If token is about to expire, refresh it proactively
         if (timeUntilExpiration < TOKEN_REFRESH_THRESHOLD) {
@@ -552,14 +553,17 @@ export default function AdminPage(): JSX.Element {
 
         const response = await fetch('/api/token-info')
         const data = (await response.json()) as TokenResponse
-        const remainingTime = Math.max(0, data.lastRefresh + data.expires_in * 1000 - now)
-        
+        const remainingTime = Math.max(
+          0,
+          data.lastRefresh + data.expires_in * 1000 - now
+        )
+
         console.log('[Token] Updating token info:', {
           lastRefresh: new Date(data.lastRefresh).toISOString(),
           expiresIn: formatTimeRemaining(data.expires_in * 1000),
           remainingTime: formatTimeRemaining(remainingTime)
         })
-        
+
         setTokenInfo((prev) => ({
           ...prev,
           lastRefresh: data.lastRefresh,
@@ -660,7 +664,10 @@ export default function AdminPage(): JSX.Element {
     return `${hours}h ${minutes % 60}m`
   }
 
-  const formatTokenExpiration = (lastRefresh: number, expiresIn: number): string => {
+  const formatTokenExpiration = (
+    lastRefresh: number,
+    expiresIn: number
+  ): string => {
     const expirationDate = new Date(lastRefresh + expiresIn)
     return expirationDate.toLocaleTimeString()
   }
