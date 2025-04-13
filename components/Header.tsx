@@ -161,6 +161,7 @@ const Header = (): JSX.Element => {
           alt='3B SAIGON JUKEBOX Logo'
           priority
           className={`transition-transform duration-200 hover:scale-105 ${isLoading ? 'animate-spin' : ''}`}
+          style={{ width: 'auto', height: 'auto' }}
         />
       </div>
       <h1 className='text-center font-[family-name:var(--font-belgrano)] text-4xl leading-tight text-primary-100'>

@@ -29,10 +29,12 @@ export async function GET(): Promise<
 > {
   try {
     if (!refreshToken) {
+      console.error('[Token] Missing refresh token')
       throw new AppError(ERROR_MESSAGES.UNAUTHORIZED, undefined, 'TokenRefresh')
     }
 
     if (!CLIENT_ID || !CLIENT_SECRET) {
+      console.error('[Token] Missing client credentials')
       throw new AppError(ERROR_MESSAGES.UNAUTHORIZED, undefined, 'TokenRefresh')
     }
 
@@ -56,7 +58,7 @@ export async function GET(): Promise<
         string,
         unknown
       >
-      console.error('\n[ERROR] Failed to refresh token:', {
+      console.error('[Token] Failed to refresh token:', {
         status: response.status,
         statusText: response.statusText,
         error: errorData,
@@ -75,10 +77,10 @@ export async function GET(): Promise<
     }
 
     const data = (await response.json()) as SpotifyTokenResponse
-
+    console.log('[Token] Successfully refreshed token')
     return NextResponse.json(data)
   } catch (error) {
-    console.error('\n[ERROR] Unexpected error in token refresh:', error)
+    console.error('[Token] Unexpected error in token refresh:', error)
     const appError =
       error instanceof AppError
         ? error

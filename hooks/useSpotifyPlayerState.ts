@@ -128,7 +128,8 @@ export function useSpotifyPlayerState(): UseSpotifyPlayerStateReturn {
         getOAuthToken: (cb: (token: string) => void) => {
           cb(access_token)
         },
-        volume: 0.5
+        volume: 0.5,
+        robustness: 'LOW'
       })
 
       // Add a delay before connecting to ensure SDK is fully loaded
