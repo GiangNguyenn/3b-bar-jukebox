@@ -65,7 +65,6 @@ export default function AdminPage(): JSX.Element {
   useEffect(() => {
     const checkToken = async (): Promise<void> => {
       try {
-        console.log('[Token Check] Starting token validation check')
         // First check if token is valid by making an API request
         const response = await sendApiRequest<{ items: SpotifyPlaylistItem[] }>(
           {
@@ -75,34 +74,26 @@ export default function AdminPage(): JSX.Element {
         )
 
         if (response) {
-          console.log(
-            '[Token Check] Token is valid - successfully fetched playlists'
-          )
           setHealthStatus((prev) => ({ ...prev, token: 'valid' }))
           return
         }
       } catch (error) {
-        console.error('[Token Check] Initial token validation failed:', error)
+        console.error('[Token] Initial token validation failed:', error)
         // Don't immediately set token to error, try to refresh first
       }
 
       // If token check fails, try to refresh it
       try {
-        console.log('[Token Check] Attempting token refresh')
         const refreshResponse = await fetch('/api/token', {
           method: 'GET',
           cache: 'no-store'
         })
 
         if (refreshResponse.ok) {
-          console.log('[Token Check] Token refresh successful')
           setHealthStatus((prev) => ({ ...prev, token: 'valid' }))
           return
         }
 
-        console.log(
-          '[Token Check] Token refresh failed, checking playback state'
-        )
         // If refresh fails, check if we can still play music
         const playbackState = await sendApiRequest<SpotifyPlaybackState>({
           path: 'me/player',
@@ -111,35 +102,27 @@ export default function AdminPage(): JSX.Element {
 
         if (playbackState?.is_playing) {
           // If music is playing, token is actually valid despite refresh failure
-          console.log('[Token Check] Token is valid - music is playing')
           setHealthStatus((prev) => ({ ...prev, token: 'valid' }))
           return
         }
 
         // Only set token to error if we can't play music
-        console.error(
-          '[Token Check] Token refresh failed and music not playing'
-        )
+        console.error('[Token] Refresh failed - no playback')
         setHealthStatus((prev) => ({ ...prev, token: 'error' }))
       } catch (error) {
-        console.error('[Token Check] Token refresh failed with error:', error)
+        console.error('[Token] Refresh failed:', error)
         // Only set token to error if we can't play music
         try {
-          console.log('[Token Check] Final attempt - checking playback state')
           const playbackState = await sendApiRequest<SpotifyPlaybackState>({
             path: 'me/player',
             method: 'GET'
           })
           if (playbackState?.is_playing) {
-            console.log('[Token Check] Token is valid - music is playing')
             setHealthStatus((prev) => ({ ...prev, token: 'valid' }))
             return
           }
         } catch (playbackError) {
-          console.error(
-            '[Token Check] Final playback check failed:',
-            playbackError
-          )
+          console.error('[Token] Final check failed:', playbackError)
           setHealthStatus((prev) => ({ ...prev, token: 'error' }))
         }
       }
@@ -162,15 +145,11 @@ export default function AdminPage(): JSX.Element {
 
   const attemptRecovery = useCallback(async (): Promise<void> => {
     if (recoveryAttempts >= maxRecoveryAttempts) {
-      console.log('Max recovery attempts reached, giving up')
+      console.error('[Recovery] Max attempts reached')
       return
     }
 
     try {
-      console.log(
-        `Attempting player recovery (attempt ${recoveryAttempts + 1}/${maxRecoveryAttempts})`
-      )
-
       // First, try to refresh the player state
       if (typeof window.refreshSpotifyPlayer === 'function') {
         await window.refreshSpotifyPlayer()
@@ -185,7 +164,7 @@ export default function AdminPage(): JSX.Element {
       setHealthStatus((prev) => ({ ...prev, device: 'healthy' }))
       setRecoveryAttempts(0)
     } catch (error) {
-      console.error('Recovery attempt failed:', error)
+      console.error('[Recovery] Failed:', error)
       setRecoveryAttempts((prev) => prev + 1)
 
       // Calculate delay with exponential backoff
@@ -204,7 +183,7 @@ export default function AdminPage(): JSX.Element {
       if (
         event.detail?.error?.message?.includes('Player verification failed')
       ) {
-        console.error('Player verification failed, attempting recovery')
+        console.error('[Player] Verification failed')
         setHealthStatus((prev) => ({ ...prev, device: 'unresponsive' }))
         void attemptRecovery()
       }
@@ -253,7 +232,7 @@ export default function AdminPage(): JSX.Element {
         setHealthStatus((prev) => ({ ...prev, device: 'healthy' }))
         setRecoveryAttempts(0)
       } catch (error) {
-        console.error('Device health check failed:', error)
+        console.error('[Device] Health check failed:', error)
         setHealthStatus((prev) => ({ ...prev, device: 'unresponsive' }))
         void attemptRecovery()
       }
@@ -283,10 +262,9 @@ export default function AdminPage(): JSX.Element {
       try {
         if ('wakeLock' in navigator) {
           wakeLock.current = await navigator.wakeLock.request('screen')
-          console.log('Wake Lock is active')
         }
       } catch (error) {
-        console.error('Failed to request wake lock:', error)
+        console.error('[WakeLock] Failed:', error)
       }
     }
 
@@ -311,19 +289,15 @@ export default function AdminPage(): JSX.Element {
             const data = (await response.json()) as RefreshResponse
 
             if (!response.ok) {
-              console.error(
-                'Auto refresh failed:',
-                data.message ?? 'Failed to refresh site'
-              )
+              console.error('[Refresh] Failed:', data.message ?? 'Unknown error')
               return
             }
 
             // Dispatch refresh event for the player to handle
             window.dispatchEvent(new CustomEvent('playlistRefresh'))
-            console.log('Auto refresh completed successfully')
             lastRefreshTime.current = Date.now()
           } catch (err) {
-            console.error('Auto refresh error:', err)
+            console.error('[Refresh] Error:', err)
           } finally {
             setIsLoading(false)
           }
@@ -353,7 +327,7 @@ export default function AdminPage(): JSX.Element {
         setNetworkErrorCount(0)
         setHealthStatus((prev) => ({ ...prev, connection: 'good' }))
       } catch (error) {
-        console.error('Network recovery failed:', error)
+        console.error('[Network] Recovery failed:', error)
         setNetworkErrorCount((prev) => prev + 1)
         if (networkErrorCount >= 3) {
           setHealthStatus((prev) => ({ ...prev, connection: 'poor' }))
@@ -425,9 +399,12 @@ export default function AdminPage(): JSX.Element {
         try {
           if (arg instanceof Error) return arg.message
           if (arg instanceof Date) return arg.toISOString()
-          const stringified = JSON.stringify(arg)
-          if (stringified === undefined) return '[Object]'
-          return stringified
+          if (Array.isArray(arg)) return `[Array(${arg.length})]`
+          if (arg instanceof Object) {
+            const keys = Object.keys(arg)
+            return `{${keys.length} keys}`
+          }
+          return '[Object]'
         } catch {
           return '[Object]'
         }
@@ -521,7 +498,7 @@ export default function AdminPage(): JSX.Element {
 
       setHealthStatus((prev) => ({ ...prev, playback: 'playing' }))
     } catch (error) {
-      console.error('Playback control failed:', error)
+      console.error('[Playback] Control failed:', error)
       setError('Failed to control playback')
       setHealthStatus((prev) => ({ ...prev, playback: 'error' }))
 
@@ -557,7 +534,7 @@ export default function AdminPage(): JSX.Element {
         setError(null)
         setHealthStatus((prev) => ({ ...prev, playback: 'playing' }))
       } catch (recoveryError) {
-        console.error('Recovery attempt failed:', recoveryError)
+        console.error('[Playback] Recovery failed:', recoveryError)
         // Keep the original error state if recovery fails
       }
     } finally {
@@ -584,10 +561,9 @@ export default function AdminPage(): JSX.Element {
 
       // Dispatch refresh event for the player to handle
       window.dispatchEvent(new CustomEvent('playlistRefresh'))
-      console.log('Refresh completed successfully')
       lastRefreshTime.current = Date.now()
     } catch (error) {
-      console.error('Refresh failed:', error)
+      console.error('[Refresh] Failed:', error)
       setError('Failed to refresh site')
     } finally {
       setIsLoading(false)
