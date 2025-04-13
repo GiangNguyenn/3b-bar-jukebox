@@ -6,6 +6,7 @@ import { useFixedPlaylist } from '@/hooks/useFixedPlaylist'
 import { SpotifyPlayer } from '@/components/SpotifyPlayer'
 import { sendApiRequest } from '@/shared/api'
 import { SpotifyPlaybackState, SpotifyPlaylistItem } from '@/shared/types'
+import { useTokenRefresh } from '@/hooks/useTokenRefresh'
 
 const REFRESH_INTERVAL = 180000 // 3 minutes in milliseconds
 const DEVICE_CHECK_INTERVAL = {
@@ -25,6 +26,11 @@ interface HealthStatus {
   connection: 'good' | 'unstable' | 'poor' | 'unknown'
 }
 
+interface PlaylistCheckedInfo {
+  timestamp: number
+  hasChanges: boolean
+}
+
 interface PlaybackInfo {
   isPlaying: boolean
   currentTrack: string
@@ -36,27 +42,30 @@ interface RefreshResponse {
   success: boolean
 }
 
+interface TokenResponse {
+  access_token: string
+  token_type: string
+  scope: string
+  expires_in: number
+  refresh_token?: string
+  creation_time: number
+}
+
 interface TokenInfo {
   lastRefresh: number
   expiresIn: number
   scope: string
   type: string
-  remainingTime: number
+  remainingTime?: number
   lastActualRefresh: number
 }
 
-interface TokenResponse {
-  lastRefresh: number
-  expiresIn: number
-  expirationTime: number
-  scope: string
-  type: string
-}
-
 interface SpotifyTokenResponse {
-  expires_in: number
-  scope: string
+  access_token: string
   token_type: string
+  scope: string
+  expires_in: number
+  refresh_token?: string
 }
 
 export default function AdminPage(): JSX.Element {
@@ -85,25 +94,17 @@ export default function AdminPage(): JSX.Element {
   const baseDelay = 2000 // 2 seconds
   const [consoleLogs, setConsoleLogs] = useState<string[]>([])
   const [uptime, setUptime] = useState(0)
-  const [tokenInfo, setTokenInfo] = useState<TokenInfo>({
-    lastRefresh: 0,
-    expiresIn: 0,
-    scope: '',
-    type: '',
-    remainingTime: 0,
-    lastActualRefresh: 0
-  })
+  const { tokenInfo, setTokenInfo } = useTokenRefresh()
 
   const lastTokenUpdate = useRef<number>(0)
 
-  const formatTokenTime = (timestamp: number): string => {
-    if (!timestamp) return 'Never'
-    const date = new Date(timestamp)
-    return date.toLocaleTimeString(undefined, {
-      hour: '2-digit',
-      minute: '2-digit',
-      hour12: true
-    })
+  const safeToISOString = (timestamp: number | undefined | null): string => {
+    if (!timestamp) return 'Not set'
+    try {
+      return new Date(timestamp).toISOString()
+    } catch (error) {
+      return 'Invalid timestamp'
+    }
   }
 
   // Check token validity and refresh if needed
@@ -112,10 +113,11 @@ export default function AdminPage(): JSX.Element {
       try {
         // First check if token is about to expire
         const now = Date.now()
-        const timeUntilExpiration = tokenInfo.lastRefresh + tokenInfo.expiresIn - now
+        const timeUntilExpiration =
+          tokenInfo.lastRefresh + tokenInfo.expiresIn - now
 
         console.log('[Token] Refresh check:', {
-          lastRefresh: new Date(tokenInfo.lastRefresh).toISOString(),
+          lastRefresh: safeToISOString(tokenInfo.lastRefresh),
           expiresIn: formatTimeRemaining(tokenInfo.expiresIn),
           timeUntilExpiration: formatTimeRemaining(timeUntilExpiration),
           refreshThreshold: formatTimeRemaining(TOKEN_REFRESH_THRESHOLD)
@@ -135,18 +137,20 @@ export default function AdminPage(): JSX.Element {
 
           if (refreshResponse.ok) {
             const data = (await refreshResponse.json()) as SpotifyTokenResponse
-            const newRefreshTime = Date.now()
+            const now = Date.now()
             console.log('[Token] Token refreshed:', {
-              oldExpiration: new Date(tokenInfo.lastRefresh + tokenInfo.expiresIn).toISOString(),
-              newExpiration: new Date(newRefreshTime + data.expires_in * 1000).toISOString()
+              oldExpiration: safeToISOString(
+                tokenInfo.lastRefresh + tokenInfo.expiresIn
+              ),
+              newExpiration: safeToISOString(now + data.expires_in * 1000)
             })
             setTokenInfo((prev) => ({
               ...prev,
-              lastRefresh: newRefreshTime,
+              lastRefresh: now,
               expiresIn: data.expires_in * 1000,
               scope: data.scope,
               type: data.token_type,
-              lastActualRefresh: newRefreshTime,
+              lastActualRefresh: now,
               remainingTime: data.expires_in * 1000
             }))
             setHealthStatus((prev) => ({ ...prev, token: 'valid' }))
@@ -182,8 +186,10 @@ export default function AdminPage(): JSX.Element {
           const data = (await refreshResponse.json()) as SpotifyTokenResponse
           const now = Date.now()
           console.log('[Token] Token refreshed after validation failed:', {
-            oldExpiration: new Date(tokenInfo.lastRefresh + tokenInfo.expiresIn).toISOString(),
-            newExpiration: new Date(now + data.expires_in * 1000).toISOString()
+            oldExpiration: safeToISOString(
+              tokenInfo.lastRefresh + tokenInfo.expiresIn
+            ),
+            newExpiration: safeToISOString(now + data.expires_in * 1000)
           })
           setTokenInfo((prev) => ({
             ...prev,
@@ -245,7 +251,7 @@ export default function AdminPage(): JSX.Element {
         clearInterval(tokenCheckInterval.current)
       }
     }
-  }, [tokenInfo.lastRefresh, tokenInfo.expiresIn])
+  }, [setTokenInfo, tokenInfo.expiresIn, tokenInfo.lastRefresh])
 
   const attemptRecovery = useCallback(async (): Promise<void> => {
     if (recoveryAttempts >= maxRecoveryAttempts) {
@@ -491,6 +497,42 @@ export default function AdminPage(): JSX.Element {
     }
   }, [])
 
+  const refreshPlaylist = useCallback(async (): Promise<void> => {
+    try {
+      const response = await fetch('/api/refresh-site')
+      if (!response.ok) {
+        throw new Error('Failed to refresh playlist')
+      }
+    } catch (error) {
+      console.error('[Playlist] Error refreshing playlist:', error)
+    }
+  }, [])
+
+  // Listen for playlist change status updates
+  useEffect(() => {
+    const handlePlaylistChecked = (
+      event: CustomEvent<PlaylistCheckedInfo>
+    ): void => {
+      const { hasChanges } = event.detail
+      if (hasChanges) {
+        console.log('[Playlist] Changes detected, refreshing playlist')
+        void refreshPlaylist()
+      }
+    }
+
+    window.addEventListener(
+      'playlistChecked',
+      handlePlaylistChecked as EventListener
+    )
+
+    return (): void => {
+      window.removeEventListener(
+        'playlistChecked',
+        handlePlaylistChecked as EventListener
+      )
+    }
+  }, [refreshPlaylist])
+
   // Capture console logs
   useEffect(() => {
     const originalConsoleLog = console.log
@@ -559,40 +601,37 @@ export default function AdminPage(): JSX.Element {
     const updateTokenInfo = async (): Promise<void> => {
       try {
         const now = Date.now()
-        // Only update if it's been at least 30 seconds since the last update
         if (now - lastTokenUpdate.current < 30000) {
           return
         }
 
         const response = await fetch('/api/token-info')
-        const data = (await response.json()) as TokenResponse
-        
-        // Validate timestamps
-        if (!data.lastRefresh || !data.expiresIn) {
+        const data = (await response.json()) as SpotifyTokenResponse
+
+        // Validate the Spotify token response
+        if (!data.access_token || !data.expires_in) {
           console.error('[Token] Invalid token data:', data)
           return
         }
 
+        // Convert expires_in from seconds to milliseconds
+        const expiresInMs = data.expires_in * 1000
+
         console.log('[Token] Raw API Response:', {
-          lastRefresh: data.lastRefresh,
-          lastRefreshDate: new Date(data.lastRefresh).toISOString(),
-          expiresIn: data.expiresIn,
-          currentTime: new Date(now).toISOString(),
-          calculatedExpiration: new Date(data.lastRefresh + data.expiresIn).toISOString()
+          accessToken: data.access_token.slice(0, 5) + '...',
+          tokenType: data.token_type,
+          expiresIn: `${data.expires_in}s`,
+          scope: data.scope
         })
-        
-        // Calculate remaining time from last refresh
-        const expirationTime = data.lastRefresh + data.expiresIn
-        const remainingTime = Math.max(0, expirationTime - now)
-        
+
         setTokenInfo((prev) => ({
           ...prev,
-          lastRefresh: data.lastRefresh,
-          expiresIn: data.expiresIn,
+          lastRefresh: now,
+          expiresIn: expiresInMs,
           scope: data.scope,
-          type: data.type,
-          remainingTime,
-          lastActualRefresh: prev.lastActualRefresh || data.lastRefresh
+          type: data.token_type,
+          lastActualRefresh: now,
+          remainingTime: data.expires_in * 1000
         }))
 
         lastTokenUpdate.current = now
@@ -605,12 +644,12 @@ export default function AdminPage(): JSX.Element {
     void updateTokenInfo()
 
     // Set up interval for regular updates
-    const interval = setInterval(() => {
+    const interval = setInterval((): void => {
       void updateTokenInfo()
     }, 30000) // Update every 30 seconds
 
-    return () => clearInterval(interval)
-  }, [])
+    return (): void => clearInterval(interval)
+  }, [setTokenInfo])
 
   // Network connection monitoring
   useEffect(() => {
@@ -646,11 +685,11 @@ export default function AdminPage(): JSX.Element {
     void checkConnection()
 
     // Set up interval for regular checks
-    const interval = setInterval(() => {
+    const interval = setInterval((): void => {
       void checkConnection()
     }, DEVICE_CHECK_INTERVAL[healthStatus.connection])
 
-    return () => clearInterval(interval)
+    return (): void => clearInterval(interval)
   }, [healthStatus.connection])
 
   // Listen for online/offline events
@@ -666,7 +705,7 @@ export default function AdminPage(): JSX.Element {
     window.addEventListener('online', handleOnline)
     window.addEventListener('offline', handleOffline)
 
-    return () => {
+    return (): void => {
       window.removeEventListener('online', handleOnline)
       window.removeEventListener('offline', handleOffline)
     }
@@ -685,16 +724,21 @@ export default function AdminPage(): JSX.Element {
     return `${hours}h ${minutes % 60}m`
   }
 
-  const formatTokenExpiration = (lastRefresh: number, expiresIn: number): string => {
-    if (!lastRefresh || !expiresIn) return 'Unknown'
-    
+  const formatTokenExpiration = (): string => {
+    if (!tokenInfo.lastRefresh || !tokenInfo.expiresIn) return 'Unknown'
+
     // Validate the timestamps
-    if (isNaN(lastRefresh) || isNaN(expiresIn) || lastRefresh <= 0 || expiresIn <= 0) {
+    if (
+      isNaN(tokenInfo.lastRefresh) ||
+      isNaN(tokenInfo.expiresIn) ||
+      tokenInfo.lastRefresh <= 0 ||
+      tokenInfo.expiresIn <= 0
+    ) {
       return 'Unknown'
     }
-    
-    // Calculate expiration time by adding expiresIn to lastActualRefresh
-    const expirationTime = tokenInfo.lastActualRefresh + expiresIn
+
+    // Calculate expiration time using the token creation time
+    const expirationTime = tokenInfo.lastRefresh + tokenInfo.expiresIn
     return new Date(expirationTime).toLocaleTimeString(undefined, {
       hour: '2-digit',
       minute: '2-digit',
@@ -827,6 +871,30 @@ export default function AdminPage(): JSX.Element {
     }
   }
 
+  const handleTokenRefresh = async (): Promise<void> => {
+    try {
+      const now = Date.now()
+      const response = await fetch('/api/refresh-token', {
+        method: 'POST'
+      })
+      const data = (await response.json()) as SpotifyTokenResponse
+
+      setTokenInfo((prev) => ({
+        ...prev,
+        lastRefresh: now,
+        expiresIn: data.expires_in * 1000,
+        scope: data.scope,
+        type: data.token_type,
+        lastActualRefresh: now,
+        remainingTime: data.expires_in * 1000
+      }))
+
+      lastTokenUpdate.current = now
+    } catch (error) {
+      console.error('[Token] Failed to refresh token:', error)
+    }
+  }
+
   return (
     <div className='text-white min-h-screen bg-black p-4'>
       <SpotifyPlayer />
@@ -934,16 +1002,10 @@ export default function AdminPage(): JSX.Element {
               <div className='group relative'>
                 <div className='invisible absolute left-0 top-0 z-10 rounded-lg bg-gray-800 p-2 text-xs text-gray-200 shadow-lg transition-all duration-200 group-hover:visible'>
                   <div className='whitespace-nowrap'>
-                    <div>
-                      Token expires:{' '}
-                      {formatTokenExpiration(
-                        tokenInfo.lastRefresh,
-                        tokenInfo.expiresIn
-                      )}
-                    </div>
+                    <div>Token expires: {formatTokenExpiration()}</div>
                     <div>
                       Last token refresh:{' '}
-                      {formatTokenTime(tokenInfo.lastActualRefresh)}
+                      {safeToISOString(tokenInfo.lastActualRefresh)}
                     </div>
                     <div className='mt-1'>
                       <div className='font-medium'>Permissions:</div>
