@@ -60,6 +60,17 @@ export default function AdminPage(): JSX.Element {
   const baseDelay = 2000 // 2 seconds
   const [consoleLogs, setConsoleLogs] = useState<string[]>([])
   const [uptime, setUptime] = useState(0)
+  const [tokenInfo, setTokenInfo] = useState<{
+    lastRefresh: number
+    expiresIn: number
+    scope: string
+    type: string
+  }>({
+    lastRefresh: 0,
+    expiresIn: 0,
+    scope: '',
+    type: ''
+  })
 
   // Check token validity and refresh if needed
   useEffect(() => {
@@ -90,6 +101,13 @@ export default function AdminPage(): JSX.Element {
         })
 
         if (refreshResponse.ok) {
+          const data = await refreshResponse.json()
+          setTokenInfo({
+            lastRefresh: Date.now(),
+            expiresIn: data.expires_in * 1000,
+            scope: data.scope,
+            type: data.token_type
+          })
           setHealthStatus((prev) => ({ ...prev, token: 'valid' }))
           return
         }
@@ -289,7 +307,10 @@ export default function AdminPage(): JSX.Element {
             const data = (await response.json()) as RefreshResponse
 
             if (!response.ok) {
-              console.error('[Refresh] Failed:', data.message ?? 'Unknown error')
+              console.error(
+                '[Refresh] Failed:',
+                data.message ?? 'Unknown error'
+              )
               return
             }
 
@@ -447,10 +468,46 @@ export default function AdminPage(): JSX.Element {
     return (): void => clearInterval(timer)
   }, [])
 
+  // Update token info when token is refreshed
+  useEffect(() => {
+    const updateTokenInfo = async (): Promise<void> => {
+      try {
+        const response = await fetch('/api/token-info')
+        const data = await response.json()
+        setTokenInfo({
+          lastRefresh: data.lastRefresh,
+          expiresIn: data.expiresIn,
+          scope: data.scope,
+          type: data.type
+        })
+      } catch (error) {
+        console.error('[Token] Failed to fetch token info:', error)
+      }
+    }
+
+    if (healthStatus.token === 'valid') {
+      void updateTokenInfo()
+    }
+  }, [healthStatus.token])
+
   const formatTime = (ms: number): string => {
     const minutes = Math.floor(ms / 60000)
     const seconds = Math.floor((ms % 60000) / 1000)
     return `${minutes}:${seconds.toString().padStart(2, '0')}`
+  }
+
+  const formatTimeRemaining = (ms: number): string => {
+    const minutes = Math.floor(ms / 60000)
+    if (minutes < 60) return `${minutes}m`
+    const hours = Math.floor(minutes / 60)
+    return `${hours}h ${minutes % 60}m`
+  }
+
+  const formatTimeAgo = (timestamp: number): string => {
+    const minutes = Math.floor((Date.now() - timestamp) / 60000)
+    if (minutes < 60) return `${minutes}m ago`
+    const hours = Math.floor(minutes / 60)
+    return `${hours}h ${minutes % 60}m ago`
   }
 
   const handlePlayback = async (action: 'play' | 'skip'): Promise<void> => {
@@ -666,6 +723,31 @@ export default function AdminPage(): JSX.Element {
                   ? 'Token Expired'
                   : 'Token Error'}
             </span>
+            {healthStatus.token === 'valid' && (
+              <div className='group relative'>
+                <div className='invisible group-hover:visible absolute left-0 top-0 z-10 rounded-lg bg-gray-800 p-2 text-xs text-gray-200 shadow-lg transition-all duration-200'>
+                  <div className='whitespace-nowrap'>
+                    <div>Expires in: {formatTimeRemaining(tokenInfo.expiresIn)}</div>
+                    <div>Last refresh: {formatTimeAgo(tokenInfo.lastRefresh)}</div>
+                    <div>Scope: {tokenInfo.scope}</div>
+                    <div>Type: {tokenInfo.type}</div>
+                  </div>
+                </div>
+                <svg
+                  className='h-4 w-4 text-gray-400'
+                  fill='none'
+                  stroke='currentColor'
+                  viewBox='0 0 24 24'
+                >
+                  <path
+                    strokeLinecap='round'
+                    strokeLinejoin='round'
+                    strokeWidth={2}
+                    d='M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z'
+                  />
+                </svg>
+              </div>
+            )}
           </div>
 
           <div className='flex items-center gap-2 rounded-lg border border-gray-800 bg-gray-900/50 p-4'>
