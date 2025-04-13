@@ -46,10 +46,11 @@ interface TokenInfo {
 }
 
 interface TokenResponse {
-  expires_in: number
-  scope: string
-  token_type: string
   lastRefresh: number
+  expiresIn: number
+  expirationTime: number
+  scope: string
+  type: string
 }
 
 interface SpotifyTokenResponse {
@@ -101,7 +102,6 @@ export default function AdminPage(): JSX.Element {
     return date.toLocaleTimeString(undefined, {
       hour: '2-digit',
       minute: '2-digit',
-      second: '2-digit',
       hour12: true
     })
   }
@@ -112,8 +112,14 @@ export default function AdminPage(): JSX.Element {
       try {
         // First check if token is about to expire
         const now = Date.now()
-        const timeUntilExpiration =
-          tokenInfo.lastRefresh + tokenInfo.expiresIn - now
+        const timeUntilExpiration = tokenInfo.lastRefresh + tokenInfo.expiresIn - now
+
+        console.log('[Token] Refresh check:', {
+          lastRefresh: new Date(tokenInfo.lastRefresh).toISOString(),
+          expiresIn: formatTimeRemaining(tokenInfo.expiresIn),
+          timeUntilExpiration: formatTimeRemaining(timeUntilExpiration),
+          refreshThreshold: formatTimeRemaining(TOKEN_REFRESH_THRESHOLD)
+        })
 
         // If token is about to expire, refresh it proactively
         if (timeUntilExpiration < TOKEN_REFRESH_THRESHOLD) {
@@ -130,6 +136,10 @@ export default function AdminPage(): JSX.Element {
           if (refreshResponse.ok) {
             const data = (await refreshResponse.json()) as SpotifyTokenResponse
             const newRefreshTime = Date.now()
+            console.log('[Token] Token refreshed:', {
+              oldExpiration: new Date(tokenInfo.lastRefresh + tokenInfo.expiresIn).toISOString(),
+              newExpiration: new Date(newRefreshTime + data.expires_in * 1000).toISOString()
+            })
             setTokenInfo((prev) => ({
               ...prev,
               lastRefresh: newRefreshTime,
@@ -171,7 +181,10 @@ export default function AdminPage(): JSX.Element {
         if (refreshResponse.ok) {
           const data = (await refreshResponse.json()) as SpotifyTokenResponse
           const now = Date.now()
-          console.log('[Token] Refreshed at:', new Date(now).toISOString())
+          console.log('[Token] Token refreshed after validation failed:', {
+            oldExpiration: new Date(tokenInfo.lastRefresh + tokenInfo.expiresIn).toISOString(),
+            newExpiration: new Date(now + data.expires_in * 1000).toISOString()
+          })
           setTokenInfo((prev) => ({
             ...prev,
             lastRefresh: now,
@@ -553,23 +566,31 @@ export default function AdminPage(): JSX.Element {
 
         const response = await fetch('/api/token-info')
         const data = (await response.json()) as TokenResponse
-        const remainingTime = Math.max(
-          0,
-          data.lastRefresh + data.expires_in * 1000 - now
-        )
+        
+        // Validate timestamps
+        if (!data.lastRefresh || !data.expiresIn) {
+          console.error('[Token] Invalid token data:', data)
+          return
+        }
 
-        console.log('[Token] Updating token info:', {
-          lastRefresh: new Date(data.lastRefresh).toISOString(),
-          expiresIn: formatTimeRemaining(data.expires_in * 1000),
-          remainingTime: formatTimeRemaining(remainingTime)
+        console.log('[Token] Raw API Response:', {
+          lastRefresh: data.lastRefresh,
+          lastRefreshDate: new Date(data.lastRefresh).toISOString(),
+          expiresIn: data.expiresIn,
+          currentTime: new Date(now).toISOString(),
+          calculatedExpiration: new Date(data.lastRefresh + data.expiresIn).toISOString()
         })
-
+        
+        // Calculate remaining time from last refresh
+        const expirationTime = data.lastRefresh + data.expiresIn
+        const remainingTime = Math.max(0, expirationTime - now)
+        
         setTokenInfo((prev) => ({
           ...prev,
           lastRefresh: data.lastRefresh,
-          expiresIn: data.expires_in * 1000,
+          expiresIn: data.expiresIn,
           scope: data.scope,
-          type: data.token_type,
+          type: data.type,
           remainingTime,
           lastActualRefresh: prev.lastActualRefresh || data.lastRefresh
         }))
@@ -664,12 +685,21 @@ export default function AdminPage(): JSX.Element {
     return `${hours}h ${minutes % 60}m`
   }
 
-  const formatTokenExpiration = (
-    lastRefresh: number,
-    expiresIn: number
-  ): string => {
-    const expirationDate = new Date(lastRefresh + expiresIn)
-    return expirationDate.toLocaleTimeString()
+  const formatTokenExpiration = (lastRefresh: number, expiresIn: number): string => {
+    if (!lastRefresh || !expiresIn) return 'Unknown'
+    
+    // Validate the timestamps
+    if (isNaN(lastRefresh) || isNaN(expiresIn) || lastRefresh <= 0 || expiresIn <= 0) {
+      return 'Unknown'
+    }
+    
+    // Calculate expiration time by adding expiresIn to lastActualRefresh
+    const expirationTime = tokenInfo.lastActualRefresh + expiresIn
+    return new Date(expirationTime).toLocaleTimeString(undefined, {
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: true
+    })
   }
 
   const formatTokenScope = (scope: string): string => {
