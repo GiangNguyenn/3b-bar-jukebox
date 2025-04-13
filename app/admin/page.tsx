@@ -11,16 +11,17 @@ const REFRESH_INTERVAL = 180000 // 3 minutes in milliseconds
 const DEVICE_CHECK_INTERVAL = {
   good: 30000, // 30 seconds
   unstable: 15000, // 15 seconds
-  poor: 10000 // 10 seconds
+  poor: 10000, // 10 seconds
+  unknown: 5000 // 5 seconds for initial checks
 }
 const MAX_RECOVERY_ATTEMPTS = 3
 const TOKEN_CHECK_INTERVAL = 120000 // 2 minutes in milliseconds
 
 interface HealthStatus {
-  device: 'healthy' | 'unresponsive' | 'disconnected'
-  playback: 'playing' | 'paused' | 'stopped' | 'error'
-  token: 'valid' | 'expired' | 'error'
-  connection: 'good' | 'unstable' | 'poor'
+  device: 'healthy' | 'unresponsive' | 'disconnected' | 'unknown'
+  playback: 'playing' | 'paused' | 'stopped' | 'error' | 'unknown'
+  token: 'valid' | 'expired' | 'error' | 'unknown'
+  connection: 'good' | 'unstable' | 'poor' | 'unknown'
 }
 
 interface PlaybackInfo {
@@ -40,10 +41,10 @@ export default function AdminPage(): JSX.Element {
   const [timeUntilRefresh, setTimeUntilRefresh] = useState(REFRESH_INTERVAL)
   const [playbackInfo, setPlaybackInfo] = useState<PlaybackInfo | null>(null)
   const [healthStatus, setHealthStatus] = useState<HealthStatus>({
-    device: 'healthy',
-    playback: 'stopped',
-    token: 'valid',
-    connection: 'good'
+    device: 'unknown',
+    playback: 'unknown',
+    token: 'unknown',
+    connection: 'unknown'
   })
   const [recoveryAttempts, setRecoveryAttempts] = useState(0)
   const [networkErrorCount, setNetworkErrorCount] = useState(0)
@@ -65,11 +66,13 @@ export default function AdminPage(): JSX.Element {
     expiresIn: number
     scope: string
     type: string
+    remainingTime: number
   }>({
     lastRefresh: 0,
     expiresIn: 0,
     scope: '',
-    type: ''
+    type: '',
+    remainingTime: 0
   })
 
   // Check token validity and refresh if needed
@@ -106,7 +109,8 @@ export default function AdminPage(): JSX.Element {
             lastRefresh: Date.now(),
             expiresIn: data.expires_in * 1000,
             scope: data.scope,
-            type: data.token_type
+            type: data.token_type,
+            remainingTime: 0
           })
           setHealthStatus((prev) => ({ ...prev, token: 'valid' }))
           return
@@ -474,21 +478,105 @@ export default function AdminPage(): JSX.Element {
       try {
         const response = await fetch('/api/token-info')
         const data = await response.json()
+        const now = Date.now()
+        const remainingTime = Math.max(0, data.lastRefresh + data.expiresIn - now)
+        
+        // Update token status based on remaining time
+        if (remainingTime <= 0) {
+          setHealthStatus((prev) => ({ ...prev, token: 'expired' }))
+        } else if (remainingTime < 300000) { // Less than 5 minutes remaining
+          setHealthStatus((prev) => ({ ...prev, token: 'expired' }))
+        } else {
+          setHealthStatus((prev) => ({ ...prev, token: 'valid' }))
+        }
+
         setTokenInfo({
           lastRefresh: data.lastRefresh,
           expiresIn: data.expiresIn,
           scope: data.scope,
-          type: data.type
+          type: data.type,
+          remainingTime
         })
       } catch (error) {
         console.error('[Token] Failed to fetch token info:', error)
+        setHealthStatus((prev) => ({ ...prev, token: 'error' }))
       }
     }
 
-    if (healthStatus.token === 'valid') {
+    // Initial update
+    if (healthStatus.token === 'valid' || healthStatus.token === 'expired') {
       void updateTokenInfo()
     }
+
+    // Set up interval for regular updates
+    const interval = setInterval(() => {
+      if (healthStatus.token === 'valid' || healthStatus.token === 'expired') {
+        void updateTokenInfo()
+      }
+    }, 30000) // Update every 30 seconds
+
+    return () => clearInterval(interval)
   }, [healthStatus.token])
+
+  // Network connection monitoring
+  useEffect(() => {
+    const checkConnection = async (): Promise<void> => {
+      try {
+        const startTime = performance.now()
+        const response = await fetch('/api/token', {
+          method: 'GET',
+          cache: 'no-store'
+        })
+        const endTime = performance.now()
+        const latency = endTime - startTime
+
+        if (!response.ok) {
+          throw new Error('Token check failed')
+        }
+
+        // Update connection status based on latency
+        if (latency < 200) {
+          setHealthStatus((prev) => ({ ...prev, connection: 'good' }))
+        } else if (latency < 500) {
+          setHealthStatus((prev) => ({ ...prev, connection: 'unstable' }))
+        } else {
+          setHealthStatus((prev) => ({ ...prev, connection: 'poor' }))
+        }
+      } catch (error) {
+        console.error('[Connection] Token check failed:', error)
+        setHealthStatus((prev) => ({ ...prev, connection: 'poor' }))
+      }
+    }
+
+    // Initial check
+    void checkConnection()
+
+    // Set up interval for regular checks
+    const interval = setInterval(() => {
+      void checkConnection()
+    }, DEVICE_CHECK_INTERVAL[healthStatus.connection])
+
+    return () => clearInterval(interval)
+  }, [healthStatus.connection])
+
+  // Listen for online/offline events
+  useEffect(() => {
+    const handleOnline = (): void => {
+      setHealthStatus((prev) => ({ ...prev, connection: 'good' }))
+    }
+
+    const handleOffline = (): void => {
+      setHealthStatus((prev) => ({ ...prev, connection: 'poor' }))
+    }
+
+    window.addEventListener('online', handleOnline)
+    window.addEventListener('offline', handleOffline)
+
+    return () => {
+      window.removeEventListener('online', handleOnline)
+      window.removeEventListener('offline', handleOffline)
+    }
+  }, [])
 
   const formatTime = (ms: number): string => {
     const minutes = Math.floor(ms / 60000)
@@ -658,7 +746,9 @@ export default function AdminPage(): JSX.Element {
                   ? 'bg-green-500'
                   : healthStatus.device === 'unresponsive'
                     ? 'bg-yellow-500'
-                    : 'bg-red-500'
+                    : healthStatus.device === 'disconnected'
+                      ? 'bg-red-500'
+                      : 'bg-gray-500'
               }`}
             />
             <span className='font-medium'>
@@ -666,7 +756,9 @@ export default function AdminPage(): JSX.Element {
                 ? 'Device Connected'
                 : healthStatus.device === 'unresponsive'
                   ? 'Device Unresponsive'
-                  : 'Device Disconnected'}
+                  : healthStatus.device === 'disconnected'
+                    ? 'Device Disconnected'
+                    : 'Device Status Unknown'}
               {recoveryAttempts > 0 &&
                 ` (Recovery ${recoveryAttempts}/${MAX_RECOVERY_ATTEMPTS})`}
             </span>
@@ -713,7 +805,9 @@ export default function AdminPage(): JSX.Element {
                   ? 'bg-green-500'
                   : healthStatus.token === 'expired'
                     ? 'bg-yellow-500'
-                    : 'bg-red-500'
+                    : healthStatus.token === 'error'
+                      ? 'bg-red-500'
+                      : 'bg-gray-500'
               }`}
             />
             <span className='font-medium'>
@@ -721,14 +815,20 @@ export default function AdminPage(): JSX.Element {
                 ? 'Token Valid'
                 : healthStatus.token === 'expired'
                   ? 'Token Expired'
-                  : 'Token Error'}
+                  : healthStatus.token === 'error'
+                    ? 'Token Error'
+                    : 'Token Status Unknown'}
             </span>
             {healthStatus.token === 'valid' && (
               <div className='group relative'>
-                <div className='invisible group-hover:visible absolute left-0 top-0 z-10 rounded-lg bg-gray-800 p-2 text-xs text-gray-200 shadow-lg transition-all duration-200'>
+                <div className='invisible absolute left-0 top-0 z-10 rounded-lg bg-gray-800 p-2 text-xs text-gray-200 shadow-lg transition-all duration-200 group-hover:visible'>
                   <div className='whitespace-nowrap'>
-                    <div>Expires in: {formatTimeRemaining(tokenInfo.expiresIn)}</div>
-                    <div>Last refresh: {formatTimeAgo(tokenInfo.lastRefresh)}</div>
+                    <div>
+                      Expires in: {formatTimeRemaining(tokenInfo.remainingTime)}
+                    </div>
+                    <div>
+                      Last refresh: {formatTimeAgo(tokenInfo.lastRefresh)}
+                    </div>
                     <div>Scope: {tokenInfo.scope}</div>
                     <div>Type: {tokenInfo.type}</div>
                   </div>
@@ -757,7 +857,9 @@ export default function AdminPage(): JSX.Element {
                   ? 'bg-green-500'
                   : healthStatus.connection === 'unstable'
                     ? 'bg-yellow-500'
-                    : 'bg-red-500'
+                    : healthStatus.connection === 'poor'
+                      ? 'bg-red-500'
+                      : 'bg-gray-500'
               }`}
             />
             <span className='font-medium'>
@@ -765,7 +867,9 @@ export default function AdminPage(): JSX.Element {
                 ? 'Connection Good'
                 : healthStatus.connection === 'unstable'
                   ? 'Connection Unstable'
-                  : 'Connection Poor'}
+                  : healthStatus.connection === 'poor'
+                    ? 'Connection Poor'
+                    : 'Connection Status Unknown'}
             </span>
           </div>
         </div>
