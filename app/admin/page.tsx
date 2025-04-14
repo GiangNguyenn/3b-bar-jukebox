@@ -1,14 +1,14 @@
+/* eslint-disable @typescript-eslint/no-unused-vars */
+/* eslint-disable @typescript-eslint/explicit-function-return-type */
 'use client'
 
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef, useCallback, type EffectCallback } from 'react'
 import { useSpotifyPlayer } from '@/hooks/useSpotifyPlayer'
 import { useFixedPlaylist } from '@/hooks/useFixedPlaylist'
 import { SpotifyPlayer } from '@/components/SpotifyPlayer'
 import { sendApiRequest } from '@/shared/api'
 import {
   SpotifyPlaybackState,
-  SpotifyPlaylistItem,
-  TokenResponse,
   TokenInfo
 } from '@/shared/types'
 
@@ -20,14 +20,13 @@ const DEVICE_CHECK_INTERVAL = {
   unknown: 5000 // 5 seconds for initial checks
 }
 const MAX_RECOVERY_ATTEMPTS = 3
-const TOKEN_CHECK_INTERVAL = 120000 // 2 minutes in milliseconds
-const TOKEN_REFRESH_THRESHOLD = 300000 // 5 minutes in milliseconds
 
 interface HealthStatus {
   device: 'healthy' | 'unresponsive' | 'disconnected' | 'unknown'
   playback: 'playing' | 'paused' | 'stopped' | 'error' | 'unknown'
   token: 'valid' | 'expired' | 'error' | 'unknown'
   connection: 'good' | 'unstable' | 'poor' | 'unknown'
+  tokenExpiringSoon: boolean
 }
 
 interface PlaylistCheckedInfo {
@@ -41,21 +40,28 @@ interface PlaybackInfo {
   progress: number
 }
 
+interface ErrorResponse {
+  error: string
+  details?: unknown
+}
+
 interface RefreshResponse {
   message?: string
   success: boolean
 }
 
 export default function AdminPage(): JSX.Element {
+  const [mounted, setMounted] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const [_error, setError] = useState<string | null>(null)
   const [timeUntilRefresh, setTimeUntilRefresh] = useState(REFRESH_INTERVAL)
   const [playbackInfo, setPlaybackInfo] = useState<PlaybackInfo | null>(null)
   const [healthStatus, setHealthStatus] = useState<HealthStatus>({
     device: 'unknown',
     playback: 'unknown',
     token: 'unknown',
-    connection: 'unknown'
+    connection: 'unknown',
+    tokenExpiringSoon: false
   })
   const [recoveryAttempts, setRecoveryAttempts] = useState(0)
   const [networkErrorCount, setNetworkErrorCount] = useState(0)
@@ -66,13 +72,12 @@ export default function AdminPage(): JSX.Element {
   const lastRefreshTime = useRef<number>(Date.now())
   const deviceCheckInterval = useRef<NodeJS.Timeout | null>(null)
   const recoveryTimeout = useRef<NodeJS.Timeout | null>(null)
-  const tokenCheckInterval = useRef<NodeJS.Timeout | null>(null)
   const isRefreshing = useRef<boolean>(false)
   const maxRecoveryAttempts = 5
   const baseDelay = 2000 // 2 seconds
   const [consoleLogs, setConsoleLogs] = useState<string[]>([])
   const [uptime, setUptime] = useState(0)
-  const [tokenInfo, setTokenInfo] = useState<TokenInfo>({
+  const [tokenInfo, _setTokenInfo] = useState<TokenInfo>({
     lastRefresh: 0,
     expiresIn: 0,
     scope: '',
@@ -81,56 +86,102 @@ export default function AdminPage(): JSX.Element {
     expiryTime: 0
   })
 
-  const lastTokenUpdate = useRef<number>(0)
+  const handleRefresh = useCallback(async (): Promise<void> => {
+    if (isRefreshing.current) {
+      console.log('[Refresh] Already refreshing, skipping')
+      return
+    }
 
-  const safeToISOString = (timestamp: number | undefined | null): string => {
-    if (!timestamp) return 'Not set'
+    isRefreshing.current = true
+    setIsLoading(true)
+
     try {
-      return new Date(timestamp).toISOString()
-    } catch (error) {
-      return 'Invalid timestamp'
+      const response = await fetch('/api/refresh-site', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        }
+      })
+
+      if (!response.ok) {
+        const errorData = (await response
+          .json()
+          .catch(() => ({}))) as ErrorResponse
+        throw new Error(errorData.error || 'Failed to refresh site')
+      }
+
+      const data = (await response.json()) as RefreshResponse
+      console.log('[Refresh] Success:', data.message)
+      lastRefreshTime.current = Date.now()
+      setTimeUntilRefresh(REFRESH_INTERVAL)
+    } catch (err) {
+      console.error('[Refresh] Error:', err)
+      setError('Failed to refresh site')
+    } finally {
+      setIsLoading(false)
+      isRefreshing.current = false
+    }
+  }, [setError, setIsLoading, setTimeUntilRefresh])
+
+  // Set mounted state
+  useEffect((): void => {
+    setMounted(true)
+  }, [])
+
+  const updateTokenStatus = useCallback((): void => {
+    const now = Date.now()
+    const timeUntilExpiry = tokenInfo.expiryTime - now
+    const minutesUntilExpiry = timeUntilExpiry / (60 * 1000)
+
+    if (tokenInfo.expiryTime === 0) {
+      setHealthStatus((prev) => ({
+        ...prev,
+        token: 'unknown'
+      }))
+      return
+    }
+
+    if (minutesUntilExpiry < 0) {
+      setHealthStatus((prev) => ({
+        ...prev,
+        token: 'error'
+      }))
+      return
+    }
+
+    setHealthStatus((prev) => ({
+      ...prev,
+      token: 'valid',
+      tokenExpiringSoon: minutesUntilExpiry < 15
+    }))
+  }, [tokenInfo.expiryTime])
+
+  // Listen for token events from SpotifyPlayer
+  useEffect(() => {
+    const handleTokenUpdate = (event: CustomEvent<TokenInfo>) => {
+      _setTokenInfo(event.detail)
+      updateTokenStatus()
+    }
+
+    window.addEventListener('tokenUpdate', handleTokenUpdate as EventListener)
+    return () => {
+      window.removeEventListener('tokenUpdate', handleTokenUpdate as EventListener)
+    }
+  }, [updateTokenStatus])
+
+  // Keep periodic status updates
+  const statusEffect: EffectCallback = () => {
+    if (!mounted) return
+
+    const statusInterval = setInterval(updateTokenStatus, 60000) // Check every minute
+    updateTokenStatus() // Initial status update
+
+    return () => {
+      clearInterval(statusInterval)
     }
   }
 
-  // Set initial token info
-  useEffect(() => {
-    const fetchInitialTokenInfo = async (): Promise<void> => {
-      try {
-        const response = await fetch('/api/token-info')
-        const data = (await response.json()) as TokenResponse
-
-        if (!data.access_token || !data.expires_in) {
-          console.error('[Token] Invalid token data:', data)
-          return
-        }
-
-        const now = Date.now()
-        const expiresInMs = data.expires_in * 1000
-
-        setTokenInfo({
-          lastRefresh: now,
-          expiresIn: expiresInMs,
-          scope: data.scope,
-          type: data.token_type,
-          lastActualRefresh: now,
-          expiryTime: now + expiresInMs
-        })
-
-        setHealthStatus(prev => ({
-          ...prev,
-          token: 'valid'
-        }))
-      } catch (error) {
-        console.error('[Token] Failed to fetch initial token info:', error)
-        setHealthStatus(prev => ({
-          ...prev,
-          token: 'error'
-        }))
-      }
-    }
-
-    void fetchInitialTokenInfo()
-  }, [])
+  useEffect(statusEffect, [mounted, updateTokenStatus])
 
   const attemptRecovery = useCallback(async (): Promise<void> => {
     if (recoveryAttempts >= maxRecoveryAttempts) {
@@ -267,11 +318,11 @@ export default function AdminPage(): JSX.Element {
   }, [])
 
   // Automatic periodic refresh every 2 minutes
-  useEffect(() => {
-    const refreshInterval = setInterval((): void => {
+  const autoRefreshEffect: EffectCallback = () => {
+    const refreshInterval = setInterval(() => {
       if (!isLoading) {
         // Don't refresh if already loading
-        void (async (): Promise<void> => {
+        void (async () => {
           try {
             setIsLoading(true)
             const response = await fetch('/api/refresh-site')
@@ -297,12 +348,16 @@ export default function AdminPage(): JSX.Element {
       }
     }, REFRESH_INTERVAL)
 
-    return (): void => clearInterval(refreshInterval)
-  }, [isLoading])
+    return () => clearInterval(refreshInterval)
+  }
+
+  useEffect(autoRefreshEffect, [isLoading])
 
   // Network error handling and recovery
-  useEffect(() => {
-    const handleNetworkError = (): void => {
+  // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
+  const networkEffect = () => {
+    // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
+    const handleNetworkError = () => {
       setNetworkErrorCount((prev) => prev + 1)
       if (networkErrorCount >= 3) {
         setHealthStatus((prev) => ({ ...prev, connection: 'poor' }))
@@ -330,15 +385,18 @@ export default function AdminPage(): JSX.Element {
     window.addEventListener('offline', handleNetworkError)
     window.addEventListener('online', () => void attemptNetworkRecovery())
 
-    return (): void => {
+    // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
+    return () => {
       window.removeEventListener('offline', handleNetworkError)
       window.removeEventListener('online', () => void attemptNetworkRecovery())
     }
-  }, [networkErrorCount])
+  }
+
+  useEffect(networkEffect, [networkErrorCount])
 
   // Countdown timer with debounced refresh
-  useEffect(() => {
-    const timer = setInterval(() => {
+  const timerEffect: EffectCallback = () => {
+    const timer = setInterval((): void => {
       const now = Date.now()
       const timeSinceLastRefresh = now - lastRefreshTime.current
       const remainingTime = Math.max(0, REFRESH_INTERVAL - timeSinceLastRefresh)
@@ -350,12 +408,16 @@ export default function AdminPage(): JSX.Element {
       }
     }, 1000)
 
-    return (): void => clearInterval(timer)
-  }, [])
+    return () => clearInterval(timer)
+  }
+
+  useEffect(timerEffect, [handleRefresh])
 
   // Listen for playback state updates from SpotifyPlayer
-  useEffect(() => {
-    const handlePlaybackUpdate = (event: CustomEvent<PlaybackInfo>): void => {
+  // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
+  const playbackEffect = () => {
+    // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
+    const handlePlaybackUpdate = (event: CustomEvent<PlaybackInfo>) => {
       setPlaybackInfo(event.detail)
       setHealthStatus((prev) => ({
         ...prev,
@@ -368,111 +430,79 @@ export default function AdminPage(): JSX.Element {
       handlePlaybackUpdate as EventListener
     )
 
-    return (): void => {
+    // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
+    return () => {
       window.removeEventListener(
         'playbackUpdate',
         handlePlaybackUpdate as EventListener
       )
     }
-  }, [])
+  }
 
-  const refreshPlaylist = useCallback(async (): Promise<void> => {
-    try {
-      const response = await fetch('/api/refresh-site')
-      if (!response.ok) {
-        throw new Error('Failed to refresh playlist')
-      }
-    } catch (error) {
-      console.error('[Playlist] Error refreshing playlist:', error)
+  useEffect(playbackEffect, [])
+
+  // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
+  const handlePlaylistChecked = useCallback((event: CustomEvent<PlaylistCheckedInfo>) => {
+    const { hasChanges } = event.detail
+    if (hasChanges) {
+      void handleRefresh()
     }
-  }, [])
+  }, [handleRefresh])
 
   // Listen for playlist change status updates
-  useEffect(() => {
-    const handlePlaylistChecked = (
-      event: CustomEvent<PlaylistCheckedInfo>
-    ): void => {
-      const { hasChanges } = event.detail
-      if (hasChanges) {
-        console.log('[Playlist] Changes detected, refreshing playlist')
-        void refreshPlaylist()
-      }
+  // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
+  const playlistEffect = () => {
+    window.addEventListener('playlistChecked', handlePlaylistChecked as EventListener)
+    // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
+    return () => {
+      window.removeEventListener('playlistChecked', handlePlaylistChecked as EventListener)
     }
+  }
 
-    window.addEventListener(
-      'playlistChecked',
-      handlePlaylistChecked as EventListener
-    )
-
-    return (): void => {
-      window.removeEventListener(
-        'playlistChecked',
-        handlePlaylistChecked as EventListener
-      )
-    }
-  }, [refreshPlaylist])
+  useEffect(playlistEffect, [handlePlaylistChecked])
 
   // Capture console logs
+  // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
   useEffect(() => {
     const originalConsoleLog = console.log
     const originalConsoleError = console.error
 
-    const formatArg = (arg: unknown): string => {
-      if (arg === null) return 'null'
-      if (typeof arg === 'undefined') return 'undefined'
-      if (typeof arg === 'string') return arg
-      if (typeof arg === 'number') return arg.toString()
-      if (typeof arg === 'boolean') return arg.toString()
-      if (typeof arg === 'object') {
-        try {
-          if (arg instanceof Error) return arg.message
-          if (arg instanceof Date) return arg.toISOString()
-          if (Array.isArray(arg)) return `[Array(${arg.length})]`
-          if (arg instanceof Object) {
-            const keys = Object.keys(arg)
-            return `{${keys.length} keys}`
-          }
-          return '[Object]'
-        } catch {
-          return '[Object]'
-        }
-      }
-      if (typeof arg === 'function') return '[Function]'
-      if (typeof arg === 'symbol') return arg.toString()
-      if (typeof arg === 'bigint') return arg.toString()
-      return '[Unknown]'
-    }
-
-    console.log = (...args: unknown[]): void => {
+    // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
+    console.log = (...args: unknown[]) => {
       originalConsoleLog(...args)
       setConsoleLogs((prev) => {
-        const newLog = args.map(formatArg).join(' ')
+        const newLog = args.join(' ')
         return [...prev.slice(-9), newLog]
       })
     }
 
-    console.error = (...args: unknown[]): void => {
+    // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
+    console.error = (...args: unknown[]) => {
       originalConsoleError(...args)
       setConsoleLogs((prev) => {
-        const newLog = args.map(formatArg).join(' ')
+        const newLog = args.join(' ')
         return [...prev.slice(-9), `[ERROR] ${newLog}`]
       })
     }
 
-    return (): void => {
+    // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
+    return () => {
       console.log = originalConsoleLog
       console.error = originalConsoleError
     }
   }, [])
 
   // Uptime timer
+  // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
   useEffect(() => {
     const startTime = Date.now()
-    const timer = setInterval((): void => {
+    // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
+    const timer = setInterval(() => {
       setUptime(Date.now() - startTime)
     }, 1000)
 
-    return (): void => clearInterval(timer)
+    // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
+    return () => clearInterval(timer)
   }, [])
 
   const formatTime = (ms: number): string => {
@@ -481,18 +511,17 @@ export default function AdminPage(): JSX.Element {
     return `${minutes}:${seconds.toString().padStart(2, '0')}`
   }
 
-  const formatTimeRemaining = (ms: number): string => {
-    const minutes = Math.floor(ms / 60000)
-    if (minutes < 60) return `${minutes}m`
-    const hours = Math.floor(minutes / 60)
-    return `${hours}h ${minutes % 60}m`
+  const formatDate = (timestamp: number): string => {
+    if (!timestamp || timestamp === 0) return 'Not available'
+    try {
+      return new Date(timestamp).toLocaleString()
+    } catch {
+      return 'Invalid date'
+    }
   }
 
   const formatTokenScope = (scope: string): string => {
-    return scope
-      .split(' ')
-      .map((s) => s.replace(/-/g, ' '))
-      .join('\n')
+    return scope.split(' ').join(', ')
   }
 
   const handlePlayback = async (action: 'play' | 'skip'): Promise<void> => {
@@ -584,33 +613,11 @@ export default function AdminPage(): JSX.Element {
     }
   }
 
-  const handleRefresh = async (): Promise<void> => {
-    if (isRefreshing.current) {
-      return
-    }
-
-    try {
-      isRefreshing.current = true
-      setIsLoading(true)
-      setError(null)
-
-      const response = await fetch('/api/refresh-site')
-      const data = (await response.json()) as RefreshResponse
-
-      if (!response.ok) {
-        throw new Error(data.message ?? 'Failed to refresh site')
-      }
-
-      // Dispatch refresh event for the player to handle
-      window.dispatchEvent(new CustomEvent('playlistRefresh'))
-      lastRefreshTime.current = Date.now()
-    } catch (error) {
-      console.error('[Refresh] Failed:', error)
-      setError('Failed to refresh site')
-    } finally {
-      setIsLoading(false)
-      isRefreshing.current = false
-    }
+  // Only render content after mounting to prevent hydration mismatch
+  if (!mounted) {
+    return (
+      <div className='text-white min-h-screen bg-black p-4'>Loading...</div>
+    )
   }
 
   return (
@@ -620,9 +627,9 @@ export default function AdminPage(): JSX.Element {
       <div className='mx-auto max-w-xl space-y-4'>
         <h1 className='mb-8 text-2xl font-bold'>Admin Controls</h1>
 
-        {error && (
+        {_error && (
           <div className='mb-4 rounded border border-red-500 bg-red-900/50 p-4 text-red-100'>
-            {error}
+            {_error}
           </div>
         )}
 
@@ -698,9 +705,11 @@ export default function AdminPage(): JSX.Element {
           <div className='flex items-center gap-2 rounded-lg border border-gray-800 bg-gray-900/50 p-4'>
             <div
               className={`h-3 w-3 rounded-full ${
-                healthStatus.token === 'valid'
+                healthStatus.token === 'valid' &&
+                !healthStatus.tokenExpiringSoon
                   ? 'bg-green-500'
-                  : healthStatus.token === 'expired'
+                  : healthStatus.token === 'valid' &&
+                      healthStatus.tokenExpiringSoon
                     ? 'bg-yellow-500'
                     : healthStatus.token === 'error'
                       ? 'bg-red-500'
@@ -708,10 +717,11 @@ export default function AdminPage(): JSX.Element {
               }`}
             />
             <span className='font-medium'>
-              {healthStatus.token === 'valid'
+              {healthStatus.token === 'valid' && !healthStatus.tokenExpiringSoon
                 ? 'Token Valid'
-                : healthStatus.token === 'expired'
-                  ? 'Token Expired'
+                : healthStatus.token === 'valid' &&
+                    healthStatus.tokenExpiringSoon
+                  ? 'Token Expiring Soon'
                   : healthStatus.token === 'error'
                     ? 'Token Error'
                     : 'Token Status Unknown'}
@@ -719,16 +729,20 @@ export default function AdminPage(): JSX.Element {
             <div className='group relative'>
               <div className='invisible absolute left-0 top-0 z-10 rounded-lg bg-gray-800 p-2 text-xs text-gray-200 shadow-lg transition-all duration-200 group-hover:visible'>
                 <div className='whitespace-nowrap'>
-                  <div>Token expires: {new Date(tokenInfo.expiryTime).toLocaleString()}</div>
-                  <div>Last refresh: {new Date(tokenInfo.lastActualRefresh).toLocaleString()}</div>
+                  <div>
+                    Token expires:{' '}
+                    {formatDate(tokenInfo.expiryTime)}
+                  </div>
                   <div className='mt-1'>
                     <div className='font-medium'>Permissions:</div>
-                    <div className='whitespace-pre'>{formatTokenScope(tokenInfo.scope)}</div>
+                    <div className='whitespace-pre'>
+                      {formatTokenScope(tokenInfo.scope)}
+                    </div>
                   </div>
                 </div>
               </div>
               <svg
-                className='h-4 w-4 text-gray-400 cursor-help'
+                className='h-4 w-4 cursor-help text-gray-400'
                 fill='none'
                 stroke='currentColor'
                 viewBox='0 0 24 24'
