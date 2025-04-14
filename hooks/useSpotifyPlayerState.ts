@@ -9,6 +9,7 @@ import { debounce } from '@/lib/utils'
 let isInitialized = false
 let initializationPromise: Promise<void> | null = null
 let playerInstance: SpotifyPlayerInstance | null = null
+let currentAccessToken: string | null = null
 
 interface UseSpotifyPlayerStateReturn {
   error: string | null
@@ -117,6 +118,7 @@ export function useSpotifyPlayerState(): UseSpotifyPlayerStateReturn {
       }
       const tokenData = await response.json()
       const { access_token, expires_in, scope, token_type } = tokenData
+      currentAccessToken = access_token
 
       // Emit token update event
       const now = Date.now()
@@ -154,7 +156,9 @@ export function useSpotifyPlayerState(): UseSpotifyPlayerStateReturn {
       const player = new window.Spotify.Player({
         name: 'JM Bar Jukebox',
         getOAuthToken: (cb: (token: string) => void) => {
-          cb(access_token)
+          if (currentAccessToken) {
+            cb(currentAccessToken)
+          }
         },
         volume: 0.5,
         robustness: 'LOW'
@@ -314,7 +318,8 @@ export function useSpotifyPlayerState(): UseSpotifyPlayerStateReturn {
     setPlaybackState
   ])
 
-  const _refreshToken = useCallback(async (): Promise<void> => {
+  const refreshToken = useCallback(async (): Promise<void> => {
+    console.log('[Token] Refreshing token')
     try {
       const response = await fetch('/api/token')
       if (!response.ok) {
@@ -322,6 +327,7 @@ export function useSpotifyPlayerState(): UseSpotifyPlayerStateReturn {
       }
       const tokenData = await response.json()
       const { access_token, expires_in, scope, token_type } = tokenData
+      currentAccessToken = access_token
 
       // Emit token update event
       const now = Date.now()
@@ -352,11 +358,6 @@ export function useSpotifyPlayerState(): UseSpotifyPlayerStateReturn {
       throw error
     }
   }, [])
-
-  const refreshToken = useCallback(async (): Promise<void> => {
-    console.log('[Token] Refreshing token')
-    await _refreshToken()
-  }, [_refreshToken])
 
   const reconnectPlayer = useCallback(async (): Promise<void> => {
     if (
