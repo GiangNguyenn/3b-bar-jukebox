@@ -5,7 +5,12 @@ import { useSpotifyPlayer } from '@/hooks/useSpotifyPlayer'
 import { useFixedPlaylist } from '@/hooks/useFixedPlaylist'
 import { SpotifyPlayer } from '@/components/SpotifyPlayer'
 import { sendApiRequest } from '@/shared/api'
-import { SpotifyPlaybackState, SpotifyPlaylistItem, TokenResponse, TokenInfo } from '@/shared/types'
+import {
+  SpotifyPlaybackState,
+  SpotifyPlaylistItem,
+  TokenResponse,
+  TokenInfo
+} from '@/shared/types'
 
 const REFRESH_INTERVAL = 180000 // 3 minutes in milliseconds
 const DEVICE_CHECK_INTERVAL = {
@@ -72,7 +77,8 @@ export default function AdminPage(): JSX.Element {
     expiresIn: 0,
     scope: '',
     type: '',
-    lastActualRefresh: 0
+    lastActualRefresh: 0,
+    expiryTime: 0
   })
 
   const lastTokenUpdate = useRef<number>(0)
@@ -89,41 +95,38 @@ export default function AdminPage(): JSX.Element {
   // Remove token check interval
   useEffect(() => {
     const updateTokenInfo = async (): Promise<void> => {
-      try {
-        const now = Date.now()
-        if (now - lastTokenUpdate.current < 30000) {
-          return
-        }
-
-        const response = await fetch('/api/token-info')
-        const data = (await response.json()) as TokenResponse
-
-        if (!data.access_token || !data.expires_in) {
-          console.error('[Token] Invalid token data:', data)
-          return
-        }
-
-        const expiresInMs = data.expires_in * 1000
-
-        console.log('[Token] Raw API Response:', {
-          accessToken: data.access_token.slice(0, 5) + '...',
-          tokenType: data.token_type,
-          expiresIn: `${data.expires_in}s`,
-          scope: data.scope
-        })
-
-        setTokenInfo({
-          lastRefresh: now,
-          expiresIn: expiresInMs,
-          scope: data.scope,
-          type: data.token_type,
-          lastActualRefresh: now
-        })
-
-        lastTokenUpdate.current = now
-      } catch (error) {
-        console.error('[Token] Failed to fetch token info:', error)
+      const now = Date.now()
+      if (now - lastTokenUpdate.current < 30000) {
+        return
       }
+
+      const response = await fetch('/api/token-info')
+      const data = (await response.json()) as TokenResponse
+
+      if (!data.access_token || !data.expires_in) {
+        console.error('[Token] Invalid token data:', data)
+        return
+      }
+
+      const expiresInMs = data.expires_in * 1000
+
+      console.log('[Token] Raw API Response:', {
+        accessToken: data.access_token.slice(0, 5) + '...',
+        tokenType: data.token_type,
+        expiresIn: `${data.expires_in}s`,
+        scope: data.scope
+      })
+
+      setTokenInfo({
+        lastRefresh: now,
+        expiresIn: expiresInMs,
+        scope: data.scope,
+        type: data.token_type,
+        lastActualRefresh: now,
+        expiryTime: now + expiresInMs
+      })
+
+      lastTokenUpdate.current = now
     }
 
     // Initial update only
@@ -718,7 +721,7 @@ export default function AdminPage(): JSX.Element {
               <div className='group relative'>
                 <div className='invisible absolute left-0 top-0 z-10 rounded-lg bg-gray-800 p-2 text-xs text-gray-200 shadow-lg transition-all duration-200 group-hover:visible'>
                   <div className='whitespace-nowrap'>
-                    <div>Token expires: {new Date(tokenInfo.lastActualRefresh + tokenInfo.expiresIn).toLocaleTimeString(undefined, {
+                    <div>Token expires: {new Date(tokenInfo.expiryTime).toLocaleTimeString(undefined, {
                       hour: '2-digit',
                       minute: '2-digit',
                       hour12: true
