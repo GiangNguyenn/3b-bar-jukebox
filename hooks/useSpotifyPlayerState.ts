@@ -298,6 +298,18 @@ export function useSpotifyPlayerState(): UseSpotifyPlayerStateReturn {
 
   const refreshToken = useCallback(async (): Promise<void> => {
     console.log('[Token] Refreshing token before expiry')
+    
+    // Store current playback state before disconnecting
+    let currentState: SpotifyPlaybackState | null = null
+    try {
+      currentState = await sendApiRequest<SpotifyPlaybackState>({
+        path: 'me/player',
+        method: 'GET'
+      })
+    } catch (error) {
+      console.error('[Token] Error getting current playback state:', error)
+    }
+
     // Clear existing player instance to force full reinitialization
     if (playerInstance) {
       await playerInstance.disconnect()
@@ -305,6 +317,24 @@ export function useSpotifyPlayerState(): UseSpotifyPlayerStateReturn {
     }
     isInitialized = false
     await initializePlayer()
+
+    // Restore playback state if it was playing
+    if (currentState?.is_playing) {
+      try {
+        await sendApiRequest({
+          path: 'me/player/play',
+          method: 'PUT',
+          body: {
+            context_uri: currentState.context?.uri,
+            position_ms: currentState.progress_ms,
+            offset: currentState.item?.uri ? { uri: currentState.item.uri } : undefined
+          }
+        })
+        console.log('[Token] Playback restored after token refresh')
+      } catch (error) {
+        console.error('[Token] Error restoring playback:', error)
+      }
+    }
   }, [initializePlayer])
 
   const reconnectPlayer = useCallback(async (): Promise<void> => {
