@@ -827,7 +827,7 @@ export default function AdminPage(): JSX.Element {
               disabled={isLoading || !isReady}
               className='text-white flex-1 rounded-lg bg-purple-600 px-4 py-2 font-medium transition-colors hover:bg-purple-700 disabled:cursor-not-allowed disabled:opacity-50'
             >
-              {isLoading ? 'Loading...' : 'Refresh'}
+              {isLoading ? 'Loading...' : 'Refresh Playlist'}
             </button>
             <button
               onClick={() => void handleTokenRefresh()}
