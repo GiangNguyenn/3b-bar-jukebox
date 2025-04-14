@@ -357,17 +357,7 @@ export default function AdminPage(): JSX.Element {
   useEffect(autoRefreshEffect, [isLoading])
 
   // Network error handling and recovery
-  // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
   const networkEffect = () => {
-    // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
-    const handleNetworkError = () => {
-      setNetworkErrorCount((prev) => prev + 1)
-      if (networkErrorCount >= 3) {
-        setHealthStatus((prev) => ({ ...prev, connection: 'poor' }))
-        void attemptNetworkRecovery()
-      }
-    }
-
     const attemptNetworkRecovery = async (): Promise<void> => {
       try {
         const response = await fetch('/api/playback-state')
@@ -381,17 +371,42 @@ export default function AdminPage(): JSX.Element {
         setNetworkErrorCount((prev) => prev + 1)
         if (networkErrorCount >= 3) {
           setHealthStatus((prev) => ({ ...prev, connection: 'poor' }))
+        } else {
+          setHealthStatus((prev) => ({ ...prev, connection: 'unstable' }))
         }
       }
     }
 
-    window.addEventListener('offline', handleNetworkError)
-    window.addEventListener('online', () => void attemptNetworkRecovery())
+    const handleNetworkError = () => {
+      setNetworkErrorCount((prev) => prev + 1)
+      if (networkErrorCount >= 3) {
+        setHealthStatus((prev) => ({ ...prev, connection: 'poor' }))
+      } else {
+        setHealthStatus((prev) => ({ ...prev, connection: 'unstable' }))
+      }
+      void attemptNetworkRecovery()
+    }
 
-    // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
+    const handleOffline = () => {
+      setHealthStatus((prev) => ({ ...prev, connection: 'poor' }))
+    }
+
+    const handleOnline = () => {
+      void attemptNetworkRecovery()
+    }
+
+    // Initial connection check
+    void attemptNetworkRecovery()
+
+    // Set up event listeners
+    window.addEventListener('error', handleNetworkError)
+    window.addEventListener('offline', handleOffline)
+    window.addEventListener('online', handleOnline)
+
     return () => {
-      window.removeEventListener('offline', handleNetworkError)
-      window.removeEventListener('online', () => void attemptNetworkRecovery())
+      window.removeEventListener('error', handleNetworkError)
+      window.removeEventListener('offline', handleOffline)
+      window.removeEventListener('online', handleOnline)
     }
   }
 
@@ -741,10 +756,7 @@ export default function AdminPage(): JSX.Element {
             <div className='group relative'>
               <div className='invisible absolute left-0 top-0 z-10 rounded-lg bg-gray-800 p-2 text-xs text-gray-200 shadow-lg transition-all duration-200 group-hover:visible'>
                 <div className='whitespace-nowrap'>
-                  <div>
-                    Token expires:{' '}
-                    {formatDate(tokenInfo.expiryTime)}
-                  </div>
+                  <div>Token expires: {formatDate(tokenInfo.expiryTime)}</div>
                 </div>
               </div>
               <svg
@@ -835,3 +847,4 @@ export default function AdminPage(): JSX.Element {
     </div>
   )
 }
+
