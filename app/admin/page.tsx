@@ -2,15 +2,18 @@
 /* eslint-disable @typescript-eslint/explicit-function-return-type */
 'use client'
 
-import { useState, useEffect, useRef, useCallback, type EffectCallback } from 'react'
+import {
+  useState,
+  useEffect,
+  useRef,
+  useCallback,
+  type EffectCallback
+} from 'react'
 import { useSpotifyPlayer } from '@/hooks/useSpotifyPlayer'
 import { useFixedPlaylist } from '@/hooks/useFixedPlaylist'
 import { SpotifyPlayer } from '@/components/SpotifyPlayer'
 import { sendApiRequest } from '@/shared/api'
-import {
-  SpotifyPlaybackState,
-  TokenInfo
-} from '@/shared/types'
+import { SpotifyPlaybackState, TokenInfo } from '@/shared/types'
 
 const REFRESH_INTERVAL = 180000 // 3 minutes in milliseconds
 const DEVICE_CHECK_INTERVAL = {
@@ -97,10 +100,7 @@ export default function AdminPage(): JSX.Element {
 
     try {
       const response = await fetch('/api/refresh-site', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        }
+        method: 'GET'
       })
 
       if (!response.ok) {
@@ -165,7 +165,10 @@ export default function AdminPage(): JSX.Element {
 
     window.addEventListener('tokenUpdate', handleTokenUpdate as EventListener)
     return () => {
-      window.removeEventListener('tokenUpdate', handleTokenUpdate as EventListener)
+      window.removeEventListener(
+        'tokenUpdate',
+        handleTokenUpdate as EventListener
+      )
     }
   }, [updateTokenStatus])
 
@@ -442,20 +445,29 @@ export default function AdminPage(): JSX.Element {
   useEffect(playbackEffect, [])
 
   // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
-  const handlePlaylistChecked = useCallback((event: CustomEvent<PlaylistCheckedInfo>) => {
-    const { hasChanges } = event.detail
-    if (hasChanges) {
-      void handleRefresh()
-    }
-  }, [handleRefresh])
+  const handlePlaylistChecked = useCallback(
+    (event: CustomEvent<PlaylistCheckedInfo>) => {
+      const { hasChanges } = event.detail
+      if (hasChanges) {
+        void handleRefresh()
+      }
+    },
+    [handleRefresh]
+  )
 
   // Listen for playlist change status updates
   // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
   const playlistEffect = () => {
-    window.addEventListener('playlistChecked', handlePlaylistChecked as EventListener)
+    window.addEventListener(
+      'playlistChecked',
+      handlePlaylistChecked as EventListener
+    )
     // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
     return () => {
-      window.removeEventListener('playlistChecked', handlePlaylistChecked as EventListener)
+      window.removeEventListener(
+        'playlistChecked',
+        handlePlaylistChecked as EventListener
+      )
     }
   }
 
@@ -732,12 +744,6 @@ export default function AdminPage(): JSX.Element {
                   <div>
                     Token expires:{' '}
                     {formatDate(tokenInfo.expiryTime)}
-                  </div>
-                  <div className='mt-1'>
-                    <div className='font-medium'>Permissions:</div>
-                    <div className='whitespace-pre'>
-                      {formatTokenScope(tokenInfo.scope)}
-                    </div>
                   </div>
                 </div>
               </div>
