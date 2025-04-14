@@ -1,7 +1,7 @@
 import { useState, useRef, useCallback, useEffect } from 'react'
 import { useSpotifyPlayer } from './useSpotifyPlayer'
 import { sendApiRequest } from '@/shared/api'
-import { SpotifyPlaybackState } from '@/shared/types'
+import { SpotifyPlaybackState, TokenInfo } from '@/shared/types'
 import type { SpotifyPlayerInstance } from '@/types/spotify'
 import { debounce } from '@/lib/utils'
 
@@ -40,6 +40,7 @@ export function useSpotifyPlayerState(): UseSpotifyPlayerStateReturn {
   const MAX_RECONNECT_ATTEMPTS = 3
   const initializationCheckInterval = useRef<NodeJS.Timeout | null>(null)
   const playlistRefreshInterval = useRef<NodeJS.Timeout | null>(null)
+  const tokenRefreshInterval = useRef<NodeJS.Timeout | null>(null)
   const lastReadyState = useRef<boolean>(false)
 
   // Track ready state changes
@@ -113,7 +114,28 @@ export function useSpotifyPlayerState(): UseSpotifyPlayerStateReturn {
       if (!response.ok) {
         throw new Error('Failed to get Spotify token')
       }
-      const { access_token } = await response.json()
+      const tokenData = await response.json()
+      const { access_token, expires_in, scope, token_type } = tokenData
+
+      // Emit token update event
+      const now = Date.now()
+      const tokenInfo: TokenInfo = {
+        lastRefresh: now,
+        expiresIn: expires_in,
+        scope,
+        type: token_type,
+        lastActualRefresh: now,
+        expiryTime: now + (expires_in * 1000)
+      }
+      window.dispatchEvent(new CustomEvent('tokenUpdate', { detail: tokenInfo }))
+
+      // Set up token refresh timer
+      if (tokenRefreshInterval.current) {
+        clearTimeout(tokenRefreshInterval.current)
+      }
+      const refreshDelay = (expires_in - 15 * 60) * 1000 // 15 minutes before expiry
+      console.log('[Token] Setting refresh timer for', new Date(now + refreshDelay))
+      tokenRefreshInterval.current = setTimeout(refreshToken, refreshDelay)
 
       if (!window.Spotify) {
         throw new Error('Spotify SDK not loaded')
@@ -268,6 +290,17 @@ export function useSpotifyPlayerState(): UseSpotifyPlayerStateReturn {
     setDeviceId,
     setPlaybackState
   ])
+
+  const refreshToken = useCallback(async (): Promise<void> => {
+    console.log('[Token] Refreshing token before expiry')
+    // Clear existing player instance to force full reinitialization
+    if (playerInstance) {
+      await playerInstance.disconnect()
+      playerInstance = null
+    }
+    isInitialized = false
+    await initializePlayer()
+  }, [initializePlayer])
 
   const reconnectPlayer = useCallback(async (): Promise<void> => {
     if (
@@ -466,6 +499,14 @@ export function useSpotifyPlayerState(): UseSpotifyPlayerStateReturn {
       setPlaybackState(state)
     }
   }
+
+  useEffect(() => {
+    return () => {
+      if (tokenRefreshInterval.current) {
+        clearTimeout(tokenRefreshInterval.current)
+      }
+    }
+  }, [])
 
   return {
     error,

@@ -17,6 +17,12 @@ interface ErrorResponse {
   details?: unknown
 }
 
+// Add token cache
+const tokenCache: { token: string | null; expiry: number } = {
+  token: null,
+  expiry: 0
+}
+
 export async function GET(): Promise<
   NextResponse<TokenResponse | ErrorResponse>
 > {
@@ -29,6 +35,23 @@ export async function GET(): Promise<
     if (!CLIENT_ID || !CLIENT_SECRET) {
       console.error('[Token] Missing client credentials')
       throw new AppError(ERROR_MESSAGES.UNAUTHORIZED, undefined, 'Token')
+    }
+
+    // Check if we have a valid cached token
+    const now = Date.now()
+    const timeUntilExpiry = tokenCache.expiry - now
+    const minutesUntilExpiry = timeUntilExpiry / (60 * 1000)
+
+    // If token is valid and not expiring soon (more than 15 minutes left), return cached token
+    if (tokenCache.token && minutesUntilExpiry > 15) {
+      console.log('[Token] Using cached token')
+      return NextResponse.json({
+        access_token: tokenCache.token,
+        token_type: 'Bearer',
+        scope:
+          'user-read-playback-state user-modify-playback-state playlist-read-private playlist-modify-private',
+        expires_in: Math.floor(timeUntilExpiry / 1000)
+      })
     }
 
     const auth = Buffer.from(`${CLIENT_ID}:${CLIENT_SECRET}`).toString('base64')
@@ -71,6 +94,11 @@ export async function GET(): Promise<
 
     const data = (await response.json()) as TokenResponse
     console.log('[Token] Successfully refreshed token')
+
+    // Update token cache
+    tokenCache.token = data.access_token
+    tokenCache.expiry = now + data.expires_in * 1000
+
     return NextResponse.json(data)
   } catch (error) {
     console.error('[Token] Unexpected error in token refresh:', error)
