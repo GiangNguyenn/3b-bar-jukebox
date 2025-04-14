@@ -104,7 +104,7 @@ export default function AdminPage(): JSX.Element {
         method: 'GET'
       })
 
-      const data = await response.json() as RefreshResponse
+      const data = (await response.json()) as RefreshResponse
 
       if (!response.ok) {
         throw new Error(data.message ?? 'Failed to refresh site')
