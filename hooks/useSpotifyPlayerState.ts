@@ -125,16 +125,21 @@ export function useSpotifyPlayerState(): UseSpotifyPlayerStateReturn {
         scope,
         type: token_type,
         lastActualRefresh: now,
-        expiryTime: now + (expires_in * 1000)
+        expiryTime: now + expires_in * 1000
       }
-      window.dispatchEvent(new CustomEvent('tokenUpdate', { detail: tokenInfo }))
+      window.dispatchEvent(
+        new CustomEvent('tokenUpdate', { detail: tokenInfo })
+      )
 
       // Set up token refresh timer
       if (tokenRefreshInterval.current) {
         clearTimeout(tokenRefreshInterval.current)
       }
       const refreshDelay = (expires_in - 15 * 60) * 1000 // 15 minutes before expiry
-      console.log('[Token] Setting refresh timer for', new Date(now + refreshDelay))
+      console.log(
+        '[Token] Setting refresh timer for',
+        new Date(now + refreshDelay)
+      )
       tokenRefreshInterval.current = setTimeout(refreshToken, refreshDelay)
 
       if (!window.Spotify) {
