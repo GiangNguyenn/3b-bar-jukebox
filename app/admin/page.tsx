@@ -92,45 +92,44 @@ export default function AdminPage(): JSX.Element {
     }
   }
 
-  // Remove token check interval
+  // Set initial token info
   useEffect(() => {
-    const updateTokenInfo = async (): Promise<void> => {
-      const now = Date.now()
-      if (now - lastTokenUpdate.current < 30000) {
-        return
+    const fetchInitialTokenInfo = async (): Promise<void> => {
+      try {
+        const response = await fetch('/api/token-info')
+        const data = (await response.json()) as TokenResponse
+
+        if (!data.access_token || !data.expires_in) {
+          console.error('[Token] Invalid token data:', data)
+          return
+        }
+
+        const now = Date.now()
+        const expiresInMs = data.expires_in * 1000
+
+        setTokenInfo({
+          lastRefresh: now,
+          expiresIn: expiresInMs,
+          scope: data.scope,
+          type: data.token_type,
+          lastActualRefresh: now,
+          expiryTime: now + expiresInMs
+        })
+
+        setHealthStatus(prev => ({
+          ...prev,
+          token: 'valid'
+        }))
+      } catch (error) {
+        console.error('[Token] Failed to fetch initial token info:', error)
+        setHealthStatus(prev => ({
+          ...prev,
+          token: 'error'
+        }))
       }
-
-      const response = await fetch('/api/token-info')
-      const data = (await response.json()) as TokenResponse
-
-      if (!data.access_token || !data.expires_in) {
-        console.error('[Token] Invalid token data:', data)
-        return
-      }
-
-      const expiresInMs = data.expires_in * 1000
-
-      console.log('[Token] Raw API Response:', {
-        accessToken: data.access_token.slice(0, 5) + '...',
-        tokenType: data.token_type,
-        expiresIn: `${data.expires_in}s`,
-        scope: data.scope
-      })
-
-      setTokenInfo({
-        lastRefresh: now,
-        expiresIn: expiresInMs,
-        scope: data.scope,
-        type: data.token_type,
-        lastActualRefresh: now,
-        expiryTime: now + expiresInMs
-      })
-
-      lastTokenUpdate.current = now
     }
 
-    // Initial update only
-    void updateTokenInfo()
+    void fetchInitialTokenInfo()
   }, [])
 
   const attemptRecovery = useCallback(async (): Promise<void> => {
@@ -717,42 +716,31 @@ export default function AdminPage(): JSX.Element {
                     ? 'Token Error'
                     : 'Token Status Unknown'}
             </span>
-            {healthStatus.token === 'valid' && (
-              <div className='group relative'>
-                <div className='invisible absolute left-0 top-0 z-10 rounded-lg bg-gray-800 p-2 text-xs text-gray-200 shadow-lg transition-all duration-200 group-hover:visible'>
-                  <div className='whitespace-nowrap'>
-                    <div>Token expires: {new Date(tokenInfo.expiryTime).toLocaleTimeString(undefined, {
-                      hour: '2-digit',
-                      minute: '2-digit',
-                      hour12: true
-                    })}</div>
-                    <div>
-                      Last token refresh:{' '}
-                      {safeToISOString(tokenInfo.lastActualRefresh)}
-                    </div>
-                    <div className='mt-1'>
-                      <div className='font-medium'>Permissions:</div>
-                      <div className='whitespace-pre'>
-                        {formatTokenScope(tokenInfo.scope)}
-                      </div>
-                    </div>
+            <div className='group relative'>
+              <div className='invisible absolute left-0 top-0 z-10 rounded-lg bg-gray-800 p-2 text-xs text-gray-200 shadow-lg transition-all duration-200 group-hover:visible'>
+                <div className='whitespace-nowrap'>
+                  <div>Token expires: {new Date(tokenInfo.expiryTime).toLocaleString()}</div>
+                  <div>Last refresh: {new Date(tokenInfo.lastActualRefresh).toLocaleString()}</div>
+                  <div className='mt-1'>
+                    <div className='font-medium'>Permissions:</div>
+                    <div className='whitespace-pre'>{formatTokenScope(tokenInfo.scope)}</div>
                   </div>
                 </div>
-                <svg
-                  className='h-4 w-4 text-gray-400'
-                  fill='none'
-                  stroke='currentColor'
-                  viewBox='0 0 24 24'
-                >
-                  <path
-                    strokeLinecap='round'
-                    strokeLinejoin='round'
-                    strokeWidth={2}
-                    d='M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z'
-                  />
-                </svg>
               </div>
-            )}
+              <svg
+                className='h-4 w-4 text-gray-400 cursor-help'
+                fill='none'
+                stroke='currentColor'
+                viewBox='0 0 24 24'
+              >
+                <path
+                  strokeLinecap='round'
+                  strokeLinejoin='round'
+                  strokeWidth={2}
+                  d='M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z'
+                />
+              </svg>
+            </div>
           </div>
 
           <div className='flex items-center gap-2 rounded-lg border border-gray-800 bg-gray-900/50 p-4'>
