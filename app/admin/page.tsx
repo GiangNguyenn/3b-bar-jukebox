@@ -15,6 +15,7 @@ import { SpotifyPlayer } from '@/components/SpotifyPlayer'
 import { sendApiRequest } from '@/shared/api'
 import { SpotifyPlaybackState, TokenInfo } from '@/shared/types'
 import { formatDate } from '@/lib/utils'
+import { useSpotifyPlayerState } from '@/hooks/useSpotifyPlayerState'
 
 const REFRESH_INTERVAL = 180000 // 3 minutes in milliseconds
 const DEVICE_CHECK_INTERVAL = {
@@ -89,6 +90,10 @@ export default function AdminPage(): JSX.Element {
     lastActualRefresh: 0,
     expiryTime: 0
   })
+
+  const {
+    refreshToken
+  } = useSpotifyPlayerState()
 
   const handleRefresh = useCallback(async (): Promise<void> => {
     if (isRefreshing.current) {
@@ -628,6 +633,21 @@ export default function AdminPage(): JSX.Element {
     }
   }
 
+  const handleTokenRefresh = async (): Promise<void> => {
+    try {
+      setIsLoading(true)
+      setError(null)
+      await refreshToken()
+      console.log('[Token] Manual refresh triggered successfully')
+    } catch (error) {
+      console.error('[Token] Manual refresh failed:', error)
+      setError('Failed to refresh token')
+      setHealthStatus((prev) => ({ ...prev, token: 'error' }))
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
   // Only render content after mounting to prevent hydration mismatch
   if (!mounted) {
     return (
@@ -810,6 +830,13 @@ export default function AdminPage(): JSX.Element {
               className='text-white flex-1 rounded-lg bg-purple-600 px-4 py-2 font-medium transition-colors hover:bg-purple-700 disabled:cursor-not-allowed disabled:opacity-50'
             >
               {isLoading ? 'Loading...' : 'Refresh'}
+            </button>
+            <button
+              onClick={() => void handleTokenRefresh()}
+              disabled={isLoading || !isReady}
+              className='text-white flex-1 rounded-lg bg-orange-600 px-4 py-2 font-medium transition-colors hover:bg-orange-700 disabled:cursor-not-allowed disabled:opacity-50'
+            >
+              {isLoading ? 'Loading...' : 'Refresh Token'}
             </button>
           </div>
           <div className='text-center text-sm text-gray-400'>

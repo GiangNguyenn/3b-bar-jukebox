@@ -27,6 +27,7 @@ interface UseSpotifyPlayerStateReturn {
   reconnectPlayer: () => Promise<void>
   refreshPlayerState: () => Promise<void>
   refreshPlaylistState: () => Promise<void>
+  refreshToken: () => Promise<void>
 }
 
 export function useSpotifyPlayerState(): UseSpotifyPlayerStateReturn {
@@ -313,48 +314,49 @@ export function useSpotifyPlayerState(): UseSpotifyPlayerStateReturn {
     setPlaybackState
   ])
 
-  const refreshToken = useCallback(async (): Promise<void> => {
-    console.log('[Token] Refreshing token before expiry')
-
-    // Store current playback state before disconnecting
-    let currentState: SpotifyPlaybackState | null = null
+  const _refreshToken = useCallback(async (): Promise<void> => {
     try {
-      currentState = await sendApiRequest<SpotifyPlaybackState>({
-        path: 'me/player',
-        method: 'GET'
-      })
-    } catch (error) {
-      console.error('[Token] Error getting current playback state:', error)
-    }
-
-    // Clear existing player instance to force full reinitialization
-    if (playerInstance) {
-      await playerInstance.disconnect()
-      playerInstance = null
-    }
-    isInitialized = false
-    await initializePlayer()
-
-    // Restore playback state if it was playing
-    if (currentState?.is_playing) {
-      try {
-        await sendApiRequest({
-          path: 'me/player/play',
-          method: 'PUT',
-          body: {
-            context_uri: currentState.context?.uri,
-            position_ms: currentState.progress_ms,
-            offset: currentState.item?.uri
-              ? { uri: currentState.item.uri }
-              : undefined
-          }
-        })
-        console.log('[Token] Playback restored after token refresh')
-      } catch (error) {
-        console.error('[Token] Error restoring playback:', error)
+      const response = await fetch('/api/token')
+      if (!response.ok) {
+        throw new Error('Failed to get Spotify token')
       }
+      const tokenData = await response.json()
+      const { access_token, expires_in, scope, token_type } = tokenData
+
+      // Emit token update event
+      const now = Date.now()
+      const tokenInfo: TokenInfo = {
+        lastRefresh: now,
+        expiresIn: expires_in,
+        scope,
+        type: token_type,
+        lastActualRefresh: now,
+        expiryTime: now + expires_in * 1000
+      }
+      window.dispatchEvent(
+        new CustomEvent('tokenUpdate', { detail: tokenInfo })
+      )
+
+      // Set up token refresh timer
+      if (tokenRefreshInterval.current) {
+        clearTimeout(tokenRefreshInterval.current)
+      }
+      const refreshDelay = (expires_in - 15 * 60) * 1000 // 15 minutes before expiry
+      console.log(
+        '[Token] Setting refresh timer for',
+        new Date(now + refreshDelay)
+      )
+      tokenRefreshInterval.current = setTimeout(refreshToken, refreshDelay)
+    } catch (error) {
+      console.error('[Token] Error refreshing token:', error)
+      throw error
     }
-  }, [initializePlayer])
+  }, [])
+
+  const refreshToken = useCallback(async (): Promise<void> => {
+    console.log('[Token] Refreshing token')
+    await _refreshToken()
+  }, [_refreshToken])
 
   const reconnectPlayer = useCallback(async (): Promise<void> => {
     if (
@@ -578,6 +580,7 @@ export function useSpotifyPlayerState(): UseSpotifyPlayerStateReturn {
     initializePlayer,
     reconnectPlayer,
     refreshPlayerState,
-    refreshPlaylistState
+    refreshPlaylistState,
+    refreshToken
   }
 }
