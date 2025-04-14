@@ -225,18 +225,16 @@ export function useSpotifyPlayerState(): UseSpotifyPlayerStateReturn {
               `[SpotifyPlayer] ${track?.name} - ${state.is_playing ? 'Playing' : 'Paused'}`
             )
 
-            // If not playing, attempt to resume
-            if (!state.is_playing && state.context?.uri) {
-              console.log(
-                '[SpotifyPlayer] Playback stopped, attempting to resume'
-              )
+            // If not playing and we have a current track, attempt to resume
+            if (!state.is_playing && state.item?.uri) {
+              console.log('[SpotifyPlayer] Playback stopped, attempting to resume from current position')
               void sendApiRequest({
                 path: 'me/player/play',
                 method: 'PUT',
                 body: {
-                  context_uri: state.context.uri,
                   position_ms: state.progress_ms,
-                  offset: state.item?.uri ? { uri: state.item.uri } : undefined
+                  offset: { uri: state.item.uri },
+                  context_uri: state.context?.uri
                 }
               })
             }
