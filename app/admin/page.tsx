@@ -32,6 +32,7 @@ interface HealthStatus {
   token: 'valid' | 'expired' | 'error' | 'unknown'
   connection: 'good' | 'unstable' | 'poor' | 'unknown'
   tokenExpiringSoon: boolean
+  fixedPlaylist: 'found' | 'not_found' | 'error' | 'unknown'
 }
 
 interface PlaylistCheckedInfo {
@@ -43,11 +44,6 @@ interface PlaybackInfo {
   isPlaying: boolean
   currentTrack: string
   progress: number
-}
-
-interface ErrorResponse {
-  error: string
-  details?: unknown
 }
 
 interface RefreshResponse {
@@ -66,13 +62,14 @@ export default function AdminPage(): JSX.Element {
     playback: 'unknown',
     token: 'unknown',
     connection: 'unknown',
-    tokenExpiringSoon: false
+    tokenExpiringSoon: false,
+    fixedPlaylist: 'unknown'
   })
   const [recoveryAttempts, setRecoveryAttempts] = useState(0)
   const [networkErrorCount, setNetworkErrorCount] = useState(0)
   const isReady = useSpotifyPlayer((state) => state.isReady)
   const deviceId = useSpotifyPlayer((state) => state.deviceId)
-  const { fixedPlaylistId } = useFixedPlaylist()
+  const { fixedPlaylistId, isInitialFetchComplete } = useFixedPlaylist()
   const wakeLock = useRef<WakeLockSentinel | null>(null)
   const lastRefreshTime = useRef<number>(Date.now())
   const deviceCheckInterval = useRef<NodeJS.Timeout | null>(null)
@@ -107,14 +104,12 @@ export default function AdminPage(): JSX.Element {
         method: 'GET'
       })
 
+      const data = await response.json() as RefreshResponse
+
       if (!response.ok) {
-        const errorData = (await response
-          .json()
-          .catch(() => ({}))) as ErrorResponse
-        throw new Error(errorData.error || 'Failed to refresh site')
+        throw new Error(data.message ?? 'Failed to refresh site')
       }
 
-      const data = (await response.json()) as RefreshResponse
       console.log('[Refresh] Success:', data.message)
       lastRefreshTime.current = Date.now()
       setTimeUntilRefresh(REFRESH_INTERVAL)
@@ -536,6 +531,15 @@ export default function AdminPage(): JSX.Element {
     return () => clearInterval(timer)
   }, [])
 
+  // Update FixedPlaylist status
+  useEffect(() => {
+    if (fixedPlaylistId) {
+      setHealthStatus((prev) => ({ ...prev, fixedPlaylist: 'found' }))
+    } else if (isInitialFetchComplete) {
+      setHealthStatus((prev) => ({ ...prev, fixedPlaylist: 'not_found' }))
+    }
+  }, [fixedPlaylistId, isInitialFetchComplete])
+
   const formatTime = (ms: number): string => {
     const minutes = Math.floor(ms / 60000)
     const seconds = Math.floor((ms % 60000) / 1000)
@@ -803,6 +807,50 @@ export default function AdminPage(): JSX.Element {
                     : 'Connection Status Unknown'}
             </span>
           </div>
+
+          <div className='flex items-center gap-2 rounded-lg border border-gray-800 bg-gray-900/50 p-4'>
+            <div
+              className={`h-3 w-3 rounded-full ${
+                healthStatus.fixedPlaylist === 'found'
+                  ? 'bg-green-500'
+                  : healthStatus.fixedPlaylist === 'not_found'
+                    ? 'bg-red-500'
+                    : healthStatus.fixedPlaylist === 'error'
+                      ? 'bg-red-500'
+                      : 'bg-gray-500'
+              }`}
+            />
+            <span className='font-medium'>
+              {healthStatus.fixedPlaylist === 'found'
+                ? 'Fixed Playlist Found'
+                : healthStatus.fixedPlaylist === 'not_found'
+                  ? 'Fixed Playlist Not Found'
+                  : healthStatus.fixedPlaylist === 'error'
+                    ? 'Fixed Playlist Error'
+                    : 'Fixed Playlist Status Unknown'}
+            </span>
+            <div className='group relative'>
+              <div className='invisible absolute left-0 top-0 z-10 rounded-lg bg-gray-800 p-2 text-xs text-gray-200 shadow-lg transition-all duration-200 group-hover:visible'>
+                <div className='whitespace-nowrap'>
+                  <div>Playlist ID: {fixedPlaylistId ?? 'Not found'}</div>
+                  <div>Next auto-refresh in {formatTime(timeUntilRefresh)}</div>
+                </div>
+              </div>
+              <svg
+                className='h-4 w-4 cursor-help text-gray-400'
+                fill='none'
+                stroke='currentColor'
+                viewBox='0 0 24 24'
+              >
+                <path
+                  strokeLinecap='round'
+                  strokeLinejoin='round'
+                  strokeWidth={2}
+                  d='M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z'
+                />
+              </svg>
+            </div>
+          </div>
         </div>
 
         <div className='mt-8 space-y-4'>
@@ -838,9 +886,8 @@ export default function AdminPage(): JSX.Element {
             </button>
           </div>
           <div className='text-center text-sm text-gray-400'>
-            <div className='flex justify-between'>
+            <div className='flex flex-col items-center gap-2'>
               <span>Uptime: {formatTime(uptime)}</span>
-              <span>Next auto-refresh in {formatTime(timeUntilRefresh)}</span>
             </div>
           </div>
           <div className='mt-4 rounded-lg border border-gray-800 bg-gray-900/50 p-4'>
