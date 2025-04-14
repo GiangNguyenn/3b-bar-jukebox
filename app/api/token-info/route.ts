@@ -1,23 +1,16 @@
 import { NextResponse } from 'next/server'
 import { AppError } from '@/shared/utils/errorHandling'
 import { ERROR_MESSAGES } from '@/shared/constants/errors'
+import { TokenResponse } from '@/shared/utils/token'
 
 // Configure the route to be dynamic
 export const dynamic = 'force-dynamic'
-export const revalidate = 0
 
+// Constants for token endpoint
 const SPOTIFY_TOKEN_URL = 'https://accounts.spotify.com/api/token'
-const CLIENT_ID = process.env.SPOTIFY_CLIENT_ID ?? ''
-const CLIENT_SECRET = process.env.SPOTIFY_CLIENT_SECRET ?? ''
-const refreshToken = process.env.SPOTIFY_REFRESH_TOKEN ?? ''
-
-interface SpotifyTokenResponse {
-  access_token: string
-  token_type: string
-  scope: string
-  expires_in: number
-  refresh_token?: string
-}
+const CLIENT_ID = process.env.SPOTIFY_CLIENT_ID
+const CLIENT_SECRET = process.env.SPOTIFY_CLIENT_SECRET
+const refreshToken = process.env.SPOTIFY_REFRESH_TOKEN
 
 interface ErrorResponse {
   error: string
@@ -31,17 +24,17 @@ const tokenCache: { token: string | null; expiry: number } = {
 }
 
 export async function GET(): Promise<
-  NextResponse<SpotifyTokenResponse | ErrorResponse>
+  NextResponse<TokenResponse | ErrorResponse>
 > {
   try {
     if (!refreshToken) {
       console.error('[Token] Missing refresh token')
-      throw new AppError(ERROR_MESSAGES.UNAUTHORIZED, undefined, 'TokenRefresh')
+      throw new AppError(ERROR_MESSAGES.UNAUTHORIZED, undefined, 'Token')
     }
 
     if (!CLIENT_ID || !CLIENT_SECRET) {
       console.error('[Token] Missing client credentials')
-      throw new AppError(ERROR_MESSAGES.UNAUTHORIZED, undefined, 'TokenRefresh')
+      throw new AppError(ERROR_MESSAGES.UNAUTHORIZED, undefined, 'Token')
     }
 
     // Check if we have a valid cached token
@@ -95,11 +88,11 @@ export async function GET(): Promise<
           statusText: response.statusText,
           error: errorData
         },
-        'TokenRefresh'
+        'Token'
       )
     }
 
-    const data = (await response.json()) as SpotifyTokenResponse
+    const data = (await response.json()) as TokenResponse
     console.log('[Token] Successfully refreshed token')
 
     // Update token cache
@@ -112,7 +105,7 @@ export async function GET(): Promise<
     const appError =
       error instanceof AppError
         ? error
-        : new AppError(ERROR_MESSAGES.GENERIC_ERROR, error, 'TokenRefresh')
+        : new AppError(ERROR_MESSAGES.GENERIC_ERROR, error, 'Token')
 
     return NextResponse.json(
       {

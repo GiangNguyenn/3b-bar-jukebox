@@ -42,3 +42,12 @@ export function debounce<T extends (...args: unknown[]) => unknown>(
     timeout = setTimeout(() => func(...args), wait)
   }
 }
+
+export function formatDate(timestamp: number): string {
+  if (!timestamp || timestamp === 0) return 'Not available'
+  try {
+    return new Date(timestamp).toLocaleString()
+  } catch {
+    return 'Invalid date'
+  }
+}
