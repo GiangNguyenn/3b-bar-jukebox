@@ -70,7 +70,9 @@ export const sendApiRequest = async <T>({
         try {
           errorData = JSON.parse(errorText)
         } catch {
-          throw new Error(`Spotify API error: ${response.status} ${response.statusText}`)
+          throw new Error(
+            `Spotify API error: ${response.status} ${response.statusText}`
+          )
         }
 
         throw new Error(
