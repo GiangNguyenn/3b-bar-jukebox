@@ -254,4 +254,5 @@ export interface TokenInfo {
   scope: string
   type: string
   lastActualRefresh: number
+  expiryTime: number
 }
