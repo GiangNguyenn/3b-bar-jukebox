@@ -53,94 +53,45 @@ export const sendApiRequest = async <T>({
 
   const makeRequest = async (): Promise<T> => {
     try {
-      const url = `${SPOTIFY_API_URL}/${path}`
-
-      const response = await fetch(url, {
+      const response = await fetch(`${SPOTIFY_API_URL}/${path}`, {
         method,
-        headers,
+        headers: {
+          ...headers,
+          ...extraHeaders
+        },
         body: body ? JSON.stringify(body) : undefined,
         ...config
       })
 
       if (!response.ok) {
-        let errorData
+        const errorText = await response.text()
+        let errorData: SpotifyErrorResponse
+
         try {
-          errorData = await response.json()
-        } catch (e) {
-          errorData = null
-        }
-
-        const errorMessage =
-          errorData?.error?.message || `HTTP error! status: ${response.status}`
-        console.error('API request failed:', {
-          status: response.status,
-          statusText: response.statusText,
-          error: errorData,
-          url,
-          method,
-          requestBody: body ? JSON.stringify(body) : undefined
-        })
-
-        // Handle specific error cases
-        if (response.status === 401) {
+          errorData = JSON.parse(errorText)
+        } catch {
           throw new Error(
-            'Authentication failed. Please try refreshing the page.'
-          )
-        } else if (response.status === 403) {
-          throw new Error("You don't have permission to perform this action.")
-        } else if (response.status === 404) {
-          throw new Error('The requested resource was not found.')
-        } else if (response.status === 429) {
-          throw new Error('Too many requests. Please try again later.')
-        } else if (response.status >= 500) {
-          throw new Error(
-            'Spotify service is currently unavailable. Please try again later.'
+            `Spotify API error: ${response.status} ${response.statusText}`
           )
         }
 
-        throw new Error(errorMessage)
-      }
-
-      // Handle 204 No Content responses
-      if (response.status === 204) {
-        return {} as T
-      }
-
-      // Only try to parse JSON if we have content
-      if (response.headers.get('content-length') === '0') {
-        return {} as T
-      }
-
-      try {
-        const data = await response.json()
-        return data
-      } catch (e) {
-        console.error('Failed to parse response as JSON:', e)
-        return {} as T
-      }
-    } catch (error) {
-      console.error('API request failed:', {
-        error:
-          error instanceof Error
-            ? {
-                name: error.name,
-                message: error.message,
-                stack: error.stack
-              }
-            : error,
-        url: `${SPOTIFY_API_URL}/${path}`,
-        method,
-        requestBody: body ? JSON.stringify(body) : undefined
-      })
-
-      // Handle network errors
-      if (error instanceof TypeError && error.message === 'Failed to fetch') {
         throw new Error(
-          'Network error. Please check your internet connection and try again.'
+          errorData.error.message || `Spotify API error: ${response.status}`
         )
       }
 
-      throw error
+      const contentType = response.headers.get('content-type')
+      if (!contentType || !contentType.includes('application/json')) {
+        return {} as T
+      }
+
+      const data = await response.json()
+      return data as T
+    } catch (error) {
+      if (error instanceof Error) {
+        throw error
+      }
+      throw new Error('Unknown error occurred while making API request')
     }
   }
 

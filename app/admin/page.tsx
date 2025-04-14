@@ -1,26 +1,43 @@
+/* eslint-disable @typescript-eslint/no-unused-vars */
+/* eslint-disable @typescript-eslint/explicit-function-return-type */
 'use client'
 
-import { useState, useEffect, useRef, useCallback } from 'react'
+import {
+  useState,
+  useEffect,
+  useRef,
+  useCallback,
+  type EffectCallback
+} from 'react'
 import { useSpotifyPlayer } from '@/hooks/useSpotifyPlayer'
 import { useFixedPlaylist } from '@/hooks/useFixedPlaylist'
 import { SpotifyPlayer } from '@/components/SpotifyPlayer'
 import { sendApiRequest } from '@/shared/api'
-import { SpotifyPlaybackState, SpotifyPlaylistItem } from '@/shared/types'
+import { SpotifyPlaybackState, TokenInfo } from '@/shared/types'
+import { formatDate } from '@/lib/utils'
+import { useSpotifyPlayerState } from '@/hooks/useSpotifyPlayerState'
 
 const REFRESH_INTERVAL = 180000 // 3 minutes in milliseconds
 const DEVICE_CHECK_INTERVAL = {
   good: 30000, // 30 seconds
   unstable: 15000, // 15 seconds
-  poor: 10000 // 10 seconds
+  poor: 10000, // 10 seconds
+  unknown: 5000 // 5 seconds for initial checks
 }
 const MAX_RECOVERY_ATTEMPTS = 3
-const TOKEN_CHECK_INTERVAL = 120000 // 2 minutes in milliseconds
 
 interface HealthStatus {
-  device: 'healthy' | 'unresponsive' | 'disconnected'
-  playback: 'playing' | 'paused' | 'stopped' | 'error'
-  token: 'valid' | 'expired' | 'error'
-  connection: 'good' | 'unstable' | 'poor'
+  device: 'healthy' | 'unresponsive' | 'disconnected' | 'unknown'
+  playback: 'playing' | 'paused' | 'stopped' | 'error' | 'unknown'
+  token: 'valid' | 'expired' | 'error' | 'unknown'
+  connection: 'good' | 'unstable' | 'poor' | 'unknown'
+  tokenExpiringSoon: boolean
+  fixedPlaylist: 'found' | 'not_found' | 'error' | 'unknown'
+}
+
+interface PlaylistCheckedInfo {
+  timestamp: number
+  hasChanges: boolean
 }
 
 interface PlaybackInfo {
@@ -35,140 +52,146 @@ interface RefreshResponse {
 }
 
 export default function AdminPage(): JSX.Element {
+  const [mounted, setMounted] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const [_error, setError] = useState<string | null>(null)
   const [timeUntilRefresh, setTimeUntilRefresh] = useState(REFRESH_INTERVAL)
   const [playbackInfo, setPlaybackInfo] = useState<PlaybackInfo | null>(null)
   const [healthStatus, setHealthStatus] = useState<HealthStatus>({
-    device: 'healthy',
-    playback: 'stopped',
-    token: 'valid',
-    connection: 'good'
+    device: 'unknown',
+    playback: 'unknown',
+    token: 'unknown',
+    connection: 'unknown',
+    tokenExpiringSoon: false,
+    fixedPlaylist: 'unknown'
   })
   const [recoveryAttempts, setRecoveryAttempts] = useState(0)
   const [networkErrorCount, setNetworkErrorCount] = useState(0)
   const isReady = useSpotifyPlayer((state) => state.isReady)
   const deviceId = useSpotifyPlayer((state) => state.deviceId)
-  const { fixedPlaylistId } = useFixedPlaylist()
+  const { fixedPlaylistId, isInitialFetchComplete } = useFixedPlaylist()
   const wakeLock = useRef<WakeLockSentinel | null>(null)
   const lastRefreshTime = useRef<number>(Date.now())
   const deviceCheckInterval = useRef<NodeJS.Timeout | null>(null)
   const recoveryTimeout = useRef<NodeJS.Timeout | null>(null)
-  const tokenCheckInterval = useRef<NodeJS.Timeout | null>(null)
   const isRefreshing = useRef<boolean>(false)
   const maxRecoveryAttempts = 5
   const baseDelay = 2000 // 2 seconds
+  const [consoleLogs, setConsoleLogs] = useState<string[]>([])
+  const [uptime, setUptime] = useState(0)
+  const [tokenInfo, _setTokenInfo] = useState<TokenInfo>({
+    lastRefresh: 0,
+    expiresIn: 0,
+    scope: '',
+    type: '',
+    lastActualRefresh: 0,
+    expiryTime: 0
+  })
 
-  // Check token validity and refresh if needed
-  useEffect(() => {
-    const checkToken = async (): Promise<void> => {
-      try {
-        console.log('[Token Check] Starting token validation check')
-        // First check if token is valid by making an API request
-        const response = await sendApiRequest<{ items: SpotifyPlaylistItem[] }>(
-          {
-            path: '/me/playlists',
-            method: 'GET'
-          }
-        )
+  const { refreshToken } = useSpotifyPlayerState()
 
-        if (response) {
-          console.log(
-            '[Token Check] Token is valid - successfully fetched playlists'
-          )
-          setHealthStatus((prev) => ({ ...prev, token: 'valid' }))
-          return
-        }
-      } catch (error) {
-        console.error('[Token Check] Initial token validation failed:', error)
-        // Don't immediately set token to error, try to refresh first
-      }
-
-      // If token check fails, try to refresh it
-      try {
-        console.log('[Token Check] Attempting token refresh')
-        const refreshResponse = await fetch('/api/token', {
-          method: 'GET',
-          cache: 'no-store'
-        })
-
-        if (refreshResponse.ok) {
-          console.log('[Token Check] Token refresh successful')
-          setHealthStatus((prev) => ({ ...prev, token: 'valid' }))
-          return
-        }
-
-        console.log(
-          '[Token Check] Token refresh failed, checking playback state'
-        )
-        // If refresh fails, check if we can still play music
-        const playbackState = await sendApiRequest<SpotifyPlaybackState>({
-          path: 'me/player',
-          method: 'GET'
-        })
-
-        if (playbackState?.is_playing) {
-          // If music is playing, token is actually valid despite refresh failure
-          console.log('[Token Check] Token is valid - music is playing')
-          setHealthStatus((prev) => ({ ...prev, token: 'valid' }))
-          return
-        }
-
-        // Only set token to error if we can't play music
-        console.error(
-          '[Token Check] Token refresh failed and music not playing'
-        )
-        setHealthStatus((prev) => ({ ...prev, token: 'error' }))
-      } catch (error) {
-        console.error('[Token Check] Token refresh failed with error:', error)
-        // Only set token to error if we can't play music
-        try {
-          console.log('[Token Check] Final attempt - checking playback state')
-          const playbackState = await sendApiRequest<SpotifyPlaybackState>({
-            path: 'me/player',
-            method: 'GET'
-          })
-          if (playbackState?.is_playing) {
-            console.log('[Token Check] Token is valid - music is playing')
-            setHealthStatus((prev) => ({ ...prev, token: 'valid' }))
-            return
-          }
-        } catch (playbackError) {
-          console.error(
-            '[Token Check] Final playback check failed:',
-            playbackError
-          )
-          setHealthStatus((prev) => ({ ...prev, token: 'error' }))
-        }
-      }
+  const handleRefresh = useCallback(async (): Promise<void> => {
+    if (isRefreshing.current) {
+      console.log('[Refresh] Already refreshing, skipping')
+      return
     }
 
-    // Initial check
-    void checkToken()
+    isRefreshing.current = true
+    setIsLoading(true)
 
-    // Set up interval
-    tokenCheckInterval.current = setInterval(() => {
-      void checkToken()
-    }, TOKEN_CHECK_INTERVAL)
+    try {
+      const response = await fetch('/api/refresh-site', {
+        method: 'GET'
+      })
 
-    return (): void => {
-      if (tokenCheckInterval.current) {
-        clearInterval(tokenCheckInterval.current)
+      const data = (await response.json()) as RefreshResponse
+
+      if (!response.ok) {
+        throw new Error(data.message ?? 'Failed to refresh site')
       }
+
+      console.log('[Refresh] Success:', data.message)
+      lastRefreshTime.current = Date.now()
+      setTimeUntilRefresh(REFRESH_INTERVAL)
+    } catch (err) {
+      console.error('[Refresh] Error:', err)
+      setError('Failed to refresh site')
+    } finally {
+      setIsLoading(false)
+      isRefreshing.current = false
     }
+  }, [setError, setIsLoading, setTimeUntilRefresh])
+
+  // Set mounted state
+  useEffect((): void => {
+    setMounted(true)
   }, [])
+
+  const updateTokenStatus = useCallback((): void => {
+    const now = Date.now()
+    const timeUntilExpiry = tokenInfo.expiryTime - now
+    const minutesUntilExpiry = timeUntilExpiry / (60 * 1000)
+
+    if (tokenInfo.expiryTime === 0) {
+      setHealthStatus((prev) => ({
+        ...prev,
+        token: 'unknown'
+      }))
+      return
+    }
+
+    if (minutesUntilExpiry < 0) {
+      setHealthStatus((prev) => ({
+        ...prev,
+        token: 'error'
+      }))
+      return
+    }
+
+    setHealthStatus((prev) => ({
+      ...prev,
+      token: 'valid',
+      tokenExpiringSoon: minutesUntilExpiry < 15
+    }))
+  }, [tokenInfo.expiryTime])
+
+  // Listen for token events from SpotifyPlayer
+  useEffect(() => {
+    const handleTokenUpdate = (event: CustomEvent<TokenInfo>) => {
+      _setTokenInfo(event.detail)
+      updateTokenStatus()
+    }
+
+    window.addEventListener('tokenUpdate', handleTokenUpdate as EventListener)
+    return () => {
+      window.removeEventListener(
+        'tokenUpdate',
+        handleTokenUpdate as EventListener
+      )
+    }
+  }, [updateTokenStatus])
+
+  // Keep periodic status updates
+  const statusEffect: EffectCallback = () => {
+    if (!mounted) return
+
+    const statusInterval = setInterval(updateTokenStatus, 60000) // Check every minute
+    updateTokenStatus() // Initial status update
+
+    return () => {
+      clearInterval(statusInterval)
+    }
+  }
+
+  useEffect(statusEffect, [mounted, updateTokenStatus])
 
   const attemptRecovery = useCallback(async (): Promise<void> => {
     if (recoveryAttempts >= maxRecoveryAttempts) {
-      console.log('Max recovery attempts reached, giving up')
+      console.error('[Recovery] Max attempts reached')
       return
     }
 
     try {
-      console.log(
-        `Attempting player recovery (attempt ${recoveryAttempts + 1}/${maxRecoveryAttempts})`
-      )
-
       // First, try to refresh the player state
       if (typeof window.refreshSpotifyPlayer === 'function') {
         await window.refreshSpotifyPlayer()
@@ -183,7 +206,7 @@ export default function AdminPage(): JSX.Element {
       setHealthStatus((prev) => ({ ...prev, device: 'healthy' }))
       setRecoveryAttempts(0)
     } catch (error) {
-      console.error('Recovery attempt failed:', error)
+      console.error('[Recovery] Failed:', error)
       setRecoveryAttempts((prev) => prev + 1)
 
       // Calculate delay with exponential backoff
@@ -202,7 +225,7 @@ export default function AdminPage(): JSX.Element {
       if (
         event.detail?.error?.message?.includes('Player verification failed')
       ) {
-        console.error('Player verification failed, attempting recovery')
+        console.error('[Player] Verification failed')
         setHealthStatus((prev) => ({ ...prev, device: 'unresponsive' }))
         void attemptRecovery()
       }
@@ -251,7 +274,7 @@ export default function AdminPage(): JSX.Element {
         setHealthStatus((prev) => ({ ...prev, device: 'healthy' }))
         setRecoveryAttempts(0)
       } catch (error) {
-        console.error('Device health check failed:', error)
+        console.error('[Device] Health check failed:', error)
         setHealthStatus((prev) => ({ ...prev, device: 'unresponsive' }))
         void attemptRecovery()
       }
@@ -281,10 +304,9 @@ export default function AdminPage(): JSX.Element {
       try {
         if ('wakeLock' in navigator) {
           wakeLock.current = await navigator.wakeLock.request('screen')
-          console.log('Wake Lock is active')
         }
       } catch (error) {
-        console.error('Failed to request wake lock:', error)
+        console.error('[WakeLock] Failed:', error)
       }
     }
 
@@ -298,11 +320,11 @@ export default function AdminPage(): JSX.Element {
   }, [])
 
   // Automatic periodic refresh every 2 minutes
-  useEffect(() => {
-    const refreshInterval = setInterval((): void => {
+  const autoRefreshEffect: EffectCallback = () => {
+    const refreshInterval = setInterval(() => {
       if (!isLoading) {
         // Don't refresh if already loading
-        void (async (): Promise<void> => {
+        void (async () => {
           try {
             setIsLoading(true)
             const response = await fetch('/api/refresh-site')
@@ -310,18 +332,17 @@ export default function AdminPage(): JSX.Element {
 
             if (!response.ok) {
               console.error(
-                'Auto refresh failed:',
-                data.message ?? 'Failed to refresh site'
+                '[Refresh] Failed:',
+                data.message ?? 'Unknown error'
               )
               return
             }
 
             // Dispatch refresh event for the player to handle
             window.dispatchEvent(new CustomEvent('playlistRefresh'))
-            console.log('Auto refresh completed successfully')
             lastRefreshTime.current = Date.now()
           } catch (err) {
-            console.error('Auto refresh error:', err)
+            console.error('[Refresh] Error:', err)
           } finally {
             setIsLoading(false)
           }
@@ -329,19 +350,13 @@ export default function AdminPage(): JSX.Element {
       }
     }, REFRESH_INTERVAL)
 
-    return (): void => clearInterval(refreshInterval)
-  }, [isLoading])
+    return () => clearInterval(refreshInterval)
+  }
+
+  useEffect(autoRefreshEffect, [isLoading])
 
   // Network error handling and recovery
-  useEffect(() => {
-    const handleNetworkError = (): void => {
-      setNetworkErrorCount((prev) => prev + 1)
-      if (networkErrorCount >= 3) {
-        setHealthStatus((prev) => ({ ...prev, connection: 'poor' }))
-        void attemptNetworkRecovery()
-      }
-    }
-
+  const networkEffect = () => {
     const attemptNetworkRecovery = async (): Promise<void> => {
       try {
         const response = await fetch('/api/playback-state')
@@ -351,26 +366,54 @@ export default function AdminPage(): JSX.Element {
         setNetworkErrorCount(0)
         setHealthStatus((prev) => ({ ...prev, connection: 'good' }))
       } catch (error) {
-        console.error('Network recovery failed:', error)
+        console.error('[Network] Recovery failed:', error)
         setNetworkErrorCount((prev) => prev + 1)
         if (networkErrorCount >= 3) {
           setHealthStatus((prev) => ({ ...prev, connection: 'poor' }))
+        } else {
+          setHealthStatus((prev) => ({ ...prev, connection: 'unstable' }))
         }
       }
     }
 
-    window.addEventListener('offline', handleNetworkError)
-    window.addEventListener('online', () => void attemptNetworkRecovery())
-
-    return (): void => {
-      window.removeEventListener('offline', handleNetworkError)
-      window.removeEventListener('online', () => void attemptNetworkRecovery())
+    const handleNetworkError = () => {
+      setNetworkErrorCount((prev) => prev + 1)
+      if (networkErrorCount >= 3) {
+        setHealthStatus((prev) => ({ ...prev, connection: 'poor' }))
+      } else {
+        setHealthStatus((prev) => ({ ...prev, connection: 'unstable' }))
+      }
+      void attemptNetworkRecovery()
     }
-  }, [networkErrorCount])
+
+    const handleOffline = () => {
+      setHealthStatus((prev) => ({ ...prev, connection: 'poor' }))
+    }
+
+    const handleOnline = () => {
+      void attemptNetworkRecovery()
+    }
+
+    // Initial connection check
+    void attemptNetworkRecovery()
+
+    // Set up event listeners
+    window.addEventListener('error', handleNetworkError)
+    window.addEventListener('offline', handleOffline)
+    window.addEventListener('online', handleOnline)
+
+    return () => {
+      window.removeEventListener('error', handleNetworkError)
+      window.removeEventListener('offline', handleOffline)
+      window.removeEventListener('online', handleOnline)
+    }
+  }
+
+  useEffect(networkEffect, [networkErrorCount])
 
   // Countdown timer with debounced refresh
-  useEffect(() => {
-    const timer = setInterval(() => {
+  const timerEffect: EffectCallback = () => {
+    const timer = setInterval((): void => {
       const now = Date.now()
       const timeSinceLastRefresh = now - lastRefreshTime.current
       const remainingTime = Math.max(0, REFRESH_INTERVAL - timeSinceLastRefresh)
@@ -382,12 +425,16 @@ export default function AdminPage(): JSX.Element {
       }
     }, 1000)
 
-    return (): void => clearInterval(timer)
-  }, [])
+    return () => clearInterval(timer)
+  }
+
+  useEffect(timerEffect, [handleRefresh])
 
   // Listen for playback state updates from SpotifyPlayer
-  useEffect(() => {
-    const handlePlaybackUpdate = (event: CustomEvent<PlaybackInfo>): void => {
+  // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
+  const playbackEffect = () => {
+    // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
+    const handlePlaybackUpdate = (event: CustomEvent<PlaybackInfo>) => {
       setPlaybackInfo(event.detail)
       setHealthStatus((prev) => ({
         ...prev,
@@ -400,13 +447,98 @@ export default function AdminPage(): JSX.Element {
       handlePlaybackUpdate as EventListener
     )
 
-    return (): void => {
+    // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
+    return () => {
       window.removeEventListener(
         'playbackUpdate',
         handlePlaybackUpdate as EventListener
       )
     }
+  }
+
+  useEffect(playbackEffect, [])
+
+  // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
+  const handlePlaylistChecked = useCallback(
+    (event: CustomEvent<PlaylistCheckedInfo>) => {
+      const { hasChanges } = event.detail
+      if (hasChanges) {
+        void handleRefresh()
+      }
+    },
+    [handleRefresh]
+  )
+
+  // Listen for playlist change status updates
+  // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
+  const playlistEffect = () => {
+    window.addEventListener(
+      'playlistChecked',
+      handlePlaylistChecked as EventListener
+    )
+    // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
+    return () => {
+      window.removeEventListener(
+        'playlistChecked',
+        handlePlaylistChecked as EventListener
+      )
+    }
+  }
+
+  useEffect(playlistEffect, [handlePlaylistChecked])
+
+  // Capture console logs
+  // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
+  useEffect(() => {
+    const originalConsoleLog = console.log
+    const originalConsoleError = console.error
+
+    // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
+    console.log = (...args: unknown[]) => {
+      originalConsoleLog(...args)
+      setConsoleLogs((prev) => {
+        const newLog = args.join(' ')
+        return [...prev.slice(-9), newLog]
+      })
+    }
+
+    // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
+    console.error = (...args: unknown[]) => {
+      originalConsoleError(...args)
+      setConsoleLogs((prev) => {
+        const newLog = args.join(' ')
+        return [...prev.slice(-9), `[ERROR] ${newLog}`]
+      })
+    }
+
+    // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
+    return () => {
+      console.log = originalConsoleLog
+      console.error = originalConsoleError
+    }
   }, [])
+
+  // Uptime timer
+  // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
+  useEffect(() => {
+    const startTime = Date.now()
+    // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
+    const timer = setInterval(() => {
+      setUptime(Date.now() - startTime)
+    }, 1000)
+
+    // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
+    return () => clearInterval(timer)
+  }, [])
+
+  // Update FixedPlaylist status
+  useEffect(() => {
+    if (fixedPlaylistId) {
+      setHealthStatus((prev) => ({ ...prev, fixedPlaylist: 'found' }))
+    } else if (isInitialFetchComplete) {
+      setHealthStatus((prev) => ({ ...prev, fixedPlaylist: 'not_found' }))
+    }
+  }, [fixedPlaylistId, isInitialFetchComplete])
 
   const formatTime = (ms: number): string => {
     const minutes = Math.floor(ms / 60000)
@@ -459,7 +591,7 @@ export default function AdminPage(): JSX.Element {
 
       setHealthStatus((prev) => ({ ...prev, playback: 'playing' }))
     } catch (error) {
-      console.error('Playback control failed:', error)
+      console.error('[Playback] Control failed:', error)
       setError('Failed to control playback')
       setHealthStatus((prev) => ({ ...prev, playback: 'error' }))
 
@@ -495,7 +627,7 @@ export default function AdminPage(): JSX.Element {
         setError(null)
         setHealthStatus((prev) => ({ ...prev, playback: 'playing' }))
       } catch (recoveryError) {
-        console.error('Recovery attempt failed:', recoveryError)
+        console.error('[Playback] Recovery failed:', recoveryError)
         // Keep the original error state if recovery fails
       }
     } finally {
@@ -503,34 +635,26 @@ export default function AdminPage(): JSX.Element {
     }
   }
 
-  const handleRefresh = async (): Promise<void> => {
-    if (isRefreshing.current) {
-      return
-    }
-
+  const handleTokenRefresh = async (): Promise<void> => {
     try {
-      isRefreshing.current = true
       setIsLoading(true)
       setError(null)
-
-      const response = await fetch('/api/refresh-site')
-      const data = (await response.json()) as RefreshResponse
-
-      if (!response.ok) {
-        throw new Error(data.message ?? 'Failed to refresh site')
-      }
-
-      // Dispatch refresh event for the player to handle
-      window.dispatchEvent(new CustomEvent('playlistRefresh'))
-      console.log('Refresh completed successfully')
-      lastRefreshTime.current = Date.now()
+      await refreshToken()
+      console.log('[Token] Manual refresh triggered successfully')
     } catch (error) {
-      console.error('Refresh failed:', error)
-      setError('Failed to refresh site')
+      console.error('[Token] Manual refresh failed:', error)
+      setError('Failed to refresh token')
+      setHealthStatus((prev) => ({ ...prev, token: 'error' }))
     } finally {
       setIsLoading(false)
-      isRefreshing.current = false
     }
+  }
+
+  // Only render content after mounting to prevent hydration mismatch
+  if (!mounted) {
+    return (
+      <div className='text-white min-h-screen bg-black p-4'>Loading...</div>
+    )
   }
 
   return (
@@ -540,15 +664,15 @@ export default function AdminPage(): JSX.Element {
       <div className='mx-auto max-w-xl space-y-4'>
         <h1 className='mb-8 text-2xl font-bold'>Admin Controls</h1>
 
-        {error && (
+        {_error && (
           <div className='mb-4 rounded border border-red-500 bg-red-900/50 p-4 text-red-100'>
-            {error}
+            {_error}
           </div>
         )}
 
         <div className='flex items-center gap-2 rounded-lg border border-gray-800 bg-gray-900/50 p-4'>
           <div
-            className={`h-3 w-3 rounded-full ${isReady ? 'animate-pulse bg-green-500' : 'bg-yellow-500'}`}
+            className={`h-3 w-3 rounded-full ${isReady ? 'bg-green-500' : 'bg-yellow-500'}`}
           />
           <span className='font-medium'>
             {isReady ? 'Player Ready' : 'Player Initializing...'}
@@ -563,7 +687,9 @@ export default function AdminPage(): JSX.Element {
                   ? 'bg-green-500'
                   : healthStatus.device === 'unresponsive'
                     ? 'bg-yellow-500'
-                    : 'bg-red-500'
+                    : healthStatus.device === 'disconnected'
+                      ? 'bg-red-500'
+                      : 'bg-gray-500'
               }`}
             />
             <span className='font-medium'>
@@ -571,7 +697,9 @@ export default function AdminPage(): JSX.Element {
                 ? 'Device Connected'
                 : healthStatus.device === 'unresponsive'
                   ? 'Device Unresponsive'
-                  : 'Device Disconnected'}
+                  : healthStatus.device === 'disconnected'
+                    ? 'Device Disconnected'
+                    : 'Device Status Unknown'}
               {recoveryAttempts > 0 &&
                 ` (Recovery ${recoveryAttempts}/${MAX_RECOVERY_ATTEMPTS})`}
             </span>
@@ -581,7 +709,7 @@ export default function AdminPage(): JSX.Element {
             <div
               className={`h-3 w-3 rounded-full ${
                 healthStatus.playback === 'playing'
-                  ? 'bg-green-500'
+                  ? 'animate-pulse bg-green-500'
                   : healthStatus.playback === 'paused'
                     ? 'bg-yellow-500'
                     : healthStatus.playback === 'error'
@@ -614,20 +742,47 @@ export default function AdminPage(): JSX.Element {
           <div className='flex items-center gap-2 rounded-lg border border-gray-800 bg-gray-900/50 p-4'>
             <div
               className={`h-3 w-3 rounded-full ${
-                healthStatus.token === 'valid'
+                healthStatus.token === 'valid' &&
+                !healthStatus.tokenExpiringSoon
                   ? 'bg-green-500'
-                  : healthStatus.token === 'expired'
+                  : healthStatus.token === 'valid' &&
+                      healthStatus.tokenExpiringSoon
                     ? 'bg-yellow-500'
-                    : 'bg-red-500'
+                    : healthStatus.token === 'error'
+                      ? 'bg-red-500'
+                      : 'bg-gray-500'
               }`}
             />
             <span className='font-medium'>
-              {healthStatus.token === 'valid'
+              {healthStatus.token === 'valid' && !healthStatus.tokenExpiringSoon
                 ? 'Token Valid'
-                : healthStatus.token === 'expired'
-                  ? 'Token Expired'
-                  : 'Token Error'}
+                : healthStatus.token === 'valid' &&
+                    healthStatus.tokenExpiringSoon
+                  ? 'Token Expiring Soon'
+                  : healthStatus.token === 'error'
+                    ? 'Token Error'
+                    : 'Token Status Unknown'}
             </span>
+            <div className='group relative'>
+              <div className='invisible absolute left-0 top-0 z-10 rounded-lg bg-gray-800 p-2 text-xs text-gray-200 shadow-lg transition-all duration-200 group-hover:visible'>
+                <div className='whitespace-nowrap'>
+                  <div>Token expires: {formatDate(tokenInfo.expiryTime)}</div>
+                </div>
+              </div>
+              <svg
+                className='h-4 w-4 cursor-help text-gray-400'
+                fill='none'
+                stroke='currentColor'
+                viewBox='0 0 24 24'
+              >
+                <path
+                  strokeLinecap='round'
+                  strokeLinejoin='round'
+                  strokeWidth={2}
+                  d='M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z'
+                />
+              </svg>
+            </div>
           </div>
 
           <div className='flex items-center gap-2 rounded-lg border border-gray-800 bg-gray-900/50 p-4'>
@@ -637,7 +792,9 @@ export default function AdminPage(): JSX.Element {
                   ? 'bg-green-500'
                   : healthStatus.connection === 'unstable'
                     ? 'bg-yellow-500'
-                    : 'bg-red-500'
+                    : healthStatus.connection === 'poor'
+                      ? 'bg-red-500'
+                      : 'bg-gray-500'
               }`}
             />
             <span className='font-medium'>
@@ -645,8 +802,54 @@ export default function AdminPage(): JSX.Element {
                 ? 'Connection Good'
                 : healthStatus.connection === 'unstable'
                   ? 'Connection Unstable'
-                  : 'Connection Poor'}
+                  : healthStatus.connection === 'poor'
+                    ? 'Connection Poor'
+                    : 'Connection Status Unknown'}
             </span>
+          </div>
+
+          <div className='flex items-center gap-2 rounded-lg border border-gray-800 bg-gray-900/50 p-4'>
+            <div
+              className={`h-3 w-3 rounded-full ${
+                healthStatus.fixedPlaylist === 'found'
+                  ? 'bg-green-500'
+                  : healthStatus.fixedPlaylist === 'not_found'
+                    ? 'bg-red-500'
+                    : healthStatus.fixedPlaylist === 'error'
+                      ? 'bg-red-500'
+                      : 'bg-gray-500'
+              }`}
+            />
+            <span className='font-medium'>
+              {healthStatus.fixedPlaylist === 'found'
+                ? 'Fixed Playlist Found'
+                : healthStatus.fixedPlaylist === 'not_found'
+                  ? 'Fixed Playlist Not Found'
+                  : healthStatus.fixedPlaylist === 'error'
+                    ? 'Fixed Playlist Error'
+                    : 'Fixed Playlist Status Unknown'}
+            </span>
+            <div className='group relative'>
+              <div className='invisible absolute left-0 top-0 z-10 rounded-lg bg-gray-800 p-2 text-xs text-gray-200 shadow-lg transition-all duration-200 group-hover:visible'>
+                <div className='whitespace-nowrap'>
+                  <div>Playlist ID: {fixedPlaylistId ?? 'Not found'}</div>
+                  <div>Next auto-refresh in {formatTime(timeUntilRefresh)}</div>
+                </div>
+              </div>
+              <svg
+                className='h-4 w-4 cursor-help text-gray-400'
+                fill='none'
+                stroke='currentColor'
+                viewBox='0 0 24 24'
+              >
+                <path
+                  strokeLinecap='round'
+                  strokeLinejoin='round'
+                  strokeWidth={2}
+                  d='M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z'
+                />
+              </svg>
+            </div>
           </div>
         </div>
 
@@ -672,11 +875,32 @@ export default function AdminPage(): JSX.Element {
               disabled={isLoading || !isReady}
               className='text-white flex-1 rounded-lg bg-purple-600 px-4 py-2 font-medium transition-colors hover:bg-purple-700 disabled:cursor-not-allowed disabled:opacity-50'
             >
-              {isLoading ? 'Loading...' : 'Refresh'}
+              {isLoading ? 'Loading...' : 'Refresh Playlist'}
+            </button>
+            <button
+              onClick={() => void handleTokenRefresh()}
+              disabled={isLoading || !isReady}
+              className='text-white flex-1 rounded-lg bg-orange-600 px-4 py-2 font-medium transition-colors hover:bg-orange-700 disabled:cursor-not-allowed disabled:opacity-50'
+            >
+              {isLoading ? 'Loading...' : 'Refresh Token'}
             </button>
           </div>
           <div className='text-center text-sm text-gray-400'>
-            Next auto-refresh in {formatTime(timeUntilRefresh)}
+            <div className='flex flex-col items-center gap-2'>
+              <span>Uptime: {formatTime(uptime)}</span>
+            </div>
+          </div>
+          <div className='mt-4 rounded-lg border border-gray-800 bg-gray-900/50 p-4'>
+            <h3 className='mb-2 text-sm font-medium text-gray-400'>
+              Recent Console Logs
+            </h3>
+            <div className='max-h-40 overflow-y-auto font-mono text-xs [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden'>
+              {consoleLogs.map((log, index) => (
+                <div key={index} className='py-1'>
+                  {log}
+                </div>
+              ))}
+            </div>
           </div>
         </div>
       </div>

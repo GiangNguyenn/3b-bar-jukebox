@@ -12,6 +12,7 @@ export interface SpotifyPlayerOptions {
   name: string
   getOAuthToken: (callback: (token: string) => void) => void
   volume: number
+  robustness?: 'LOW' | 'MEDIUM' | 'HIGH'
 }
 
 export interface SpotifyPlayerInstance {
