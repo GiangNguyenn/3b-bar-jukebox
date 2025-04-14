@@ -224,6 +224,21 @@ export function useSpotifyPlayerState(): UseSpotifyPlayerStateReturn {
             console.log(
               `[SpotifyPlayer] ${track?.name} - ${state.is_playing ? 'Playing' : 'Paused'}`
             )
+
+            // If not playing, attempt to resume
+            if (!state.is_playing && state.context?.uri) {
+              console.log('[SpotifyPlayer] Playback stopped, attempting to resume')
+              void sendApiRequest({
+                path: 'me/player/play',
+                method: 'PUT',
+                body: {
+                  context_uri: state.context.uri,
+                  position_ms: state.progress_ms,
+                  offset: state.item?.uri ? { uri: state.item.uri } : undefined
+                }
+              })
+            }
+
             setPlaybackState(state)
             if (state?.device?.id) {
               setDeviceId(state.device.id)
@@ -298,7 +313,7 @@ export function useSpotifyPlayerState(): UseSpotifyPlayerStateReturn {
 
   const refreshToken = useCallback(async (): Promise<void> => {
     console.log('[Token] Refreshing token before expiry')
-    
+
     // Store current playback state before disconnecting
     let currentState: SpotifyPlaybackState | null = null
     try {
@@ -327,7 +342,9 @@ export function useSpotifyPlayerState(): UseSpotifyPlayerStateReturn {
           body: {
             context_uri: currentState.context?.uri,
             position_ms: currentState.progress_ms,
-            offset: currentState.item?.uri ? { uri: currentState.item.uri } : undefined
+            offset: currentState.item?.uri
+              ? { uri: currentState.item.uri }
+              : undefined
           }
         })
         console.log('[Token] Playback restored after token refresh')

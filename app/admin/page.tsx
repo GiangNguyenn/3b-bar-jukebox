@@ -14,6 +14,7 @@ import { useFixedPlaylist } from '@/hooks/useFixedPlaylist'
 import { SpotifyPlayer } from '@/components/SpotifyPlayer'
 import { sendApiRequest } from '@/shared/api'
 import { SpotifyPlaybackState, TokenInfo } from '@/shared/types'
+import { formatDate } from '@/lib/utils'
 
 const REFRESH_INTERVAL = 180000 // 3 minutes in milliseconds
 const DEVICE_CHECK_INTERVAL = {
@@ -538,19 +539,6 @@ export default function AdminPage(): JSX.Element {
     return `${minutes}:${seconds.toString().padStart(2, '0')}`
   }
 
-  const formatDate = (timestamp: number): string => {
-    if (!timestamp || timestamp === 0) return 'Not available'
-    try {
-      return new Date(timestamp).toLocaleString()
-    } catch {
-      return 'Invalid date'
-    }
-  }
-
-  const formatTokenScope = (scope: string): string => {
-    return scope.split(' ').join(', ')
-  }
-
   const handlePlayback = async (action: 'play' | 'skip'): Promise<void> => {
     try {
       setIsLoading(true)
@@ -847,4 +835,3 @@ export default function AdminPage(): JSX.Element {
     </div>
   )
 }
-
