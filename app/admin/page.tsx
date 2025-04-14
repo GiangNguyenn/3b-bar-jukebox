@@ -91,9 +91,7 @@ export default function AdminPage(): JSX.Element {
     expiryTime: 0
   })
 
-  const {
-    refreshToken
-  } = useSpotifyPlayerState()
+  const { refreshToken } = useSpotifyPlayerState()
 
   const handleRefresh = useCallback(async (): Promise<void> => {
     if (isRefreshing.current) {
