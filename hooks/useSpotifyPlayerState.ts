@@ -227,7 +227,9 @@ export function useSpotifyPlayerState(): UseSpotifyPlayerStateReturn {
 
             // If not playing, attempt to resume
             if (!state.is_playing && state.context?.uri) {
-              console.log('[SpotifyPlayer] Playback stopped, attempting to resume')
+              console.log(
+                '[SpotifyPlayer] Playback stopped, attempting to resume'
+              )
               void sendApiRequest({
                 path: 'me/player/play',
                 method: 'PUT',
