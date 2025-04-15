@@ -51,7 +51,7 @@
 ##### 4. Year Range Selection
 
 - [ ] User can select a year range using a dual-slider component
-- [ ] Default range is current year only
+- [ ] Default range is last 30 years
 - [ ] Range can be from 1900 to current year
 - [ ] Range selection is visually clear
 - [ ] Range can be cleared/reset
@@ -65,6 +65,7 @@
 - [ ] User can select from a dropdown list of available genres
 - [ ] Dropdown supports search/filter within genres
 - [ ] Dropdown shows loading state while fetching genres
+- [ ] Multiple genres may be selected
 - [ ] Dropdown has a clear button to reset selection
 - [ ] Selection persists across sessions
 - [ ] UI updates to show relevant fields based on genre selection

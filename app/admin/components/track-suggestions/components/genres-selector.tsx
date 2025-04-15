@@ -47,4 +47,4 @@ export function GenresSelector(): JSX.Element {
       )}
     </div>
   )
-}
+} 

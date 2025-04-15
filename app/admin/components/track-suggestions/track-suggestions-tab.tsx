@@ -1,7 +1,10 @@
 'use client'
 
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { GenresSelector } from '../genres/genres-selector'
+import { GenresSelector } from './components/genres-selector'
+import { YearRangeSelector } from './components/year-range-selector'
+import { PopularitySelector } from './components/popularity-selector'
+import { ExplicitContentToggle } from './components/explicit-content-toggle'
+import { MaxSongLengthSelector } from './components/max-song-length-selector'
 
 export function TrackSuggestionsTab(): JSX.Element {
   return (
@@ -11,16 +14,15 @@ export function TrackSuggestionsTab(): JSX.Element {
       </div>
 
       <div className='grid gap-6 md:grid-cols-2'>
-        <GenresSelector />
-
-        <Card>
-          <CardHeader>
-            <CardTitle>Upcoming Suggestions</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className='text-sm text-gray-400'>No upcoming suggestions</p>
-          </CardContent>
-        </Card>
+        <div className='space-y-6'>
+          <GenresSelector />
+          <YearRangeSelector />
+          <PopularitySelector />
+        </div>
+        <div className='space-y-6'>
+          <ExplicitContentToggle />
+          <MaxSongLengthSelector />
+        </div>
       </div>
     </div>
   )
