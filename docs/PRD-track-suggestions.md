@@ -124,4 +124,3 @@ For post-filtering by musical attributes
 - Enable user login and playlist saving
 - "Surprise Me" button for random query generation
 - Prebuilt filter templates (e.g., "Chill Vibes", "Upbeat Running Tracks")
-
