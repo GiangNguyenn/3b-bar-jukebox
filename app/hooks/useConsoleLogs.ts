@@ -12,7 +12,7 @@ export function useConsoleLogs(): string[] {
     if (!originalConsole.current) {
       originalConsole.current = {
         log: console.log,
-        error: console.error,
+        error: console.error
       }
 
       console.log = (...args: unknown[]): void => {
