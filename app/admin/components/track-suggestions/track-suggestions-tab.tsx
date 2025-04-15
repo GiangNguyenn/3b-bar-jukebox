@@ -10,9 +10,9 @@ export function TrackSuggestionsTab(): JSX.Element {
         <h2 className='text-2xl font-bold'>Track Suggestions</h2>
       </div>
 
-      <div className="grid gap-6 md:grid-cols-2">
+      <div className='grid gap-6 md:grid-cols-2'>
         <GenresSelector />
-        
+
         <Card>
           <CardHeader>
             <CardTitle>Upcoming Suggestions</CardTitle>
