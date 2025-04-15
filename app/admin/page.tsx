@@ -16,6 +16,8 @@ import { sendApiRequest } from '@/shared/api'
 import { SpotifyPlaybackState, TokenInfo } from '@/shared/types'
 import { formatDate } from '@/lib/utils'
 import { useSpotifyPlayerState } from '@/hooks/useSpotifyPlayerState'
+import { TrackSuggestionsTab } from './components/track-suggestions/track-suggestions-tab'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 
 const REFRESH_INTERVAL = 180000 // 3 minutes in milliseconds
 const DEVICE_CHECK_INTERVAL = {
@@ -57,6 +59,7 @@ export default function AdminPage(): JSX.Element {
   const [_error, setError] = useState<string | null>(null)
   const [timeUntilRefresh, setTimeUntilRefresh] = useState(REFRESH_INTERVAL)
   const [playbackInfo, setPlaybackInfo] = useState<PlaybackInfo | null>(null)
+  const [activeTab, setActiveTab] = useState('dashboard')
   const [healthStatus, setHealthStatus] = useState<HealthStatus>({
     device: 'unknown',
     playback: 'unknown',
@@ -658,251 +661,274 @@ export default function AdminPage(): JSX.Element {
   }
 
   return (
-    <div className='text-white min-h-screen bg-black p-4'>
+    <div className="text-white min-h-screen bg-black p-4">
       <SpotifyPlayer />
 
-      <div className='mx-auto max-w-xl space-y-4'>
-        <h1 className='mb-8 text-2xl font-bold'>Admin Controls</h1>
+      <div className="mx-auto max-w-xl space-y-4">
+        <h1 className="mb-8 text-2xl font-bold">Admin Controls</h1>
 
-        {_error && (
-          <div className='mb-4 rounded border border-red-500 bg-red-900/50 p-4 text-red-100'>
-            {_error}
-          </div>
-        )}
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
+          <TabsList className="grid w-full grid-cols-2 bg-gray-800/50">
+            <TabsTrigger 
+              value="dashboard" 
+              className="data-[state=active]:bg-gray-700 data-[state=active]:text-white data-[state=active]:font-semibold"
+            >
+              Dashboard
+            </TabsTrigger>
+            <TabsTrigger 
+              value="suggestions" 
+              className="data-[state=active]:bg-gray-700 data-[state=active]:text-white data-[state=active]:font-semibold"
+            >
+              Track Suggestions
+            </TabsTrigger>
+          </TabsList>
 
-        <div className='flex items-center gap-2 rounded-lg border border-gray-800 bg-gray-900/50 p-4'>
-          <div
-            className={`h-3 w-3 rounded-full ${isReady ? 'bg-green-500' : 'bg-yellow-500'}`}
-          />
-          <span className='font-medium'>
-            {isReady ? 'Player Ready' : 'Player Initializing...'}
-          </span>
-        </div>
+          <TabsContent value="dashboard">
+            {_error && (
+              <div className="mb-4 rounded border border-red-500 bg-red-900/50 p-4 text-red-100">
+                {_error}
+              </div>
+            )}
 
-        <div className='space-y-4'>
-          <div className='flex items-center gap-2 rounded-lg border border-gray-800 bg-gray-900/50 p-4'>
-            <div
-              className={`h-3 w-3 rounded-full ${
-                healthStatus.device === 'healthy'
-                  ? 'bg-green-500'
-                  : healthStatus.device === 'unresponsive'
-                    ? 'bg-yellow-500'
-                    : healthStatus.device === 'disconnected'
-                      ? 'bg-red-500'
-                      : 'bg-gray-500'
-              }`}
-            />
-            <span className='font-medium'>
-              {healthStatus.device === 'healthy'
-                ? 'Device Connected'
-                : healthStatus.device === 'unresponsive'
-                  ? 'Device Unresponsive'
-                  : healthStatus.device === 'disconnected'
-                    ? 'Device Disconnected'
-                    : 'Device Status Unknown'}
-              {recoveryAttempts > 0 &&
-                ` (Recovery ${recoveryAttempts}/${MAX_RECOVERY_ATTEMPTS})`}
-            </span>
-          </div>
-
-          <div className='flex items-center gap-2 rounded-lg border border-gray-800 bg-gray-900/50 p-4'>
-            <div
-              className={`h-3 w-3 rounded-full ${
-                healthStatus.playback === 'playing'
-                  ? 'animate-pulse bg-green-500'
-                  : healthStatus.playback === 'paused'
-                    ? 'bg-yellow-500'
-                    : healthStatus.playback === 'error'
-                      ? 'bg-red-500'
-                      : 'bg-gray-500'
-              }`}
-            />
-            <div className='flex flex-1 items-center gap-2'>
-              <span className='font-medium'>
-                {healthStatus.playback === 'playing'
-                  ? 'Playback Active'
-                  : healthStatus.playback === 'paused'
-                    ? 'Playback Paused'
-                    : healthStatus.playback === 'error'
-                      ? 'Playback Error'
-                      : 'Playback Stopped'}
+            <div className="flex items-center gap-2 rounded-lg border border-gray-800 bg-gray-900/50 p-4">
+              <div
+                className={`h-3 w-3 rounded-full ${isReady ? 'bg-green-500' : 'bg-yellow-500'}`}
+              />
+              <span className="font-medium">
+                {isReady ? 'Player Ready' : 'Player Initializing...'}
               </span>
-              {playbackInfo?.currentTrack && (
-                <span className='text-sm text-gray-400'>
-                  -{' '}
-                  <span className='text-white font-medium'>
-                    {playbackInfo.currentTrack}
-                  </span>{' '}
-                  ({formatTime(playbackInfo.progress)})
+            </div>
+
+            <div className='space-y-4'>
+              <div className='flex items-center gap-2 rounded-lg border border-gray-800 bg-gray-900/50 p-4'>
+                <div
+                  className={`h-3 w-3 rounded-full ${
+                    healthStatus.device === 'healthy'
+                      ? 'bg-green-500'
+                      : healthStatus.device === 'unresponsive'
+                        ? 'bg-yellow-500'
+                        : healthStatus.device === 'disconnected'
+                          ? 'bg-red-500'
+                          : 'bg-gray-500'
+                  }`}
+                />
+                <span className='font-medium'>
+                  {healthStatus.device === 'healthy'
+                    ? 'Device Connected'
+                    : healthStatus.device === 'unresponsive'
+                      ? 'Device Unresponsive'
+                      : healthStatus.device === 'disconnected'
+                        ? 'Device Disconnected'
+                        : 'Device Status Unknown'}
+                  {recoveryAttempts > 0 &&
+                    ` (Recovery ${recoveryAttempts}/${MAX_RECOVERY_ATTEMPTS})`}
                 </span>
-              )}
-            </div>
-          </div>
+              </div>
 
-          <div className='flex items-center gap-2 rounded-lg border border-gray-800 bg-gray-900/50 p-4'>
-            <div
-              className={`h-3 w-3 rounded-full ${
-                healthStatus.token === 'valid' &&
-                !healthStatus.tokenExpiringSoon
-                  ? 'bg-green-500'
-                  : healthStatus.token === 'valid' &&
-                      healthStatus.tokenExpiringSoon
-                    ? 'bg-yellow-500'
-                    : healthStatus.token === 'error'
-                      ? 'bg-red-500'
-                      : 'bg-gray-500'
-              }`}
-            />
-            <span className='font-medium'>
-              {healthStatus.token === 'valid' && !healthStatus.tokenExpiringSoon
-                ? 'Token Valid'
-                : healthStatus.token === 'valid' &&
-                    healthStatus.tokenExpiringSoon
-                  ? 'Token Expiring Soon'
-                  : healthStatus.token === 'error'
-                    ? 'Token Error'
-                    : 'Token Status Unknown'}
-            </span>
-            <div className='group relative'>
-              <div className='invisible absolute left-0 top-0 z-10 rounded-lg bg-gray-800 p-2 text-xs text-gray-200 shadow-lg transition-all duration-200 group-hover:visible'>
-                <div className='whitespace-nowrap'>
-                  <div>Token expires: {formatDate(tokenInfo.expiryTime)}</div>
+              <div className='flex items-center gap-2 rounded-lg border border-gray-800 bg-gray-900/50 p-4'>
+                <div
+                  className={`h-3 w-3 rounded-full ${
+                    healthStatus.playback === 'playing'
+                      ? 'animate-pulse bg-green-500'
+                      : healthStatus.playback === 'paused'
+                        ? 'bg-yellow-500'
+                        : healthStatus.playback === 'error'
+                          ? 'bg-red-500'
+                          : 'bg-gray-500'
+                  }`}
+                />
+                <div className='flex flex-1 items-center gap-2'>
+                  <span className='font-medium'>
+                    {healthStatus.playback === 'playing'
+                      ? 'Playback Active'
+                      : healthStatus.playback === 'paused'
+                        ? 'Playback Paused'
+                        : healthStatus.playback === 'error'
+                          ? 'Playback Error'
+                          : 'Playback Stopped'}
+                  </span>
+                  {playbackInfo?.currentTrack && (
+                    <span className='text-sm text-gray-400'>
+                      -{' '}
+                      <span className='text-white font-medium'>
+                        {playbackInfo.currentTrack}
+                      </span>{' '}
+                      ({formatTime(playbackInfo.progress)})
+                    </span>
+                  )}
                 </div>
               </div>
-              <svg
-                className='h-4 w-4 cursor-help text-gray-400'
-                fill='none'
-                stroke='currentColor'
-                viewBox='0 0 24 24'
-              >
-                <path
-                  strokeLinecap='round'
-                  strokeLinejoin='round'
-                  strokeWidth={2}
-                  d='M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z'
+
+              <div className='flex items-center gap-2 rounded-lg border border-gray-800 bg-gray-900/50 p-4'>
+                <div
+                  className={`h-3 w-3 rounded-full ${
+                    healthStatus.token === 'valid' &&
+                    !healthStatus.tokenExpiringSoon
+                      ? 'bg-green-500'
+                      : healthStatus.token === 'valid' &&
+                          healthStatus.tokenExpiringSoon
+                        ? 'bg-yellow-500'
+                        : healthStatus.token === 'error'
+                          ? 'bg-red-500'
+                          : 'bg-gray-500'
+                  }`}
                 />
-              </svg>
-            </div>
-          </div>
-
-          <div className='flex items-center gap-2 rounded-lg border border-gray-800 bg-gray-900/50 p-4'>
-            <div
-              className={`h-3 w-3 rounded-full ${
-                healthStatus.connection === 'good'
-                  ? 'bg-green-500'
-                  : healthStatus.connection === 'unstable'
-                    ? 'bg-yellow-500'
-                    : healthStatus.connection === 'poor'
-                      ? 'bg-red-500'
-                      : 'bg-gray-500'
-              }`}
-            />
-            <span className='font-medium'>
-              {healthStatus.connection === 'good'
-                ? 'Connection Good'
-                : healthStatus.connection === 'unstable'
-                  ? 'Connection Unstable'
-                  : healthStatus.connection === 'poor'
-                    ? 'Connection Poor'
-                    : 'Connection Status Unknown'}
-            </span>
-          </div>
-
-          <div className='flex items-center gap-2 rounded-lg border border-gray-800 bg-gray-900/50 p-4'>
-            <div
-              className={`h-3 w-3 rounded-full ${
-                healthStatus.fixedPlaylist === 'found'
-                  ? 'bg-green-500'
-                  : healthStatus.fixedPlaylist === 'not_found'
-                    ? 'bg-red-500'
-                    : healthStatus.fixedPlaylist === 'error'
-                      ? 'bg-red-500'
-                      : 'bg-gray-500'
-              }`}
-            />
-            <span className='font-medium'>
-              {healthStatus.fixedPlaylist === 'found'
-                ? 'Fixed Playlist Found'
-                : healthStatus.fixedPlaylist === 'not_found'
-                  ? 'Fixed Playlist Not Found'
-                  : healthStatus.fixedPlaylist === 'error'
-                    ? 'Fixed Playlist Error'
-                    : 'Fixed Playlist Status Unknown'}
-            </span>
-            <div className='group relative'>
-              <div className='invisible absolute left-0 top-0 z-10 rounded-lg bg-gray-800 p-2 text-xs text-gray-200 shadow-lg transition-all duration-200 group-hover:visible'>
-                <div className='whitespace-nowrap'>
-                  <div>Playlist ID: {fixedPlaylistId ?? 'Not found'}</div>
-                  <div>Next auto-refresh in {formatTime(timeUntilRefresh)}</div>
+                <span className='font-medium'>
+                  {healthStatus.token === 'valid' && !healthStatus.tokenExpiringSoon
+                    ? 'Token Valid'
+                    : healthStatus.token === 'valid' &&
+                        healthStatus.tokenExpiringSoon
+                      ? 'Token Expiring Soon'
+                      : healthStatus.token === 'error'
+                        ? 'Token Error'
+                        : 'Token Status Unknown'}
+                </span>
+                <div className='group relative'>
+                  <div className='invisible absolute left-0 top-0 z-10 rounded-lg bg-gray-800 p-2 text-xs text-gray-200 shadow-lg transition-all duration-200 group-hover:visible'>
+                    <div className='whitespace-nowrap'>
+                      <div>Token expires: {formatDate(tokenInfo.expiryTime)}</div>
+                    </div>
+                  </div>
+                  <svg
+                    className='h-4 w-4 cursor-help text-gray-400'
+                    fill='none'
+                    stroke='currentColor'
+                    viewBox='0 0 24 24'
+                  >
+                    <path
+                      strokeLinecap='round'
+                      strokeLinejoin='round'
+                      strokeWidth={2}
+                      d='M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z'
+                    />
+                  </svg>
                 </div>
               </div>
-              <svg
-                className='h-4 w-4 cursor-help text-gray-400'
-                fill='none'
-                stroke='currentColor'
-                viewBox='0 0 24 24'
-              >
-                <path
-                  strokeLinecap='round'
-                  strokeLinejoin='round'
-                  strokeWidth={2}
-                  d='M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z'
-                />
-              </svg>
-            </div>
-          </div>
-        </div>
 
-        <div className='mt-8 space-y-4'>
-          <h2 className='text-xl font-semibold'>Controls</h2>
-          <div className='flex gap-4'>
-            <button
-              onClick={() => void handlePlayback('play')}
-              disabled={isLoading || !isReady}
-              className='text-white flex-1 rounded-lg bg-green-600 px-4 py-2 font-medium transition-colors hover:bg-green-700 disabled:cursor-not-allowed disabled:opacity-50'
-            >
-              {isLoading ? 'Loading...' : 'Play'}
-            </button>
-            <button
-              onClick={() => void handlePlayback('skip')}
-              disabled={isLoading || !isReady}
-              className='text-white flex-1 rounded-lg bg-blue-600 px-4 py-2 font-medium transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50'
-            >
-              {isLoading ? 'Loading...' : 'Skip'}
-            </button>
-            <button
-              onClick={() => void handleRefresh()}
-              disabled={isLoading || !isReady}
-              className='text-white flex-1 rounded-lg bg-purple-600 px-4 py-2 font-medium transition-colors hover:bg-purple-700 disabled:cursor-not-allowed disabled:opacity-50'
-            >
-              {isLoading ? 'Loading...' : 'Refresh Playlist'}
-            </button>
-            <button
-              onClick={() => void handleTokenRefresh()}
-              disabled={isLoading || !isReady}
-              className='text-white flex-1 rounded-lg bg-orange-600 px-4 py-2 font-medium transition-colors hover:bg-orange-700 disabled:cursor-not-allowed disabled:opacity-50'
-            >
-              {isLoading ? 'Loading...' : 'Refresh Token'}
-            </button>
-          </div>
-          <div className='text-center text-sm text-gray-400'>
-            <div className='flex flex-col items-center gap-2'>
-              <span>Uptime: {formatTime(uptime)}</span>
-            </div>
-          </div>
-          <div className='mt-4 rounded-lg border border-gray-800 bg-gray-900/50 p-4'>
-            <h3 className='mb-2 text-sm font-medium text-gray-400'>
-              Recent Console Logs
-            </h3>
-            <div className='max-h-40 overflow-y-auto font-mono text-xs [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden'>
-              {consoleLogs.map((log, index) => (
-                <div key={index} className='py-1'>
-                  {log}
+              <div className='flex items-center gap-2 rounded-lg border border-gray-800 bg-gray-900/50 p-4'>
+                <div
+                  className={`h-3 w-3 rounded-full ${
+                    healthStatus.connection === 'good'
+                      ? 'bg-green-500'
+                      : healthStatus.connection === 'unstable'
+                        ? 'bg-yellow-500'
+                        : healthStatus.connection === 'poor'
+                          ? 'bg-red-500'
+                          : 'bg-gray-500'
+                  }`}
+                />
+                <span className='font-medium'>
+                  {healthStatus.connection === 'good'
+                    ? 'Connection Good'
+                    : healthStatus.connection === 'unstable'
+                      ? 'Connection Unstable'
+                      : healthStatus.connection === 'poor'
+                        ? 'Connection Poor'
+                        : 'Connection Status Unknown'}
+                </span>
+              </div>
+
+              <div className='flex items-center gap-2 rounded-lg border border-gray-800 bg-gray-900/50 p-4'>
+                <div
+                  className={`h-3 w-3 rounded-full ${
+                    healthStatus.fixedPlaylist === 'found'
+                      ? 'bg-green-500'
+                      : healthStatus.fixedPlaylist === 'not_found'
+                        ? 'bg-red-500'
+                        : healthStatus.fixedPlaylist === 'error'
+                          ? 'bg-red-500'
+                          : 'bg-gray-500'
+                  }`}
+                />
+                <span className='font-medium'>
+                  {healthStatus.fixedPlaylist === 'found'
+                    ? 'Fixed Playlist Found'
+                    : healthStatus.fixedPlaylist === 'not_found'
+                      ? 'Fixed Playlist Not Found'
+                      : healthStatus.fixedPlaylist === 'error'
+                        ? 'Fixed Playlist Error'
+                        : 'Fixed Playlist Status Unknown'}
+                </span>
+                <div className='group relative'>
+                  <div className='invisible absolute left-0 top-0 z-10 rounded-lg bg-gray-800 p-2 text-xs text-gray-200 shadow-lg transition-all duration-200 group-hover:visible'>
+                    <div className='whitespace-nowrap'>
+                      <div>Playlist ID: {fixedPlaylistId ?? 'Not found'}</div>
+                      <div>Next auto-refresh in {formatTime(timeUntilRefresh)}</div>
+                    </div>
+                  </div>
+                  <svg
+                    className='h-4 w-4 cursor-help text-gray-400'
+                    fill='none'
+                    stroke='currentColor'
+                    viewBox='0 0 24 24'
+                  >
+                    <path
+                      strokeLinecap='round'
+                      strokeLinejoin='round'
+                      strokeWidth={2}
+                      d='M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z'
+                    />
+                  </svg>
                 </div>
-              ))}
+              </div>
             </div>
-          </div>
-        </div>
+
+            <div className='mt-8 space-y-4'>
+              <h2 className='text-xl font-semibold'>Controls</h2>
+              <div className='flex gap-4'>
+                <button
+                  onClick={() => void handlePlayback('play')}
+                  disabled={isLoading || !isReady}
+                  className='text-white flex-1 rounded-lg bg-green-600 px-4 py-2 font-medium transition-colors hover:bg-green-700 disabled:cursor-not-allowed disabled:opacity-50'
+                >
+                  {isLoading ? 'Loading...' : 'Play'}
+                </button>
+                <button
+                  onClick={() => void handlePlayback('skip')}
+                  disabled={isLoading || !isReady}
+                  className='text-white flex-1 rounded-lg bg-blue-600 px-4 py-2 font-medium transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50'
+                >
+                  {isLoading ? 'Loading...' : 'Skip'}
+                </button>
+                <button
+                  onClick={() => void handleRefresh()}
+                  disabled={isLoading || !isReady}
+                  className='text-white flex-1 rounded-lg bg-purple-600 px-4 py-2 font-medium transition-colors hover:bg-purple-700 disabled:cursor-not-allowed disabled:opacity-50'
+                >
+                  {isLoading ? 'Loading...' : 'Refresh Playlist'}
+                </button>
+                <button
+                  onClick={() => void handleTokenRefresh()}
+                  disabled={isLoading || !isReady}
+                  className='text-white flex-1 rounded-lg bg-orange-600 px-4 py-2 font-medium transition-colors hover:bg-orange-700 disabled:cursor-not-allowed disabled:opacity-50'
+                >
+                  {isLoading ? 'Loading...' : 'Refresh Token'}
+                </button>
+              </div>
+              <div className='text-center text-sm text-gray-400'>
+                <div className='flex flex-col items-center gap-2'>
+                  <span>Uptime: {formatTime(uptime)}</span>
+                </div>
+              </div>
+              <div className='mt-4 rounded-lg border border-gray-800 bg-gray-900/50 p-4'>
+                <h3 className='mb-2 text-sm font-medium text-gray-400'>
+                  Recent Console Logs
+                </h3>
+                <div className='max-h-40 overflow-y-auto font-mono text-xs [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden'>
+                  {consoleLogs.map((log, index) => (
+                    <div key={index} className='py-1'>
+                      {log}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </TabsContent>
+
+          <TabsContent value="suggestions">
+            <TrackSuggestionsTab />
+          </TabsContent>
+        </Tabs>
       </div>
     </div>
   )
