@@ -661,40 +661,44 @@ export default function AdminPage(): JSX.Element {
   }
 
   return (
-    <div className="text-white min-h-screen bg-black p-4">
+    <div className='text-white min-h-screen bg-black p-4'>
       <SpotifyPlayer />
 
-      <div className="mx-auto max-w-xl space-y-4">
-        <h1 className="mb-8 text-2xl font-bold">Admin Controls</h1>
+      <div className='mx-auto max-w-xl space-y-4'>
+        <h1 className='mb-8 text-2xl font-bold'>Admin Controls</h1>
 
-        <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
-          <TabsList className="grid w-full grid-cols-2 bg-gray-800/50">
-            <TabsTrigger 
-              value="dashboard" 
-              className="data-[state=active]:bg-gray-700 data-[state=active]:text-white data-[state=active]:font-semibold"
+        <Tabs
+          value={activeTab}
+          onValueChange={setActiveTab}
+          className='space-y-4'
+        >
+          <TabsList className='grid w-full grid-cols-2 bg-gray-800/50'>
+            <TabsTrigger
+              value='dashboard'
+              className='data-[state=active]:text-white data-[state=active]:bg-gray-700 data-[state=active]:font-semibold'
             >
               Dashboard
             </TabsTrigger>
-            <TabsTrigger 
-              value="suggestions" 
-              className="data-[state=active]:bg-gray-700 data-[state=active]:text-white data-[state=active]:font-semibold"
+            <TabsTrigger
+              value='suggestions'
+              className='data-[state=active]:text-white data-[state=active]:bg-gray-700 data-[state=active]:font-semibold'
             >
               Track Suggestions
             </TabsTrigger>
           </TabsList>
 
-          <TabsContent value="dashboard">
+          <TabsContent value='dashboard'>
             {_error && (
-              <div className="mb-4 rounded border border-red-500 bg-red-900/50 p-4 text-red-100">
+              <div className='mb-4 rounded border border-red-500 bg-red-900/50 p-4 text-red-100'>
                 {_error}
               </div>
             )}
 
-            <div className="flex items-center gap-2 rounded-lg border border-gray-800 bg-gray-900/50 p-4">
+            <div className='flex items-center gap-2 rounded-lg border border-gray-800 bg-gray-900/50 p-4'>
               <div
                 className={`h-3 w-3 rounded-full ${isReady ? 'bg-green-500' : 'bg-yellow-500'}`}
               />
-              <span className="font-medium">
+              <span className='font-medium'>
                 {isReady ? 'Player Ready' : 'Player Initializing...'}
               </span>
             </div>
@@ -774,7 +778,8 @@ export default function AdminPage(): JSX.Element {
                   }`}
                 />
                 <span className='font-medium'>
-                  {healthStatus.token === 'valid' && !healthStatus.tokenExpiringSoon
+                  {healthStatus.token === 'valid' &&
+                  !healthStatus.tokenExpiringSoon
                     ? 'Token Valid'
                     : healthStatus.token === 'valid' &&
                         healthStatus.tokenExpiringSoon
@@ -786,7 +791,9 @@ export default function AdminPage(): JSX.Element {
                 <div className='group relative'>
                   <div className='invisible absolute left-0 top-0 z-10 rounded-lg bg-gray-800 p-2 text-xs text-gray-200 shadow-lg transition-all duration-200 group-hover:visible'>
                     <div className='whitespace-nowrap'>
-                      <div>Token expires: {formatDate(tokenInfo.expiryTime)}</div>
+                      <div>
+                        Token expires: {formatDate(tokenInfo.expiryTime)}
+                      </div>
                     </div>
                   </div>
                   <svg
@@ -853,7 +860,9 @@ export default function AdminPage(): JSX.Element {
                   <div className='invisible absolute left-0 top-0 z-10 rounded-lg bg-gray-800 p-2 text-xs text-gray-200 shadow-lg transition-all duration-200 group-hover:visible'>
                     <div className='whitespace-nowrap'>
                       <div>Playlist ID: {fixedPlaylistId ?? 'Not found'}</div>
-                      <div>Next auto-refresh in {formatTime(timeUntilRefresh)}</div>
+                      <div>
+                        Next auto-refresh in {formatTime(timeUntilRefresh)}
+                      </div>
                     </div>
                   </div>
                   <svg
@@ -925,7 +934,7 @@ export default function AdminPage(): JSX.Element {
             </div>
           </TabsContent>
 
-          <TabsContent value="suggestions">
+          <TabsContent value='suggestions'>
             <TrackSuggestionsTab />
           </TabsContent>
         </Tabs>

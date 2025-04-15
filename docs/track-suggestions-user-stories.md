@@ -5,6 +5,7 @@
 ### User Story: As a music enthusiast, I want to search for tracks using flexible search parameters in a dedicated tab on the admin page so that I can find music that matches my current mood or preferences.
 
 #### Context
+
 - All search and filter controls will be contained within a dedicated "Track Suggestions" tab on the admin page
 - The tab will be accessible from the main admin navigation
 - The tab will maintain its own state separate from other admin functions
@@ -13,6 +14,7 @@
 #### Acceptance Criteria
 
 ##### 1. Tab Navigation and Layout
+
 - [x] Admin page has a "Track Suggestions" tab in the main navigation
 - [x] Tab is clearly labeled and easily identifiable
 - [x] Tab maintains its own state when switching between tabs
@@ -24,6 +26,7 @@
 - [ ] Tab state persists across page reloads
 
 ##### 2. Text Query Input
+
 - [ ] User can enter free-form text in a search input field
 - [ ] Input field has a clear placeholder text indicating search capabilities
 - [ ] Input field supports keyboard navigation
@@ -35,6 +38,7 @@
 - [ ] Input field supports common keyboard shortcuts (Ctrl/Cmd + A, etc.)
 
 ##### 3. Entity Type Selection
+
 - [ ] User can select one or more entity types (track/artist/album)
 - [ ] Selection is presented as a group of checkboxes or a multi-select dropdown
 - [ ] Default selection is "track" only
@@ -45,6 +49,7 @@
 - [ ] UI updates to show relevant fields based on selection
 
 ##### 4. Year Range Selection
+
 - [ ] User can select a year range using a dual-slider component
 - [ ] Default range is current year only
 - [ ] Range can be from 1900 to current year
@@ -56,6 +61,7 @@
 - [ ] Slider shows tooltips with current values
 
 ##### 5. Genre Selection
+
 - [ ] User can select from a dropdown list of available genres
 - [ ] Dropdown supports search/filter within genres
 - [ ] Dropdown shows loading state while fetching genres
@@ -66,6 +72,7 @@
 - [ ] Dropdown supports keyboard navigation
 
 ##### 6. New Releases Filter
+
 - [ ] User can toggle "New Releases Only" with a checkbox
 - [ ] Checkbox state is clearly visible
 - [ ] State persists across sessions
@@ -74,6 +81,7 @@
 - [ ] Tooltip explains the "New Releases" criteria
 
 ##### 7. Advanced Query Builder
+
 - [ ] User can see the generated query string
 - [ ] Query string updates in real-time as parameters change
 - [ ] Query string is copyable
@@ -84,6 +92,7 @@
 - [ ] Query string can be saved as a template
 
 ##### 8. Search Results
+
 - [ ] Results update in real-time as parameters change
 - [ ] Results show loading state
 - [ ] Results show empty state when no matches
@@ -95,6 +104,7 @@
 - [ ] Results support infinite scroll or pagination
 
 ##### 9. Performance
+
 - [ ] Search debounced to prevent excessive API calls
 - [ ] Search results cached appropriately
 - [ ] UI remains responsive during search
@@ -104,6 +114,7 @@
 - [ ] Rate limiting is handled gracefully
 
 ##### 10. Accessibility
+
 - [ ] All controls are keyboard accessible
 - [ ] All controls have appropriate ARIA labels
 - [ ] All controls have appropriate focus states
@@ -114,6 +125,7 @@
 - [ ] All controls are screen reader friendly
 
 ##### 11. Mobile Responsiveness
+
 - [ ] UI adapts to mobile screen sizes
 - [ ] Controls are touch-friendly
 - [ ] Dropdowns work well on mobile
@@ -124,6 +136,7 @@
 - [ ] Error states are appropriate for mobile
 
 #### Technical Requirements
+
 - Implement using React components
 - Use TypeScript for type safety
 - Use Tailwind CSS for styling
@@ -138,6 +151,7 @@
 - Maintain consistent styling with other admin tabs
 
 #### Testing Requirements
+
 - Unit tests for all components
 - Integration tests for search functionality
 - E2E tests for user flows
@@ -148,4 +162,4 @@
 - Loading state tests
 - State persistence tests
 - Tab navigation tests
-- Cross-tab interaction tests 
+- Cross-tab interaction tests
