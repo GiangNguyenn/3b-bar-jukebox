@@ -6,7 +6,9 @@ interface ExplicitContentToggleProps {
   onToggleChange?: (isAllowed: boolean) => void
 }
 
-export function ExplicitContentToggle({ onToggleChange }: ExplicitContentToggleProps): JSX.Element {
+export function ExplicitContentToggle({
+  onToggleChange
+}: ExplicitContentToggleProps): JSX.Element {
   const [isAllowed, setIsAllowed] = useState<boolean>(false)
 
   useEffect(() => {
@@ -34,15 +36,21 @@ export function ExplicitContentToggle({ onToggleChange }: ExplicitContentToggleP
                   checked={isAllowed}
                   onChange={handleToggle}
                 />
-                <div className={`block h-6 w-11 rounded-full transition-colors duration-200 ${
-                  isAllowed ? 'bg-green-500' : 'bg-red-500'
-                }`} />
-                <div className={`absolute left-1 top-1 h-4 w-4 rounded-full bg-white transition-transform duration-200 ${
-                  isAllowed ? 'translate-x-5' : ''
-                }`} />
+                <div
+                  className={`block h-6 w-11 rounded-full transition-colors duration-200 ${
+                    isAllowed ? 'bg-green-500' : 'bg-red-500'
+                  }`}
+                />
+                <div
+                  className={`bg-white absolute left-1 top-1 h-4 w-4 rounded-full transition-transform duration-200 ${
+                    isAllowed ? 'translate-x-5' : ''
+                  }`}
+                />
               </div>
               <span className='text-sm text-muted-foreground'>
-                {isAllowed ? 'Explicit content allowed' : 'Explicit content filtered'}
+                {isAllowed
+                  ? 'Explicit content allowed'
+                  : 'Explicit content filtered'}
               </span>
             </label>
           </div>
@@ -51,11 +59,11 @@ export function ExplicitContentToggle({ onToggleChange }: ExplicitContentToggleP
 
       <div className='rounded-lg border bg-muted p-3 text-sm'>
         <p className='text-muted-foreground'>
-          {isAllowed 
-            ? 'Explicit content will be included in track suggestions' 
+          {isAllowed
+            ? 'Explicit content will be included in track suggestions'
             : 'Explicit content will be filtered from track suggestions'}
         </p>
       </div>
     </div>
   )
-} 
+}

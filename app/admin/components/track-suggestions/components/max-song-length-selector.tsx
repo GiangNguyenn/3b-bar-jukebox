@@ -7,7 +7,9 @@ interface MaxSongLengthSelectorProps {
   onLengthChange?: (minutes: number) => void
 }
 
-export function MaxSongLengthSelector({ onLengthChange }: MaxSongLengthSelectorProps): JSX.Element {
+export function MaxSongLengthSelector({
+  onLengthChange
+}: MaxSongLengthSelectorProps): JSX.Element {
   const defaultLength = 10
   const [length, setLength] = useState<number>(defaultLength)
 
@@ -48,7 +50,10 @@ export function MaxSongLengthSelector({ onLengthChange }: MaxSongLengthSelectorP
       <div className='space-y-2'>
         <div className='flex items-center gap-4'>
           <div className='flex-1'>
-            <label htmlFor='max-length' className='block text-sm text-muted-foreground'>
+            <label
+              htmlFor='max-length'
+              className='block text-sm text-muted-foreground'
+            >
               Maximum Length: {formatTime(length)}
             </label>
             <input
@@ -58,7 +63,7 @@ export function MaxSongLengthSelector({ onLengthChange }: MaxSongLengthSelectorP
               max={20}
               value={length}
               onChange={handleChange}
-              className='mt-1 block w-full accent-primary'
+              className='accent-primary mt-1 block w-full'
             />
             <div className='flex justify-between text-xs text-muted-foreground'>
               <span>3m</span>
@@ -71,9 +76,10 @@ export function MaxSongLengthSelector({ onLengthChange }: MaxSongLengthSelectorP
 
       <div className='rounded-lg border bg-muted p-3 text-sm'>
         <p className='text-muted-foreground'>
-          Songs longer than {formatTime(length)} will be filtered from suggestions
+          Songs longer than {formatTime(length)} will be filtered from
+          suggestions
         </p>
       </div>
     </div>
   )
-} 
+}
