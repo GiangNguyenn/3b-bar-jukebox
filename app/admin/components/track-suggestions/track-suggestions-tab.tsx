@@ -5,6 +5,7 @@ import { YearRangeSelector } from './components/year-range-selector'
 import { PopularitySelector } from './components/popularity-selector'
 import { ExplicitContentToggle } from './components/explicit-content-toggle'
 import { MaxSongLengthSelector } from './components/max-song-length-selector'
+import { SongsBetweenRepeatsSelector } from './components/songs-between-repeats-selector'
 
 export function TrackSuggestionsTab(): JSX.Element {
   return (
@@ -22,6 +23,7 @@ export function TrackSuggestionsTab(): JSX.Element {
         <div className='space-y-6'>
           <ExplicitContentToggle />
           <MaxSongLengthSelector />
+          <SongsBetweenRepeatsSelector />
         </div>
       </div>
     </div>
