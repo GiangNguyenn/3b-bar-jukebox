@@ -7,7 +7,9 @@ interface YearRangeSelectorProps {
   onRangeChange?: (range: [number, number]) => void
 }
 
-export function YearRangeSelector({ onRangeChange }: YearRangeSelectorProps): JSX.Element {
+export function YearRangeSelector({
+  onRangeChange
+}: YearRangeSelectorProps): JSX.Element {
   const currentYear = new Date().getFullYear()
   const defaultRange: [number, number] = [currentYear - 30, currentYear]
   const [range, setRange] = useState<[number, number]>(defaultRange)
@@ -46,7 +48,10 @@ export function YearRangeSelector({ onRangeChange }: YearRangeSelectorProps): JS
       <div className='space-y-2'>
         <div className='flex items-center gap-4'>
           <div className='flex-1'>
-            <label htmlFor='min-year' className='block text-sm text-muted-foreground'>
+            <label
+              htmlFor='min-year'
+              className='block text-sm text-muted-foreground'
+            >
               From
             </label>
             <input
@@ -60,7 +65,10 @@ export function YearRangeSelector({ onRangeChange }: YearRangeSelectorProps): JS
             />
           </div>
           <div className='flex-1'>
-            <label htmlFor='max-year' className='block text-sm text-muted-foreground'>
+            <label
+              htmlFor='max-year'
+              className='block text-sm text-muted-foreground'
+            >
               To
             </label>
             <input
@@ -78,9 +86,10 @@ export function YearRangeSelector({ onRangeChange }: YearRangeSelectorProps): JS
 
       <div className='rounded-lg border bg-muted p-3 text-sm'>
         <p className='text-muted-foreground'>
-          Selected range: {range[0]} - {range[1]} ({range[1] - range[0] + 1} years)
+          Selected range: {range[0]} - {range[1]} ({range[1] - range[0] + 1}{' '}
+          years)
         </p>
       </div>
     </div>
   )
-} 
+}

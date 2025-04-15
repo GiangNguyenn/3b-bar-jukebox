@@ -7,7 +7,9 @@ interface PopularitySelectorProps {
   onPopularityChange?: (value: number) => void
 }
 
-export function PopularitySelector({ onPopularityChange }: PopularitySelectorProps): JSX.Element {
+export function PopularitySelector({
+  onPopularityChange
+}: PopularitySelectorProps): JSX.Element {
   const defaultPopularity = 50
   const [popularity, setPopularity] = useState<number>(defaultPopularity)
 
@@ -39,7 +41,10 @@ export function PopularitySelector({ onPopularityChange }: PopularitySelectorPro
       <div className='space-y-2'>
         <div className='flex items-center gap-4'>
           <div className='flex-1'>
-            <label htmlFor='popularity' className='block text-sm text-muted-foreground'>
+            <label
+              htmlFor='popularity'
+              className='block text-sm text-muted-foreground'
+            >
               Minimum Popularity: {popularity}
             </label>
             <input
@@ -49,7 +54,7 @@ export function PopularitySelector({ onPopularityChange }: PopularitySelectorPro
               max={100}
               value={popularity}
               onChange={handleChange}
-              className='mt-1 block w-full accent-primary'
+              className='accent-primary mt-1 block w-full'
             />
             <div className='flex justify-between text-xs text-muted-foreground'>
               <span>0</span>
@@ -62,9 +67,17 @@ export function PopularitySelector({ onPopularityChange }: PopularitySelectorPro
 
       <div className='rounded-lg border bg-muted p-3 text-sm'>
         <p className='text-muted-foreground'>
-          Selected minimum popularity: {popularity} ({popularity >= 75 ? 'Very Popular' : popularity >= 50 ? 'Popular' : popularity >= 25 ? 'Moderate' : 'Less Popular'})
+          Selected minimum popularity: {popularity} (
+          {popularity >= 75
+            ? 'Very Popular'
+            : popularity >= 50
+              ? 'Popular'
+              : popularity >= 25
+                ? 'Moderate'
+                : 'Less Popular'}
+          )
         </p>
       </div>
     </div>
   )
-} 
+}
