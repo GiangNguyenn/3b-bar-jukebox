@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 
-export function useConsoleLogs() {
+export function useConsoleLogs(): string[] {
   const [logs, setLogs] = useState<string[]>([])
   const isUpdating = useRef(false)
   const originalConsole = useRef<{
@@ -8,14 +8,14 @@ export function useConsoleLogs() {
     error: typeof console.error
   }>()
 
-  useEffect(() => {
+  useEffect((): (() => void) => {
     if (!originalConsole.current) {
       originalConsole.current = {
         log: console.log,
-        error: console.error
+        error: console.error,
       }
 
-      console.log = (...args: unknown[]) => {
+      console.log = (...args: unknown[]): void => {
         originalConsole.current?.log(...args)
         if (!isUpdating.current) {
           isUpdating.current = true
@@ -24,7 +24,7 @@ export function useConsoleLogs() {
         }
       }
 
-      console.error = (...args: unknown[]) => {
+      console.error = (...args: unknown[]): void => {
         originalConsole.current?.error(...args)
         if (!isUpdating.current) {
           isUpdating.current = true
@@ -34,7 +34,7 @@ export function useConsoleLogs() {
       }
     }
 
-    return () => {
+    return (): void => {
       if (originalConsole.current) {
         console.log = originalConsole.current.log
         console.error = originalConsole.current.error

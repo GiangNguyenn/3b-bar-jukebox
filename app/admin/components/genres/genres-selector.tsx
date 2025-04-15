@@ -3,10 +3,10 @@
 import { useState } from 'react'
 import { FALLBACK_GENRES } from '@/shared/constants/trackSuggestion'
 
-export function GenresSelector() {
+export function GenresSelector(): JSX.Element {
   const [selectedGenres, setSelectedGenres] = useState<string[]>([])
 
-  const handleGenreChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+  const handleGenreChange = (e: React.ChangeEvent<HTMLSelectElement>): void => {
     const options = e.target.options
     const selected = []
     for (let i = 0; i < options.length; i++) {
