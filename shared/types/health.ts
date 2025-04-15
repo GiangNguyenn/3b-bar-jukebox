@@ -6,4 +6,4 @@ export interface HealthStatus {
   tokenExpiringSoon: boolean
   connection: 'good' | 'poor' | 'unstable' | 'error' | 'unknown'
   fixedPlaylist: 'found' | 'not_found' | 'error' | 'unknown'
-} 
+}

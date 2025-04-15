@@ -21,4 +21,4 @@ export interface SpotifyTrack {
 export interface SpotifyPlaybackState {
   is_playing: boolean
   item: SpotifyTrack | null
-} 
+}

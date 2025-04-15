@@ -3,7 +3,12 @@
 import { useState, useEffect } from 'react'
 import { useSpotifyPlayer } from '@/hooks/useSpotifyPlayer'
 import { useFixedPlaylist } from '@/hooks/useFixedPlaylist'
-import { PlaybackControls, UptimeDisplay, ConsoleLogs, StatusGrid } from './components'
+import {
+  PlaybackControls,
+  UptimeDisplay,
+  ConsoleLogs,
+  StatusGrid
+} from './components'
 import { ErrorBoundary } from './components/error-boundary'
 import { HealthStatus } from './types'
 
@@ -19,7 +24,8 @@ export function DashboardTab({ healthStatus }: DashboardTabProps): JSX.Element {
 
   const isReady = useSpotifyPlayer((state) => state.isReady)
   const playbackState = useSpotifyPlayer((state) => state.playbackState)
-  const { isInitialFetchComplete: fixedPlaylistIsInitialFetchComplete } = useFixedPlaylist()
+  const { isInitialFetchComplete: fixedPlaylistIsInitialFetchComplete } =
+    useFixedPlaylist()
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -29,13 +35,18 @@ export function DashboardTab({ healthStatus }: DashboardTabProps): JSX.Element {
     return () => clearInterval(interval)
   }, [])
 
-  const handlePlaybackControl = async (action: 'play' | 'pause' | 'next' | 'previous'): Promise<void> => {
+  const handlePlaybackControl = async (
+    action: 'play' | 'pause' | 'next' | 'previous'
+  ): Promise<void> => {
     try {
       setIsLoading(true)
       // TODO: Implement playback control logic
       await new Promise((resolve) => setTimeout(resolve, 100)) // Simulate async operation
       console.log(`Playback control: ${action}`)
-      setLogs((prev) => [...prev, `[${new Date().toISOString()}] Playback control: ${action}`])
+      setLogs((prev) => [
+        ...prev,
+        `[${new Date().toISOString()}] Playback control: ${action}`
+      ])
     } finally {
       setIsLoading(false)
     }
@@ -47,7 +58,10 @@ export function DashboardTab({ healthStatus }: DashboardTabProps): JSX.Element {
       // TODO: Implement token refresh logic
       await new Promise((resolve) => setTimeout(resolve, 100)) // Simulate async operation
       console.log('Refreshing token')
-      setLogs((prev) => [...prev, `[${new Date().toISOString()}] Refreshing token`])
+      setLogs((prev) => [
+        ...prev,
+        `[${new Date().toISOString()}] Refreshing token`
+      ])
     } finally {
       setIsLoading(false)
     }
@@ -59,16 +73,19 @@ export function DashboardTab({ healthStatus }: DashboardTabProps): JSX.Element {
       // TODO: Implement playlist refresh logic
       await new Promise((resolve) => setTimeout(resolve, 100)) // Simulate async operation
       console.log('Refreshing playlist')
-      setLogs((prev) => [...prev, `[${new Date().toISOString()}] Refreshing playlist`])
+      setLogs((prev) => [
+        ...prev,
+        `[${new Date().toISOString()}] Refreshing playlist`
+      ])
     } finally {
       setIsLoading(false)
     }
   }
 
   return (
-    <div className="space-y-4">
+    <div className='space-y-4'>
       {error && (
-        <div className="rounded-lg border border-red-800 bg-red-900/50 p-4 text-red-100">
+        <div className='rounded-lg border border-red-800 bg-red-900/50 p-4 text-red-100'>
           {error}
         </div>
       )}
@@ -79,7 +96,9 @@ export function DashboardTab({ healthStatus }: DashboardTabProps): JSX.Element {
           healthStatus={healthStatus}
           playbackState={playbackState}
           isReady={isReady}
-          fixedPlaylistIsInitialFetchComplete={fixedPlaylistIsInitialFetchComplete}
+          fixedPlaylistIsInitialFetchComplete={
+            fixedPlaylistIsInitialFetchComplete
+          }
         />
       </ErrorBoundary>
 
@@ -88,7 +107,9 @@ export function DashboardTab({ healthStatus }: DashboardTabProps): JSX.Element {
         <PlaybackControls
           isLoading={isLoading}
           tokenExpiryTime={null} // TODO: Get from context or props
-          fixedPlaylistIsInitialFetchComplete={fixedPlaylistIsInitialFetchComplete}
+          fixedPlaylistIsInitialFetchComplete={
+            fixedPlaylistIsInitialFetchComplete
+          }
           playbackState={playbackState}
           onPlaybackControl={handlePlaybackControl}
           onTokenRefresh={handleTokenRefresh}
@@ -107,4 +128,4 @@ export function DashboardTab({ healthStatus }: DashboardTabProps): JSX.Element {
       </ErrorBoundary>
     </div>
   )
-} 
+}

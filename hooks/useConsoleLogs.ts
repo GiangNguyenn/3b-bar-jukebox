@@ -11,11 +11,13 @@ export function useConsoleLogs(): string[] {
 
     function addLog(type: string, ...args: unknown[]): void {
       const timestamp = new Date().toISOString()
-      const message = args.map((arg) => {
-        if (typeof arg === 'string') return arg
-        if (arg instanceof Error) return arg.message
-        return JSON.stringify(arg)
-      }).join(' ')
+      const message = args
+        .map((arg) => {
+          if (typeof arg === 'string') return arg
+          if (arg instanceof Error) return arg.message
+          return JSON.stringify(arg)
+        })
+        .join(' ')
       setLogs((prev) => [...prev, `[${timestamp}] [${type}] ${message}`])
     }
 
@@ -48,4 +50,4 @@ export function useConsoleLogs(): string[] {
   }, [])
 
   return logs
-} 
+}
