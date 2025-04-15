@@ -12,7 +12,7 @@ export function TrackSuggestionsTab(): JSX.Element {
 
       <div className='grid gap-6 md:grid-cols-2'>
         <GenresSelector />
-        
+
         <Card>
           <CardHeader>
             <CardTitle>Upcoming Suggestions</CardTitle>
