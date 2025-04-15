@@ -25,7 +25,6 @@ The Spotify Suggestion Engine enables users to discover tracks by searching Spot
 ## 4. Target Users
 
 - Music fans looking for fine-grained control over discovery
-- Playlist curators, DJs, or users seeking mood/genre-based track lists
 - Users disillusioned by opaque Spotify algorithms
 
 ## 5. Features
@@ -89,12 +88,6 @@ Display includes:
 - Preview link (if available)
 - URI or link to open in Spotify
 
-Bonus Actions:
-
-- Save result list (JSON or CSV)
-- Export to clipboard
-- Create a playlist (if OAuth enabled)
-
 ## 6. API Usage
 
 ### Primary API
@@ -113,36 +106,22 @@ GET /v1/audio-features
 
 For post-filtering by musical attributes
 
-### Auth
-
-- Client Credentials Flow: for basic access
-- Authorization Code Flow: optional (for saving playlists)
-
 ## 7. UI/UX Requirements
 
-- Search bar with real-time suggestions or autofill
+- Tab on the Admin page for the suggestions engine parameters
 - Filter panel (sliders, toggles, dropdowns)
 - Tabs or toggle between simple and advanced mode
 - Result list with hover previews, save buttons
 
 ## 8. Technical Requirements
 
-- Frontend: React (Next.js recommended), Tailwind CSS for layout
-- Optional Backend: Node.js or Vercel Functions for handling API batching
-- Caching: Optional local caching of recent searches
+- Frontend: React (Next.js), Tailwind CSS for layout
 - Rate Limiting: Handle 429 errors gracefully, with retry strategy
 - Track batching: For audio feature enrichment, batch requests efficiently (limit = 100)
 
-## 9. Success Metrics
-
-- Number of searches performed
-- Engagement per session (filters used, tracks previewed)
-- Tracklist exports or playlist saves
-- User feedback on discoverability and control
-
-## 10. Future Enhancements
+## 9. Future Enhancements
 
 - Enable user login and playlist saving
 - "Surprise Me" button for random query generation
 - Prebuilt filter templates (e.g., "Chill Vibes", "Upbeat Running Tracks")
-- Collaborator mode: build tracklists with a friend
+
