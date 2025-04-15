@@ -18,6 +18,7 @@ import { formatDate } from '@/lib/utils'
 import { useSpotifyPlayerState } from '@/hooks/useSpotifyPlayerState'
 import { TrackSuggestionsTab } from './components/track-suggestions/track-suggestions-tab'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { useConsoleLogs } from '../hooks/useConsoleLogs'
 
 const REFRESH_INTERVAL = 180000 // 3 minutes in milliseconds
 const DEVICE_CHECK_INTERVAL = {
@@ -80,7 +81,7 @@ export default function AdminPage(): JSX.Element {
   const isRefreshing = useRef<boolean>(false)
   const maxRecoveryAttempts = 5
   const baseDelay = 2000 // 2 seconds
-  const [consoleLogs, setConsoleLogs] = useState<string[]>([])
+  const consoleLogs = useConsoleLogs()
   const [uptime, setUptime] = useState(0)
   const [tokenInfo, _setTokenInfo] = useState<TokenInfo>({
     lastRefresh: 0,
@@ -490,37 +491,6 @@ export default function AdminPage(): JSX.Element {
 
   useEffect(playlistEffect, [handlePlaylistChecked])
 
-  // Capture console logs
-  // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
-  useEffect(() => {
-    const originalConsoleLog = console.log
-    const originalConsoleError = console.error
-
-    // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
-    console.log = (...args: unknown[]) => {
-      originalConsoleLog(...args)
-      setConsoleLogs((prev) => {
-        const newLog = args.join(' ')
-        return [...prev.slice(-9), newLog]
-      })
-    }
-
-    // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
-    console.error = (...args: unknown[]) => {
-      originalConsoleError(...args)
-      setConsoleLogs((prev) => {
-        const newLog = args.join(' ')
-        return [...prev.slice(-9), `[ERROR] ${newLog}`]
-      })
-    }
-
-    // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
-    return () => {
-      console.log = originalConsoleLog
-      console.error = originalConsoleError
-    }
-  }, [])
-
   // Uptime timer
   // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
   useEffect(() => {
@@ -924,7 +894,7 @@ export default function AdminPage(): JSX.Element {
                   Recent Console Logs
                 </h3>
                 <div className='max-h-40 overflow-y-auto font-mono text-xs [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden'>
-                  {consoleLogs.map((log, index) => (
+                  {consoleLogs.map((log: string, index: number) => (
                     <div key={index} className='py-1'>
                       {log}
                     </div>
