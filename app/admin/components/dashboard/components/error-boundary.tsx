@@ -12,7 +12,10 @@ interface ErrorBoundaryState {
   error: Error | null
 }
 
-export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
+export class ErrorBoundary extends Component<
+  ErrorBoundaryProps,
+  ErrorBoundaryState
+> {
   constructor(props: ErrorBoundaryProps) {
     super(props)
     this.state = { hasError: false, error: null }
@@ -30,9 +33,9 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
     if (this.state.hasError) {
       return (
         this.props.fallback || (
-          <div className="rounded-lg border border-red-800 bg-red-900/50 p-4 text-red-100">
-            <h3 className="font-semibold">Something went wrong</h3>
-            <p className="mt-2 text-sm">{this.state.error?.message}</p>
+          <div className='rounded-lg border border-red-800 bg-red-900/50 p-4 text-red-100'>
+            <h3 className='font-semibold'>Something went wrong</h3>
+            <p className='mt-2 text-sm'>{this.state.error?.message}</p>
           </div>
         )
       )
@@ -40,4 +43,4 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
 
     return this.props.children
   }
-} 
+}
