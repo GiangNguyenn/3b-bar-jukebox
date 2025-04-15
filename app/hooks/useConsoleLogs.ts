@@ -12,7 +12,7 @@ export function useConsoleLogs() {
     if (!originalConsole.current) {
       originalConsole.current = {
         log: console.log,
-        error: console.error,
+        error: console.error
       }
 
       console.log = (...args: unknown[]) => {
@@ -43,4 +43,4 @@ export function useConsoleLogs() {
   }, [])
 
   return logs
-} 
+}
