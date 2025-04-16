@@ -1,28 +1,24 @@
 'use client'
 
-import { useState, useEffect } from 'react'
 import { RefreshCw } from 'lucide-react'
 
 interface MaxSongLengthSelectorProps {
-  onLengthChange?: (minutes: number) => void
+  length: number
+  onLengthChange: (minutes: number) => void
 }
 
 export function MaxSongLengthSelector({
+  length,
   onLengthChange
 }: MaxSongLengthSelectorProps): JSX.Element {
   const defaultLength = 10
-  const [length, setLength] = useState<number>(defaultLength)
-
-  useEffect(() => {
-    onLengthChange?.(length)
-  }, [length, onLengthChange])
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>): void => {
-    setLength(Number(e.target.value))
+    onLengthChange(Number(e.target.value))
   }
 
   const handleReset = (): void => {
-    setLength(defaultLength)
+    onLengthChange(defaultLength)
   }
 
   const formatTime = (minutes: number): string => {

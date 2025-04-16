@@ -1,28 +1,24 @@
 'use client'
 
-import { useState, useEffect } from 'react'
 import { RefreshCw } from 'lucide-react'
 
 interface PopularitySelectorProps {
-  onPopularityChange?: (value: number) => void
+  popularity: number
+  onPopularityChange: (value: number) => void
 }
 
 export function PopularitySelector({
+  popularity,
   onPopularityChange
 }: PopularitySelectorProps): JSX.Element {
   const defaultPopularity = 50
-  const [popularity, setPopularity] = useState<number>(defaultPopularity)
-
-  useEffect(() => {
-    onPopularityChange?.(popularity)
-  }, [popularity, onPopularityChange])
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>): void => {
-    setPopularity(Number(e.target.value))
+    onPopularityChange(Number(e.target.value))
   }
 
   const handleReset = (): void => {
-    setPopularity(defaultPopularity)
+    onPopularityChange(defaultPopularity)
   }
 
   return (

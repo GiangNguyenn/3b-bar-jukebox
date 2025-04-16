@@ -1,11 +1,16 @@
 'use client'
 
-import { useState } from 'react'
 import { FALLBACK_GENRES } from '@/shared/constants/trackSuggestion'
 
-export function GenresSelector(): JSX.Element {
-  const [selectedGenres, setSelectedGenres] = useState<string[]>([])
+interface GenresSelectorProps {
+  selectedGenres: string[]
+  onGenresChange: (genres: string[]) => void
+}
 
+export function GenresSelector({
+  selectedGenres,
+  onGenresChange
+}: GenresSelectorProps): JSX.Element {
   const handleGenreChange = (e: React.ChangeEvent<HTMLSelectElement>): void => {
     const options = e.target.options
     const selected = []
@@ -14,7 +19,7 @@ export function GenresSelector(): JSX.Element {
         selected.push(options[i].value)
       }
     }
-    setSelectedGenres(selected)
+    onGenresChange(selected)
   }
 
   return (
@@ -24,6 +29,7 @@ export function GenresSelector(): JSX.Element {
         <select
           multiple
           onChange={handleGenreChange}
+          value={selectedGenres}
           className='min-h-[100px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2'
         >
           {FALLBACK_GENRES.map((genre) => (

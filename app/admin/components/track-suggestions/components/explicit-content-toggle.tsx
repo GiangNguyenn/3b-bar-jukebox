@@ -3,20 +3,16 @@
 import { useState, useEffect } from 'react'
 
 interface ExplicitContentToggleProps {
-  onToggleChange?: (isAllowed: boolean) => void
+  isAllowed: boolean
+  onToggleChange: (isAllowed: boolean) => void
 }
 
 export function ExplicitContentToggle({
+  isAllowed,
   onToggleChange
 }: ExplicitContentToggleProps): JSX.Element {
-  const [isAllowed, setIsAllowed] = useState<boolean>(false)
-
-  useEffect(() => {
-    onToggleChange?.(isAllowed)
-  }, [isAllowed, onToggleChange])
-
   const handleToggle = (): void => {
-    setIsAllowed(!isAllowed)
+    onToggleChange(!isAllowed)
   }
 
   return (
