@@ -15,8 +15,6 @@ interface LastSuggestedTrackProps {
 export function LastSuggestedTrack({
   trackInfo
 }: LastSuggestedTrackProps): JSX.Element {
-  console.log('[LastSuggestedTrack] Received track info:', trackInfo)
-
   const formatDuration = (ms: number): string => {
     const minutes = Math.floor(ms / 60000)
     const seconds = Math.floor((ms % 60000) / 1000)
