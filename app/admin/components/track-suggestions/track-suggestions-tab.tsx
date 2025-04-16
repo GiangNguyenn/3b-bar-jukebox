@@ -6,6 +6,7 @@ import { PopularitySelector } from './components/popularity-selector'
 import { ExplicitContentToggle } from './components/explicit-content-toggle'
 import { MaxSongLengthSelector } from './components/max-song-length-selector'
 import { SongsBetweenRepeatsSelector } from './components/songs-between-repeats-selector'
+import { LastSuggestedTrack } from './components/last-suggested-track'
 
 interface TrackSuggestionsState {
   genres: string[]
@@ -14,6 +15,12 @@ interface TrackSuggestionsState {
   allowExplicit: boolean
   maxSongLength: number
   songsBetweenRepeats: number
+  lastSuggestedTrack?: {
+    name: string
+    artist: string
+    album: string
+    uri: string
+  }
 }
 
 interface TrackSuggestionsTabProps {
@@ -56,6 +63,8 @@ export function TrackSuggestionsTab({
       <div className='flex items-center justify-between'>
         <h2 className='text-2xl font-bold'>Track Suggestions</h2>
       </div>
+
+      <LastSuggestedTrack trackInfo={state.lastSuggestedTrack} />
 
       <div className='grid gap-6 md:grid-cols-2'>
         <div className='space-y-6'>

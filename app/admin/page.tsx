@@ -61,6 +61,12 @@ interface TrackSuggestionsState {
   allowExplicit: boolean
   maxSongLength: number
   songsBetweenRepeats: number
+  lastSuggestedTrack?: {
+    name: string
+    artist: string
+    album: string
+    uri: string
+  }
 }
 
 export default function AdminPage(): JSX.Element {
@@ -108,7 +114,8 @@ export default function AdminPage(): JSX.Element {
       popularity: 50,
       allowExplicit: false,
       maxSongLength: 10,
-      songsBetweenRepeats: 20
+      songsBetweenRepeats: 20,
+      lastSuggestedTrack: undefined
     })
 
   const { refreshToken } = useSpotifyPlayerState()
