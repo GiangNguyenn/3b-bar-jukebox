@@ -1,128 +1,84 @@
 'use client'
 
-import { useState, useEffect } from 'react'
-import { useSpotifyPlayer } from '@/hooks/useSpotifyPlayer'
-import { useFixedPlaylist } from '@/hooks/useFixedPlaylist'
-import {
-  PlaybackControls,
-  UptimeDisplay,
-  ConsoleLogs,
-  StatusGrid
-} from './components'
+import { useState } from 'react'
+import { HealthStatus } from '@/shared/types/health'
+import { SpotifyPlaybackState } from '@/shared/types/spotify'
+import { StatusGrid } from './components/status-grid'
+import { PlaybackControls } from './components/playback-controls'
+import { ConsoleLogs } from './components/console-logs'
 import { ErrorBoundary } from './components/error-boundary'
-import { HealthStatus } from './types'
+import { useConsoleLogs } from '@/hooks/useConsoleLogs'
 
 interface DashboardTabProps {
   healthStatus: HealthStatus
+  playbackInfo: SpotifyPlaybackState | null
 }
 
-export function DashboardTab({ healthStatus }: DashboardTabProps): JSX.Element {
+export function DashboardTab({ healthStatus, playbackInfo }: DashboardTabProps): JSX.Element {
   const [error] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(false)
-  const [uptime, setUptime] = useState(0)
-  const [logs, setLogs] = useState<string[]>([])
+  const logs = useConsoleLogs()
 
-  const isReady = useSpotifyPlayer((state) => state.isReady)
-  const playbackState = useSpotifyPlayer((state) => state.playbackState)
-  const { isInitialFetchComplete: fixedPlaylistIsInitialFetchComplete } =
-    useFixedPlaylist()
-
-  useEffect(() => {
-    const interval = setInterval(() => {
-      setUptime((prev) => prev + 1)
-    }, 1000)
-
-    return () => clearInterval(interval)
-  }, [])
-
-  const handlePlaybackControl = async (
-    action: 'play' | 'pause' | 'next' | 'previous'
-  ): Promise<void> => {
+  const handlePlayPause = (): void => {
+    setIsLoading(true)
     try {
-      setIsLoading(true)
-      // TODO: Implement playback control logic
-      await new Promise((resolve) => setTimeout(resolve, 100)) // Simulate async operation
-      console.log(`Playback control: ${action}`)
-      setLogs((prev) => [
-        ...prev,
-        `[${new Date().toISOString()}] Playback control: ${action}`
-      ])
+      // Implementation
+    } catch (err) {
+      console.error('Failed to toggle play/pause:', err)
     } finally {
       setIsLoading(false)
     }
   }
 
-  const handleTokenRefresh = async (): Promise<void> => {
+  const handleSkipNext = (): void => {
+    setIsLoading(true)
     try {
-      setIsLoading(true)
-      // TODO: Implement token refresh logic
-      await new Promise((resolve) => setTimeout(resolve, 100)) // Simulate async operation
-      console.log('Refreshing token')
-      setLogs((prev) => [
-        ...prev,
-        `[${new Date().toISOString()}] Refreshing token`
-      ])
+      // Implementation
+    } catch (err) {
+      console.error('Failed to skip to next track:', err)
     } finally {
       setIsLoading(false)
     }
   }
 
-  const handlePlaylistRefresh = async (): Promise<void> => {
+  const handleSkipPrevious = (): void => {
+    setIsLoading(true)
     try {
-      setIsLoading(true)
-      // TODO: Implement playlist refresh logic
-      await new Promise((resolve) => setTimeout(resolve, 100)) // Simulate async operation
-      console.log('Refreshing playlist')
-      setLogs((prev) => [
-        ...prev,
-        `[${new Date().toISOString()}] Refreshing playlist`
-      ])
+      // Implementation
+    } catch (err) {
+      console.error('Failed to skip to previous track:', err)
     } finally {
       setIsLoading(false)
     }
   }
 
   return (
-    <div className='space-y-4'>
-      {error && (
-        <div className='rounded-lg border border-red-800 bg-red-900/50 p-4 text-red-100'>
-          {error}
-        </div>
-      )}
-
-      {/* Status Grid */}
+    <div className='space-y-6'>
       <ErrorBoundary>
         <StatusGrid
           healthStatus={healthStatus}
-          playbackState={playbackState}
-          isReady={isReady}
-          fixedPlaylistIsInitialFetchComplete={
-            fixedPlaylistIsInitialFetchComplete
-          }
+          playbackState={playbackInfo}
+          isReady={!isLoading}
+          fixedPlaylistIsInitialFetchComplete={false}
         />
       </ErrorBoundary>
 
-      {/* Playback Controls */}
       <ErrorBoundary>
         <PlaybackControls
-          isLoading={isLoading}
-          tokenExpiryTime={null} // TODO: Get from context or props
-          fixedPlaylistIsInitialFetchComplete={
-            fixedPlaylistIsInitialFetchComplete
-          }
-          playbackState={playbackState}
-          onPlaybackControl={handlePlaybackControl}
-          onTokenRefresh={handleTokenRefresh}
-          onPlaylistRefresh={handlePlaylistRefresh}
+          playbackState={playbackInfo}
+          canControlPlayback={!isLoading && playbackInfo !== null}
+          onPlayPause={handlePlayPause}
+          onSkipNext={handleSkipNext}
+          onSkipPrevious={handleSkipPrevious}
         />
       </ErrorBoundary>
 
-      {/* Uptime Display */}
-      <ErrorBoundary>
-        <UptimeDisplay uptime={uptime} />
-      </ErrorBoundary>
+      {error && (
+        <div className='rounded-lg border border-destructive bg-destructive/10 p-4'>
+          <p className='text-sm text-destructive'>{error}</p>
+        </div>
+      )}
 
-      {/* Console Logs */}
       <ErrorBoundary>
         <ConsoleLogs logs={logs} />
       </ErrorBoundary>

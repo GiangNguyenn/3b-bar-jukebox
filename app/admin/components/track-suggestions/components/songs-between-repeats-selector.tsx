@@ -7,7 +7,9 @@ interface SongsBetweenRepeatsSelectorProps {
   onCountChange?: (count: number) => void
 }
 
-export function SongsBetweenRepeatsSelector({ onCountChange }: SongsBetweenRepeatsSelectorProps): JSX.Element {
+export function SongsBetweenRepeatsSelector({
+  onCountChange
+}: SongsBetweenRepeatsSelectorProps): JSX.Element {
   const defaultCount = 20
   const [count, setCount] = useState<number>(defaultCount)
 
@@ -39,7 +41,10 @@ export function SongsBetweenRepeatsSelector({ onCountChange }: SongsBetweenRepea
       <div className='space-y-2'>
         <div className='flex items-center gap-4'>
           <div className='flex-1'>
-            <label htmlFor='songs-between' className='block text-sm text-muted-foreground'>
+            <label
+              htmlFor='songs-between'
+              className='block text-sm text-muted-foreground'
+            >
               Minimum Songs Between Repeats: {count}
             </label>
             <input
@@ -49,7 +54,7 @@ export function SongsBetweenRepeatsSelector({ onCountChange }: SongsBetweenRepea
               max={100}
               value={count}
               onChange={handleChange}
-              className='mt-1 block w-full accent-primary'
+              className='accent-primary mt-1 block w-full'
             />
             <div className='flex justify-between text-xs text-muted-foreground'>
               <span>2</span>
@@ -62,9 +67,10 @@ export function SongsBetweenRepeatsSelector({ onCountChange }: SongsBetweenRepea
 
       <div className='rounded-lg border bg-muted p-3 text-sm'>
         <p className='text-muted-foreground'>
-          A song will not be suggested again until at least {count} other songs have been played
+          A song will not be suggested again until at least {count} other songs
+          have been played
         </p>
       </div>
     </div>
   )
-} 
+}
