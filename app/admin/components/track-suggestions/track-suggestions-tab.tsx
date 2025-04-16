@@ -1,5 +1,6 @@
 'use client'
 
+import { useEffect } from 'react'
 import { GenresSelector } from './components/genres-selector'
 import { YearRangeSelector } from './components/year-range-selector'
 import { PopularitySelector } from './components/popularity-selector'
@@ -32,6 +33,33 @@ export function TrackSuggestionsTab({
   state,
   onStateChange
 }: TrackSuggestionsTabProps): JSX.Element {
+  useEffect(() => {
+    const fetchLastSuggestedTrack = async (): Promise<void> => {
+      try {
+        const response = await fetch('/api/track-suggestions/last-suggested')
+        const data = await response.json()
+        
+        if (data.track) {
+          onStateChange({
+            ...state,
+            lastSuggestedTrack: data.track
+          })
+        }
+      } catch (error) {
+        console.error('[TrackSuggestions] Error fetching last suggested track:', error)
+      }
+    }
+
+    void fetchLastSuggestedTrack()
+
+    // Set up polling to check for updates
+    const interval = setInterval(() => {
+      void fetchLastSuggestedTrack()
+    }, 5000) // Check every 5 seconds
+
+    return () => clearInterval(interval)
+  }, [state, onStateChange])
+
   const handleGenresChange = (genres: string[]): void => {
     onStateChange({ ...state, genres })
   }

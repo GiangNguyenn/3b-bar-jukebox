@@ -32,18 +32,31 @@ export interface PlaylistRefreshService {
     playlistTracks: TrackItem[]
     playbackState: SpotifyPlaybackState | null
   }): Promise<boolean>
+  getLastSuggestedTrack(): {
+    name: string
+    artist: string
+    album: string
+    uri: string
+  } | null
 }
 
 export class PlaylistRefreshServiceImpl implements PlaylistRefreshService {
   private static instance: PlaylistRefreshServiceImpl
-  private lastAddTime = 0
-  private readonly FIXED_PLAYLIST_NAME = '3B Saigon'
+  private lastAddTime: number = 0
   private readonly MAX_RETRIES = 3
   private readonly RETRY_DELAY_MS = 1000
+  private readonly FIXED_PLAYLIST_NAME = '3B Saigon'
+  private readonly spotifyApi: SpotifyApiClient
+  private lastSuggestedTrack: {
+    name: string
+    artist: string
+    album: string
+    uri: string
+  } | null = null
 
-  private constructor(
-    private readonly spotifyApi: SpotifyApiClient = SpotifyApiService.getInstance()
-  ) {}
+  private constructor() {
+    this.spotifyApi = SpotifyApiService.getInstance()
+  }
 
   public static getInstance(): PlaylistRefreshServiceImpl {
     if (!PlaylistRefreshServiceImpl.instance) {
@@ -137,7 +150,15 @@ export class PlaylistRefreshServiceImpl implements PlaylistRefreshService {
         success = await this.tryAddTrack(result.track.uri, playlistId)
         searchDetails = result.searchDetails
 
-        if (!success) {
+        if (success) {
+          // Store the last suggested track
+          this.lastSuggestedTrack = {
+            name: result.track.name,
+            artist: result.track.artists[0].name,
+            album: result.track.album.name,
+            uri: result.track.uri
+          }
+        } else {
           retryCount++
           await new Promise((resolve) =>
             setTimeout(resolve, this.RETRY_DELAY_MS * Math.pow(2, retryCount))
@@ -276,5 +297,14 @@ export class PlaylistRefreshServiceImpl implements PlaylistRefreshService {
         timestamp: new Date().toISOString()
       }
     }
+  }
+
+  getLastSuggestedTrack(): {
+    name: string
+    artist: string
+    album: string
+    uri: string
+  } | null {
+    return this.lastSuggestedTrack
   }
 }
