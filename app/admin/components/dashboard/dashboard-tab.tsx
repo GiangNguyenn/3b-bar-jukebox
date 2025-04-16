@@ -14,7 +14,10 @@ interface DashboardTabProps {
   playbackInfo: SpotifyPlaybackState | null
 }
 
-export function DashboardTab({ healthStatus, playbackInfo }: DashboardTabProps): JSX.Element {
+export function DashboardTab({
+  healthStatus,
+  playbackInfo
+}: DashboardTabProps): JSX.Element {
   const [error] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(false)
   const logs = useConsoleLogs()

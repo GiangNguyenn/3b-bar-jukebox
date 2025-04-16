@@ -27,9 +27,12 @@ export class ErrorBoundary extends Component<Props, State> {
     if (this.state.hasError) {
       return (
         <div className='rounded-lg border border-destructive bg-destructive/10 p-4'>
-          <h2 className='text-lg font-semibold text-destructive'>Something went wrong</h2>
+          <h2 className='text-lg font-semibold text-destructive'>
+            Something went wrong
+          </h2>
           <p className='mt-2 text-sm text-destructive'>
-            {this.props.children ?? 'An error occurred while rendering this component'}
+            {this.props.children ??
+              'An error occurred while rendering this component'}
           </p>
         </div>
       )
