@@ -2,42 +2,36 @@
 
 import { Component, ErrorInfo, ReactNode } from 'react'
 
-interface ErrorBoundaryProps {
-  children: ReactNode
-  fallback?: ReactNode
+interface Props {
+  children?: ReactNode
 }
 
-interface ErrorBoundaryState {
+interface State {
   hasError: boolean
-  error: Error | null
 }
 
-export class ErrorBoundary extends Component<
-  ErrorBoundaryProps,
-  ErrorBoundaryState
-> {
-  constructor(props: ErrorBoundaryProps) {
-    super(props)
-    this.state = { hasError: false, error: null }
+export class ErrorBoundary extends Component<Props, State> {
+  public state: State = {
+    hasError: false
   }
 
-  static getDerivedStateFromError(error: Error): ErrorBoundaryState {
-    return { hasError: true, error }
+  public static getDerivedStateFromError(): State {
+    return { hasError: true }
   }
 
-  componentDidCatch(error: Error, errorInfo: ErrorInfo): void {
+  public componentDidCatch(error: Error, errorInfo: ErrorInfo): void {
     console.error('ErrorBoundary caught an error:', error, errorInfo)
   }
 
-  render(): ReactNode {
+  public render(): ReactNode {
     if (this.state.hasError) {
       return (
-        this.props.fallback || (
-          <div className='rounded-lg border border-red-800 bg-red-900/50 p-4 text-red-100'>
-            <h3 className='font-semibold'>Something went wrong</h3>
-            <p className='mt-2 text-sm'>{this.state.error?.message}</p>
-          </div>
-        )
+        <div className='rounded-lg border border-destructive bg-destructive/10 p-4'>
+          <h2 className='text-lg font-semibold text-destructive'>Something went wrong</h2>
+          <p className='mt-2 text-sm text-destructive'>
+            {this.props.children ?? 'An error occurred while rendering this component'}
+          </p>
+        </div>
       )
     }
 
