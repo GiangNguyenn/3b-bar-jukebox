@@ -1,35 +1,31 @@
 'use client'
 
-import { useState, useEffect } from 'react'
 import { RefreshCw } from 'lucide-react'
 
 interface YearRangeSelectorProps {
-  onRangeChange?: (range: [number, number]) => void
+  range: [number, number]
+  onRangeChange: (range: [number, number]) => void
 }
 
 export function YearRangeSelector({
+  range,
   onRangeChange
 }: YearRangeSelectorProps): JSX.Element {
   const currentYear = new Date().getFullYear()
   const defaultRange: [number, number] = [currentYear - 30, currentYear]
-  const [range, setRange] = useState<[number, number]>(defaultRange)
-
-  useEffect(() => {
-    onRangeChange?.(range)
-  }, [range, onRangeChange])
 
   const handleMinChange = (e: React.ChangeEvent<HTMLInputElement>): void => {
     const min = Math.min(Number(e.target.value), range[1] - 1)
-    setRange([min, range[1]])
+    onRangeChange([min, range[1]])
   }
 
   const handleMaxChange = (e: React.ChangeEvent<HTMLInputElement>): void => {
     const max = Math.max(Number(e.target.value), range[0] + 1)
-    setRange([range[0], max])
+    onRangeChange([range[0], max])
   }
 
   const handleReset = (): void => {
-    setRange(defaultRange)
+    onRangeChange(defaultRange)
   }
 
   return (

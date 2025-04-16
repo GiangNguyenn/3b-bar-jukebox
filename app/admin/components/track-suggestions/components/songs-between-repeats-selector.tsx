@@ -1,28 +1,24 @@
 'use client'
 
-import { useState, useEffect } from 'react'
 import { RefreshCw } from 'lucide-react'
 
 interface SongsBetweenRepeatsSelectorProps {
-  onCountChange?: (count: number) => void
+  count: number
+  onCountChange: (count: number) => void
 }
 
 export function SongsBetweenRepeatsSelector({
+  count,
   onCountChange
 }: SongsBetweenRepeatsSelectorProps): JSX.Element {
   const defaultCount = 20
-  const [count, setCount] = useState<number>(defaultCount)
-
-  useEffect(() => {
-    onCountChange?.(count)
-  }, [count, onCountChange])
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>): void => {
-    setCount(Number(e.target.value))
+    onCountChange(Number(e.target.value))
   }
 
   const handleReset = (): void => {
-    setCount(defaultCount)
+    onCountChange(defaultCount)
   }
 
   return (

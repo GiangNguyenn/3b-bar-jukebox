@@ -54,6 +54,15 @@ interface RefreshResponse {
   success: boolean
 }
 
+interface TrackSuggestionsState {
+  genres: string[]
+  yearRange: [number, number]
+  popularity: number
+  allowExplicit: boolean
+  maxSongLength: number
+  songsBetweenRepeats: number
+}
+
 export default function AdminPage(): JSX.Element {
   const [mounted, setMounted] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
@@ -90,6 +99,15 @@ export default function AdminPage(): JSX.Element {
     type: '',
     lastActualRefresh: 0,
     expiryTime: 0
+  })
+  const currentYear = new Date().getFullYear()
+  const [trackSuggestionsState, setTrackSuggestionsState] = useState<TrackSuggestionsState>({
+    genres: [],
+    yearRange: [currentYear - 30, currentYear],
+    popularity: 50,
+    allowExplicit: false,
+    maxSongLength: 10,
+    songsBetweenRepeats: 20
   })
 
   const { refreshToken } = useSpotifyPlayerState()
@@ -905,7 +923,10 @@ export default function AdminPage(): JSX.Element {
           </TabsContent>
 
           <TabsContent value='suggestions'>
-            <TrackSuggestionsTab />
+            <TrackSuggestionsTab
+              state={trackSuggestionsState}
+              onStateChange={setTrackSuggestionsState}
+            />
           </TabsContent>
         </Tabs>
       </div>
