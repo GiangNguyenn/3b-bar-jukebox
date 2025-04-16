@@ -1,7 +1,5 @@
 'use client'
 
-import { useState, useEffect } from 'react'
-
 interface ExplicitContentToggleProps {
   isAllowed: boolean
   onToggleChange: (isAllowed: boolean) => void
