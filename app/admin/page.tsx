@@ -101,14 +101,15 @@ export default function AdminPage(): JSX.Element {
     expiryTime: 0
   })
   const currentYear = new Date().getFullYear()
-  const [trackSuggestionsState, setTrackSuggestionsState] = useState<TrackSuggestionsState>({
-    genres: [],
-    yearRange: [currentYear - 30, currentYear],
-    popularity: 50,
-    allowExplicit: false,
-    maxSongLength: 10,
-    songsBetweenRepeats: 20
-  })
+  const [trackSuggestionsState, setTrackSuggestionsState] =
+    useState<TrackSuggestionsState>({
+      genres: [],
+      yearRange: [currentYear - 30, currentYear],
+      popularity: 50,
+      allowExplicit: false,
+      maxSongLength: 10,
+      songsBetweenRepeats: 20
+    })
 
   const { refreshToken } = useSpotifyPlayerState()
 

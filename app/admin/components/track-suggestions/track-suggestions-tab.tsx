@@ -45,7 +45,9 @@ export function TrackSuggestionsTab({
     onStateChange({ ...state, maxSongLength })
   }
 
-  const handleSongsBetweenRepeatsChange = (songsBetweenRepeats: number): void => {
+  const handleSongsBetweenRepeatsChange = (
+    songsBetweenRepeats: number
+  ): void => {
     onStateChange({ ...state, songsBetweenRepeats })
   }
 
@@ -57,29 +59,29 @@ export function TrackSuggestionsTab({
 
       <div className='grid gap-6 md:grid-cols-2'>
         <div className='space-y-6'>
-          <GenresSelector 
+          <GenresSelector
             selectedGenres={state.genres}
             onGenresChange={handleGenresChange}
           />
-          <YearRangeSelector 
+          <YearRangeSelector
             range={state.yearRange}
             onRangeChange={handleYearRangeChange}
           />
-          <PopularitySelector 
+          <PopularitySelector
             popularity={state.popularity}
             onPopularityChange={handlePopularityChange}
           />
         </div>
         <div className='space-y-6'>
-          <ExplicitContentToggle 
+          <ExplicitContentToggle
             isAllowed={state.allowExplicit}
             onToggleChange={handleExplicitChange}
           />
-          <MaxSongLengthSelector 
+          <MaxSongLengthSelector
             length={state.maxSongLength}
             onLengthChange={handleMaxSongLengthChange}
           />
-          <SongsBetweenRepeatsSelector 
+          <SongsBetweenRepeatsSelector
             count={state.songsBetweenRepeats}
             onCountChange={handleSongsBetweenRepeatsChange}
           />
