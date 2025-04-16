@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect } from 'react'
+import { useEffect, useRef } from 'react'
 import { GenresSelector } from './components/genres-selector'
 import { YearRangeSelector } from './components/year-range-selector'
 import { PopularitySelector } from './components/popularity-selector'
@@ -21,6 +21,9 @@ interface TrackSuggestionsState {
     artist: string
     album: string
     uri: string
+    popularity: number
+    duration_ms: number
+    preview_url: string | null
   }
 }
 
@@ -33,32 +36,58 @@ export function TrackSuggestionsTab({
   state,
   onStateChange
 }: TrackSuggestionsTabProps): JSX.Element {
+  const lastTrackUriRef = useRef<string | null>(null)
+
   useEffect(() => {
+    console.log('[TrackSuggestionsTab] Initializing polling with last track URI:', lastTrackUriRef.current)
+
     const fetchLastSuggestedTrack = async (): Promise<void> => {
       try {
+        console.log('[TrackSuggestionsTab] Fetching last suggested track...')
         const response = await fetch('/api/track-suggestions/last-suggested')
         const data = await response.json()
-        
+        console.log('[TrackSuggestionsTab] Received data:', data)
+
         if (data.track) {
-          onStateChange({
-            ...state,
-            lastSuggestedTrack: data.track
+          const currentUri = data.track.uri
+          console.log('[TrackSuggestionsTab] Comparing URIs:', {
+            current: currentUri,
+            previous: lastTrackUriRef.current
           })
+
+          if (currentUri !== lastTrackUriRef.current) {
+            console.log('[TrackSuggestionsTab] Track changed, updating state')
+            lastTrackUriRef.current = currentUri
+            onStateChange({
+              ...state,
+              lastSuggestedTrack: data.track
+            })
+          } else {
+            console.log('[TrackSuggestionsTab] Track unchanged, skipping update')
+          }
+        } else {
+          console.log('[TrackSuggestionsTab] No track data received')
         }
       } catch (error) {
-        console.error('[TrackSuggestions] Error fetching last suggested track:', error)
+        console.error(
+          '[TrackSuggestions] Error fetching last suggested track:',
+          error
+        )
       }
     }
 
     void fetchLastSuggestedTrack()
 
-    // Set up polling to check for updates
     const interval = setInterval(() => {
+      console.log('[TrackSuggestionsTab] Polling interval triggered')
       void fetchLastSuggestedTrack()
-    }, 5000) // Check every 5 seconds
+    }, 3000)
 
-    return () => clearInterval(interval)
-  }, [state, onStateChange])
+    return () => {
+      console.log('[TrackSuggestionsTab] Cleaning up polling interval')
+      clearInterval(interval)
+    }
+  }, [onStateChange])
 
   const handleGenresChange = (genres: string[]): void => {
     onStateChange({ ...state, genres })

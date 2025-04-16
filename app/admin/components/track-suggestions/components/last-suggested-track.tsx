@@ -6,12 +6,23 @@ interface LastSuggestedTrackProps {
     artist: string
     album: string
     uri: string
+    popularity: number
+    duration_ms: number
+    preview_url: string | null
   }
 }
 
 export function LastSuggestedTrack({
   trackInfo
 }: LastSuggestedTrackProps): JSX.Element {
+  console.log('[LastSuggestedTrack] Received track info:', trackInfo)
+
+  const formatDuration = (ms: number): string => {
+    const minutes = Math.floor(ms / 60000)
+    const seconds = Math.floor((ms % 60000) / 1000)
+    return `${minutes}:${seconds.toString().padStart(2, '0')}`
+  }
+
   return (
     <div className='space-y-4'>
       <h3 className='text-lg font-medium'>Last Suggested Track</h3>
@@ -27,6 +38,27 @@ export function LastSuggestedTrack({
             <p className='text-sm text-muted-foreground'>
               <span className='font-medium'>Album:</span> {trackInfo.album}
             </p>
+            <p className='text-sm text-muted-foreground'>
+              <span className='font-medium'>Popularity:</span>{' '}
+              {trackInfo.popularity}/100
+            </p>
+            <p className='text-sm text-muted-foreground'>
+              <span className='font-medium'>Duration:</span>{' '}
+              {formatDuration(trackInfo.duration_ms)}
+            </p>
+            {trackInfo.preview_url && (
+              <p className='text-sm text-muted-foreground'>
+                <span className='font-medium'>Preview:</span>{' '}
+                <a
+                  href={trackInfo.preview_url}
+                  target='_blank'
+                  rel='noopener noreferrer'
+                  className='text-primary hover:underline'
+                >
+                  Listen
+                </a>
+              </p>
+            )}
             <p className='text-sm text-muted-foreground'>
               <span className='font-medium'>URI:</span>{' '}
               <span className='font-mono text-xs'>{trackInfo.uri}</span>
