@@ -39,34 +39,20 @@ export function TrackSuggestionsTab({
   const lastTrackUriRef = useRef<string | null>(null)
 
   useEffect(() => {
-    console.log('[TrackSuggestionsTab] Initializing polling with last track URI:', lastTrackUriRef.current)
-
     const fetchLastSuggestedTrack = async (): Promise<void> => {
       try {
-        console.log('[TrackSuggestionsTab] Fetching last suggested track...')
         const response = await fetch('/api/track-suggestions/last-suggested')
         const data = await response.json()
-        console.log('[TrackSuggestionsTab] Received data:', data)
 
         if (data.track) {
           const currentUri = data.track.uri
-          console.log('[TrackSuggestionsTab] Comparing URIs:', {
-            current: currentUri,
-            previous: lastTrackUriRef.current
-          })
-
           if (currentUri !== lastTrackUriRef.current) {
-            console.log('[TrackSuggestionsTab] Track changed, updating state')
             lastTrackUriRef.current = currentUri
             onStateChange({
               ...state,
               lastSuggestedTrack: data.track
             })
-          } else {
-            console.log('[TrackSuggestionsTab] Track unchanged, skipping update')
           }
-        } else {
-          console.log('[TrackSuggestionsTab] No track data received')
         }
       } catch (error) {
         console.error(
@@ -79,14 +65,10 @@ export function TrackSuggestionsTab({
     void fetchLastSuggestedTrack()
 
     const interval = setInterval(() => {
-      console.log('[TrackSuggestionsTab] Polling interval triggered')
       void fetchLastSuggestedTrack()
     }, 3000)
 
-    return () => {
-      console.log('[TrackSuggestionsTab] Cleaning up polling interval')
-      clearInterval(interval)
-    }
+    return () => clearInterval(interval)
   }, [onStateChange])
 
   const handleGenresChange = (genres: string[]): void => {
