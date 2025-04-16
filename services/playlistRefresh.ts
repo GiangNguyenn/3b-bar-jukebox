@@ -37,6 +37,9 @@ export interface PlaylistRefreshService {
     artist: string
     album: string
     uri: string
+    popularity: number
+    duration_ms: number
+    preview_url: string | null
   } | null
 }
 
@@ -52,6 +55,9 @@ export class PlaylistRefreshServiceImpl implements PlaylistRefreshService {
     artist: string
     album: string
     uri: string
+    popularity: number
+    duration_ms: number
+    preview_url: string | null
   } | null = null
 
   private constructor() {
@@ -137,28 +143,42 @@ export class PlaylistRefreshServiceImpl implements PlaylistRefreshService {
       let searchDetails: unknown
 
       while (!success && retryCount < this.MAX_RETRIES) {
+        console.log('[PlaylistRefresh] Finding suggested track, attempt:', retryCount + 1)
         const result = await findSuggestedTrack(
           existingTrackIds,
           currentTrackId
         )
 
         if (!result.track) {
+          console.log('[PlaylistRefresh] No track found, retrying...')
           retryCount++
           continue
         }
+
+        console.log('[PlaylistRefresh] Found track:', {
+          name: result.track.name,
+          uri: result.track.uri,
+          popularity: result.track.popularity
+        })
 
         success = await this.tryAddTrack(result.track.uri, playlistId)
         searchDetails = result.searchDetails
 
         if (success) {
-          // Store the last suggested track
+          console.log('[PlaylistRefresh] Successfully added track to playlist')
+          // Store the last suggested track with more detailed information
           this.lastSuggestedTrack = {
             name: result.track.name,
             artist: result.track.artists[0].name,
             album: result.track.album.name,
-            uri: result.track.uri
+            uri: result.track.uri,
+            popularity: result.track.popularity,
+            duration_ms: result.track.duration_ms,
+            preview_url: result.track.preview_url ?? null
           }
+          console.log('[PlaylistRefresh] Updated last suggested track:', this.lastSuggestedTrack)
         } else {
+          console.log('[PlaylistRefresh] Failed to add track, retrying...')
           retryCount++
           await new Promise((resolve) =>
             setTimeout(resolve, this.RETRY_DELAY_MS * Math.pow(2, retryCount))
@@ -173,6 +193,7 @@ export class PlaylistRefreshServiceImpl implements PlaylistRefreshService {
 
       return { success: false, error: 'Failed to add track after retries' }
     } catch (error) {
+      console.error('[PlaylistRefresh] Error in addSuggestedTrackToPlaylist:', error)
       return {
         success: false,
         error: error instanceof Error ? error.message : 'Unknown error'
@@ -304,6 +325,9 @@ export class PlaylistRefreshServiceImpl implements PlaylistRefreshService {
     artist: string
     album: string
     uri: string
+    popularity: number
+    duration_ms: number
+    preview_url: string | null
   } | null {
     return this.lastSuggestedTrack
   }
