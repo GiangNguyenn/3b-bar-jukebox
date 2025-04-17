@@ -201,10 +201,10 @@ export async function findSuggestedTrack(
     '[PARAM CHAIN] Final genres being used in findSuggestedTrack (trackSuggestion.ts):',
     genres
   )
-  const yearRange = params?.yearRange || [1950, new Date().getFullYear()]
-  const minPopularity = params?.popularity || MIN_TRACK_POPULARITY
-  const allowExplicit = params?.allowExplicit || false
-  const maxSongLength = params?.maxSongLength || 300
+  const yearRange = params?.yearRange ?? [1950, new Date().getFullYear()]
+  const minPopularity = params?.popularity ?? MIN_TRACK_POPULARITY
+  const allowExplicit = params?.allowExplicit ?? false
+  const maxSongLength = params?.maxSongLength ?? 300
 
   console.log('[TrackSuggestion] Starting track search with params:', {
     genres,
