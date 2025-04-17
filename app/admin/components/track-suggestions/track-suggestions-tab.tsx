@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
-import { FALLBACK_GENRES } from '@/shared/constants/trackSuggestion'
+import { FALLBACK_GENRES, type Genre } from '@/shared/constants/trackSuggestion'
 import { GenresSelector } from './components/genres-selector'
 import { YearRangeSelector } from './components/year-range-selector'
 import { PopularitySelector } from './components/popularity-selector'
@@ -21,7 +21,7 @@ interface LastSuggestedTrackInfo {
 }
 
 interface TrackSuggestionsState {
-  genres: string[]
+  genres: Genre[]
   yearRange: [number, number]
   popularity: number
   allowExplicit: boolean
@@ -47,7 +47,7 @@ const getInitialState = (): TrackSuggestionsState => {
       '[PARAM CHAIN] Server-side initialization in getInitialState (track-suggestions-tab.tsx)'
     )
     return {
-      genres: Array.from(FALLBACK_GENRES),
+      genres: [...FALLBACK_GENRES],
       yearRange: [1950, new Date().getFullYear()],
       popularity: 50,
       allowExplicit: false,
@@ -83,7 +83,7 @@ const getInitialState = (): TrackSuggestionsState => {
     '[PARAM CHAIN] Using default genres in getInitialState (track-suggestions-tab.tsx)'
   )
   return {
-    genres: Array.from(FALLBACK_GENRES),
+    genres: [...FALLBACK_GENRES],
     yearRange: [1950, new Date().getFullYear()],
     popularity: 50,
     allowExplicit: false,
@@ -157,7 +157,7 @@ export function TrackSuggestionsTab({
     }
   }, [])
 
-  const handleGenresChange = (genres: string[]): void => {
+  const handleGenresChange = (genres: Genre[]): void => {
     setState((prev) => ({ ...prev, genres }))
   }
 

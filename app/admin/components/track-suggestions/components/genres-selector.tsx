@@ -1,31 +1,111 @@
 'use client'
 
-import { FALLBACK_GENRES } from '@/shared/constants/trackSuggestion'
-import { useId } from 'react'
+import { ALL_SPOTIFY_GENRES } from '@/shared/constants/trackSuggestion'
+import { useState, useMemo, useCallback } from 'react'
+import { Combobox } from '@headlessui/react'
+import { ChevronUpDownIcon } from '@heroicons/react/20/solid'
+import { useDebounce } from 'use-debounce'
+import { FixedSizeList as List, ListChildComponentProps } from 'react-window'
+import { Check } from 'lucide-react'
+import { type Genre } from '@/shared/constants/trackSuggestion'
 
 interface GenresSelectorProps {
-  selectedGenres: string[]
-  onGenresChange: (genres: string[]) => void
+  selectedGenres: Genre[]
+  onGenresChange: (genres: Genre[]) => void
 }
+
+// Convert readonly tuple to mutable array
+const SPOTIFY_GENRES: string[] = [...ALL_SPOTIFY_GENRES]
+
+// Pre-compute lowercase versions of all genres
+const LOWER_CASE_GENRES: string[] = SPOTIFY_GENRES.map((genre) =>
+  genre.toLowerCase()
+)
 
 export function GenresSelector({
   selectedGenres,
   onGenresChange
 }: GenresSelectorProps): JSX.Element {
-  const id = useId()
-  const labelId = `${id}-label`
-  const selectId = `${id}-select`
+  const [query, setQuery] = useState('')
+  const [debouncedQuery] = useDebounce(query, 300)
 
-  // Ensure FALLBACK_GENRES is defined and is an array
-  if (!Array.isArray(FALLBACK_GENRES)) {
+  const filteredGenres = useMemo(() => {
+    if (!Array.isArray(SPOTIFY_GENRES)) return []
+    if (debouncedQuery === '') return SPOTIFY_GENRES
+
+    const lowerQuery = debouncedQuery.toLowerCase()
+    const results: string[] = []
+
+    // Use a more efficient search by checking if the query is a substring
+    for (let i = 0; i < SPOTIFY_GENRES.length; i++) {
+      if (LOWER_CASE_GENRES[i].includes(lowerQuery)) {
+        results.push(SPOTIFY_GENRES[i])
+      }
+    }
+
+    return results
+  }, [debouncedQuery])
+
+  const handleGenreToggle = useCallback(
+    (genres: Genre[]): void => {
+      if (genres.length === 0) {
+        onGenresChange([])
+        return
+      }
+
+      const lastGenre = genres[genres.length - 1]
+      const isSelected = selectedGenres.includes(lastGenre)
+
+      const newGenres = isSelected
+        ? selectedGenres.filter((g) => g !== lastGenre)
+        : [...selectedGenres, lastGenre]
+
+      onGenresChange(newGenres)
+    },
+    [selectedGenres, onGenresChange]
+  )
+
+  const GenreRow = useCallback(
+    ({ index, style }: ListChildComponentProps) => {
+      const genre = filteredGenres[index] as Genre
+      const isSelected = selectedGenres.includes(genre)
+
+      return (
+        <Combobox.Option
+          key={genre}
+          value={genre}
+          className={({ active }) =>
+            `relative cursor-default select-none py-2 pl-10 pr-4 ${isSelected ? 'bg-primary text-primary-foreground' : 'text-foreground'} ${active ? 'bg-accent text-accent-foreground' : ''} `
+          }
+          style={style}
+        >
+          {({ selected }) => (
+            <>
+              <span
+                className={`block truncate ${selected ? 'font-medium' : 'font-normal'}`}
+              >
+                {genre}
+              </span>
+              {selected && (
+                <span className='text-primary-foreground absolute inset-y-0 left-0 flex items-center pl-3'>
+                  <Check className='h-5 w-5' aria-hidden='true' />
+                </span>
+              )}
+            </>
+          )}
+        </Combobox.Option>
+      )
+    },
+    [filteredGenres, selectedGenres]
+  )
+
+  if (!Array.isArray(SPOTIFY_GENRES)) {
     console.error(
-      '[GenresSelector] FALLBACK_GENRES is not defined or not an array'
+      '[GenresSelector] SPOTIFY_GENRES is not defined or not an array'
     )
     return (
       <div className='space-y-4'>
-        <h3 id={labelId} className='text-lg font-medium'>
-          Genres
-        </h3>
+        <h3 className='text-lg font-medium'>Genres</h3>
         <div className='text-sm text-destructive'>
           Error: Unable to load genres. Please try refreshing the page.
         </div>
@@ -33,58 +113,46 @@ export function GenresSelector({
     )
   }
 
-  const handleGenreChange = (e: React.ChangeEvent<HTMLSelectElement>): void => {
-    const options = e.target.options
-    const selected = []
-    for (let i = 0; i < options.length; i++) {
-      if (options[i].selected) {
-        selected.push(options[i].value)
-      }
-    }
-    onGenresChange(selected)
-  }
-
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLSelectElement>): void => {
-    if (e.key === 'Enter' || e.key === ' ') {
-      e.preventDefault()
-      const select = e.currentTarget
-      const options = select.options
-      const selected = []
-      for (let i = 0; i < options.length; i++) {
-        if (options[i].selected) {
-          selected.push(options[i].value)
-        }
-      }
-      onGenresChange(selected)
-    }
-  }
-
   return (
     <div className='space-y-4'>
-      <h3 id={labelId} className='text-lg font-medium'>
-        Genres
-      </h3>
-      <div className='relative'>
-        <select
-          id={selectId}
-          multiple
-          aria-labelledby={labelId}
-          aria-multiselectable
-          onChange={handleGenreChange}
-          onKeyDown={handleKeyDown}
-          value={selectedGenres}
-          className='min-h-[100px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50'
-        >
-          {FALLBACK_GENRES.map((genre) => (
-            <option key={genre} value={genre}>
-              {genre}
-            </option>
-          ))}
-        </select>
-        <div className='mt-2 text-sm text-muted-foreground'>
-          Hold Ctrl/Cmd to select multiple genres
+      <h3 className='text-lg font-medium'>Genres</h3>
+      <Combobox value={selectedGenres} onChange={handleGenreToggle} multiple>
+        <div className='relative'>
+          <Combobox.Input
+            className='w-full rounded-lg border-0 bg-transparent px-4 py-3 text-base text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-0'
+            placeholder='Search genres...'
+            onChange={(event: React.ChangeEvent<HTMLInputElement>) =>
+              setQuery(event.target.value)
+            }
+            value={query}
+            displayValue={(genres: Genre[]) => genres.join(', ')}
+          />
+          <Combobox.Button className='absolute inset-y-0 right-0 flex items-center rounded-r-lg px-3 focus:outline-none'>
+            <ChevronUpDownIcon
+              className='h-5 w-5 text-muted-foreground'
+              aria-hidden='true'
+            />
+          </Combobox.Button>
         </div>
-      </div>
+
+        <Combobox.Options className='bg-white absolute z-10 mt-1 max-h-60 w-full overflow-hidden rounded-lg py-1 text-base shadow-lg ring-1 ring-black ring-opacity-5 focus:outline-none sm:text-sm'>
+          {filteredGenres.length === 0 && query !== '' ? (
+            <div className='relative cursor-default select-none px-4 py-2 text-gray-500'>
+              No genres found.
+            </div>
+          ) : (
+            <List
+              height={Math.min(filteredGenres.length * 36, 240)}
+              itemCount={filteredGenres.length}
+              itemSize={36}
+              width='100%'
+            >
+              {GenreRow}
+            </List>
+          )}
+        </Combobox.Options>
+      </Combobox>
+
       {selectedGenres.length > 0 && (
         <div className='flex flex-wrap gap-2'>
           {selectedGenres.map((genre) => (
@@ -95,9 +163,7 @@ export function GenresSelector({
               {genre}
               <button
                 type='button'
-                onClick={() => {
-                  onGenresChange(selectedGenres.filter((g) => g !== genre))
-                }}
+                onClick={() => handleGenreToggle([genre])}
                 className='hover:bg-primary/20 focus:ring-primary ml-2 rounded-full p-1 focus:outline-none focus:ring-2 focus:ring-offset-2'
                 aria-label={`Remove ${genre}`}
               >
