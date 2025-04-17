@@ -150,24 +150,21 @@ export default function AdminPage(): JSX.Element {
             songsBetweenRepeats: 5
           }
 
-      const response = await fetch(
-        '/api/refresh-site',
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({
-            genres: trackSuggestionsState.genres,
-            yearRangeStart: trackSuggestionsState.yearRange[0],
-            yearRangeEnd: trackSuggestionsState.yearRange[1],
-            popularity: trackSuggestionsState.popularity,
-            allowExplicit: trackSuggestionsState.allowExplicit,
-            maxSongLength: trackSuggestionsState.maxSongLength,
-            songsBetweenRepeats: trackSuggestionsState.songsBetweenRepeats
-          })
-        }
-      )
+      const response = await fetch('/api/refresh-site', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          genres: trackSuggestionsState.genres,
+          yearRangeStart: trackSuggestionsState.yearRange[0],
+          yearRangeEnd: trackSuggestionsState.yearRange[1],
+          popularity: trackSuggestionsState.popularity,
+          allowExplicit: trackSuggestionsState.allowExplicit,
+          maxSongLength: trackSuggestionsState.maxSongLength,
+          songsBetweenRepeats: trackSuggestionsState.songsBetweenRepeats
+        })
+      })
 
       const data = (await response.json()) as RefreshResponse
 
@@ -413,24 +410,21 @@ export default function AdminPage(): JSX.Element {
                   songsBetweenRepeats: 5
                 }
 
-            const response = await fetch(
-              '/api/refresh-site',
-              {
-                method: 'POST',
-                headers: {
-                  'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                  genres: trackSuggestionsState.genres,
-                  yearRangeStart: trackSuggestionsState.yearRange[0],
-                  yearRangeEnd: trackSuggestionsState.yearRange[1],
-                  popularity: trackSuggestionsState.popularity,
-                  allowExplicit: trackSuggestionsState.allowExplicit,
-                  maxSongLength: trackSuggestionsState.maxSongLength,
-                  songsBetweenRepeats: trackSuggestionsState.songsBetweenRepeats
-                })
-              }
-            )
+            const response = await fetch('/api/refresh-site', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json'
+              },
+              body: JSON.stringify({
+                genres: trackSuggestionsState.genres,
+                yearRangeStart: trackSuggestionsState.yearRange[0],
+                yearRangeEnd: trackSuggestionsState.yearRange[1],
+                popularity: trackSuggestionsState.popularity,
+                allowExplicit: trackSuggestionsState.allowExplicit,
+                maxSongLength: trackSuggestionsState.maxSongLength,
+                songsBetweenRepeats: trackSuggestionsState.songsBetweenRepeats
+              })
+            })
 
             const data = (await response.json()) as RefreshResponse
 

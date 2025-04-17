@@ -41,24 +41,22 @@ const Playlist: React.FC<IPlaylistProps> = ({ tracks }): JSX.Element => {
             songsBetweenRepeats: 5
           }
 
-      const response = await fetch(
-        '/api/refresh-site',
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({
-            genres: trackSuggestionsState.genres ?? Array.from(FALLBACK_GENRES),
-            yearRangeStart: trackSuggestionsState.yearRange?.[0] ?? 1950,
-            yearRangeEnd: trackSuggestionsState.yearRange?.[1] ?? new Date().getFullYear(),
-            popularity: trackSuggestionsState.popularity ?? 50,
-            allowExplicit: trackSuggestionsState.allowExplicit ?? false,
-            maxSongLength: trackSuggestionsState.maxSongLength ?? 300,
-            songsBetweenRepeats: trackSuggestionsState.songsBetweenRepeats ?? 5
-          })
-        }
-      )
+      const response = await fetch('/api/refresh-site', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          genres: trackSuggestionsState.genres ?? Array.from(FALLBACK_GENRES),
+          yearRangeStart: trackSuggestionsState.yearRange?.[0] ?? 1950,
+          yearRangeEnd:
+            trackSuggestionsState.yearRange?.[1] ?? new Date().getFullYear(),
+          popularity: trackSuggestionsState.popularity ?? 50,
+          allowExplicit: trackSuggestionsState.allowExplicit ?? false,
+          maxSongLength: trackSuggestionsState.maxSongLength ?? 300,
+          songsBetweenRepeats: trackSuggestionsState.songsBetweenRepeats ?? 5
+        })
+      })
 
       if (!response.ok) {
         throw new Error('Failed to refresh site')
