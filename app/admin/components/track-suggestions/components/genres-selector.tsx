@@ -31,12 +31,40 @@ export function GenresSelector({
 
   const filteredGenres = useMemo(() => {
     if (!Array.isArray(SPOTIFY_GENRES)) return []
-    if (debouncedQuery === '') return SPOTIFY_GENRES
+    if (debouncedQuery === '') return SPOTIFY_GENRES.slice(0, 5)
 
     const lowerQuery = debouncedQuery.toLowerCase()
-    return SPOTIFY_GENRES.filter((genre, index) =>
-      LOWER_CASE_GENRES[index].includes(lowerQuery)
-    )
+    
+    // Score each genre based on match quality
+    const scoredGenres = SPOTIFY_GENRES.map((genre, index) => {
+      const lowerGenre = LOWER_CASE_GENRES[index]
+      let score = 0
+      
+      // Exact match gets highest score
+      if (lowerGenre === lowerQuery) score += 100
+      
+      // Starts with query gets high score
+      if (lowerGenre.startsWith(lowerQuery)) score += 50
+      
+      // Contains query gets medium score
+      if (lowerGenre.includes(lowerQuery)) score += 30
+      
+      // Contains words from query gets lower score
+      const queryWords = lowerQuery.split(' ')
+      const genreWords = lowerGenre.split(' ')
+      const matchingWords = queryWords.filter(word => 
+        genreWords.some(genreWord => genreWord.includes(word))
+      )
+      score += matchingWords.length * 10
+      
+      return { genre, score }
+    })
+    
+    // Sort by score and take top 5
+    return scoredGenres
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 5)
+      .map(item => item.genre)
   }, [debouncedQuery])
 
   const handleGenreToggle = useCallback(
