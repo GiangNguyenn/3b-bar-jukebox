@@ -151,18 +151,21 @@ export default function AdminPage(): JSX.Element {
           }
 
       const response = await fetch(
-        `/api/refresh-site?${new URLSearchParams({
-          genres: trackSuggestionsState.genres.join(','),
-          yearRangeStart: trackSuggestionsState.yearRange[0].toString(),
-          yearRangeEnd: trackSuggestionsState.yearRange[1].toString(),
-          popularity: trackSuggestionsState.popularity.toString(),
-          allowExplicit: trackSuggestionsState.allowExplicit.toString(),
-          maxSongLength: trackSuggestionsState.maxSongLength.toString(),
-          songsBetweenRepeats:
-            trackSuggestionsState.songsBetweenRepeats.toString()
-        })}`,
+        '/api/refresh-site',
         {
-          method: 'GET'
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            genres: trackSuggestionsState.genres,
+            yearRangeStart: trackSuggestionsState.yearRange[0],
+            yearRangeEnd: trackSuggestionsState.yearRange[1],
+            popularity: trackSuggestionsState.popularity,
+            allowExplicit: trackSuggestionsState.allowExplicit,
+            maxSongLength: trackSuggestionsState.maxSongLength,
+            songsBetweenRepeats: trackSuggestionsState.songsBetweenRepeats
+          })
         }
       )
 
@@ -411,18 +414,21 @@ export default function AdminPage(): JSX.Element {
                 }
 
             const response = await fetch(
-              `/api/refresh-site?${new URLSearchParams({
-                genres: trackSuggestionsState.genres.join(','),
-                yearRangeStart: trackSuggestionsState.yearRange[0].toString(),
-                yearRangeEnd: trackSuggestionsState.yearRange[1].toString(),
-                popularity: trackSuggestionsState.popularity.toString(),
-                allowExplicit: trackSuggestionsState.allowExplicit.toString(),
-                maxSongLength: trackSuggestionsState.maxSongLength.toString(),
-                songsBetweenRepeats:
-                  trackSuggestionsState.songsBetweenRepeats.toString()
-              })}`,
+              '/api/refresh-site',
               {
-                method: 'GET'
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                  genres: trackSuggestionsState.genres,
+                  yearRangeStart: trackSuggestionsState.yearRange[0],
+                  yearRangeEnd: trackSuggestionsState.yearRange[1],
+                  popularity: trackSuggestionsState.popularity,
+                  allowExplicit: trackSuggestionsState.allowExplicit,
+                  maxSongLength: trackSuggestionsState.maxSongLength,
+                  songsBetweenRepeats: trackSuggestionsState.songsBetweenRepeats
+                })
               }
             )
 

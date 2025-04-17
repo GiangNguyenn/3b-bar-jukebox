@@ -88,33 +88,21 @@ const Header = (): JSX.Element => {
       })
 
       const response = await fetch(
-        `/api/refresh-site?${new URLSearchParams({
-          genres: (
-            trackSuggestionsState.genres ?? Array.from(FALLBACK_GENRES)
-          ).join(','),
-          yearRangeStart: (
-            trackSuggestionsState.yearRange?.[0] ?? 1950
-          ).toString(),
-          yearRangeEnd: (
-            trackSuggestionsState.yearRange?.[1] ?? new Date().getFullYear()
-          ).toString(),
-          popularity: (trackSuggestionsState.popularity ?? 50).toString(),
-          allowExplicit: (
-            trackSuggestionsState.allowExplicit ?? false
-          ).toString(),
-          maxSongLength: (
-            trackSuggestionsState.maxSongLength ?? 300
-          ).toString(),
-          songsBetweenRepeats: (
-            trackSuggestionsState.songsBetweenRepeats ?? 5
-          ).toString()
-        })}`,
+        '/api/refresh-site',
         {
-          method: 'GET',
+          method: 'POST',
           headers: {
             'Content-Type': 'application/json'
           },
-          credentials: 'include'
+          body: JSON.stringify({
+            genres: trackSuggestionsState.genres ?? Array.from(FALLBACK_GENRES),
+            yearRangeStart: trackSuggestionsState.yearRange?.[0] ?? 1950,
+            yearRangeEnd: trackSuggestionsState.yearRange?.[1] ?? new Date().getFullYear(),
+            popularity: trackSuggestionsState.popularity ?? 50,
+            allowExplicit: trackSuggestionsState.allowExplicit ?? false,
+            maxSongLength: trackSuggestionsState.maxSongLength ?? 300,
+            songsBetweenRepeats: trackSuggestionsState.songsBetweenRepeats ?? 5
+          })
         }
       )
 

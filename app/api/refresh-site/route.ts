@@ -1,11 +1,20 @@
+import { NextResponse } from 'next/server'
+import { PlaylistRefreshServiceImpl } from '@/services/playlistRefresh'
+import { z } from 'zod'
+
+export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 export const revalidate = 0
 
-import { NextResponse } from 'next/server'
-import { PlaylistRefreshServiceImpl } from '@/services/playlistRefresh'
-import { sendApiRequest } from '@/shared/api'
-import { SpotifyPlaybackState } from '@/shared/types'
-import { FALLBACK_GENRES } from '@/shared/constants/trackSuggestion'
+const refreshRequestSchema = z.object({
+  genres: z.array(z.string()),
+  yearRangeStart: z.number().min(1900),
+  yearRangeEnd: z.number().max(new Date().getFullYear()),
+  popularity: z.number().min(0).max(100),
+  allowExplicit: z.boolean(),
+  maxSongLength: z.number().min(30).max(600),
+  songsBetweenRepeats: z.number().min(1).max(50)
+})
 
 interface RefreshResponse {
   success: boolean
@@ -13,124 +22,62 @@ interface RefreshResponse {
   playerStateRefresh?: boolean
 }
 
-interface TrackSuggestionsState {
-  genres: string[]
-  yearRange: [number, number]
-  popularity: number
-  allowExplicit: boolean
-  maxSongLength: number
-  songsBetweenRepeats: number
+export function GET(): NextResponse<{ message: string }> {
+  return NextResponse.json({ message: 'GET handler is working' })
 }
 
-export async function GET(
+export async function POST(
   request: Request
 ): Promise<NextResponse<RefreshResponse>> {
   try {
-    const url = new URL(request.url)
-    const forceParam = url.searchParams.get('force')
-    const shouldForce = forceParam === 'true'
+    const body = await request.json() as unknown
+    const validationResult = refreshRequestSchema.safeParse(body)
 
-    // Get track suggestions state from query parameters
-    const trackSuggestionsState: TrackSuggestionsState = {
-      genres:
-        (url.searchParams
-          .get('genres')
-          ?.split(',') as (typeof FALLBACK_GENRES)[number][]) ??
-        Array.from(FALLBACK_GENRES),
-      yearRange: [
-        Number(url.searchParams.get('yearRangeStart')) ?? 1950,
-        Number(url.searchParams.get('yearRangeEnd')) ?? new Date().getFullYear()
-      ],
-      popularity: Number(url.searchParams.get('popularity')) ?? 50,
-      allowExplicit: url.searchParams.get('allowExplicit') === 'true',
-      maxSongLength: Number(url.searchParams.get('maxSongLength')) ?? 300,
-      songsBetweenRepeats:
-        Number(url.searchParams.get('songsBetweenRepeats')) ?? 5
-    }
-
-    // Check if genres match fallback genres
-    const genres = trackSuggestionsState.genres
-    const isUsingFallbackGenres =
-      genres.length === FALLBACK_GENRES.length &&
-      genres.every((genre) =>
-        FALLBACK_GENRES.includes(genre as (typeof FALLBACK_GENRES)[number])
-      )
-
-    if (isUsingFallbackGenres) {
-      console.warn(
-        '[PARAM CHAIN] Warning: Using fallback genres instead of user-selected genres'
+    if (!validationResult.success) {
+      return NextResponse.json(
+        {
+          success: false,
+          message: 'Invalid request parameters',
+          details: validationResult.error.format()
+        },
+        { status: 400 }
       )
     }
 
-    console.log(
-      '[PARAM CHAIN] Using genres from query params in refresh-site/route.ts:',
-      trackSuggestionsState.genres
-    )
+    const {
+      genres,
+      yearRangeStart,
+      yearRangeEnd,
+      popularity,
+      allowExplicit,
+      maxSongLength,
+      songsBetweenRepeats
+    } = validationResult.data
+
+    const trackSuggestionsState = {
+      genres,
+      yearRange: [yearRangeStart, yearRangeEnd] as [number, number],
+      popularity,
+      allowExplicit,
+      maxSongLength,
+      songsBetweenRepeats
+    }
 
     const result =
       await PlaylistRefreshServiceImpl.getInstance().refreshPlaylist(
-        shouldForce,
+        false,
         trackSuggestionsState
       )
 
-    // Only refresh player state if the playlist was actually updated
-    if (result.success) {
-      console.log('Playlist was updated, refreshing player state')
-
-      try {
-        // Get the current playback state
-        const playbackState = await sendApiRequest<SpotifyPlaybackState>({
-          path: 'me/player',
-          method: 'GET'
-        })
-
-        // If there's an active device
-        if (playbackState?.device?.id) {
-          console.log('Found active device, reinitializing playback')
-
-          // Store current state before pausing
-          const currentTrackUri = playbackState.item?.uri
-          const currentPosition = playbackState.progress_ms
-          const contextUri = playbackState.context?.uri
-
-          // First pause playback
-          await sendApiRequest({
-            path: 'me/player/pause',
-            method: 'PUT'
-          })
-
-          // Then resume with the exact same context and position
-          await sendApiRequest({
-            path: 'me/player/play',
-            method: 'PUT',
-            body: {
-              context_uri: contextUri,
-              position_ms: currentPosition,
-              offset: currentTrackUri ? { uri: currentTrackUri } : undefined
-            }
-          })
-
-          result.playerStateRefresh = true
-        }
-      } catch (error) {
-        console.error('Error refreshing player state:', error)
-        // Don't fail the request if player refresh fails
-      }
-    }
-
-    return NextResponse.json(result, {
-      status: result.success ? 200 : 500
-    })
+    return NextResponse.json(result)
   } catch (error) {
-    console.error('Error in refresh route:', error)
+    console.error('[Refresh Site] Error:', error)
     return NextResponse.json(
       {
         success: false,
-        message: error instanceof Error ? error.message : 'Unknown error'
+        message: 'Failed to refresh site'
       },
-      {
-        status: 500
-      }
+      { status: 500 }
     )
   }
 }
