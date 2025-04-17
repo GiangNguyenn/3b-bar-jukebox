@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { useSpotifyPlayerState } from '@/hooks/useSpotifyPlayerState'
+import { useFixedPlaylist } from '@/hooks/useFixedPlaylist'
 import { sendApiRequest } from '@/shared/api'
 import { SpotifyPlaybackState } from '@/shared/types'
 
@@ -13,6 +14,7 @@ const PLAYBACK_INTERVALS = {
 
 export function SpotifyPlayer(): React.ReactElement | null {
   const isMounted = useRef(true)
+  const { fixedPlaylistId } = useFixedPlaylist()
   const {
     error,
     deviceId,
@@ -23,7 +25,7 @@ export function SpotifyPlayer(): React.ReactElement | null {
     initializePlayer,
     reconnectPlayer,
     refreshPlaylistState
-  } = useSpotifyPlayerState()
+  } = useSpotifyPlayerState(fixedPlaylistId ?? '')
   const [playbackState, setPlaybackState] = useState<
     'playing' | 'paused' | 'stopped'
   >('stopped')

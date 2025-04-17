@@ -31,7 +31,9 @@ interface UseSpotifyPlayerStateReturn {
   refreshToken: () => Promise<void>
 }
 
-export function useSpotifyPlayerState(): UseSpotifyPlayerStateReturn {
+export function useSpotifyPlayerState(
+  playlistId: string
+): UseSpotifyPlayerStateReturn {
   const [error, setError] = useState<string | null>(null)
   const setDeviceId = useSpotifyPlayer((state) => state.setDeviceId)
   const setIsReady = useSpotifyPlayer((state) => state.setIsReady)
@@ -162,10 +164,6 @@ export function useSpotifyPlayerState(): UseSpotifyPlayerStateReturn {
         'ready',
         async ({ device_id }: { device_id: string }) => {
           if (!isMounted.current) return
-          console.log(
-            '[SpotifyPlayer] Player ready event received, device_id:',
-            device_id
-          )
           setDeviceId(device_id)
 
           // Add a delay before checking ready state
@@ -178,12 +176,8 @@ export function useSpotifyPlayerState(): UseSpotifyPlayerStateReturn {
             })
 
             if (state?.device?.id === device_id && state.device.is_active) {
-              console.log('[SpotifyPlayer] Player verified as ready')
               setIsReady(true)
             } else {
-              console.log(
-                '[SpotifyPlayer] Player not active, attempting to transfer playback'
-              )
               await sendApiRequest({
                 path: 'me/player',
                 method: 'PUT',
@@ -204,16 +198,8 @@ export function useSpotifyPlayerState(): UseSpotifyPlayerStateReturn {
       player.addListener('player_state_changed', (state: any) => {
         if (!isMounted.current) return
         try {
-          const track = state.item
-          console.log(
-            `[SpotifyPlayer] ${track?.name} - ${state.is_playing ? 'Playing' : 'Paused'}`
-          )
-
           // If not playing and we have a current track, attempt to resume
           if (!state.is_playing && state.item?.uri) {
-            console.log(
-              '[SpotifyPlayer] Playback stopped, attempting to resume from current position'
-            )
             void sendApiRequest({
               path: 'me/player/play',
               method: 'PUT',
@@ -525,15 +511,112 @@ export function useSpotifyPlayerState(): UseSpotifyPlayerStateReturn {
     }
   }, [debouncedRefreshPlaylistState])
 
-  const handleStateChange = (state: SpotifyPlaybackState): void => {
-    if (state) {
-      const track = state.item
-      console.log(
-        `[SpotifyPlayer] ${track?.name} - ${state.is_playing ? 'Playing' : 'Paused'}`
-      )
+  const verifyPlayerReady = useCallback(async (): Promise<void> => {
+    try {
+      const state = await sendApiRequest<SpotifyPlaybackState>({
+        path: 'me/player',
+        method: 'GET'
+      })
+
+      if (state?.device?.id) {
+        setDeviceId(state.device.id)
+        setIsReady(true)
+      }
+    } catch (error) {
+      console.error('[SpotifyPlayer] Error verifying player:', error)
+    }
+  }, [setDeviceId, setIsReady])
+
+  useEffect(() => {
+    const handleStateChange = (
+      event: CustomEvent<SpotifyPlaybackState>
+    ): void => {
+      const state = event.detail
       setPlaybackState(state)
     }
-  }
+
+    window.addEventListener(
+      'playbackStateChange',
+      handleStateChange as EventListener
+    )
+    return () => {
+      window.removeEventListener(
+        'playbackStateChange',
+        handleStateChange as EventListener
+      )
+    }
+  }, [setPlaybackState])
+
+  useEffect(() => {
+    const checkDeviceStatus = async (): Promise<void> => {
+      if (!deviceId) {
+        void verifyPlayerReady()
+        return
+      }
+
+      try {
+        const state = await sendApiRequest<SpotifyPlaybackState>({
+          path: 'me/player',
+          method: 'GET'
+        })
+
+        if (state?.device?.id === deviceId) {
+          setPlaybackState(state)
+        } else {
+          setDeviceId(null)
+          setIsReady(false)
+          void verifyPlayerReady()
+        }
+      } catch (error) {
+        console.error('[SpotifyPlayer] Error checking device status:', error)
+      }
+    }
+
+    const interval = setInterval(checkDeviceStatus, 5000)
+    return () => clearInterval(interval)
+  }, [deviceId, verifyPlayerReady, setDeviceId, setIsReady, setPlaybackState])
+
+  useEffect(() => {
+    const handlePlaylistRefresh = async (): Promise<void> => {
+      try {
+        const state = await sendApiRequest<SpotifyPlaybackState>({
+          path: 'me/player',
+          method: 'GET'
+        })
+
+        if (state?.device?.id === deviceId) {
+          setPlaybackState(state)
+        }
+      } catch (error) {
+        console.error('[SpotifyPlayer] Error refreshing playlist state:', error)
+      }
+    }
+
+    window.addEventListener(
+      'playlistRefresh',
+      handlePlaylistRefresh as EventListener
+    )
+    return () => {
+      window.removeEventListener(
+        'playlistRefresh',
+        handlePlaylistRefresh as EventListener
+      )
+    }
+  }, [deviceId, setPlaybackState])
+
+  const reinitializePlayback = useCallback(async (): Promise<void> => {
+    try {
+      await sendApiRequest({
+        path: 'me/player/play',
+        method: 'PUT',
+        body: {
+          context_uri: `spotify:playlist:${playlistId}`
+        }
+      })
+    } catch (error) {
+      console.error('[SpotifyPlayer] Error reinitializing playback:', error)
+    }
+  }, [playlistId])
 
   useEffect(() => {
     return () => {
