@@ -4,7 +4,9 @@ import { PlaylistRefreshServiceImpl } from '@/services/playlistRefresh'
 export async function GET(): Promise<NextResponse> {
   try {
     const service = PlaylistRefreshServiceImpl.getInstance()
-    const lastSuggestedTrack = service.getLastSuggestedTrack()
+    const lastSuggestedTrack = await Promise.resolve(
+      service.getLastSuggestedTrack()
+    )
 
     console.log('[API Last Suggested Track] Fetched track:', {
       timestamp: new Date().toISOString(),

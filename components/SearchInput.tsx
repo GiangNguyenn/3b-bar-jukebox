@@ -137,5 +137,4 @@ const SearchInput: FC<SearchInputProps> = ({
     </div>
   )
 }
-
 export default SearchInput

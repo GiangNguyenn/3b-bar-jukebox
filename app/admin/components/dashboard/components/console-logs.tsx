@@ -1,7 +1,9 @@
 'use client'
 
+import { LogEntry } from '@/hooks/useConsoleLogs'
+
 interface ConsoleLogsProps {
-  logs: string[]
+  logs: LogEntry[]
 }
 
 export function ConsoleLogs({ logs }: ConsoleLogsProps): JSX.Element {
@@ -15,7 +17,24 @@ export function ConsoleLogs({ logs }: ConsoleLogsProps): JSX.Element {
           <div className='space-y-1'>
             {logs.map((log, index) => (
               <div key={index} className='text-gray-300'>
-                {log}
+                <span className='text-gray-500'>[{log.timestamp}] </span>
+                <span
+                  className={`${
+                    log.level === 'ERROR'
+                      ? 'text-red-400'
+                      : log.level === 'WARN'
+                        ? 'text-yellow-400'
+                        : log.level === 'INFO'
+                          ? 'text-blue-400'
+                          : 'text-gray-300'
+                  }`}
+                >
+                  {log.context ? `[${log.context}] ` : ''}
+                  {log.message}
+                </span>
+                {log.error && (
+                  <div className='mt-1 text-red-400'>{log.error.message}</div>
+                )}
               </div>
             ))}
           </div>

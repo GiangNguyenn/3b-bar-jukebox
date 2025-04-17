@@ -36,7 +36,6 @@ export const sendApiRequest = async <T>({
   // Check if we have a cached request that's still valid
   const cachedRequest = requestCache.get(cacheKey)
   if (cachedRequest && now - cachedRequest.timestamp < DEBOUNCE_TIME) {
-    console.log(`[API] Using cached request for ${cacheKey}`)
     return cachedRequest.promise
   }
 

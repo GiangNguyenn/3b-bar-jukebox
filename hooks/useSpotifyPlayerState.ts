@@ -49,12 +49,6 @@ export function useSpotifyPlayerState(): UseSpotifyPlayerStateReturn {
   useEffect(() => {
     const unsubscribe = useSpotifyPlayer.subscribe((state) => {
       if (state.isReady !== lastReadyState.current) {
-        console.log('[SpotifyPlayer] Ready state changed:', {
-          from: lastReadyState.current,
-          to: state.isReady,
-          deviceId: state.deviceId,
-          playbackState: state.playbackState
-        })
         lastReadyState.current = state.isReady
       }
     })
@@ -64,14 +58,10 @@ export function useSpotifyPlayerState(): UseSpotifyPlayerStateReturn {
   const checkPlayerReady = useCallback(async (): Promise<boolean> => {
     const currentDeviceId = useSpotifyPlayer.getState().deviceId
     if (!currentDeviceId) {
-      console.log(
-        '[SpotifyPlayer] No device ID in state, checking player state'
-      )
       return false
     }
 
     try {
-      // Add a small delay to allow the SDK to fully initialize
       await new Promise((resolve) => setTimeout(resolve, 1000))
 
       const state = await sendApiRequest<SpotifyPlaybackState>({
@@ -80,23 +70,15 @@ export function useSpotifyPlayerState(): UseSpotifyPlayerStateReturn {
       })
 
       if (!state?.device?.id) {
-        console.log('[SpotifyPlayer] No device ID in player state')
         return false
       }
 
-      // If we have a device ID in the state, update our stored device ID
       if (state.device.id !== currentDeviceId) {
-        console.log('[SpotifyPlayer] Updating device ID:', {
-          from: currentDeviceId,
-          to: state.device.id
-        })
         setDeviceId(state.device.id)
       }
 
-      // We're ready if we have a valid device ID and the player is active
       const isReady = state.device.is_active
       if (isReady) {
-        console.log('[SpotifyPlayer] Player verified as ready')
         setIsReady(true)
       }
       return isReady
@@ -160,8 +142,7 @@ export function useSpotifyPlayerState(): UseSpotifyPlayerStateReturn {
             cb(currentAccessToken)
           }
         },
-        volume: 0.5,
-        robustness: 'LOW'
+        volume: 0.5
       })
 
       // Add a delay before connecting to ensure SDK is fully loaded
@@ -220,42 +201,39 @@ export function useSpotifyPlayerState(): UseSpotifyPlayerStateReturn {
         }
       )
 
-      player.addListener(
-        'player_state_changed',
-        (state: SpotifyPlaybackState) => {
-          if (!isMounted.current) return
-          try {
-            const track = state.item
+      player.addListener('player_state_changed', (state: any) => {
+        if (!isMounted.current) return
+        try {
+          const track = state.item
+          console.log(
+            `[SpotifyPlayer] ${track?.name} - ${state.is_playing ? 'Playing' : 'Paused'}`
+          )
+
+          // If not playing and we have a current track, attempt to resume
+          if (!state.is_playing && state.item?.uri) {
             console.log(
-              `[SpotifyPlayer] ${track?.name} - ${state.is_playing ? 'Playing' : 'Paused'}`
+              '[SpotifyPlayer] Playback stopped, attempting to resume from current position'
             )
-
-            // If not playing and we have a current track, attempt to resume
-            if (!state.is_playing && state.item?.uri) {
-              console.log(
-                '[SpotifyPlayer] Playback stopped, attempting to resume from current position'
-              )
-              void sendApiRequest({
-                path: 'me/player/play',
-                method: 'PUT',
-                body: {
-                  position_ms: state.progress_ms,
-                  offset: { uri: state.item.uri },
-                  context_uri: state.context?.uri
-                }
-              })
-            }
-
-            setPlaybackState(state)
-            if (state?.device?.id) {
-              setDeviceId(state.device.id)
-              setIsReady(state.device.is_active)
-            }
-          } catch (error) {
-            console.error('[SpotifyPlayer] Error handling state change:', error)
+            void sendApiRequest({
+              path: 'me/player/play',
+              method: 'PUT',
+              body: {
+                position_ms: state.progress_ms,
+                offset: { uri: state.item.uri },
+                context_uri: state.context?.uri
+              }
+            })
           }
+
+          setPlaybackState(state)
+          if (state?.device?.id) {
+            setDeviceId(state.device.id)
+            setIsReady(state.device.is_active)
+          }
+        } catch (error) {
+          console.error('[SpotifyPlayer] Error handling state change:', error)
         }
-      )
+      })
 
       player.addListener(
         'initialization_error',

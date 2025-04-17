@@ -3,6 +3,7 @@
 import React, { useState } from 'react'
 import Image from 'next/image'
 import logo from '../app/public/logo.png'
+import { FALLBACK_GENRES } from '@/shared/constants/trackSuggestion'
 
 interface ErrorDetails {
   errorMessage?: string
@@ -46,6 +47,15 @@ declare global {
   }
 }
 
+interface TrackSuggestionsState {
+  genres: string[]
+  yearRange: [number, number]
+  popularity: number
+  allowExplicit: boolean
+  maxSongLength: number
+  songsBetweenRepeats: number
+}
+
 const Header = (): JSX.Element => {
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -54,6 +64,19 @@ const Header = (): JSX.Element => {
     try {
       setIsLoading(true)
       setError(null)
+
+      // Get track suggestions state from localStorage
+      const savedState = localStorage.getItem('track-suggestions-state')
+      const trackSuggestionsState = savedState
+        ? (JSON.parse(savedState) as Partial<TrackSuggestionsState>)
+        : {
+            genres: Array.from(FALLBACK_GENRES),
+            yearRange: [1950, new Date().getFullYear()],
+            popularity: 50,
+            allowExplicit: false,
+            maxSongLength: 300,
+            songsBetweenRepeats: 5
+          }
 
       // Log environment info
       console.log('Making request from:', {
@@ -64,13 +87,36 @@ const Header = (): JSX.Element => {
           typeof window !== 'undefined' ? window.location.origin : 'server-side'
       })
 
-      const response = await fetch('/api/refresh-site', {
-        method: 'GET',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        credentials: 'include'
-      })
+      const response = await fetch(
+        `/api/refresh-site?${new URLSearchParams({
+          genres: (
+            trackSuggestionsState.genres ?? Array.from(FALLBACK_GENRES)
+          ).join(','),
+          yearRangeStart: (
+            trackSuggestionsState.yearRange?.[0] ?? 1950
+          ).toString(),
+          yearRangeEnd: (
+            trackSuggestionsState.yearRange?.[1] ?? new Date().getFullYear()
+          ).toString(),
+          popularity: (trackSuggestionsState.popularity ?? 50).toString(),
+          allowExplicit: (
+            trackSuggestionsState.allowExplicit ?? false
+          ).toString(),
+          maxSongLength: (
+            trackSuggestionsState.maxSongLength ?? 300
+          ).toString(),
+          songsBetweenRepeats: (
+            trackSuggestionsState.songsBetweenRepeats ?? 5
+          ).toString()
+        })}`,
+        {
+          method: 'GET',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          credentials: 'include'
+        }
+      )
 
       if (!response.ok) {
         const data = (await response.json()) as ApiErrorResponse

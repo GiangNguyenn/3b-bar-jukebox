@@ -4,6 +4,16 @@ import QueueItem from '@/components/Playlist/QueueItem'
 import NowPlaying from '@/components/Playlist/NowPlaying'
 import useNowPlayingTrack from '@/hooks/useNowPlayingTrack'
 import { filterUpcomingTracks } from '@/lib/utils'
+import { FALLBACK_GENRES } from '@/shared/constants/trackSuggestion'
+
+interface TrackSuggestionsState {
+  genres: string[]
+  yearRange: [number, number]
+  popularity: number
+  allowExplicit: boolean
+  maxSongLength: number
+  songsBetweenRepeats: number
+}
 
 interface IPlaylistProps {
   tracks: TrackItem[]
@@ -17,7 +27,44 @@ const Playlist: React.FC<IPlaylistProps> = ({ tracks }): JSX.Element => {
   const handleRefresh = async (): Promise<void> => {
     try {
       setIsRefreshing(true)
-      const response = await fetch('/api/refresh-site')
+
+      // Get track suggestions state from localStorage
+      const savedState = localStorage.getItem('track-suggestions-state')
+      const trackSuggestionsState = savedState
+        ? (JSON.parse(savedState) as Partial<TrackSuggestionsState>)
+        : {
+            genres: Array.from(FALLBACK_GENRES),
+            yearRange: [1950, new Date().getFullYear()],
+            popularity: 50,
+            allowExplicit: false,
+            maxSongLength: 300,
+            songsBetweenRepeats: 5
+          }
+
+      const response = await fetch(
+        `/api/refresh-site?${new URLSearchParams({
+          genres: (
+            trackSuggestionsState.genres ?? Array.from(FALLBACK_GENRES)
+          ).join(','),
+          yearRangeStart: (
+            trackSuggestionsState.yearRange?.[0] ?? 1950
+          ).toString(),
+          yearRangeEnd: (
+            trackSuggestionsState.yearRange?.[1] ?? new Date().getFullYear()
+          ).toString(),
+          popularity: (trackSuggestionsState.popularity ?? 50).toString(),
+          allowExplicit: (
+            trackSuggestionsState.allowExplicit ?? false
+          ).toString(),
+          maxSongLength: (
+            trackSuggestionsState.maxSongLength ?? 300
+          ).toString(),
+          songsBetweenRepeats: (
+            trackSuggestionsState.songsBetweenRepeats ?? 5
+          ).toString()
+        })}`
+      )
+
       if (!response.ok) {
         throw new Error('Failed to refresh site')
       }
