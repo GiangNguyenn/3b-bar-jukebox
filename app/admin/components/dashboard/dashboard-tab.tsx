@@ -5,9 +5,7 @@ import { HealthStatus } from '@/shared/types/health'
 import { SpotifyPlaybackState } from '@/shared/types/spotify'
 import { StatusGrid } from './components/status-grid'
 import { PlaybackControls } from './components/playback-controls'
-import { ConsoleLogs } from './components/console-logs'
 import { ErrorBoundary } from './components/error-boundary'
-import { useConsoleLogs } from '@/hooks/useConsoleLogs'
 
 interface DashboardTabProps {
   healthStatus: HealthStatus
@@ -20,14 +18,13 @@ export function DashboardTab({
 }: DashboardTabProps): JSX.Element {
   const [error] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(false)
-  const logs = useConsoleLogs()
 
   const handlePlayPause = (): void => {
     setIsLoading(true)
     try {
       // Implementation
-    } catch (err) {
-      console.error('Failed to toggle play/pause:', err)
+    } catch {
+      // Handle error
     } finally {
       setIsLoading(false)
     }
@@ -37,8 +34,8 @@ export function DashboardTab({
     setIsLoading(true)
     try {
       // Implementation
-    } catch (err) {
-      console.error('Failed to skip to next track:', err)
+    } catch {
+      // Handle error
     } finally {
       setIsLoading(false)
     }
@@ -48,8 +45,8 @@ export function DashboardTab({
     setIsLoading(true)
     try {
       // Implementation
-    } catch (err) {
-      console.error('Failed to skip to previous track:', err)
+    } catch {
+      // Handle error
     } finally {
       setIsLoading(false)
     }
@@ -81,10 +78,6 @@ export function DashboardTab({
           <p className='text-sm text-destructive'>{error}</p>
         </div>
       )}
-
-      <ErrorBoundary>
-        <ConsoleLogs logs={logs} />
-      </ErrorBoundary>
     </div>
   )
 }

@@ -18,7 +18,8 @@ import { formatDate } from '@/lib/utils'
 import { useSpotifyPlayerState } from '@/hooks/useSpotifyPlayerState'
 import { TrackSuggestionsTab } from './components/track-suggestions/track-suggestions-tab'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { useConsoleLogs } from '../hooks/useConsoleLogs'
+import { useConsoleLogs } from '@/hooks/useConsoleLogs'
+import { FALLBACK_GENRES } from '@/shared/constants/trackSuggestion'
 
 const REFRESH_INTERVAL = 180000 // 3 minutes in milliseconds
 const DEVICE_CHECK_INTERVAL = {
@@ -50,8 +51,23 @@ interface PlaybackInfo {
 }
 
 interface RefreshResponse {
-  message?: string
   success: boolean
+  message?: string
+  searchDetails?: {
+    attempts: number
+    totalTracksFound: number
+    excludedTrackIds: string[]
+    minPopularity: number
+    genresTried: string[]
+    trackDetails: Array<{
+      name: string
+      popularity: number
+      isExcluded: boolean
+      isPlayable: boolean
+      duration_ms: number
+      explicit: boolean
+    }>
+  }
 }
 
 interface TrackSuggestionsState {
@@ -96,7 +112,7 @@ export default function AdminPage(): JSX.Element {
   const isRefreshing = useRef<boolean>(false)
   const maxRecoveryAttempts = 5
   const baseDelay = 2000 // 2 seconds
-  const consoleLogs = useConsoleLogs()
+  const { logs: consoleLogs, addLog } = useConsoleLogs()
   const [uptime, setUptime] = useState(0)
   const [tokenInfo, _setTokenInfo] = useState<TokenInfo>({
     lastRefresh: 0,
@@ -106,33 +122,49 @@ export default function AdminPage(): JSX.Element {
     lastActualRefresh: 0,
     expiryTime: 0
   })
-  const currentYear = new Date().getFullYear()
+  const [_currentYear, _setCurrentYear] = useState(new Date().getFullYear())
   const [trackSuggestionsState, setTrackSuggestionsState] =
-    useState<TrackSuggestionsState>({
-      genres: [],
-      yearRange: [currentYear - 30, currentYear],
-      popularity: 50,
-      allowExplicit: false,
-      maxSongLength: 10,
-      songsBetweenRepeats: 20,
-      lastSuggestedTrack: undefined
-    })
+    useState<TrackSuggestionsState | null>(null)
+  const [isRefreshingSuggestions, setIsRefreshingSuggestions] = useState(false)
+  const [refreshError, setRefreshError] = useState<string | null>(null)
 
   const { refreshToken } = useSpotifyPlayerState()
 
   const handleRefresh = useCallback(async (): Promise<void> => {
-    if (isRefreshing.current) {
-      console.log('[Refresh] Already refreshing, skipping')
-      return
-    }
-
+    if (isRefreshing.current) return
     isRefreshing.current = true
     setIsLoading(true)
+    setError(null)
 
     try {
-      const response = await fetch('/api/refresh-site', {
-        method: 'GET'
-      })
+      // Get track suggestions state from localStorage
+      const savedState = localStorage.getItem('track-suggestions-state')
+      const trackSuggestionsState = savedState
+        ? (JSON.parse(savedState) as TrackSuggestionsState)
+        : {
+            genres: Array.from(FALLBACK_GENRES),
+            yearRange: [1950, new Date().getFullYear()],
+            popularity: 50,
+            allowExplicit: false,
+            maxSongLength: 300,
+            songsBetweenRepeats: 5
+          }
+
+      const response = await fetch(
+        `/api/refresh-site?${new URLSearchParams({
+          genres: trackSuggestionsState.genres.join(','),
+          yearRangeStart: trackSuggestionsState.yearRange[0].toString(),
+          yearRangeEnd: trackSuggestionsState.yearRange[1].toString(),
+          popularity: trackSuggestionsState.popularity.toString(),
+          allowExplicit: trackSuggestionsState.allowExplicit.toString(),
+          maxSongLength: trackSuggestionsState.maxSongLength.toString(),
+          songsBetweenRepeats:
+            trackSuggestionsState.songsBetweenRepeats.toString()
+        })}`,
+        {
+          method: 'GET'
+        }
+      )
 
       const data = (await response.json()) as RefreshResponse
 
@@ -143,14 +175,21 @@ export default function AdminPage(): JSX.Element {
       console.log('[Refresh] Success:', data.message)
       lastRefreshTime.current = Date.now()
       setTimeUntilRefresh(REFRESH_INTERVAL)
+      addLog('INFO', 'Playlist refreshed successfully')
     } catch (err) {
       console.error('[Refresh] Error:', err)
       setError('Failed to refresh site')
+      addLog(
+        'ERROR',
+        'Failed to refresh playlist',
+        undefined,
+        err instanceof Error ? err : new Error(String(err))
+      )
     } finally {
       setIsLoading(false)
       isRefreshing.current = false
     }
-  }, [setError, setIsLoading, setTimeUntilRefresh])
+  }, [setError, setIsLoading, setTimeUntilRefresh, addLog])
 
   // Set mounted state
   useEffect((): void => {
@@ -649,6 +688,60 @@ export default function AdminPage(): JSX.Element {
     }
   }
 
+  const handleTrackSuggestionsRefresh = async (): Promise<void> => {
+    if (!trackSuggestionsState) {
+      addLog('ERROR', 'No track suggestions state available')
+      return
+    }
+
+    setIsRefreshingSuggestions(true)
+    setRefreshError(null)
+
+    try {
+      const response = await fetch('/api/track-suggestions/refresh', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(trackSuggestionsState)
+      })
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`)
+      }
+
+      const data = (await response.json()) as RefreshResponse
+
+      if (data.success) {
+        addLog(
+          'INFO',
+          'Track suggestions refreshed successfully',
+          JSON.stringify(data.searchDetails)
+        )
+      } else {
+        throw new Error(data.message ?? 'Failed to refresh track suggestions')
+      }
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : 'Unknown error occurred'
+      setRefreshError(errorMessage)
+      addLog(
+        'ERROR',
+        'Failed to refresh track suggestions',
+        undefined,
+        error instanceof Error ? error : new Error(errorMessage)
+      )
+    } finally {
+      setIsRefreshingSuggestions(false)
+    }
+  }
+
+  const handleTrackSuggestionsStateChange = (
+    newState: TrackSuggestionsState
+  ): void => {
+    setTrackSuggestionsState(newState)
+  }
+
   // Only render content after mounting to prevent hydration mismatch
   if (!mounted) {
     return (
@@ -676,7 +769,7 @@ export default function AdminPage(): JSX.Element {
               Dashboard
             </TabsTrigger>
             <TabsTrigger
-              value='suggestions'
+              value='track-suggestions'
               className='data-[state=active]:text-white data-[state=active]:bg-gray-700 data-[state=active]:font-semibold'
             >
               Track Suggestions
@@ -915,14 +1008,28 @@ export default function AdminPage(): JSX.Element {
                   <span>Uptime: {formatTime(uptime)}</span>
                 </div>
               </div>
-              <div className='mt-4 rounded-lg border border-gray-800 bg-gray-900/50 p-4'>
-                <h3 className='mb-2 text-sm font-medium text-gray-400'>
-                  Recent Console Logs
-                </h3>
-                <div className='max-h-40 overflow-y-auto font-mono text-xs [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden'>
-                  {consoleLogs.map((log: string, index: number) => (
-                    <div key={index} className='py-1'>
-                      {log}
+              <div className='mt-4'>
+                <h3 className='mb-2 text-lg font-semibold'>Console Logs</h3>
+                <div className='max-h-48 overflow-y-auto rounded-lg bg-gray-100 p-4'>
+                  {consoleLogs.map((log, index) => (
+                    <div
+                      key={`${log.timestamp}-${index}`}
+                      className={`text-sm ${
+                        log.level === 'ERROR'
+                          ? 'text-red-600'
+                          : log.level === 'INFO'
+                            ? 'text-green-600'
+                            : 'text-gray-800'
+                      }`}
+                    >
+                      {new Date(log.timestamp).toLocaleString()} -{' '}
+                      {log.context ? `[${log.context}] ` : ''}
+                      {log.message}
+                      {log.error && (
+                        <pre className='mt-1 rounded bg-gray-200 p-1 text-xs'>
+                          {log.error.message}
+                        </pre>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -930,11 +1037,24 @@ export default function AdminPage(): JSX.Element {
             </div>
           </TabsContent>
 
-          <TabsContent value='suggestions'>
-            <TrackSuggestionsTab
-              state={trackSuggestionsState}
-              onStateChange={setTrackSuggestionsState}
-            />
+          <TabsContent value='track-suggestions'>
+            <div className='space-y-6'>
+              <TrackSuggestionsTab
+                onStateChange={handleTrackSuggestionsStateChange}
+              />
+              <div className='flex items-center justify-end space-x-4'>
+                {refreshError && (
+                  <div className='text-sm text-red-500'>{refreshError}</div>
+                )}
+                <button
+                  onClick={() => void handleTrackSuggestionsRefresh()}
+                  disabled={isRefreshingSuggestions}
+                  className='bg-primary text-primary-foreground hover:bg-primary/90 focus:ring-primary inline-flex items-center justify-center rounded-md px-4 py-2 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50'
+                >
+                  {isRefreshingSuggestions ? 'Refreshing...' : 'Refresh Now'}
+                </button>
+              </div>
+            </div>
           </TabsContent>
         </Tabs>
       </div>

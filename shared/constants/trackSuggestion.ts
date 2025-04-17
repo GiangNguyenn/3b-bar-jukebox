@@ -45,6 +45,8 @@ export const FALLBACK_GENRES = [
   'Funk'
 ] as const
 
+export type Genre = (typeof FALLBACK_GENRES)[number]
+
 // Configuration
 export const MAX_PLAYLIST_LENGTH = 2
 export const TRACK_SEARCH_LIMIT = 50

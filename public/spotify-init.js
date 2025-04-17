@@ -1,6 +1,6 @@
 // Define the callback before loading the SDK
 window.onSpotifyWebPlaybackSDKReady = () => {
-  console.log('Spotify Web Playback SDK is ready')
+  window.Spotify = Spotify
 }
 
 // Load the SDK script
