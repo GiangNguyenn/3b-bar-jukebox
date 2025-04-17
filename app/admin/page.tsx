@@ -128,7 +128,7 @@ export default function AdminPage(): JSX.Element {
   const [isRefreshingSuggestions, setIsRefreshingSuggestions] = useState(false)
   const [refreshError, setRefreshError] = useState<string | null>(null)
 
-  const { refreshToken } = useSpotifyPlayerState()
+  const { refreshToken } = useSpotifyPlayerState(fixedPlaylistId ?? '')
 
   const handleRefresh = useCallback(async (): Promise<void> => {
     if (isRefreshing.current) return
