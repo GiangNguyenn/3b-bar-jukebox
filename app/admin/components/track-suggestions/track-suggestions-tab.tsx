@@ -150,7 +150,7 @@ export function TrackSuggestionsTab({
     }
     poll()
 
-    return () => {
+    return (): void => {
       if (pollTimeoutRef.current) {
         clearTimeout(pollTimeoutRef.current)
       }
