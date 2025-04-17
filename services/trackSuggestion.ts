@@ -104,10 +104,14 @@ export async function searchTracksByGenre(
       `[TrackSuggestion] Searching tracks for genre ${genre} (${startYear}-${endYear})`
     )
 
+    // Add random offset between 0 and 900 (Spotify's max offset is 1000)
+    const randomOffset = Math.floor(Math.random() * 900)
+    console.log(`[TrackSuggestion] Using random offset: ${randomOffset}`)
+
     const response = await sendApiRequest<{
       tracks: { items: TrackDetails[] }
     }>({
-      path: `${SPOTIFY_SEARCH_ENDPOINT}?q=genre:${encodeURIComponent(genre)} year:${startYear}-${endYear}&type=track&limit=${TRACK_SEARCH_LIMIT}&market=${market}`,
+      path: `${SPOTIFY_SEARCH_ENDPOINT}?q=genre:${encodeURIComponent(genre)} year:${startYear}-${endYear}&type=track&limit=${TRACK_SEARCH_LIMIT}&market=${market}&offset=${randomOffset}`,
       method: 'GET'
     })
 
@@ -117,7 +121,7 @@ export async function searchTracksByGenre(
     }
 
     console.log(
-      `[TrackSuggestion] Found ${tracks.length} tracks for genre ${genre}`
+      `[TrackSuggestion] Found ${tracks.length} tracks for genre ${genre} starting at offset ${randomOffset}`
     )
     return tracks
   } catch (error) {

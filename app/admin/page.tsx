@@ -396,7 +396,36 @@ export default function AdminPage(): JSX.Element {
         void (async () => {
           try {
             setIsLoading(true)
-            const response = await fetch('/api/refresh-site')
+
+            // Get track suggestions state from localStorage
+            const savedState = localStorage.getItem('track-suggestions-state')
+            const trackSuggestionsState = savedState
+              ? (JSON.parse(savedState) as TrackSuggestionsState)
+              : {
+                  genres: Array.from(FALLBACK_GENRES),
+                  yearRange: [1950, new Date().getFullYear()],
+                  popularity: 50,
+                  allowExplicit: false,
+                  maxSongLength: 300,
+                  songsBetweenRepeats: 5
+                }
+
+            const response = await fetch(
+              `/api/refresh-site?${new URLSearchParams({
+                genres: trackSuggestionsState.genres.join(','),
+                yearRangeStart: trackSuggestionsState.yearRange[0].toString(),
+                yearRangeEnd: trackSuggestionsState.yearRange[1].toString(),
+                popularity: trackSuggestionsState.popularity.toString(),
+                allowExplicit: trackSuggestionsState.allowExplicit.toString(),
+                maxSongLength: trackSuggestionsState.maxSongLength.toString(),
+                songsBetweenRepeats:
+                  trackSuggestionsState.songsBetweenRepeats.toString()
+              })}`,
+              {
+                method: 'GET'
+              }
+            )
+
             const data = (await response.json()) as RefreshResponse
 
             if (!response.ok) {

@@ -5,7 +5,7 @@ import { useState, useMemo, useCallback } from 'react'
 import { Combobox } from '@headlessui/react'
 import { ChevronUpDownIcon } from '@heroicons/react/20/solid'
 import { useDebounce } from 'use-debounce'
-import { FixedSizeList as List, ListChildComponentProps } from 'react-window'
+import { FixedSizeList as List } from 'react-window'
 import { Check } from 'lucide-react'
 import { type Genre } from '@/shared/constants/trackSuggestion'
 
@@ -34,16 +34,9 @@ export function GenresSelector({
     if (debouncedQuery === '') return SPOTIFY_GENRES
 
     const lowerQuery = debouncedQuery.toLowerCase()
-    const results: string[] = []
-
-    // Use a more efficient search by checking if the query is a substring
-    for (let i = 0; i < SPOTIFY_GENRES.length; i++) {
-      if (LOWER_CASE_GENRES[i].includes(lowerQuery)) {
-        results.push(SPOTIFY_GENRES[i])
-      }
-    }
-
-    return results
+    return SPOTIFY_GENRES.filter((genre, index) =>
+      LOWER_CASE_GENRES[index].includes(lowerQuery)
+    )
   }, [debouncedQuery])
 
   const handleGenreToggle = useCallback(
@@ -63,40 +56,6 @@ export function GenresSelector({
       onGenresChange(newGenres)
     },
     [selectedGenres, onGenresChange]
-  )
-
-  const GenreRow = useCallback(
-    ({ index, style }: ListChildComponentProps) => {
-      const genre = filteredGenres[index] as Genre
-      const isSelected = selectedGenres.includes(genre)
-
-      return (
-        <Combobox.Option
-          key={genre}
-          value={genre}
-          className={({ active }) =>
-            `relative cursor-default select-none py-2 pl-10 pr-4 ${isSelected ? 'bg-primary text-primary-foreground' : 'text-foreground'} ${active ? 'bg-accent text-accent-foreground' : ''} `
-          }
-          style={style}
-        >
-          {({ selected }) => (
-            <>
-              <span
-                className={`block truncate ${selected ? 'font-medium' : 'font-normal'}`}
-              >
-                {genre}
-              </span>
-              {selected && (
-                <span className='text-primary-foreground absolute inset-y-0 left-0 flex items-center pl-3'>
-                  <Check className='h-5 w-5' aria-hidden='true' />
-                </span>
-              )}
-            </>
-          )}
-        </Combobox.Option>
-      )
-    },
-    [filteredGenres, selectedGenres]
   )
 
   if (!Array.isArray(SPOTIFY_GENRES)) {
@@ -119,7 +78,7 @@ export function GenresSelector({
       <Combobox value={selectedGenres} onChange={handleGenreToggle} multiple>
         <div className='relative'>
           <Combobox.Input
-            className='w-full rounded-lg border-0 bg-transparent px-4 py-3 text-base text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-0'
+            className='w-full rounded-lg border border-input bg-background px-4 py-3 text-base text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring'
             placeholder='Search genres...'
             onChange={(event: React.ChangeEvent<HTMLInputElement>) =>
               setQuery(event.target.value)
@@ -135,22 +94,51 @@ export function GenresSelector({
           </Combobox.Button>
         </div>
 
-        <Combobox.Options className='bg-white absolute z-10 mt-1 max-h-60 w-full overflow-hidden rounded-lg py-1 text-base shadow-lg ring-1 ring-black ring-opacity-5 focus:outline-none sm:text-sm'>
-          {filteredGenres.length === 0 && query !== '' ? (
-            <div className='relative cursor-default select-none px-4 py-2 text-gray-500'>
-              No genres found.
-            </div>
-          ) : (
-            <List
-              height={Math.min(filteredGenres.length * 36, 240)}
-              itemCount={filteredGenres.length}
-              itemSize={36}
-              width='100%'
-            >
-              {GenreRow}
-            </List>
-          )}
-        </Combobox.Options>
+        <div className='relative'>
+          <Combobox.Options className='absolute z-50 mt-1 max-h-60 w-full overflow-hidden rounded-lg bg-gray-100 shadow-lg ring-1 ring-black ring-opacity-5'>
+            {filteredGenres.length === 0 && query !== '' ? (
+              <div className='relative cursor-default select-none px-4 py-2 text-gray-500'>
+                No genres found.
+              </div>
+            ) : (
+              <List
+                height={Math.min(filteredGenres.length * 36, 240)}
+                itemCount={filteredGenres.length}
+                itemSize={36}
+                width='100%'
+              >
+                {({ index, style }) => {
+                  const genre = filteredGenres[index] as Genre
+                  return (
+                    <Combobox.Option
+                      key={genre}
+                      value={genre}
+                      className={() =>
+                        `relative cursor-default select-none bg-gray-100 py-2 pl-10 pr-4 text-gray-900 hover:bg-gray-200 hover:font-medium`
+                      }
+                      style={style}
+                    >
+                      {({ selected }) => (
+                        <>
+                          <span
+                            className={`block truncate ${selected ? 'font-medium' : 'font-normal'}`}
+                          >
+                            {genre}
+                          </span>
+                          {selected && (
+                            <span className='absolute inset-y-0 left-0 flex items-center pl-3 text-blue-600'>
+                              <Check className='h-5 w-5' aria-hidden='true' />
+                            </span>
+                          )}
+                        </>
+                      )}
+                    </Combobox.Option>
+                  )
+                }}
+              </List>
+            )}
+          </Combobox.Options>
+        </div>
       </Combobox>
 
       {selectedGenres.length > 0 && (
