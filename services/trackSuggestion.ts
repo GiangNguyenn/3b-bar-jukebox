@@ -175,7 +175,7 @@ export async function findSuggestedTrack(
     '[PARAM CHAIN] Genres received in findSuggestedTrack (trackSuggestion.ts):',
     params?.genres
   )
-  const MAX_GENRE_ATTEMPTS = 3
+  const MAX_GENRE_ATTEMPTS = 20
   let attempts = 0
   const genresTried: string[] = []
   const allTrackDetails: Array<{
