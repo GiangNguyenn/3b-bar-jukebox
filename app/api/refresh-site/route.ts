@@ -30,7 +30,7 @@ export async function POST(
   request: Request
 ): Promise<NextResponse<RefreshResponse>> {
   try {
-    const body = await request.json() as unknown
+    const body = (await request.json()) as unknown
     const validationResult = refreshRequestSchema.safeParse(body)
 
     if (!validationResult.success) {
