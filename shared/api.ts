@@ -4,6 +4,7 @@ interface ApiProps {
   body?: any
   extraHeaders?: Record<string, string>
   config?: Omit<RequestInit, 'method' | 'headers' | 'body'>
+  isLocalApi?: boolean
 }
 
 interface SpotifyErrorResponse {
@@ -28,7 +29,8 @@ export const sendApiRequest = async <T>({
   method = 'GET',
   body,
   extraHeaders,
-  config = {}
+  config = {},
+  isLocalApi = false
 }: ApiProps): Promise<T> => {
   const cacheKey = `${method}:${path}:${JSON.stringify(body)}`
   const now = Date.now()
@@ -39,25 +41,31 @@ export const sendApiRequest = async <T>({
     return cachedRequest.promise
   }
 
-  const authToken = await getSpotifyToken()
-  if (!authToken) {
-    throw new Error('Failed to get Spotify token')
-  }
-
-  const headers = {
-    'Content-Type': 'application/json',
-    Authorization: `Bearer ${authToken}`,
-    ...(extraHeaders && { ...extraHeaders })
-  }
-
   const makeRequest = async (): Promise<T> => {
     try {
-      const response = await fetch(`${SPOTIFY_API_URL}/${path}`, {
+      // Determine the base URL based on whether this is a local API request
+      const baseUrl = isLocalApi ? '' : SPOTIFY_API_URL
+      // Ensure path starts with a slash and remove any double slashes
+      const normalizedPath = path.startsWith('/') ? path : `/${path}`
+      const url = `${baseUrl}${normalizedPath}`
+
+      // Only include auth token for Spotify API requests
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+        ...(extraHeaders && { ...extraHeaders })
+      }
+
+      if (!isLocalApi) {
+        const authToken = await getSpotifyToken()
+        if (!authToken) {
+          throw new Error('Failed to get Spotify token')
+        }
+        headers['Authorization'] = `Bearer ${authToken}`
+      }
+
+      const response = await fetch(url, {
         method,
-        headers: {
-          ...headers,
-          ...extraHeaders
-        },
+        headers,
         body: body ? JSON.stringify(body) : undefined,
         ...config
       })
@@ -70,12 +78,12 @@ export const sendApiRequest = async <T>({
           errorData = JSON.parse(errorText)
         } catch {
           throw new Error(
-            `Spotify API error: ${response.status} ${response.statusText}`
+            `API error: ${response.status} ${response.statusText}`
           )
         }
 
         throw new Error(
-          errorData.error.message || `Spotify API error: ${response.status}`
+          errorData.error.message || `API error: ${response.status}`
         )
       }
 
@@ -98,17 +106,7 @@ export const sendApiRequest = async <T>({
   const requestPromise = makeRequest()
 
   // Cache the promise and timestamp
-  requestCache.set(cacheKey, {
-    promise: requestPromise,
-    timestamp: now
-  })
-
-  // Clean up old cache entries
-  requestCache.forEach((value, key) => {
-    if (now - value.timestamp >= DEBOUNCE_TIME) {
-      requestCache.delete(key)
-    }
-  })
+  requestCache.set(cacheKey, { promise: requestPromise, timestamp: now })
 
   return requestPromise
 }

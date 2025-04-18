@@ -645,6 +645,19 @@ export default function AdminPage(): JSX.Element {
       setIsLoading(true)
       setError(null)
 
+      // First, transfer playback to our device
+      await sendApiRequest({
+        path: 'me/player',
+        method: 'PUT',
+        body: {
+          device_ids: [deviceId],
+          play: false
+        }
+      })
+
+      // Wait a bit for the transfer to take effect
+      await new Promise((resolve) => setTimeout(resolve, 1000))
+
       if (action === 'play') {
         // Get current state to ensure we resume at the right track
         const state = await sendApiRequest<SpotifyPlaybackState>({
