@@ -13,6 +13,7 @@ import { filterUpcomingTracks } from '@/lib/utils'
 import { autoRemoveTrack } from '@/shared/utils/autoRemoveTrack'
 import { handleOperationError } from '@/shared/utils/errorHandling'
 import { DEFAULT_MARKET } from '@/shared/constants/trackSuggestion'
+import { sendApiRequest } from '@/shared/api'
 
 export interface PlaylistRefreshService {
   refreshPlaylist(force?: boolean): Promise<{
@@ -221,6 +222,21 @@ export class PlaylistRefreshServiceImpl implements PlaylistRefreshService {
             popularity: result.track.popularity,
             duration_ms: result.track.duration_ms,
             preview_url: result.track.preview_url ?? null
+          }
+
+          // Get current playback state to resume at the same position
+          const playbackState = await this.spotifyApi.getPlaybackState()
+          if (playbackState?.context?.uri && playbackState?.item?.uri) {
+            // Resume playback at the exact same track and position
+            await sendApiRequest({
+              path: 'me/player/play',
+              method: 'PUT',
+              body: {
+                context_uri: playbackState.context.uri,
+                offset: { uri: playbackState.item.uri },
+                position_ms: playbackState.progress_ms ?? 0
+              }
+            })
           }
         } else {
           retryCount++

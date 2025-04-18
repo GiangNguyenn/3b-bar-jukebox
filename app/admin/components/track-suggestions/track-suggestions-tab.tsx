@@ -122,14 +122,11 @@ export function TrackSuggestionsTab({
       const data = (await response.json()) as LastSuggestedTrackResponse
 
       if (data.track) {
-        const currentUri = data.track.uri
-        if (force || currentUri !== lastTrackUriRef.current) {
-          lastTrackUriRef.current = currentUri
-          setState((prev) => ({
-            ...prev,
-            lastSuggestedTrack: data.track ?? undefined
-          }))
-        }
+        setState((prev) => ({
+          ...prev,
+          lastSuggestedTrack: data.track ?? undefined
+        }))
+        lastTrackUriRef.current = data.track.uri
       }
     } catch (error) {
       console.error(
