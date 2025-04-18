@@ -150,6 +150,11 @@ export default function AdminPage(): JSX.Element {
             songsBetweenRepeats: 5
           }
 
+      console.log(
+        '[Refresh] Sending track suggestions state:',
+        JSON.stringify(trackSuggestionsState, null, 2)
+      )
+
       const response = await fetch('/api/refresh-site', {
         method: 'POST',
         headers: {
@@ -157,8 +162,7 @@ export default function AdminPage(): JSX.Element {
         },
         body: JSON.stringify({
           genres: trackSuggestionsState.genres,
-          yearRangeStart: trackSuggestionsState.yearRange[0],
-          yearRangeEnd: trackSuggestionsState.yearRange[1],
+          yearRange: trackSuggestionsState.yearRange,
           popularity: trackSuggestionsState.popularity,
           allowExplicit: trackSuggestionsState.allowExplicit,
           maxSongLength: trackSuggestionsState.maxSongLength,
@@ -444,8 +448,7 @@ export default function AdminPage(): JSX.Element {
               },
               body: JSON.stringify({
                 genres: trackSuggestionsState.genres,
-                yearRangeStart: trackSuggestionsState.yearRange[0],
-                yearRangeEnd: trackSuggestionsState.yearRange[1],
+                yearRange: trackSuggestionsState.yearRange,
                 popularity: trackSuggestionsState.popularity,
                 allowExplicit: trackSuggestionsState.allowExplicit,
                 maxSongLength: trackSuggestionsState.maxSongLength,
