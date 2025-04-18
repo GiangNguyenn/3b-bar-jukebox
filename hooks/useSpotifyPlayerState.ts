@@ -246,7 +246,7 @@ export function useSpotifyPlayerState(
                 if (state?.device?.id === device_id && state.device.is_active) {
                   setIsReady(true)
                 } else {
-                  // First, ensure we're the active device
+                  // Ensure we're the active device without forcing playback
                   await sendApiRequest({
                     path: 'me/player',
                     method: 'PUT',
@@ -270,17 +270,6 @@ export function useSpotifyPlayerState(
                     newState.device.is_active
                   ) {
                     setIsReady(true)
-                  } else {
-                    // If still not active, try one more time with force play
-                    await sendApiRequest({
-                      path: 'me/player',
-                      method: 'PUT',
-                      body: {
-                        device_ids: [device_id],
-                        play: true
-                      }
-                    })
-                    setIsReady(true)
                   }
                 }
               } catch (error) {
@@ -296,19 +285,6 @@ export function useSpotifyPlayerState(
           player.addListener('player_state_changed', (state: any) => {
             if (!isMounted.current) return
             try {
-              // If not playing and we have a current track, attempt to resume
-              if (!state.is_playing && state.item?.uri) {
-                void sendApiRequest({
-                  path: 'me/player/play',
-                  method: 'PUT',
-                  body: {
-                    position_ms: state.progress_ms,
-                    offset: { uri: state.item.uri },
-                    context_uri: state.context?.uri
-                  }
-                })
-              }
-
               setPlaybackState(state)
               if (state?.device?.id) {
                 setDeviceId(state.device.id)
