@@ -107,7 +107,7 @@ export function GenresSelector({
   }
 
   return (
-    <div className='space-y-4 w-full max-w-md'>
+    <div className='w-full max-w-md space-y-4'>
       <h3 className='text-lg font-medium'>Genres</h3>
       <div className='relative w-full'>
         <Combobox value={selectedGenres} onChange={handleGenreToggle} multiple>
@@ -135,7 +135,7 @@ export function GenresSelector({
           </div>
 
           <Combobox.Options className='absolute z-50 mt-1 w-full overflow-hidden rounded-lg bg-gray-100 shadow-lg ring-1 ring-black ring-opacity-5'>
-            <div className='max-h-60 w-full overflow-y-auto scrollbar-thin scrollbar-thumb-gray-400 scrollbar-track-gray-200'>
+            <div className='scrollbar-thin scrollbar-thumb-gray-400 scrollbar-track-gray-200 max-h-60 w-full overflow-y-auto'>
               {filteredGenres.length === 0 && query !== '' ? (
                 <div className='relative cursor-default select-none px-4 py-2 text-gray-500'>
                   No genres found.
