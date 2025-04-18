@@ -28,7 +28,6 @@ export function GenresSelector({
 }: GenresSelectorProps): JSX.Element {
   const [query, setQuery] = useState('')
   const [debouncedQuery] = useDebounce(query, 300)
-  const [isOpen, setIsOpen] = useState(false)
 
   const filteredGenres = useMemo(() => {
     if (!Array.isArray(SPOTIFY_GENRES)) return []
@@ -86,11 +85,6 @@ export function GenresSelector({
     },
     [selectedGenres, onGenresChange]
   )
-
-  const handleClose = useCallback(() => {
-    setIsOpen(false)
-    setQuery('')
-  }, [])
 
   if (!Array.isArray(SPOTIFY_GENRES)) {
     console.error(

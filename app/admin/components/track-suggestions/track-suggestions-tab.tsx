@@ -114,7 +114,7 @@ export function TrackSuggestionsTab({
     onStateChange(state)
   }, [state, onStateChange])
 
-  const fetchLastSuggestedTrack = async (force = false): Promise<void> => {
+  const fetchLastSuggestedTrack = async (): Promise<void> => {
     try {
       const response = await fetch('/api/track-suggestions/last-suggested')
       if (!response.ok) throw new Error('Failed to fetch last suggested track')
@@ -138,7 +138,7 @@ export function TrackSuggestionsTab({
 
   useEffect(() => {
     // Initial fetch
-    void fetchLastSuggestedTrack(true)
+    void fetchLastSuggestedTrack()
 
     // Set up polling
     const poll = (): void => {

@@ -124,13 +124,22 @@ export async function POST(request: Request): Promise<NextResponse> {
         // Wait a bit for the device transfer to take effect
         await new Promise((resolve) => setTimeout(resolve, 1000))
 
+        // Get the current state again to ensure we have the latest track info
+        const latestState = await sendApiRequest<SpotifyPlaybackState>({
+          path: 'me/player',
+          method: 'GET'
+        })
+
         // Then start playback with the playlist and position
         await sendApiRequest({
           path: 'me/player/play',
           method: 'PUT',
           body: {
             context_uri: contextUri,
-            position_ms: position_ms
+            position_ms: position_ms,
+            offset: latestState?.item?.uri
+              ? { uri: latestState.item.uri }
+              : undefined
           }
         })
       } catch (error: unknown) {
