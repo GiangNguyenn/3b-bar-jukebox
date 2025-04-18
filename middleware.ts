@@ -2,15 +2,15 @@ import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 
 export function middleware(request: NextRequest) {
-  // Allow GET requests for refresh-site endpoint
+  // Allow both GET and POST requests for refresh-site endpoint
   if (
     request.nextUrl.pathname === '/api/refresh-site' &&
-    request.method !== 'GET'
+    !['GET', 'POST'].includes(request.method)
   ) {
     return NextResponse.json(
       {
         success: false,
-        error: 'Method not allowed. Only GET requests are accepted.'
+        error: 'Method not allowed. Only GET and POST requests are accepted.'
       },
       { status: 405 }
     )

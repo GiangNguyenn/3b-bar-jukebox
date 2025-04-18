@@ -5,7 +5,8 @@ import { useGetPlaylist } from './useGetPlaylist'
 import { useTrackOperation } from './useTrackOperation'
 import {
   handleApiError,
-  handleOperationError
+  handleOperationError,
+  AppError
 } from '@/shared/utils/errorHandling'
 import { ERROR_MESSAGES } from '@/shared/constants/errors'
 
@@ -29,7 +30,7 @@ export const useRemoveTrackFromPlaylist = () => {
           body: { tracks: [{ uri: track.track.uri }] }
         })
       } catch (error) {
-        throw handleApiError(error, 'RemoveTrackFromPlaylist')
+        throw new AppError(ERROR_MESSAGES.FAILED_TO_LOAD, error, 'RemoveTrack')
       }
     }
 

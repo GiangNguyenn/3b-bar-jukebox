@@ -36,5 +36,4 @@ const QueueItem: FC<IQueueItemProps> = ({ track }) => {
     </div>
   )
 }
-
 export default QueueItem
