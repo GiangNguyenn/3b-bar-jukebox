@@ -16,6 +16,7 @@ export function ConsoleLogs({ logs }: ConsoleLogsProps): JSX.Element {
         ) : (
           <div className='space-y-1'>
             {logs.slice(-20).map((log, index) => (
+
               <div key={index} className='text-gray-300'>
                 <span className='text-gray-500'>[{log.timestamp}] </span>
                 <span
