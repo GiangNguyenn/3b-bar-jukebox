@@ -154,6 +154,20 @@ export function useSpotifyPlayerState(
       // Create a new promise for this initialization
       initializationPromise = (async () => {
         try {
+          // Clean up any existing player instance first
+          if (playerInstance) {
+            try {
+              await playerInstance.disconnect()
+            } catch (error) {
+              console.error(
+                '[SpotifyPlayer] Error disconnecting old instance:',
+                error
+              )
+            }
+            playerInstance = null
+            isInitialized = false
+          }
+
           const response = await fetch('/api/token')
           if (!response.ok) {
             throw new Error('Failed to get Spotify token')
@@ -189,19 +203,6 @@ export function useSpotifyPlayerState(
 
           if (!window.Spotify) {
             throw new Error('Spotify SDK not loaded')
-          }
-
-          // If player already exists, clean it up first
-          if (playerInstance) {
-            try {
-              await playerInstance.disconnect()
-            } catch (error) {
-              console.error(
-                '[SpotifyPlayer] Error disconnecting old instance:',
-                error
-              )
-            }
-            playerInstance = null
           }
 
           const player = new window.Spotify.Player({
@@ -245,6 +246,7 @@ export function useSpotifyPlayerState(
                 if (state?.device?.id === device_id && state.device.is_active) {
                   setIsReady(true)
                 } else {
+                  // First, ensure we're the active device
                   await sendApiRequest({
                     path: 'me/player',
                     method: 'PUT',
@@ -253,7 +255,33 @@ export function useSpotifyPlayerState(
                       play: false
                     }
                   })
-                  setIsReady(true)
+
+                  // Wait a moment for the transfer to take effect
+                  await new Promise((resolve) => setTimeout(resolve, 1000))
+
+                  // Verify the transfer was successful
+                  const newState = await sendApiRequest<SpotifyPlaybackState>({
+                    path: 'me/player',
+                    method: 'GET'
+                  })
+
+                  if (
+                    newState?.device?.id === device_id &&
+                    newState.device.is_active
+                  ) {
+                    setIsReady(true)
+                  } else {
+                    // If still not active, try one more time with force play
+                    await sendApiRequest({
+                      path: 'me/player',
+                      method: 'PUT',
+                      body: {
+                        device_ids: [device_id],
+                        play: true
+                      }
+                    })
+                    setIsReady(true)
+                  }
                 }
               } catch (error) {
                 console.error(
