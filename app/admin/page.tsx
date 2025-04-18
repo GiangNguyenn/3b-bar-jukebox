@@ -166,7 +166,19 @@ export default function AdminPage(): JSX.Element {
         })
       })
 
-      const data = (await response.json()) as RefreshResponse
+      let data: RefreshResponse
+      try {
+        const responseData = (await response.json()) as unknown
+        if (!isValidRefreshResponse(responseData)) {
+          throw new Error('Invalid server response format')
+        }
+        data = responseData
+      } catch (error) {
+        if (error instanceof Error) {
+          throw new Error(`Failed to parse server response: ${error.message}`)
+        }
+        throw new Error('Failed to parse server response')
+      }
 
       if (!response.ok) {
         throw new Error(data.message ?? 'Failed to refresh site')
@@ -176,20 +188,35 @@ export default function AdminPage(): JSX.Element {
       lastRefreshTime.current = Date.now()
       setTimeUntilRefresh(REFRESH_INTERVAL)
       addLog('INFO', 'Playlist refreshed successfully')
-    } catch (err) {
-      console.error('[Refresh] Error:', err)
-      setError('Failed to refresh site')
+    } catch (error) {
+      console.error('[Refresh] Error:', error)
+      const errorMessage =
+        error instanceof Error ? error.message : 'Failed to refresh site'
+      setError(errorMessage)
       addLog(
         'ERROR',
         'Failed to refresh playlist',
         undefined,
-        err instanceof Error ? err : new Error(String(err))
+        error instanceof Error ? error : new Error(errorMessage)
       )
     } finally {
       setIsLoading(false)
       isRefreshing.current = false
     }
   }, [setError, setIsLoading, setTimeUntilRefresh, addLog])
+
+  // Type guard for RefreshResponse
+  function isValidRefreshResponse(data: unknown): data is RefreshResponse {
+    if (typeof data !== 'object' || data === null) return false
+    const response = data as Record<string, unknown>
+    return (
+      typeof response.success === 'boolean' &&
+      (response.message === undefined ||
+        typeof response.message === 'string') &&
+      (response.playerStateRefresh === undefined ||
+        typeof response.playerStateRefresh === 'boolean')
+    )
+  }
 
   // Set mounted state
   useEffect((): void => {
