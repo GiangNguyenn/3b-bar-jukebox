@@ -717,7 +717,14 @@ export default function AdminPage(): JSX.Element {
     }
 
     // Validate required fields
-    const { genres, yearRange, popularity, allowExplicit, maxSongLength, songsBetweenRepeats } = trackSuggestionsState
+    const {
+      genres,
+      yearRange,
+      popularity,
+      allowExplicit,
+      maxSongLength,
+      songsBetweenRepeats
+    } = trackSuggestionsState
 
     if (!Array.isArray(genres) || genres.length === 0 || genres.length > 10) {
       setRefreshError('Invalid genres: must have between 1 and 10 genres')
@@ -731,7 +738,9 @@ export default function AdminPage(): JSX.Element {
 
     const [startYear, endYear] = yearRange
     if (startYear < 1900 || endYear > new Date().getFullYear()) {
-      setRefreshError(`Invalid year range: must be between 1900 and ${new Date().getFullYear()}`)
+      setRefreshError(
+        `Invalid year range: must be between 1900 and ${new Date().getFullYear()}`
+      )
       return
     }
 
@@ -740,12 +749,22 @@ export default function AdminPage(): JSX.Element {
       return
     }
 
-    if (typeof maxSongLength !== 'number' || maxSongLength < 30 || maxSongLength > 600) {
-      setRefreshError('Invalid max song length: must be between 30 and 600 seconds')
+    if (
+      typeof maxSongLength !== 'number' ||
+      maxSongLength < 30 ||
+      maxSongLength > 600
+    ) {
+      setRefreshError(
+        'Invalid max song length: must be between 30 and 600 seconds'
+      )
       return
     }
 
-    if (typeof songsBetweenRepeats !== 'number' || songsBetweenRepeats < 1 || songsBetweenRepeats > 50) {
+    if (
+      typeof songsBetweenRepeats !== 'number' ||
+      songsBetweenRepeats < 1 ||
+      songsBetweenRepeats > 50
+    ) {
       setRefreshError('Invalid songs between repeats: must be between 1 and 50')
       return
     }
@@ -773,8 +792,10 @@ export default function AdminPage(): JSX.Element {
       })
 
       if (!response.ok) {
-        const errorData = await response.json() as { message?: string }
-        throw new Error(errorData.message ?? `HTTP error! status: ${response.status}`)
+        const errorData = (await response.json()) as { message?: string }
+        throw new Error(
+          errorData.message ?? `HTTP error! status: ${response.status}`
+        )
       }
 
       const data = (await response.json()) as RefreshResponse
