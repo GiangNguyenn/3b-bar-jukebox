@@ -619,36 +619,21 @@ export default function AdminPage(): JSX.Element {
       setError(null)
 
       if (action === 'play') {
-        // Get current playback state to determine position
+        // Get current state to ensure we resume at the right track
         const state = await sendApiRequest<SpotifyPlaybackState>({
           path: 'me/player',
           method: 'GET'
         })
 
-        // If we have a current track in the fixed playlist, resume from that position
-        if (
-          state?.context?.uri === `spotify:playlist:${fixedPlaylistId}` &&
-          state?.item
-        ) {
-          await sendApiRequest({
-            path: 'me/player/play',
-            method: 'PUT',
-            body: {
-              context_uri: `spotify:playlist:${fixedPlaylistId}`,
-              position_ms: state.progress_ms,
-              offset: { uri: state.item.uri }
-            }
-          })
-        } else {
-          // Otherwise start from the beginning
-          await sendApiRequest({
-            path: 'me/player/play',
-            method: 'PUT',
-            body: {
-              context_uri: `spotify:playlist:${fixedPlaylistId}`
-            }
-          })
-        }
+        await sendApiRequest({
+          path: 'me/player/play',
+          method: 'PUT',
+          body: {
+            context_uri: `spotify:playlist:${fixedPlaylistId}`,
+            position_ms: state?.progress_ms ?? 0,
+            offset: state?.item?.uri ? { uri: state.item.uri } : undefined
+          }
+        })
       } else {
         await sendApiRequest({
           path: 'me/player/next',
@@ -676,11 +661,19 @@ export default function AdminPage(): JSX.Element {
 
         // Finally try the original playback action again
         if (action === 'play') {
+          // Get current state to ensure we resume at the right track
+          const state = await sendApiRequest<SpotifyPlaybackState>({
+            path: 'me/player',
+            method: 'GET'
+          })
+
           await sendApiRequest({
             path: 'me/player/play',
             method: 'PUT',
             body: {
-              context_uri: `spotify:playlist:${fixedPlaylistId}`
+              context_uri: `spotify:playlist:${fixedPlaylistId}`,
+              position_ms: state?.progress_ms ?? 0,
+              offset: state?.item?.uri ? { uri: state.item.uri } : undefined
             }
           })
         } else {
