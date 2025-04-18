@@ -66,10 +66,11 @@ const getInitialState = (): TrackSuggestionsState => {
     try {
       const parsed = JSON.parse(savedState) as TrackSuggestionsState
       // Ensure genres array is not empty and has max 10 items
-      const validGenres = parsed.genres?.length > 0 
-        ? parsed.genres.slice(0, 10)
-        : [...FALLBACK_GENRES.slice(0, 10)]
-      
+      const validGenres =
+        parsed.genres?.length > 0
+          ? parsed.genres.slice(0, 10)
+          : [...FALLBACK_GENRES.slice(0, 10)]
+
       return {
         ...parsed,
         genres: validGenres
