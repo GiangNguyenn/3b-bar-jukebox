@@ -6,6 +6,7 @@ import type { SpotifyPlayerInstance } from '@/types/spotify'
 import { debounce } from '@/lib/utils'
 
 // Singleton to track initialization state
+let isInitializing = false
 let isInitialized = false
 let initializationPromise: Promise<void> | null = null
 let playerInstance: SpotifyPlayerInstance | null = null
@@ -90,204 +91,12 @@ export function useSpotifyPlayerState(
     }
   }, [setIsReady, setDeviceId])
 
-  const initializePlayer = useCallback(async (): Promise<void> => {
-    if (isInitialized && playerInstance) {
-      return
-    }
-
-    try {
-      const response = await fetch('/api/token')
-      if (!response.ok) {
-        throw new Error('Failed to get Spotify token')
-      }
-      const tokenData = await response.json()
-      const { access_token, expires_in, scope, token_type } = tokenData
-      currentAccessToken = access_token
-
-      // Emit token update event
-      const now = Date.now()
-      const tokenInfo: TokenInfo = {
-        lastRefresh: now,
-        expiresIn: expires_in,
-        scope,
-        type: token_type,
-        lastActualRefresh: now,
-        expiryTime: now + expires_in * 1000
-      }
-      window.dispatchEvent(
-        new CustomEvent('tokenUpdate', { detail: tokenInfo })
-      )
-
-      // Set up token refresh timer
-      if (tokenRefreshInterval.current) {
-        clearTimeout(tokenRefreshInterval.current)
-      }
-      const refreshDelay = (expires_in - 15 * 60) * 1000 // 15 minutes before expiry
-      console.log(
-        '[Token] Setting refresh timer for',
-        new Date(now + refreshDelay)
-      )
-      tokenRefreshInterval.current = setTimeout(refreshToken, refreshDelay)
-
-      if (!window.Spotify) {
-        throw new Error('Spotify SDK not loaded')
-      }
-
-      if (playerInstance) {
-        return
-      }
-
-      const player = new window.Spotify.Player({
-        name: 'JM Bar Jukebox',
-        getOAuthToken: (cb: (token: string) => void) => {
-          if (currentAccessToken) {
-            cb(currentAccessToken)
-          }
-        },
-        volume: 0.5
-      })
-
-      // Add a delay before connecting to ensure SDK is fully loaded
-      await new Promise((resolve) => setTimeout(resolve, 1000))
-
-      const connected = await player.connect()
-      if (!connected) {
-        throw new Error('Failed to connect to Spotify player')
-      }
-
-      playerInstance = player
-      window.spotifyPlayerInstance = player
-      isInitialized = true
-
-      // Set up event listeners after successful connection
-      player.addListener(
-        'ready',
-        async ({ device_id }: { device_id: string }) => {
-          if (!isMounted.current) return
-          setDeviceId(device_id)
-
-          // Add a delay before checking ready state
-          await new Promise((resolve) => setTimeout(resolve, 2000))
-
-          try {
-            const state = await sendApiRequest<SpotifyPlaybackState>({
-              path: 'me/player',
-              method: 'GET'
-            })
-
-            if (state?.device?.id === device_id && state.device.is_active) {
-              setIsReady(true)
-            } else {
-              await sendApiRequest({
-                path: 'me/player',
-                method: 'PUT',
-                body: {
-                  device_ids: [device_id],
-                  play: false
-                }
-              })
-              setIsReady(true)
-            }
-          } catch (error) {
-            console.error('[SpotifyPlayer] Error during ready handler:', error)
-            setIsReady(false)
-          }
-        }
-      )
-
-      player.addListener('player_state_changed', (state: any) => {
-        if (!isMounted.current) return
-        try {
-          // If not playing and we have a current track, attempt to resume
-          if (!state.is_playing && state.item?.uri) {
-            void sendApiRequest({
-              path: 'me/player/play',
-              method: 'PUT',
-              body: {
-                position_ms: state.progress_ms,
-                offset: { uri: state.item.uri },
-                context_uri: state.context?.uri
-              }
-            })
-          }
-
-          setPlaybackState(state)
-          if (state?.device?.id) {
-            setDeviceId(state.device.id)
-            setIsReady(state.device.is_active)
-          }
-        } catch (error) {
-          console.error('[SpotifyPlayer] Error handling state change:', error)
-        }
-      })
-
-      player.addListener(
-        'initialization_error',
-        ({ message }: { message: string }) => {
-          if (!isMounted.current) return
-          setError(`Failed to initialize: ${message}`)
-          setIsReady(false)
-        }
-      )
-
-      player.addListener(
-        'authentication_error',
-        ({ message }: { message: string }) => {
-          if (!isMounted.current) return
-          setError(`Failed to authenticate: ${message}`)
-          setIsReady(false)
-        }
-      )
-
-      player.addListener(
-        'account_error',
-        ({ message }: { message: string }) => {
-          if (!isMounted.current) return
-          setError(`Failed to validate Spotify account: ${message}`)
-          setIsReady(false)
-        }
-      )
-
-      if (initializationCheckInterval.current) {
-        clearInterval(initializationCheckInterval.current)
-      }
-      initializationCheckInterval.current = setInterval(async () => {
-        if (deviceId) {
-          const isReady = await checkPlayerReady()
-          if (!isReady) {
-            await reconnectPlayer()
-          } else {
-            setIsReady(true)
-          }
-        }
-      }, 10000)
-    } catch (_error) {
-      if (!isMounted.current) return
-      setError(
-        _error instanceof Error
-          ? _error.message
-          : 'Failed to initialize Spotify player'
-      )
-      setIsReady(false)
-    }
-  }, [
-    isInitialized,
-    playerInstance,
-    isMounted,
-    setError,
-    setIsReady,
-    checkPlayerReady,
-    deviceId,
-    setDeviceId,
-    setPlaybackState
-  ])
-
   const refreshToken = useCallback(async (): Promise<void> => {
-    console.log('[Token] Refreshing token')
+    if (!isMounted.current) return
     try {
       const response = await fetch('/api/token')
       if (!response.ok) {
-        throw new Error('Failed to get Spotify token')
+        throw new Error('Failed to refresh Spotify token')
       }
       const tokenData = await response.json()
       const { access_token, expires_in, scope, token_type } = tokenData
@@ -319,9 +128,230 @@ export function useSpotifyPlayerState(
       tokenRefreshInterval.current = setTimeout(refreshToken, refreshDelay)
     } catch (error) {
       console.error('[Token] Error refreshing token:', error)
-      throw error
+      setError(
+        error instanceof Error
+          ? error.message
+          : 'Failed to refresh Spotify token'
+      )
     }
   }, [])
+
+  const initializePlayer = useCallback(async (): Promise<void> => {
+    // If already initialized, return
+    if (isInitialized && playerInstance) {
+      return
+    }
+
+    // If initialization is in progress, wait for it to complete
+    if (isInitializing && initializationPromise) {
+      return initializationPromise
+    }
+
+    // Set initialization flag
+    isInitializing = true
+
+    try {
+      // Create a new promise for this initialization
+      initializationPromise = (async () => {
+        try {
+          const response = await fetch('/api/token')
+          if (!response.ok) {
+            throw new Error('Failed to get Spotify token')
+          }
+          const tokenData = await response.json()
+          const { access_token, expires_in, scope, token_type } = tokenData
+          currentAccessToken = access_token
+
+          // Emit token update event
+          const now = Date.now()
+          const tokenInfo: TokenInfo = {
+            lastRefresh: now,
+            expiresIn: expires_in,
+            scope,
+            type: token_type,
+            lastActualRefresh: now,
+            expiryTime: now + expires_in * 1000
+          }
+          window.dispatchEvent(
+            new CustomEvent('tokenUpdate', { detail: tokenInfo })
+          )
+
+          // Set up token refresh timer
+          if (tokenRefreshInterval.current) {
+            clearTimeout(tokenRefreshInterval.current)
+          }
+          const refreshDelay = (expires_in - 15 * 60) * 1000 // 15 minutes before expiry
+          console.log(
+            '[Token] Setting refresh timer for',
+            new Date(now + refreshDelay)
+          )
+          tokenRefreshInterval.current = setTimeout(refreshToken, refreshDelay)
+
+          if (!window.Spotify) {
+            throw new Error('Spotify SDK not loaded')
+          }
+
+          // If player already exists, clean it up first
+          if (playerInstance) {
+            try {
+              await playerInstance.disconnect()
+            } catch (error) {
+              console.error(
+                '[SpotifyPlayer] Error disconnecting old instance:',
+                error
+              )
+            }
+            playerInstance = null
+          }
+
+          const player = new window.Spotify.Player({
+            name: 'JM Bar Jukebox',
+            getOAuthToken: (cb: (token: string) => void) => {
+              if (currentAccessToken) {
+                cb(currentAccessToken)
+              }
+            },
+            volume: 0.5
+          })
+
+          // Add a delay before connecting to ensure SDK is fully loaded
+          await new Promise((resolve) => setTimeout(resolve, 1000))
+
+          const connected = await player.connect()
+          if (!connected) {
+            throw new Error('Failed to connect to Spotify player')
+          }
+
+          playerInstance = player
+          window.spotifyPlayerInstance = player
+          isInitialized = true
+
+          // Set up event listeners after successful connection
+          player.addListener(
+            'ready',
+            async ({ device_id }: { device_id: string }) => {
+              if (!isMounted.current) return
+              setDeviceId(device_id)
+
+              // Add a delay before checking ready state
+              await new Promise((resolve) => setTimeout(resolve, 2000))
+
+              try {
+                const state = await sendApiRequest<SpotifyPlaybackState>({
+                  path: 'me/player',
+                  method: 'GET'
+                })
+
+                if (state?.device?.id === device_id && state.device.is_active) {
+                  setIsReady(true)
+                } else {
+                  await sendApiRequest({
+                    path: 'me/player',
+                    method: 'PUT',
+                    body: {
+                      device_ids: [device_id],
+                      play: false
+                    }
+                  })
+                  setIsReady(true)
+                }
+              } catch (error) {
+                console.error(
+                  '[SpotifyPlayer] Error during ready handler:',
+                  error
+                )
+                setIsReady(false)
+              }
+            }
+          )
+
+          player.addListener('player_state_changed', (state: any) => {
+            if (!isMounted.current) return
+            try {
+              // If not playing and we have a current track, attempt to resume
+              if (!state.is_playing && state.item?.uri) {
+                void sendApiRequest({
+                  path: 'me/player/play',
+                  method: 'PUT',
+                  body: {
+                    position_ms: state.progress_ms,
+                    offset: { uri: state.item.uri },
+                    context_uri: state.context?.uri
+                  }
+                })
+              }
+
+              setPlaybackState(state)
+              if (state?.device?.id) {
+                setDeviceId(state.device.id)
+                setIsReady(state.device.is_active)
+              }
+            } catch (error) {
+              console.error(
+                '[SpotifyPlayer] Error handling state change:',
+                error
+              )
+            }
+          })
+
+          player.addListener(
+            'initialization_error',
+            ({ message }: { message: string }) => {
+              if (!isMounted.current) return
+              setError(`Failed to initialize: ${message}`)
+              setIsReady(false)
+            }
+          )
+
+          player.addListener(
+            'authentication_error',
+            ({ message }: { message: string }) => {
+              if (!isMounted.current) return
+              setError(`Failed to authenticate: ${message}`)
+              setIsReady(false)
+            }
+          )
+
+          player.addListener(
+            'account_error',
+            ({ message }: { message: string }) => {
+              if (!isMounted.current) return
+              setError(`Failed to validate Spotify account: ${message}`)
+              setIsReady(false)
+            }
+          )
+
+          if (initializationCheckInterval.current) {
+            clearInterval(initializationCheckInterval.current)
+          }
+          initializationCheckInterval.current = setInterval(async () => {
+            if (deviceId) {
+              const isReady = await checkPlayerReady()
+              if (!isReady) {
+                await reconnectPlayer()
+              } else {
+                setIsReady(true)
+              }
+            }
+          }, 10000)
+        } catch (error) {
+          console.error('[SpotifyPlayer] Error during initialization:', error)
+          isInitialized = false
+          playerInstance = null
+          throw error
+        } finally {
+          isInitializing = false
+          initializationPromise = null
+        }
+      })()
+
+      await initializationPromise
+    } catch (error) {
+      isInitializing = false
+      initializationPromise = null
+      throw error
+    }
+  }, [refreshToken, setDeviceId, setIsReady, setPlaybackState])
 
   const reconnectPlayer = useCallback(async (): Promise<void> => {
     if (
