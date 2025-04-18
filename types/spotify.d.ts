@@ -17,8 +17,26 @@ export interface SpotifyPlayerOptions {
 
 export interface SpotifyPlayerInstance {
   connect(): Promise<boolean>
-  disconnect(): Promise<void>
-  addListener(eventName: string, callback: (event: any) => void): void
+  disconnect(): void
+  addListener(
+    eventName: 'ready',
+    callback: (event: { device_id: string }) => void
+  ): void
+  addListener(
+    eventName: 'not_ready',
+    callback: (event: { device_id: string }) => void
+  ): void
+  addListener(
+    eventName: 'player_state_changed',
+    callback: (state: SpotifyPlaybackState) => void
+  ): void
+  addListener(
+    eventName:
+      | 'initialization_error'
+      | 'authentication_error'
+      | 'account_error',
+    callback: (event: { message: string }) => void
+  ): void
   removeListener(eventName: string, callback: (event: any) => void): void
 }
 

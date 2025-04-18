@@ -16,6 +16,10 @@ import { sendApiRequest } from '@/shared/api'
 import { SpotifyPlaybackState, TokenInfo } from '@/shared/types'
 import { formatDate } from '@/lib/utils'
 import { useSpotifyPlayerState } from '@/hooks/useSpotifyPlayerState'
+import { TrackSuggestionsTab } from './components/track-suggestions/track-suggestions-tab'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { useConsoleLogs } from '@/hooks/useConsoleLogs'
+import { FALLBACK_GENRES } from '@/shared/constants/trackSuggestion'
 
 const REFRESH_INTERVAL = 180000 // 3 minutes in milliseconds
 const DEVICE_CHECK_INTERVAL = {
@@ -47,8 +51,38 @@ interface PlaybackInfo {
 }
 
 interface RefreshResponse {
-  message?: string
   success: boolean
+  message?: string
+  searchDetails?: {
+    attempts: number
+    totalTracksFound: number
+    excludedTrackIds: string[]
+    minPopularity: number
+    genresTried: string[]
+    trackDetails: Array<{
+      name: string
+      popularity: number
+      isExcluded: boolean
+      isPlayable: boolean
+      duration_ms: number
+      explicit: boolean
+    }>
+  }
+}
+
+interface TrackSuggestionsState {
+  genres: string[]
+  yearRange: [number, number]
+  popularity: number
+  allowExplicit: boolean
+  maxSongLength: number
+  songsBetweenRepeats: number
+  lastSuggestedTrack?: {
+    name: string
+    artist: string
+    album: string
+    uri: string
+  }
 }
 
 export default function AdminPage(): JSX.Element {
@@ -57,6 +91,7 @@ export default function AdminPage(): JSX.Element {
   const [_error, setError] = useState<string | null>(null)
   const [timeUntilRefresh, setTimeUntilRefresh] = useState(REFRESH_INTERVAL)
   const [playbackInfo, setPlaybackInfo] = useState<PlaybackInfo | null>(null)
+  const [activeTab, setActiveTab] = useState('dashboard')
   const [healthStatus, setHealthStatus] = useState<HealthStatus>({
     device: 'unknown',
     playback: 'unknown',
@@ -77,7 +112,7 @@ export default function AdminPage(): JSX.Element {
   const isRefreshing = useRef<boolean>(false)
   const maxRecoveryAttempts = 5
   const baseDelay = 2000 // 2 seconds
-  const [consoleLogs, setConsoleLogs] = useState<string[]>([])
+  const { logs: consoleLogs, addLog } = useConsoleLogs()
   const [uptime, setUptime] = useState(0)
   const [tokenInfo, _setTokenInfo] = useState<TokenInfo>({
     lastRefresh: 0,
@@ -87,24 +122,67 @@ export default function AdminPage(): JSX.Element {
     lastActualRefresh: 0,
     expiryTime: 0
   })
+  const [_currentYear, _setCurrentYear] = useState(new Date().getFullYear())
+  const [trackSuggestionsState, setTrackSuggestionsState] =
+    useState<TrackSuggestionsState | null>(null)
+  const [isRefreshingSuggestions, setIsRefreshingSuggestions] = useState(false)
+  const [refreshError, setRefreshError] = useState<string | null>(null)
 
-  const { refreshToken } = useSpotifyPlayerState()
+  const { refreshToken } = useSpotifyPlayerState(fixedPlaylistId ?? '')
 
   const handleRefresh = useCallback(async (): Promise<void> => {
-    if (isRefreshing.current) {
-      console.log('[Refresh] Already refreshing, skipping')
-      return
-    }
-
+    if (isRefreshing.current) return
     isRefreshing.current = true
     setIsLoading(true)
+    setError(null)
 
     try {
+      // Get track suggestions state from localStorage
+      const savedState = localStorage.getItem('track-suggestions-state')
+      const trackSuggestionsState = savedState
+        ? (JSON.parse(savedState) as TrackSuggestionsState)
+        : {
+            genres: Array.from(FALLBACK_GENRES),
+            yearRange: [1950, new Date().getFullYear()],
+            popularity: 50,
+            allowExplicit: false,
+            maxSongLength: 300,
+            songsBetweenRepeats: 5
+          }
+
+      console.log(
+        '[Refresh] Sending track suggestions state:',
+        JSON.stringify(trackSuggestionsState, null, 2)
+      )
+
       const response = await fetch('/api/refresh-site', {
-        method: 'GET'
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          genres: trackSuggestionsState.genres,
+          yearRange: trackSuggestionsState.yearRange,
+          popularity: trackSuggestionsState.popularity,
+          allowExplicit: trackSuggestionsState.allowExplicit,
+          maxSongLength: trackSuggestionsState.maxSongLength,
+          songsBetweenRepeats: trackSuggestionsState.songsBetweenRepeats
+        })
       })
 
-      const data = (await response.json()) as RefreshResponse
+      let data: RefreshResponse
+      try {
+        const responseData = (await response.json()) as unknown
+        if (!isValidRefreshResponse(responseData)) {
+          throw new Error('Invalid server response format')
+        }
+        data = responseData
+      } catch (error) {
+        if (error instanceof Error) {
+          throw new Error(`Failed to parse server response: ${error.message}`)
+        }
+        throw new Error('Failed to parse server response')
+      }
 
       if (!response.ok) {
         throw new Error(data.message ?? 'Failed to refresh site')
@@ -113,14 +191,36 @@ export default function AdminPage(): JSX.Element {
       console.log('[Refresh] Success:', data.message)
       lastRefreshTime.current = Date.now()
       setTimeUntilRefresh(REFRESH_INTERVAL)
-    } catch (err) {
-      console.error('[Refresh] Error:', err)
-      setError('Failed to refresh site')
+      addLog('INFO', 'Playlist refreshed successfully')
+    } catch (error) {
+      console.error('[Refresh] Error:', error)
+      const errorMessage =
+        error instanceof Error ? error.message : 'Failed to refresh site'
+      setError(errorMessage)
+      addLog(
+        'ERROR',
+        'Failed to refresh playlist',
+        undefined,
+        error instanceof Error ? error : new Error(errorMessage)
+      )
     } finally {
       setIsLoading(false)
       isRefreshing.current = false
     }
-  }, [setError, setIsLoading, setTimeUntilRefresh])
+  }, [setError, setIsLoading, setTimeUntilRefresh, addLog])
+
+  // Type guard for RefreshResponse
+  function isValidRefreshResponse(data: unknown): data is RefreshResponse {
+    if (typeof data !== 'object' || data === null) return false
+    const response = data as Record<string, unknown>
+    return (
+      typeof response.success === 'boolean' &&
+      (response.message === undefined ||
+        typeof response.message === 'string') &&
+      (response.playerStateRefresh === undefined ||
+        typeof response.playerStateRefresh === 'boolean')
+    )
+  }
 
   // Set mounted state
   useEffect((): void => {
@@ -327,7 +427,35 @@ export default function AdminPage(): JSX.Element {
         void (async () => {
           try {
             setIsLoading(true)
-            const response = await fetch('/api/refresh-site')
+
+            // Get track suggestions state from localStorage
+            const savedState = localStorage.getItem('track-suggestions-state')
+            const trackSuggestionsState = savedState
+              ? (JSON.parse(savedState) as TrackSuggestionsState)
+              : {
+                  genres: Array.from(FALLBACK_GENRES),
+                  yearRange: [1950, new Date().getFullYear()],
+                  popularity: 50,
+                  allowExplicit: false,
+                  maxSongLength: 300,
+                  songsBetweenRepeats: 5
+                }
+
+            const response = await fetch('/api/refresh-site', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json'
+              },
+              body: JSON.stringify({
+                genres: trackSuggestionsState.genres,
+                yearRange: trackSuggestionsState.yearRange,
+                popularity: trackSuggestionsState.popularity,
+                allowExplicit: trackSuggestionsState.allowExplicit,
+                maxSongLength: trackSuggestionsState.maxSongLength,
+                songsBetweenRepeats: trackSuggestionsState.songsBetweenRepeats
+              })
+            })
+
             const data = (await response.json()) as RefreshResponse
 
             if (!response.ok) {
@@ -487,37 +615,6 @@ export default function AdminPage(): JSX.Element {
 
   useEffect(playlistEffect, [handlePlaylistChecked])
 
-  // Capture console logs
-  // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
-  useEffect(() => {
-    const originalConsoleLog = console.log
-    const originalConsoleError = console.error
-
-    // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
-    console.log = (...args: unknown[]) => {
-      originalConsoleLog(...args)
-      setConsoleLogs((prev) => {
-        const newLog = args.join(' ')
-        return [...prev.slice(-9), newLog]
-      })
-    }
-
-    // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
-    console.error = (...args: unknown[]) => {
-      originalConsoleError(...args)
-      setConsoleLogs((prev) => {
-        const newLog = args.join(' ')
-        return [...prev.slice(-9), `[ERROR] ${newLog}`]
-      })
-    }
-
-    // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
-    return () => {
-      console.log = originalConsoleLog
-      console.error = originalConsoleError
-    }
-  }, [])
-
   // Uptime timer
   // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
   useEffect(() => {
@@ -551,37 +648,35 @@ export default function AdminPage(): JSX.Element {
       setIsLoading(true)
       setError(null)
 
+      // First, transfer playback to our device
+      await sendApiRequest({
+        path: 'me/player',
+        method: 'PUT',
+        body: {
+          device_ids: [deviceId],
+          play: false
+        }
+      })
+
+      // Wait a bit for the transfer to take effect
+      await new Promise((resolve) => setTimeout(resolve, 1000))
+
       if (action === 'play') {
-        // Get current playback state to determine position
+        // Get current state to ensure we resume at the right track
         const state = await sendApiRequest<SpotifyPlaybackState>({
           path: 'me/player',
           method: 'GET'
         })
 
-        // If we have a current track in the fixed playlist, resume from that position
-        if (
-          state?.context?.uri === `spotify:playlist:${fixedPlaylistId}` &&
-          state?.item
-        ) {
-          await sendApiRequest({
-            path: 'me/player/play',
-            method: 'PUT',
-            body: {
-              context_uri: `spotify:playlist:${fixedPlaylistId}`,
-              position_ms: state.progress_ms,
-              offset: { uri: state.item.uri }
-            }
-          })
-        } else {
-          // Otherwise start from the beginning
-          await sendApiRequest({
-            path: 'me/player/play',
-            method: 'PUT',
-            body: {
-              context_uri: `spotify:playlist:${fixedPlaylistId}`
-            }
-          })
-        }
+        await sendApiRequest({
+          path: 'me/player/play',
+          method: 'PUT',
+          body: {
+            context_uri: `spotify:playlist:${fixedPlaylistId}`,
+            position_ms: state?.progress_ms ?? 0,
+            offset: state?.item?.uri ? { uri: state.item.uri } : undefined
+          }
+        })
       } else {
         await sendApiRequest({
           path: 'me/player/next',
@@ -609,11 +704,19 @@ export default function AdminPage(): JSX.Element {
 
         // Finally try the original playback action again
         if (action === 'play') {
+          // Get current state to ensure we resume at the right track
+          const state = await sendApiRequest<SpotifyPlaybackState>({
+            path: 'me/player',
+            method: 'GET'
+          })
+
           await sendApiRequest({
             path: 'me/player/play',
             method: 'PUT',
             body: {
-              context_uri: `spotify:playlist:${fixedPlaylistId}`
+              context_uri: `spotify:playlist:${fixedPlaylistId}`,
+              position_ms: state?.progress_ms ?? 0,
+              offset: state?.item?.uri ? { uri: state.item.uri } : undefined
             }
           })
         } else {
@@ -650,6 +753,126 @@ export default function AdminPage(): JSX.Element {
     }
   }
 
+  const handleTrackSuggestionsRefresh = async (): Promise<void> => {
+    if (!trackSuggestionsState) {
+      addLog('ERROR', 'No track suggestions state available')
+      return
+    }
+
+    // Validate required fields
+    const {
+      genres,
+      yearRange,
+      popularity,
+      allowExplicit,
+      maxSongLength,
+      songsBetweenRepeats
+    } = trackSuggestionsState
+
+    if (!Array.isArray(genres) || genres.length === 0 || genres.length > 10) {
+      setRefreshError('Invalid genres: must have between 1 and 10 genres')
+      return
+    }
+
+    if (!Array.isArray(yearRange) || yearRange.length !== 2) {
+      setRefreshError('Invalid year range: must be an array of two numbers')
+      return
+    }
+
+    const [startYear, endYear] = yearRange
+    if (startYear < 1900 || endYear > new Date().getFullYear()) {
+      setRefreshError(
+        `Invalid year range: must be between 1900 and ${new Date().getFullYear()}`
+      )
+      return
+    }
+
+    if (typeof popularity !== 'number' || popularity < 0 || popularity > 100) {
+      setRefreshError('Invalid popularity: must be between 0 and 100')
+      return
+    }
+
+    if (
+      typeof maxSongLength !== 'number' ||
+      maxSongLength < 30 ||
+      maxSongLength > 600
+    ) {
+      setRefreshError(
+        'Invalid max song length: must be between 30 and 600 seconds'
+      )
+      return
+    }
+
+    if (
+      typeof songsBetweenRepeats !== 'number' ||
+      songsBetweenRepeats < 1 ||
+      songsBetweenRepeats > 50
+    ) {
+      setRefreshError('Invalid songs between repeats: must be between 1 and 50')
+      return
+    }
+
+    setIsRefreshingSuggestions(true)
+    setRefreshError(null)
+
+    try {
+      // Strip out optional fields and send only required ones
+      const requestBody = {
+        genres,
+        yearRange,
+        popularity,
+        allowExplicit,
+        maxSongLength,
+        songsBetweenRepeats
+      }
+
+      const response = await fetch('/api/track-suggestions/refresh', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(requestBody)
+      })
+
+      if (!response.ok) {
+        const errorData = (await response.json()) as { message?: string }
+        throw new Error(
+          errorData.message ?? `HTTP error! status: ${response.status}`
+        )
+      }
+
+      const data = (await response.json()) as RefreshResponse
+
+      if (data.success) {
+        addLog(
+          'INFO',
+          'Track suggestions refreshed successfully',
+          JSON.stringify(data.searchDetails)
+        )
+      } else {
+        throw new Error(data.message ?? 'Failed to refresh track suggestions')
+      }
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : 'Unknown error occurred'
+      setRefreshError(errorMessage)
+      addLog(
+        'ERROR',
+        'Failed to refresh track suggestions',
+        undefined,
+        error instanceof Error ? error : new Error(errorMessage)
+      )
+    } finally {
+      setIsRefreshingSuggestions(false)
+    }
+  }
+
+  const handleTrackSuggestionsStateChange = (
+    newState: TrackSuggestionsState
+  ): void => {
+    setTrackSuggestionsState(newState)
+  }
+
   // Only render content after mounting to prevent hydration mismatch
   if (!mounted) {
     return (
@@ -664,245 +887,307 @@ export default function AdminPage(): JSX.Element {
       <div className='mx-auto max-w-xl space-y-4'>
         <h1 className='mb-8 text-2xl font-bold'>Admin Controls</h1>
 
-        {_error && (
-          <div className='mb-4 rounded border border-red-500 bg-red-900/50 p-4 text-red-100'>
-            {_error}
-          </div>
-        )}
+        <Tabs
+          value={activeTab}
+          onValueChange={setActiveTab}
+          className='space-y-4'
+        >
+          <TabsList className='grid w-full grid-cols-2 bg-gray-800/50'>
+            <TabsTrigger
+              value='dashboard'
+              className='data-[state=active]:text-white data-[state=active]:bg-gray-700 data-[state=active]:font-semibold'
+            >
+              Dashboard
+            </TabsTrigger>
+            <TabsTrigger
+              value='track-suggestions'
+              className='data-[state=active]:text-white data-[state=active]:bg-gray-700 data-[state=active]:font-semibold'
+            >
+              Track Suggestions
+            </TabsTrigger>
+          </TabsList>
 
-        <div className='flex items-center gap-2 rounded-lg border border-gray-800 bg-gray-900/50 p-4'>
-          <div
-            className={`h-3 w-3 rounded-full ${isReady ? 'bg-green-500' : 'bg-yellow-500'}`}
-          />
-          <span className='font-medium'>
-            {isReady ? 'Player Ready' : 'Player Initializing...'}
-          </span>
-        </div>
+          <TabsContent value='dashboard'>
+            {_error && (
+              <div className='mb-4 rounded border border-red-500 bg-red-900/50 p-4 text-red-100'>
+                {_error}
+              </div>
+            )}
 
-        <div className='space-y-4'>
-          <div className='flex items-center gap-2 rounded-lg border border-gray-800 bg-gray-900/50 p-4'>
-            <div
-              className={`h-3 w-3 rounded-full ${
-                healthStatus.device === 'healthy'
-                  ? 'bg-green-500'
-                  : healthStatus.device === 'unresponsive'
-                    ? 'bg-yellow-500'
-                    : healthStatus.device === 'disconnected'
-                      ? 'bg-red-500'
-                      : 'bg-gray-500'
-              }`}
-            />
-            <span className='font-medium'>
-              {healthStatus.device === 'healthy'
-                ? 'Device Connected'
-                : healthStatus.device === 'unresponsive'
-                  ? 'Device Unresponsive'
-                  : healthStatus.device === 'disconnected'
-                    ? 'Device Disconnected'
-                    : 'Device Status Unknown'}
-              {recoveryAttempts > 0 &&
-                ` (Recovery ${recoveryAttempts}/${MAX_RECOVERY_ATTEMPTS})`}
-            </span>
-          </div>
-
-          <div className='flex items-center gap-2 rounded-lg border border-gray-800 bg-gray-900/50 p-4'>
-            <div
-              className={`h-3 w-3 rounded-full ${
-                healthStatus.playback === 'playing'
-                  ? 'animate-pulse bg-green-500'
-                  : healthStatus.playback === 'paused'
-                    ? 'bg-yellow-500'
-                    : healthStatus.playback === 'error'
-                      ? 'bg-red-500'
-                      : 'bg-gray-500'
-              }`}
-            />
-            <div className='flex flex-1 items-center gap-2'>
+            <div className='flex items-center gap-2 rounded-lg border border-gray-800 bg-gray-900/50 p-4'>
+              <div
+                className={`h-3 w-3 rounded-full ${isReady ? 'bg-green-500' : 'bg-yellow-500'}`}
+              />
               <span className='font-medium'>
-                {healthStatus.playback === 'playing'
-                  ? 'Playback Active'
-                  : healthStatus.playback === 'paused'
-                    ? 'Playback Paused'
-                    : healthStatus.playback === 'error'
-                      ? 'Playback Error'
-                      : 'Playback Stopped'}
+                {isReady ? 'Player Ready' : 'Player Initializing...'}
               </span>
-              {playbackInfo?.currentTrack && (
-                <span className='text-sm text-gray-400'>
-                  -{' '}
-                  <span className='text-white font-medium'>
-                    {playbackInfo.currentTrack}
-                  </span>{' '}
-                  ({formatTime(playbackInfo.progress)})
+            </div>
+
+            <div className='space-y-4'>
+              <div className='flex items-center gap-2 rounded-lg border border-gray-800 bg-gray-900/50 p-4'>
+                <div
+                  className={`h-3 w-3 rounded-full ${
+                    healthStatus.device === 'healthy'
+                      ? 'bg-green-500'
+                      : healthStatus.device === 'unresponsive'
+                        ? 'bg-yellow-500'
+                        : healthStatus.device === 'disconnected'
+                          ? 'bg-red-500'
+                          : 'bg-gray-500'
+                  }`}
+                />
+                <span className='font-medium'>
+                  {healthStatus.device === 'healthy'
+                    ? 'Device Connected'
+                    : healthStatus.device === 'unresponsive'
+                      ? 'Device Unresponsive'
+                      : healthStatus.device === 'disconnected'
+                        ? 'Device Disconnected'
+                        : 'Device Status Unknown'}
+                  {recoveryAttempts > 0 &&
+                    ` (Recovery ${recoveryAttempts}/${MAX_RECOVERY_ATTEMPTS})`}
                 </span>
-              )}
-            </div>
-          </div>
+              </div>
 
-          <div className='flex items-center gap-2 rounded-lg border border-gray-800 bg-gray-900/50 p-4'>
-            <div
-              className={`h-3 w-3 rounded-full ${
-                healthStatus.token === 'valid' &&
-                !healthStatus.tokenExpiringSoon
-                  ? 'bg-green-500'
-                  : healthStatus.token === 'valid' &&
-                      healthStatus.tokenExpiringSoon
-                    ? 'bg-yellow-500'
-                    : healthStatus.token === 'error'
-                      ? 'bg-red-500'
-                      : 'bg-gray-500'
-              }`}
-            />
-            <span className='font-medium'>
-              {healthStatus.token === 'valid' && !healthStatus.tokenExpiringSoon
-                ? 'Token Valid'
-                : healthStatus.token === 'valid' &&
-                    healthStatus.tokenExpiringSoon
-                  ? 'Token Expiring Soon'
-                  : healthStatus.token === 'error'
-                    ? 'Token Error'
-                    : 'Token Status Unknown'}
-            </span>
-            <div className='group relative'>
-              <div className='invisible absolute left-0 top-0 z-10 rounded-lg bg-gray-800 p-2 text-xs text-gray-200 shadow-lg transition-all duration-200 group-hover:visible'>
-                <div className='whitespace-nowrap'>
-                  <div>Token expires: {formatDate(tokenInfo.expiryTime)}</div>
+              <div className='flex items-center gap-2 rounded-lg border border-gray-800 bg-gray-900/50 p-4'>
+                <div
+                  className={`h-3 w-3 rounded-full ${
+                    healthStatus.playback === 'playing'
+                      ? 'animate-pulse bg-green-500'
+                      : healthStatus.playback === 'paused'
+                        ? 'bg-yellow-500'
+                        : healthStatus.playback === 'error'
+                          ? 'bg-red-500'
+                          : 'bg-gray-500'
+                  }`}
+                />
+                <div className='flex flex-1 items-center gap-2'>
+                  <span className='font-medium'>
+                    {healthStatus.playback === 'playing'
+                      ? 'Playback Active'
+                      : healthStatus.playback === 'paused'
+                        ? 'Playback Paused'
+                        : healthStatus.playback === 'error'
+                          ? 'Playback Error'
+                          : 'Playback Stopped'}
+                  </span>
+                  {playbackInfo?.currentTrack && (
+                    <span className='text-sm text-gray-400'>
+                      -{' '}
+                      <span className='text-white font-medium'>
+                        {playbackInfo.currentTrack}
+                      </span>{' '}
+                      ({formatTime(playbackInfo.progress)})
+                    </span>
+                  )}
                 </div>
               </div>
-              <svg
-                className='h-4 w-4 cursor-help text-gray-400'
-                fill='none'
-                stroke='currentColor'
-                viewBox='0 0 24 24'
-              >
-                <path
-                  strokeLinecap='round'
-                  strokeLinejoin='round'
-                  strokeWidth={2}
-                  d='M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z'
+
+              <div className='flex items-center gap-2 rounded-lg border border-gray-800 bg-gray-900/50 p-4'>
+                <div
+                  className={`h-3 w-3 rounded-full ${
+                    healthStatus.token === 'valid' &&
+                    !healthStatus.tokenExpiringSoon
+                      ? 'bg-green-500'
+                      : healthStatus.token === 'valid' &&
+                          healthStatus.tokenExpiringSoon
+                        ? 'bg-yellow-500'
+                        : healthStatus.token === 'error'
+                          ? 'bg-red-500'
+                          : 'bg-gray-500'
+                  }`}
                 />
-              </svg>
-            </div>
-          </div>
-
-          <div className='flex items-center gap-2 rounded-lg border border-gray-800 bg-gray-900/50 p-4'>
-            <div
-              className={`h-3 w-3 rounded-full ${
-                healthStatus.connection === 'good'
-                  ? 'bg-green-500'
-                  : healthStatus.connection === 'unstable'
-                    ? 'bg-yellow-500'
-                    : healthStatus.connection === 'poor'
-                      ? 'bg-red-500'
-                      : 'bg-gray-500'
-              }`}
-            />
-            <span className='font-medium'>
-              {healthStatus.connection === 'good'
-                ? 'Connection Good'
-                : healthStatus.connection === 'unstable'
-                  ? 'Connection Unstable'
-                  : healthStatus.connection === 'poor'
-                    ? 'Connection Poor'
-                    : 'Connection Status Unknown'}
-            </span>
-          </div>
-
-          <div className='flex items-center gap-2 rounded-lg border border-gray-800 bg-gray-900/50 p-4'>
-            <div
-              className={`h-3 w-3 rounded-full ${
-                healthStatus.fixedPlaylist === 'found'
-                  ? 'bg-green-500'
-                  : healthStatus.fixedPlaylist === 'not_found'
-                    ? 'bg-red-500'
-                    : healthStatus.fixedPlaylist === 'error'
-                      ? 'bg-red-500'
-                      : 'bg-gray-500'
-              }`}
-            />
-            <span className='font-medium'>
-              {healthStatus.fixedPlaylist === 'found'
-                ? 'Fixed Playlist Found'
-                : healthStatus.fixedPlaylist === 'not_found'
-                  ? 'Fixed Playlist Not Found'
-                  : healthStatus.fixedPlaylist === 'error'
-                    ? 'Fixed Playlist Error'
-                    : 'Fixed Playlist Status Unknown'}
-            </span>
-            <div className='group relative'>
-              <div className='invisible absolute left-0 top-0 z-10 rounded-lg bg-gray-800 p-2 text-xs text-gray-200 shadow-lg transition-all duration-200 group-hover:visible'>
-                <div className='whitespace-nowrap'>
-                  <div>Playlist ID: {fixedPlaylistId ?? 'Not found'}</div>
-                  <div>Next auto-refresh in {formatTime(timeUntilRefresh)}</div>
+                <span className='font-medium'>
+                  {healthStatus.token === 'valid' &&
+                  !healthStatus.tokenExpiringSoon
+                    ? 'Token Valid'
+                    : healthStatus.token === 'valid' &&
+                        healthStatus.tokenExpiringSoon
+                      ? 'Token Expiring Soon'
+                      : healthStatus.token === 'error'
+                        ? 'Token Error'
+                        : 'Token Status Unknown'}
+                </span>
+                <div className='group relative'>
+                  <div className='invisible absolute left-0 top-0 z-10 rounded-lg bg-gray-800 p-2 text-xs text-gray-200 shadow-lg transition-all duration-200 group-hover:visible'>
+                    <div className='whitespace-nowrap'>
+                      <div>
+                        Token expires: {formatDate(tokenInfo.expiryTime)}
+                      </div>
+                    </div>
+                  </div>
+                  <svg
+                    className='h-4 w-4 cursor-help text-gray-400'
+                    fill='none'
+                    stroke='currentColor'
+                    viewBox='0 0 24 24'
+                  >
+                    <path
+                      strokeLinecap='round'
+                      strokeLinejoin='round'
+                      strokeWidth={2}
+                      d='M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z'
+                    />
+                  </svg>
                 </div>
               </div>
-              <svg
-                className='h-4 w-4 cursor-help text-gray-400'
-                fill='none'
-                stroke='currentColor'
-                viewBox='0 0 24 24'
-              >
-                <path
-                  strokeLinecap='round'
-                  strokeLinejoin='round'
-                  strokeWidth={2}
-                  d='M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z'
-                />
-              </svg>
-            </div>
-          </div>
-        </div>
 
-        <div className='mt-8 space-y-4'>
-          <h2 className='text-xl font-semibold'>Controls</h2>
-          <div className='flex gap-4'>
-            <button
-              onClick={() => void handlePlayback('play')}
-              disabled={isLoading || !isReady}
-              className='text-white flex-1 rounded-lg bg-green-600 px-4 py-2 font-medium transition-colors hover:bg-green-700 disabled:cursor-not-allowed disabled:opacity-50'
-            >
-              {isLoading ? 'Loading...' : 'Play'}
-            </button>
-            <button
-              onClick={() => void handlePlayback('skip')}
-              disabled={isLoading || !isReady}
-              className='text-white flex-1 rounded-lg bg-blue-600 px-4 py-2 font-medium transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50'
-            >
-              {isLoading ? 'Loading...' : 'Skip'}
-            </button>
-            <button
-              onClick={() => void handleRefresh()}
-              disabled={isLoading || !isReady}
-              className='text-white flex-1 rounded-lg bg-purple-600 px-4 py-2 font-medium transition-colors hover:bg-purple-700 disabled:cursor-not-allowed disabled:opacity-50'
-            >
-              {isLoading ? 'Loading...' : 'Refresh Playlist'}
-            </button>
-            <button
-              onClick={() => void handleTokenRefresh()}
-              disabled={isLoading || !isReady}
-              className='text-white flex-1 rounded-lg bg-orange-600 px-4 py-2 font-medium transition-colors hover:bg-orange-700 disabled:cursor-not-allowed disabled:opacity-50'
-            >
-              {isLoading ? 'Loading...' : 'Refresh Token'}
-            </button>
-          </div>
-          <div className='text-center text-sm text-gray-400'>
-            <div className='flex flex-col items-center gap-2'>
-              <span>Uptime: {formatTime(uptime)}</span>
-            </div>
-          </div>
-          <div className='mt-4 rounded-lg border border-gray-800 bg-gray-900/50 p-4'>
-            <h3 className='mb-2 text-sm font-medium text-gray-400'>
-              Recent Console Logs
-            </h3>
-            <div className='max-h-40 overflow-y-auto font-mono text-xs [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden'>
-              {consoleLogs.map((log, index) => (
-                <div key={index} className='py-1'>
-                  {log}
+              <div className='flex items-center gap-2 rounded-lg border border-gray-800 bg-gray-900/50 p-4'>
+                <div
+                  className={`h-3 w-3 rounded-full ${
+                    healthStatus.connection === 'good'
+                      ? 'bg-green-500'
+                      : healthStatus.connection === 'unstable'
+                        ? 'bg-yellow-500'
+                        : healthStatus.connection === 'poor'
+                          ? 'bg-red-500'
+                          : 'bg-gray-500'
+                  }`}
+                />
+                <span className='font-medium'>
+                  {healthStatus.connection === 'good'
+                    ? 'Connection Good'
+                    : healthStatus.connection === 'unstable'
+                      ? 'Connection Unstable'
+                      : healthStatus.connection === 'poor'
+                        ? 'Connection Poor'
+                        : 'Connection Status Unknown'}
+                </span>
+              </div>
+
+              <div className='flex items-center gap-2 rounded-lg border border-gray-800 bg-gray-900/50 p-4'>
+                <div
+                  className={`h-3 w-3 rounded-full ${
+                    healthStatus.fixedPlaylist === 'found'
+                      ? 'bg-green-500'
+                      : healthStatus.fixedPlaylist === 'not_found'
+                        ? 'bg-red-500'
+                        : healthStatus.fixedPlaylist === 'error'
+                          ? 'bg-red-500'
+                          : 'bg-gray-500'
+                  }`}
+                />
+                <span className='font-medium'>
+                  {healthStatus.fixedPlaylist === 'found'
+                    ? 'Fixed Playlist Found'
+                    : healthStatus.fixedPlaylist === 'not_found'
+                      ? 'Fixed Playlist Not Found'
+                      : healthStatus.fixedPlaylist === 'error'
+                        ? 'Fixed Playlist Error'
+                        : 'Fixed Playlist Status Unknown'}
+                </span>
+                <div className='group relative'>
+                  <div className='invisible absolute left-0 top-0 z-10 rounded-lg bg-gray-800 p-2 text-xs text-gray-200 shadow-lg transition-all duration-200 group-hover:visible'>
+                    <div className='whitespace-nowrap'>
+                      <div>Playlist ID: {fixedPlaylistId ?? 'Not found'}</div>
+                      <div>
+                        Next auto-refresh in {formatTime(timeUntilRefresh)}
+                      </div>
+                    </div>
+                  </div>
+                  <svg
+                    className='h-4 w-4 cursor-help text-gray-400'
+                    fill='none'
+                    stroke='currentColor'
+                    viewBox='0 0 24 24'
+                  >
+                    <path
+                      strokeLinecap='round'
+                      strokeLinejoin='round'
+                      strokeWidth={2}
+                      d='M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z'
+                    />
+                  </svg>
                 </div>
-              ))}
+              </div>
             </div>
-          </div>
-        </div>
+
+            <div className='mt-8 space-y-4'>
+              <h2 className='text-xl font-semibold'>Controls</h2>
+              <div className='flex gap-4'>
+                <button
+                  onClick={() => void handlePlayback('play')}
+                  disabled={isLoading || !isReady}
+                  className='text-white flex-1 rounded-lg bg-green-600 px-4 py-2 font-medium transition-colors hover:bg-green-700 disabled:cursor-not-allowed disabled:opacity-50'
+                >
+                  {isLoading ? 'Loading...' : 'Play'}
+                </button>
+                <button
+                  onClick={() => void handlePlayback('skip')}
+                  disabled={isLoading || !isReady}
+                  className='text-white flex-1 rounded-lg bg-blue-600 px-4 py-2 font-medium transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50'
+                >
+                  {isLoading ? 'Loading...' : 'Skip'}
+                </button>
+                <button
+                  onClick={() => void handleRefresh()}
+                  disabled={isLoading || !isReady}
+                  className='text-white flex-1 rounded-lg bg-purple-600 px-4 py-2 font-medium transition-colors hover:bg-purple-700 disabled:cursor-not-allowed disabled:opacity-50'
+                >
+                  {isLoading ? 'Loading...' : 'Refresh Playlist'}
+                </button>
+                <button
+                  onClick={() => void handleTokenRefresh()}
+                  disabled={isLoading || !isReady}
+                  className='text-white flex-1 rounded-lg bg-orange-600 px-4 py-2 font-medium transition-colors hover:bg-orange-700 disabled:cursor-not-allowed disabled:opacity-50'
+                >
+                  {isLoading ? 'Loading...' : 'Refresh Token'}
+                </button>
+              </div>
+              <div className='text-center text-sm text-gray-400'>
+                <div className='flex flex-col items-center gap-2'>
+                  <span>Uptime: {formatTime(uptime)}</span>
+                </div>
+              </div>
+              <div className='mt-4'>
+                <h3 className='mb-2 text-lg font-semibold'>Console Logs</h3>
+                <div className='max-h-48 overflow-y-auto rounded-lg bg-gray-100 p-4'>
+                  {consoleLogs.map((log, index) => (
+                    <div
+                      key={`${log.timestamp}-${index}`}
+                      className={`text-sm ${
+                        log.level === 'ERROR'
+                          ? 'text-red-600'
+                          : log.level === 'INFO'
+                            ? 'text-green-600'
+                            : 'text-gray-800'
+                      }`}
+                    >
+                      {new Date(log.timestamp).toLocaleString()} -{' '}
+                      {log.context ? `[${log.context}] ` : ''}
+                      {log.message}
+                      {log.error && (
+                        <pre className='mt-1 rounded bg-gray-200 p-1 text-xs'>
+                          {log.error.message}
+                        </pre>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </TabsContent>
+
+          <TabsContent value='track-suggestions'>
+            <div className='space-y-6'>
+              <TrackSuggestionsTab
+                onStateChange={handleTrackSuggestionsStateChange}
+              />
+              <div className='flex items-center justify-end space-x-4'>
+                {refreshError && (
+                  <div className='text-sm text-red-500'>{refreshError}</div>
+                )}
+                <button
+                  onClick={() => void handleTrackSuggestionsRefresh()}
+                  disabled={isRefreshingSuggestions}
+                  className='bg-primary text-primary-foreground hover:bg-primary/90 focus:ring-primary inline-flex items-center justify-center rounded-md px-4 py-2 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50'
+                >
+                  {isRefreshingSuggestions ? 'Refreshing...' : 'Refresh Now'}
+                </button>
+              </div>
+            </div>
+          </TabsContent>
+        </Tabs>
       </div>
     </div>
   )

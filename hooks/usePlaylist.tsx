@@ -9,16 +9,37 @@ import { filterUpcomingTracks } from '@/lib/utils'
 import useSWR from 'swr'
 import { sendApiRequest } from '@/shared/api'
 import { handleOperationError, AppError } from '@/shared/utils/errorHandling'
+import { Genre } from '@/services/trackSuggestion'
+
+interface SpotifyPlaylistObjectFull {
+  tracks: {
+    items: TrackItem[]
+  }
+}
+
+interface CurrentlyPlayingResponse {
+  item: {
+    id: string
+  }
+}
+
+interface TrackSuggestionsState {
+  genres: Genre[]
+  yearRange: [number, number]
+  popularity: number
+  allowExplicit: boolean
+  maxSongLength: number
+  songsBetweenRepeats: number
+}
 
 const fetcher = async (playlistId: string) => {
-  if (!playlistId) return null
-
   return handleOperationError(
     async () => {
-      const result = await sendApiRequest<SpotifyPlaylistItem>({
-        path: `playlists/${playlistId}`
+      const response = await sendApiRequest<SpotifyPlaylistObjectFull>({
+        path: `playlists/${playlistId}`,
+        method: 'GET'
       })
-      return result
+      return response
     },
     'PlaylistFetcher',
     (error) => {
@@ -30,10 +51,11 @@ const fetcher = async (playlistId: string) => {
 const currentlyPlayingFetcher = async () => {
   return handleOperationError(
     async () => {
-      const result = await sendApiRequest<SpotifyPlaybackState>({
-        path: 'me/player/currently-playing'
+      const response = await sendApiRequest<CurrentlyPlayingResponse>({
+        path: 'me/player/currently-playing',
+        method: 'GET'
       })
-      return result
+      return response
     },
     'CurrentlyPlayingFetcher',
     (error) => {
@@ -42,27 +64,29 @@ const currentlyPlayingFetcher = async () => {
   )
 }
 
-export const usePlaylist = (playlistId: string | null) => {
+export const usePlaylist = (
+  playlistId: string,
+  trackSuggestionsState?: TrackSuggestionsState
+) => {
   const {
     data: playlist,
-    error,
+    error: playlistError,
     mutate: refreshPlaylist
   } = useSWR(
-    playlistId ? `playlist-${playlistId}` : null,
-    () => fetcher(playlistId ?? ''),
+    playlistId ? ['playlist', playlistId] : null,
+    () => fetcher(playlistId),
     {
-      refreshInterval: 10000, // Refresh every 10 seconds
+      refreshInterval: 10000,
       revalidateOnFocus: true,
       revalidateOnReconnect: true
     }
   )
 
-  // Get currently playing track
-  const { data: playbackState } = useSWR(
-    'currently-playing-state',
+  const { data: currentlyPlaying, error: currentlyPlayingError } = useSWR(
+    'currently-playing',
     currentlyPlayingFetcher,
     {
-      refreshInterval: 10000, // Refresh every 10 seconds
+      refreshInterval: 1000,
       revalidateOnFocus: true,
       revalidateOnReconnect: true
     }
@@ -70,31 +94,39 @@ export const usePlaylist = (playlistId: string | null) => {
 
   // Filter upcoming tracks
   const upcomingTracks = useMemo(() => {
-    if (!playlist || !playbackState?.item?.id) return []
-    return filterUpcomingTracks(playlist.tracks.items, playbackState.item.id)
-  }, [playlist, playbackState?.item?.id])
+    if (!playlist || !currentlyPlaying?.item?.id) return []
+    return filterUpcomingTracks(playlist.tracks.items, currentlyPlaying.item.id)
+  }, [playlist, currentlyPlaying?.item?.id])
 
-  const handleRefresh = useCallback(async () => {
+  const handleRefresh = async (
+    trackSuggestionsState?: TrackSuggestionsState
+  ) => {
     try {
+      if (trackSuggestionsState) {
+        console.log(
+          '[PARAM CHAIN] Using trackSuggestionsState in handleRefresh (usePlaylist.tsx):',
+          trackSuggestionsState
+        )
+        await sendApiRequest({
+          path: 'track-suggestions/refresh',
+          method: 'POST',
+          body: trackSuggestionsState
+        })
+      }
       await refreshPlaylist()
     } catch (error) {
       console.error(
         `[Playlist] Error refreshing playlist ${playlistId}:`,
         error
       )
-      throw error
     }
-  }, [refreshPlaylist, playlistId])
+  }
 
   return {
     playlist,
     upcomingTracks,
-    isLoading: !error && !playlist,
-    error: error
-      ? error instanceof AppError
-        ? error
-        : new AppError(ERROR_MESSAGES.FAILED_TO_LOAD, error, 'usePlaylist')
-      : null,
+    currentlyPlaying,
+    error: playlistError || currentlyPlayingError,
     refreshPlaylist: handleRefresh
   }
 }

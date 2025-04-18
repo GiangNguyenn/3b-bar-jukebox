@@ -62,7 +62,9 @@ const useSearchTracks = () => {
 
       return response ?? []
     } catch (error) {
-      // Error is already handled by handleOperationError
+      setError(
+        new AppError(ERROR_MESSAGES.FAILED_TO_LOAD, error, 'SearchTracks')
+      )
       return []
     } finally {
       setIsLoading(false)

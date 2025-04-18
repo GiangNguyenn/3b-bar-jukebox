@@ -9,12 +9,18 @@ export async function GET(): Promise<
   NextResponse<SpotifyPlaybackState | { error: string }>
 > {
   try {
-    const playbackState = await sendApiRequest<SpotifyPlaybackState>({
-      path: 'me/player',
-      method: 'GET'
+    const response = await sendApiRequest<SpotifyPlaybackState>({
+      path: '/me/player'
     })
 
-    return NextResponse.json(playbackState)
+    if (!response) {
+      return NextResponse.json(
+        { error: 'No playback state available' },
+        { status: 404 }
+      )
+    }
+
+    return NextResponse.json(response)
   } catch (error) {
     console.error('Error fetching playback state:', error)
     return NextResponse.json(

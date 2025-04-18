@@ -22,6 +22,7 @@ const belgrano = Belgrano({
 })
 
 export const metadata: Metadata = {
+  metadataBase: new URL('https://3bsaigonjukebox.com'),
   title: '3B SAIGON JUKEBOX',
   description: 'A boutique beer & music experience',
   keywords:
