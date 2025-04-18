@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { HealthStatus } from '@/shared/types/health'
 import { SpotifyPlaybackState } from '@/shared/types/spotify'
 import { StatusGrid } from './components/status-grid'
@@ -18,6 +18,26 @@ export function DashboardTab({
 }: DashboardTabProps): JSX.Element {
   const [error] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(false)
+  const [timeLeft, setTimeLeft] = useState<number>(120) // 2 minutes in seconds
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setTimeLeft((prev) => {
+        if (prev <= 0) {
+          return 120 // Reset to 2 minutes
+        }
+        return prev - 1
+      })
+    }, 1000)
+
+    return () => clearInterval(interval)
+  }, [])
+
+  const formatTime = (seconds: number): string => {
+    const minutes = Math.floor(seconds / 60)
+    const remainingSeconds = seconds % 60
+    return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`
+  }
 
   const handlePlayPause = (): void => {
     setIsLoading(true)
@@ -72,6 +92,15 @@ export function DashboardTab({
           onSkipPrevious={handleSkipPrevious}
         />
       </ErrorBoundary>
+
+      <div className='rounded-lg border border-gray-800 bg-gray-900/50 p-4'>
+        <h3 className='mb-2 text-sm font-medium text-gray-400'>
+          Next Auto-Refresh
+        </h3>
+        <p className='text-2xl font-semibold text-gray-300'>
+          {timeLeft > 0 ? formatTime(timeLeft) : 'Refreshing...'}
+        </p>
+      </div>
 
       {error && (
         <div className='rounded-lg border border-destructive bg-destructive/10 p-4'>

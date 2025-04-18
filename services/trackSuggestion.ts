@@ -38,14 +38,15 @@ export function selectRandomTrack(
   tracks: TrackDetails[],
   excludedIds: string[],
   minPopularity: number,
-  maxSongLength: number,
+  maxSongLength: number, // maxSongLength is in minutes
   allowExplicit: boolean
 ): TrackDetails | null {
   const candidates = tracks.filter((track) => {
     const isExcluded = excludedIds.includes(track.id)
     const meetsPopularity = track.popularity >= minPopularity
     const isPlayable = track.is_playable === true
-    const meetsLength = track.duration_ms <= maxSongLength * 1000
+    const maxDurationMs = maxSongLength * 60 * 1000 // Convert minutes to milliseconds
+    const meetsLength = track.duration_ms <= maxDurationMs
     const meetsExplicit = allowExplicit || !track.explicit
 
     if (!isPlayable) {
@@ -61,7 +62,7 @@ export function selectRandomTrack(
     }
     if (!meetsLength) {
       console.log(
-        `[TrackSuggestion] Track ${track.name} duration ${track.duration_ms} > ${maxSongLength * 1000}`
+        `[TrackSuggestion] Track ${track.name} duration ${Math.floor(track.duration_ms / 1000 / 60)}m ${Math.floor((track.duration_ms / 1000) % 60)}s > ${maxSongLength} minutes`
       )
     }
     if (!meetsExplicit) {
@@ -167,7 +168,7 @@ export async function findSuggestedTrack(
     yearRange: [number, number]
     popularity: number
     allowExplicit: boolean
-    maxSongLength: number
+    maxSongLength: number // maxSongLength is in minutes
     songsBetweenRepeats: number
   }
 ): Promise<TrackSearchResult> {
@@ -208,7 +209,7 @@ export async function findSuggestedTrack(
   const yearRange = params?.yearRange ?? [1950, new Date().getFullYear()]
   const minPopularity = params?.popularity ?? MIN_TRACK_POPULARITY
   const allowExplicit = params?.allowExplicit ?? false
-  const maxSongLength = params?.maxSongLength ?? 300
+  const maxSongLength = params?.maxSongLength ?? 3 // Default to 3 minutes
 
   console.log('[TrackSuggestion] Starting track search with params:', {
     genres,

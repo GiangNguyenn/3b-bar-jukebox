@@ -51,7 +51,7 @@ const getInitialState = (): TrackSuggestionsState => {
       yearRange: [1950, new Date().getFullYear()],
       popularity: 50,
       allowExplicit: false,
-      maxSongLength: 300,
+      maxSongLength: 3,
       songsBetweenRepeats: 5
     }
   }
@@ -73,7 +73,8 @@ const getInitialState = (): TrackSuggestionsState => {
 
       return {
         ...parsed,
-        genres: validGenres
+        genres: validGenres,
+        maxSongLength: Math.max(3, parsed.maxSongLength ?? 3)
       }
     } catch (error) {
       console.error(
@@ -92,7 +93,7 @@ const getInitialState = (): TrackSuggestionsState => {
     yearRange: [1950, new Date().getFullYear()],
     popularity: 50,
     allowExplicit: false,
-    maxSongLength: 300,
+    maxSongLength: 3,
     songsBetweenRepeats: 5
   }
 }

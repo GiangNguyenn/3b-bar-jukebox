@@ -6,17 +6,28 @@ export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 export const revalidate = 0
 
-// Set a timeout of 25 seconds (Vercel's default timeout is 30s)
-const TIMEOUT_MS = 25000
+// Set a timeout of 60 seconds (Vercel's default timeout is 30s)
+const TIMEOUT_MS = 60000
 
 const refreshRequestSchema = z.object({
-  genres: z.array(z.string()),
-  yearRangeStart: z.number().min(1900),
-  yearRangeEnd: z.number().max(new Date().getFullYear()),
-  popularity: z.number().min(0).max(100),
+  genres: z.array(z.string()).min(1, 'At least one genre is required'),
+  yearRange: z.tuple([
+    z.number().min(1900, 'Start year must be at least 1900'),
+    z.number().max(new Date().getFullYear(), 'End year cannot be in the future')
+  ]),
+  popularity: z
+    .number()
+    .min(0, 'Popularity must be at least 0')
+    .max(100, 'Popularity cannot exceed 100'),
   allowExplicit: z.boolean(),
-  maxSongLength: z.number().min(30).max(600),
-  songsBetweenRepeats: z.number().min(1).max(50)
+  maxSongLength: z
+    .number()
+    .min(3, 'Maximum song length must be at least 3 minutes')
+    .max(20, 'Maximum song length cannot exceed 20 minutes'),
+  songsBetweenRepeats: z
+    .number()
+    .min(2, 'Songs between repeats must be at least 2')
+    .max(50, 'Songs between repeats cannot exceed 50')
 })
 
 interface RefreshResponse {
@@ -40,14 +51,40 @@ export async function POST(
 
   try {
     const body = (await request.json()) as unknown
+    console.log(
+      '[Refresh Site] Raw request body:',
+      JSON.stringify(body, null, 2)
+    )
+
     const validationResult = refreshRequestSchema.safeParse(body)
+    console.log('[Refresh Site] Validation result:', validationResult)
 
     if (!validationResult.success) {
+      const formattedErrors = validationResult.error.format()
+      console.error(
+        '[Refresh Site] Validation errors:',
+        JSON.stringify(formattedErrors, null, 2)
+      )
+
+      // Extract specific error messages
+      const errorMessages = Object.entries(formattedErrors)
+        .filter(([key]) => key !== '_errors')
+        .map(([key, value]) => {
+          if (Array.isArray(value)) {
+            return `${key}: ${value.join(', ')}`
+          }
+          if (value && typeof value === 'object' && '_errors' in value) {
+            return `${key}: ${value._errors.join(', ')}`
+          }
+          return `${key}: Invalid value`
+        })
+        .join('; ')
+
       return NextResponse.json(
         {
           success: false,
           message: 'Invalid request parameters',
-          details: validationResult.error.format()
+          details: errorMessages
         },
         { status: 400 }
       )
@@ -55,17 +92,25 @@ export async function POST(
 
     const {
       genres,
-      yearRangeStart,
-      yearRangeEnd,
+      yearRange,
       popularity,
       allowExplicit,
       maxSongLength,
       songsBetweenRepeats
     } = validationResult.data
 
+    console.log('[Refresh Site] Validated data:', {
+      genres,
+      yearRange,
+      popularity,
+      allowExplicit,
+      maxSongLength,
+      songsBetweenRepeats
+    })
+
     const trackSuggestionsState = {
       genres,
-      yearRange: [yearRangeStart, yearRangeEnd] as [number, number],
+      yearRange,
       popularity,
       allowExplicit,
       maxSongLength,
