@@ -6,6 +6,8 @@ import { SpotifyPlaybackState } from '@/shared/types/spotify'
 import { StatusGrid } from './components/status-grid'
 import { PlaybackControls } from './components/playback-controls'
 import { ErrorBoundary } from './components/error-boundary'
+import { useSpotifyPlayer } from '@/hooks/useSpotifyPlayer'
+import { useFixedPlaylist } from '@/hooks/useFixedPlaylist'
 
 interface DashboardTabProps {
   healthStatus: HealthStatus
@@ -19,6 +21,8 @@ export function DashboardTab({
   const [error] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(false)
   const [timeLeft, setTimeLeft] = useState<number>(120) // 2 minutes in seconds
+  const isPlayerReady = useSpotifyPlayer((state) => state.isReady)
+  const { isInitialFetchComplete } = useFixedPlaylist()
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -78,8 +82,8 @@ export function DashboardTab({
         <StatusGrid
           healthStatus={healthStatus}
           playbackState={playbackInfo}
-          isReady={!isLoading}
-          fixedPlaylistIsInitialFetchComplete={false}
+          isReady={isPlayerReady && !isLoading}
+          fixedPlaylistIsInitialFetchComplete={isInitialFetchComplete}
         />
       </ErrorBoundary>
 

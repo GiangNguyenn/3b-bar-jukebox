@@ -20,6 +20,8 @@ interface ConsoleLogsState {
   clearLogs: () => void
 }
 
+const MAX_LOGS = 10
+
 export function useConsoleLogs(): ConsoleLogsState {
   const [logs, setLogs] = useState<LogEntry[]>([])
 
@@ -71,10 +73,11 @@ export function useConsoleLogs(): ConsoleLogsState {
         error = lastArg
       }
 
-      setLogs((prev) => [
-        ...prev,
-        { timestamp, level, message, context, error }
-      ])
+      setLogs((prev) => {
+        const newLog = { timestamp, level, message, context, error }
+        const updatedLogs = [...prev, newLog]
+        return updatedLogs.slice(-MAX_LOGS)
+      })
     }
 
     // Override console methods
@@ -118,10 +121,11 @@ export function useConsoleLogs(): ConsoleLogsState {
       error?: Error
     ) => {
       const timestamp = new Date().toISOString()
-      setLogs((prev) => [
-        ...prev,
-        { timestamp, level, message, context, error }
-      ])
+      setLogs((prev) => {
+        const newLog = { timestamp, level, message, context, error }
+        const updatedLogs = [...prev, newLog]
+        return updatedLogs.slice(-MAX_LOGS)
+      })
     },
     clearLogs
   }
