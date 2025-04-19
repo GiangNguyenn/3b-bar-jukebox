@@ -65,17 +65,19 @@ const SearchInput: FC<SearchInputProps> = ({
       }
     }
 
-    void addTrack(trackItem, () => {
-      // Only clear search results and close dropdown after successful addition
-      setSearchResults([])
-      setSearchQuery('')
-      setIsOpen(false)
-      // Call the callback instead of dispatching an event
-      onTrackAdded?.()
-    }).catch((error) => {
-      console.error('Failed to add track:', error)
-      // Keep search results visible if there was an error
-    })
+    void addTrack(trackItem)
+      .then(() => {
+        // Clear search results and close dropdown after successful addition
+        setSearchResults([])
+        setSearchQuery('')
+        setIsOpen(false)
+        // Call the callback after the track is successfully added
+        onTrackAdded?.()
+      })
+      .catch((error) => {
+        console.error('Failed to add track:', error)
+        // Keep search results visible if there was an error
+      })
   }
 
   return (

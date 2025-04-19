@@ -39,14 +39,15 @@ const Playlist: React.FC<IPlaylistProps> = memo(({ tracks }): JSX.Element => {
     [currentTrackId, tracks.length]
   )
 
-  // Check for playlist changes every 30 seconds
+  // Check for playlist changes every 5 seconds to catch any external changes
+  // Note: Direct playlist updates (like adding tracks) will trigger an immediate refresh
   useEffect((): (() => void) => {
     const interval = setInterval((): void => {
       console.log('[Playlist] Checking for playlist changes')
       void refetchPlaylist().catch((error) => {
         console.error('[Playlist] Error refreshing playlist:', error)
       })
-    }, 30000)
+    }, 5000) // Reduced from 30000 to 5000 for more responsive updates
 
     return (): void => clearInterval(interval)
   }, [refetchPlaylist])
