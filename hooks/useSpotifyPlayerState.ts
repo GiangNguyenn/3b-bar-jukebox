@@ -137,15 +137,13 @@ export function useSpotifyPlayerState(
   }, [])
 
   const initializePlayer = useCallback(async (): Promise<void> => {
-    // If already initialized, return
+    // If already initialized, return immediately
     if (isInitialized) {
-      console.log('[SpotifyPlayer] Already initialized')
       return
     }
 
     // If already initializing, wait for the promise to resolve
     if (isInitializing && initializationPromise) {
-      console.log('[SpotifyPlayer] Waiting for existing initialization')
       await initializationPromise
       return
     }
@@ -168,21 +166,12 @@ export function useSpotifyPlayerState(
             isLocalApi: true
           })
 
-          console.log('[SpotifyPlayer] Token info received:', {
-            expiresIn: tokenInfo.expires_in,
-            timestamp: new Date().toISOString()
-          })
-
           currentAccessToken = tokenInfo.access_token
 
           // Calculate token refresh delay (refresh 5 minutes before expiry)
           const now = Date.now()
           const refreshDelay = (tokenInfo.expires_in - 300) * 1000 // 5 minutes before expiry
 
-          console.log(
-            '[Token] Setting refresh timer for',
-            new Date(now + refreshDelay)
-          )
           tokenRefreshInterval.current = setTimeout(refreshToken, refreshDelay)
 
           // Wait for SDK to be ready
@@ -208,9 +197,15 @@ export function useSpotifyPlayerState(
             })
           }
 
+          // Check if we already have a player instance
+          if (playerInstance) {
+            isInitialized = true
+            return
+          }
+
           console.log('[SpotifyPlayer] Creating new player instance')
           const player = new window.Spotify.Player({
-            name: 'JM Bar Jukebox',
+            name: '3B Saigon Jukebox',
             getOAuthToken: (cb: (token: string) => void) => {
               if (currentAccessToken) {
                 cb(currentAccessToken)
@@ -220,7 +215,6 @@ export function useSpotifyPlayerState(
           })
 
           // Add a delay before connecting to ensure SDK is fully loaded
-          console.log('[SpotifyPlayer] Waiting for SDK to fully load')
           await new Promise((resolve) => setTimeout(resolve, 1000))
 
           console.log('[SpotifyPlayer] Attempting to connect player')
@@ -235,7 +229,6 @@ export function useSpotifyPlayerState(
 
           // Set up player event listeners
           player.addListener('ready', ({ device_id }) => {
-            console.log('[SpotifyPlayer] Ready with device ID:', device_id)
             setDeviceId(device_id)
             setIsReady(true)
           })
@@ -404,16 +397,8 @@ export function useSpotifyPlayerState(
         })
 
         if (state.is_playing && state.context?.uri) {
-          console.log(
-            '[SpotifyPlayer] Setting up playlist change status handler'
-          )
-
           const hasChanges = await new Promise<boolean>((resolve) => {
             const handler = (e: CustomEvent) => {
-              console.log(
-                '[SpotifyPlayer] Received playlistChangeStatus response:',
-                e.detail
-              )
               window.removeEventListener(
                 'playlistChangeStatus',
                 handler as EventListener
@@ -425,17 +410,11 @@ export function useSpotifyPlayerState(
               handler as EventListener
             )
 
-            console.log(
-              '[SpotifyPlayer] Dispatching getPlaylistChangeStatus event'
-            )
             const statusEvent = new CustomEvent('getPlaylistChangeStatus')
             window.dispatchEvent(statusEvent)
           })
 
           if (hasChanges) {
-            console.log(
-              '[SpotifyPlayer] Reinitializing playback with updated playlist'
-            )
             try {
               const currentTrackUri = state.item?.uri
               const currentPosition = state.progress_ms
@@ -462,8 +441,6 @@ export function useSpotifyPlayerState(
                   method: 'PUT'
                 })
               }
-
-              console.log('[SpotifyPlayer] Playback reinitialized successfully')
             } catch (error) {
               console.error(
                 '[SpotifyPlayer] Error reinitializing playback:',
