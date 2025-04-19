@@ -81,7 +81,7 @@ export async function POST(
   })
 
   try {
-    const body = (await request.json()) as unknown
+    const body = (await request.json()) as RefreshRequestType
     console.log(
       '[Refresh Site] Raw request body:',
       JSON.stringify(body, null, 2)
