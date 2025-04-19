@@ -148,7 +148,11 @@ export async function POST(
 
     const result = await Promise.race([refreshPromise, timeoutPromise])
 
-    return NextResponse.json(result)
+    return NextResponse.json({
+      success: result.success,
+      message: result.message,
+      playerStateRefresh: result.playerStateRefresh ?? false
+    })
   } catch (error) {
     console.error('[Refresh Site] Error:', error)
 
@@ -166,7 +170,8 @@ export async function POST(
     return NextResponse.json(
       {
         success: false,
-        message: 'Failed to refresh site'
+        message:
+          error instanceof Error ? error.message : 'Failed to refresh site'
       },
       { status: 500 }
     )
