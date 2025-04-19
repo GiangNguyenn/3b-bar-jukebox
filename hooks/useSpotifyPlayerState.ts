@@ -389,78 +389,91 @@ export function useSpotifyPlayerState(
         method: 'GET'
       })
 
-      if (state?.device?.id === currentDeviceId) {
-        console.log('[SpotifyPlayer] Device is active, updating state:', {
-          isPlaying: state.is_playing,
-          currentTrack: state.item?.name,
-          progress: state.progress_ms
-        })
+      if (!state?.device?.id) {
+        console.log('[SpotifyPlayer] No active device found')
+        await reconnectPlayer()
+        return
+      }
 
-        if (state.is_playing && state.context?.uri) {
-          const hasChanges = await new Promise<boolean>((resolve) => {
-            const handler = (e: CustomEvent) => {
-              window.removeEventListener(
-                'playlistChangeStatus',
-                handler as EventListener
-              )
-              resolve(e.detail.hasChanges)
-            }
-            window.addEventListener(
+      if (state.device.id !== currentDeviceId) {
+        console.log('[SpotifyPlayer] Device ID changed, updating state')
+        setDeviceId(state.device.id)
+      }
+
+      if (state.is_playing && state.context?.uri) {
+        const hasChanges = await new Promise<boolean>((resolve) => {
+          const handler = (e: CustomEvent) => {
+            window.removeEventListener(
               'playlistChangeStatus',
               handler as EventListener
             )
+            resolve(e.detail.hasChanges)
+          }
+          window.addEventListener(
+            'playlistChangeStatus',
+            handler as EventListener
+          )
 
-            const statusEvent = new CustomEvent('getPlaylistChangeStatus')
-            window.dispatchEvent(statusEvent)
-          })
+          const statusEvent = new CustomEvent('getPlaylistChangeStatus')
+          window.dispatchEvent(statusEvent)
+        })
 
-          if (hasChanges) {
-            try {
-              const currentTrackUri = state.item?.uri
-              const currentPosition = state.progress_ms
-              const isPlaying = state.is_playing
+        if (hasChanges) {
+          console.log(
+            '[SpotifyPlayer] Playlist changes detected, reinitializing playback'
+          )
+          try {
+            const currentTrackUri = state.item?.uri
+            const currentPosition = state.progress_ms
+            const isPlaying = state.is_playing
 
+            // Pause playback first
+            await sendApiRequest({
+              path: 'me/player/pause',
+              method: 'PUT'
+            })
+
+            // Wait a short moment for the pause to take effect
+            await new Promise((resolve) => setTimeout(resolve, 500))
+
+            // Reinitialize playback with the current context
+            await sendApiRequest({
+              path: 'me/player/play',
+              method: 'PUT',
+              body: {
+                context_uri: state.context.uri,
+                position_ms: currentPosition,
+                offset: currentTrackUri ? { uri: currentTrackUri } : undefined
+              }
+            })
+
+            // Restore previous playback state
+            if (!isPlaying) {
+              await new Promise((resolve) => setTimeout(resolve, 500))
               await sendApiRequest({
                 path: 'me/player/pause',
                 method: 'PUT'
               })
-
-              await sendApiRequest({
-                path: 'me/player/play',
-                method: 'PUT',
-                body: {
-                  context_uri: state.context.uri,
-                  position_ms: currentPosition,
-                  offset: { uri: currentTrackUri }
-                }
-              })
-
-              if (!isPlaying) {
-                await sendApiRequest({
-                  path: 'me/player/pause',
-                  method: 'PUT'
-                })
-              }
-            } catch (error) {
-              console.error(
-                '[SpotifyPlayer] Error reinitializing playback:',
-                error
-              )
             }
+
+            console.log('[SpotifyPlayer] Playback reinitialized successfully')
+          } catch (error) {
+            console.error(
+              '[SpotifyPlayer] Error reinitializing playback:',
+              error
+            )
+            // Attempt to recover by reconnecting the player
+            await reconnectPlayer()
           }
         }
       }
-    } catch (_error) {
-      console.error('[SpotifyPlayer] Error refreshing playlist state:', _error)
-      if (
-        _error instanceof Error &&
-        'status' in _error &&
-        _error.status === 404
-      ) {
+    } catch (error) {
+      console.error('[SpotifyPlayer] Error refreshing playlist state:', error)
+      if (error instanceof Error && 'status' in error && error.status === 404) {
         await reconnectPlayer()
       }
     }
-  }, [reconnectPlayer])
+  }, [reconnectPlayer, setDeviceId])
 
   const debouncedRefreshPlaylistState = useCallback(
     debounce(async () => {
