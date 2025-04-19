@@ -9,31 +9,62 @@ export const revalidate = 0
 // Set a timeout of 60 seconds (Vercel's default timeout is 30s)
 const TIMEOUT_MS = 60000
 
-const refreshRequestSchema = z.object({
-  genres: z.array(z.string()).min(1, 'At least one genre is required'),
-  yearRange: z.tuple([
-    z.number().min(1900, 'Start year must be at least 1900'),
-    z.number().max(new Date().getFullYear(), 'End year cannot be in the future')
-  ]),
-  popularity: z
-    .number()
-    .min(0, 'Popularity must be at least 0')
-    .max(100, 'Popularity cannot exceed 100'),
-  allowExplicit: z.boolean(),
-  maxSongLength: z
-    .number()
-    .min(3, 'Maximum song length must be at least 3 minutes')
-    .max(20, 'Maximum song length cannot exceed 20 minutes'),
-  songsBetweenRepeats: z
-    .number()
-    .min(2, 'Songs between repeats must be at least 2')
-    .max(50, 'Songs between repeats cannot exceed 50')
-})
+const refreshRequestSchema = z
+  .object({
+    genres: z
+      .array(z.string().trim().min(1, 'Genre names cannot be empty'))
+      .min(1, 'At least one genre is required')
+      .transform((genres) => genres.map((g) => g.toLowerCase())), // Normalize genres
+
+    yearRange: z
+      .tuple([
+        z
+          .number()
+          .int('Start year must be an integer')
+          .min(1900, 'Start year must be at least 1900'),
+        z
+          .number()
+          .int('End year must be an integer')
+          .max(new Date().getFullYear(), 'End year cannot be in the future')
+      ])
+      .refine(([start, end]) => start <= end, {
+        message: 'Start year must be less than or equal to end year'
+      }),
+
+    popularity: z
+      .number()
+      .int('Popularity must be an integer')
+      .min(0, 'Popularity must be at least 0')
+      .max(100, 'Popularity cannot exceed 100'),
+
+    allowExplicit: z.boolean().default(false), // Provide a default value
+
+    maxSongLength: z
+      .number()
+      .int('Song length must be an integer')
+      .min(3, 'Maximum song length must be at least 3 minutes')
+      .max(20, 'Maximum song length cannot exceed 20 minutes')
+      .transform((val) => Math.floor(val)), // Ensure integer values
+
+    songsBetweenRepeats: z
+      .number()
+      .int('Songs between repeats must be an integer')
+      .min(2, 'Songs between repeats must be at least 2')
+      .max(50, 'Songs between repeats cannot exceed 50')
+      .transform((val) => Math.floor(val)) // Ensure integer values
+  })
+  .refine((data) => data.yearRange[0] <= data.yearRange[1], {
+    message: 'Start year must be before or equal to end year',
+    path: ['yearRange']
+  })
+
+type RefreshRequestType = z.infer<typeof refreshRequestSchema>
 
 interface RefreshResponse {
   success: boolean
   message?: string
   playerStateRefresh?: boolean
+  errors?: Array<{ field: string; message: string }>
 }
 
 export function GET(): NextResponse<{ message: string }> {
@@ -66,25 +97,17 @@ export async function POST(
         JSON.stringify(formattedErrors, null, 2)
       )
 
-      // Extract specific error messages
-      const errorMessages = Object.entries(formattedErrors)
-        .filter(([key]) => key !== '_errors')
-        .map(([key, value]) => {
-          if (Array.isArray(value)) {
-            return `${key}: ${value.join(', ')}`
-          }
-          if (value && typeof value === 'object' && '_errors' in value) {
-            return `${key}: ${value._errors.join(', ')}`
-          }
-          return `${key}: Invalid value`
-        })
-        .join('; ')
+      // Get the first error message for each field
+      const errorMessages = validationResult.error.issues.map((issue) => ({
+        field: issue.path.join('.'),
+        message: issue.message
+      }))
 
       return NextResponse.json(
         {
           success: false,
           message: 'Invalid request parameters',
-          details: errorMessages
+          errors: errorMessages
         },
         { status: 400 }
       )
