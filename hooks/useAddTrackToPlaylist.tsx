@@ -21,8 +21,8 @@ export const useAddTrackToPlaylist = ({
     refetchPlaylist
   })
 
-  const addTrack = async (track: TrackItem, onSuccess?: () => void) => {
-    const operation = async (track: TrackItem) => {
+  const addTrack = async (track: TrackItem): Promise<void> => {
+    const operation = async (track: TrackItem): Promise<void> => {
       // Optimistically update UI
       setPendingTracks((prev) => new Set(prev).add(track.track.uri))
 
@@ -34,7 +34,6 @@ export const useAddTrackToPlaylist = ({
             uris: [track.track.uri]
           }
         })
-        onSuccess?.()
       } catch (error) {
         console.error('[Add Track] Error adding track:', error)
         // Revert optimistic update on error
@@ -51,6 +50,7 @@ export const useAddTrackToPlaylist = ({
       await executeOperation(operation, track)
     } catch (error) {
       console.error('[Add Track] Error adding track:', error)
+      throw error // Re-throw the error to be caught by the caller
     } finally {
       // Clear pending state after operation completes
       setPendingTracks((prev) => {

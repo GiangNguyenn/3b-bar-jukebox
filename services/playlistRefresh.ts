@@ -345,6 +345,19 @@ export class PlaylistRefreshServiceImpl implements PlaylistRefreshService {
         playbackState
       })
 
+      // Resume playback at the last track's position and progress if needed
+      if (playbackState?.context?.uri && playbackState?.item?.uri) {
+        await sendApiRequest({
+          path: 'me/player/play',
+          method: 'PUT',
+          body: {
+            context_uri: playbackState.context.uri,
+            offset: { uri: playbackState.item.uri },
+            position_ms: playbackState.progress_ms ?? 0
+          }
+        })
+      }
+
       const diagnosticInfo = {
         currentTrackId,
         totalTracks: playlist.tracks.items.length,
@@ -365,7 +378,7 @@ export class PlaylistRefreshServiceImpl implements PlaylistRefreshService {
 
       if (!result.success) {
         return {
-          success: true,
+          success: false,
           message:
             result.error === 'Playlist too long'
               ? `Playlist has reached maximum length of ${MAX_PLAYLIST_LENGTH} tracks. No new tracks needed.`
@@ -383,9 +396,11 @@ export class PlaylistRefreshServiceImpl implements PlaylistRefreshService {
         message: 'Track added successfully',
         timestamp: new Date().toISOString(),
         diagnosticInfo,
-        forceRefresh: force
+        forceRefresh: force,
+        playerStateRefresh: true
       }
     } catch (error) {
+      console.error('[PlaylistRefresh] Error in refreshPlaylist:', error)
       return {
         success: false,
         message: error instanceof Error ? error.message : 'Unknown error',
