@@ -181,6 +181,19 @@ export class PlaylistRefreshServiceImpl implements PlaylistRefreshService {
       songsBetweenRepeats: number
     }
   ): Promise<{ success: boolean; error?: string; searchDetails?: unknown }> {
+    // Check if we've reached the maximum number of upcoming tracks
+    if (upcomingTracks.length >= MAX_PLAYLIST_LENGTH) {
+      console.log('[PlaylistRefresh] Playlist has reached maximum length:', {
+        currentLength: upcomingTracks.length,
+        maxLength: MAX_PLAYLIST_LENGTH,
+        timestamp: new Date().toISOString()
+      })
+      return {
+        success: false,
+        error: 'Playlist too long'
+      }
+    }
+
     const existingTrackIds = Array.from(
       new Set(allPlaylistTracks.map((track) => track.track.id))
     )
