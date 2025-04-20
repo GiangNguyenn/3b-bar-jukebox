@@ -8,6 +8,9 @@ import {
   TrackDetails
 } from '@/shared/types'
 
+const MOCK_MARKET = 'US'
+const FIXED_PLAYLIST_NAME = '3B Saigon'
+
 // Mock sendApiRequest
 jest.mock('@/shared/api', () => ({
   sendApiRequest: jest.fn().mockResolvedValue({})
@@ -22,14 +25,7 @@ jest.mock('../spotifyApi', () => ({
 
 // Mock findSuggestedTrack
 jest.mock('@/services/trackSuggestion', () => ({
-  findSuggestedTrack: jest.fn().mockResolvedValue({
-    track: {
-      id: 'suggestedTrack1',
-      uri: 'spotify:track:suggestedTrack1',
-      name: 'Suggested Track'
-    },
-    searchDetails: {}
-  })
+  findSuggestedTrack: jest.fn()
 }))
 
 describe('PlaylistRefreshService', () => {
@@ -41,19 +37,42 @@ describe('PlaylistRefreshService', () => {
     jest.clearAllMocks()
     PlaylistRefreshServiceImpl.resetInstance()
 
+    // Setup default mock response for findSuggestedTrack
+    mockFindSuggestedTrack = findSuggestedTrack as jest.Mock
+    mockFindSuggestedTrack.mockResolvedValue({
+      track: {
+        id: 'suggestedTrack1',
+        uri: 'spotify:track:suggestedTrack1',
+        name: 'Suggested Track',
+        artists: [{ name: 'Test Artist' }],
+        album: { name: 'Test Album' },
+        popularity: 80,
+        duration_ms: 180000,
+        preview_url: null
+      },
+      searchDetails: {
+        attempts: 1,
+        totalTracksFound: 1,
+        excludedTrackIds: [],
+        minPopularity: 50,
+        genresTried: ['rock'],
+        trackDetails: []
+      }
+    })
+
     mockSpotifyApi = {
       getPlaylists: jest.fn().mockResolvedValue({
         items: [
           {
             id: 'playlist1',
-            name: '3B Saigon',
+            name: FIXED_PLAYLIST_NAME,
             tracks: { items: [] }
           }
         ]
       }),
       getPlaylist: jest.fn().mockResolvedValue({
         id: 'playlist1',
-        name: '3B Saigon',
+        name: FIXED_PLAYLIST_NAME,
         tracks: { items: [] }
       }),
       getCurrentlyPlaying: jest.fn().mockResolvedValue({
@@ -61,13 +80,16 @@ describe('PlaylistRefreshService', () => {
       }),
       addTrackToPlaylist: jest.fn().mockResolvedValue(undefined),
       getPlaybackState: jest.fn().mockResolvedValue({
-        is_playing: true
+        is_playing: true,
+        context: { uri: 'spotify:playlist:playlist1' },
+        item: { uri: 'spotify:track:track1' },
+        progress_ms: 0
       })
     }
     ;(SpotifyApiService.getInstance as jest.Mock).mockReturnValue(
       mockSpotifyApi
     )
-    mockFindSuggestedTrack = findSuggestedTrack as jest.Mock
+    service = PlaylistRefreshServiceImpl.getInstance()
   })
 
   afterEach(() => {
@@ -76,60 +98,57 @@ describe('PlaylistRefreshService', () => {
   })
 
   it('should successfully refresh playlist', async () => {
-    service = PlaylistRefreshServiceImpl.getInstance()
     const result = await service.refreshPlaylist()
     expect(result.success).toBe(true)
     expect(result.message).toBe('Track added successfully')
   })
 
   it('should exclude current track and all playlist tracks from suggestions', async () => {
-    const mockCurrentTrack = {
-      item: { id: 'currentTrack' },
-      is_playing: true
-    } as SpotifyPlaybackState
     const mockPlaylist = {
-      name: '3B Saigon',
+      id: 'playlist1',
+      name: FIXED_PLAYLIST_NAME,
       tracks: {
         items: [{ track: { id: 'track1' } }, { track: { id: 'track2' } }]
       }
     } as SpotifyPlaylistItem
-    const mockSuggestedTrack = {
-      added_at: '2024-04-06T00:00:00Z',
-      added_by: {
-        external_urls: { spotify: 'https://spotify.com' },
-        href: 'https://api.spotify.com/v1/users/user1',
-        id: 'user1',
-        type: 'user',
-        uri: 'spotify:user:user1'
-      },
-      is_local: false,
-      track: {
-        id: 'suggestedTrack',
-        uri: 'spotify:track:suggestedTrack'
-      } as TrackDetails
-    } as TrackItem
 
-    // Mock the service methods
     mockSpotifyApi.getPlaylists.mockResolvedValue({ items: [mockPlaylist] })
     mockSpotifyApi.getPlaylist.mockResolvedValue(mockPlaylist)
-    mockSpotifyApi.getCurrentlyPlaying.mockResolvedValue(mockCurrentTrack)
-    mockSpotifyApi.getPlaybackState.mockResolvedValue(mockCurrentTrack)
-    mockSpotifyApi.addTrackToPlaylist.mockResolvedValue(undefined)
-    mockFindSuggestedTrack.mockResolvedValue({
-      track: mockSuggestedTrack.track
+    mockSpotifyApi.getCurrentlyPlaying.mockResolvedValue({
+      item: { id: 'currentTrack' }
     })
 
-    // Create service instance
-    const service = PlaylistRefreshServiceImpl.getInstance()
+    // Mock findSuggestedTrack to return a valid track
+    mockFindSuggestedTrack.mockResolvedValueOnce({
+      track: {
+        id: 'suggestedTrack1',
+        uri: 'spotify:track:suggestedTrack1',
+        name: 'Suggested Track',
+        artists: [{ name: 'Test Artist' }],
+        album: { name: 'Test Album' },
+        popularity: 80,
+        duration_ms: 180000,
+        preview_url: null
+      },
+      searchDetails: {
+        attempts: 1,
+        totalTracksFound: 1,
+        excludedTrackIds: ['track1', 'track2', 'currentTrack'],
+        minPopularity: 50,
+        genresTried: ['rock'],
+        trackDetails: []
+      }
+    })
 
-    // Call the method
     await service.refreshPlaylist()
 
-    // Verify that findSuggestedTrack was called with all playlist track IDs and current track ID
-    expect(mockFindSuggestedTrack).toHaveBeenCalledWith(
-      ['track1', 'track2'],
-      'currentTrack'
-    )
+    // Verify that findSuggestedTrack was called with the correct parameters
+    const findSuggestedTrackCalls = mockFindSuggestedTrack.mock.calls
+    expect(findSuggestedTrackCalls.length).toBe(1)
+    expect(findSuggestedTrackCalls[0][0]).toEqual(['track1', 'track2'])
+    expect(findSuggestedTrackCalls[0][1]).toBe('currentTrack')
+    expect(findSuggestedTrackCalls[0][2]).toBe(MOCK_MARKET)
+    expect(findSuggestedTrackCalls[0][3]).toEqual(expect.any(Object))
   })
 
   it('should get upcoming tracks', () => {
@@ -166,5 +185,34 @@ describe('PlaylistRefreshService', () => {
     })
 
     expect(result).toBe(true)
+  })
+
+  it('should not add track when playlist has reached maximum length', async () => {
+    const playlist: SpotifyPlaylistItem = {
+      id: 'playlist1',
+      name: FIXED_PLAYLIST_NAME,
+      tracks: {
+        items: [
+          { track: { id: 'track1' } },
+          { track: { id: 'track2' } },
+          { track: { id: 'track3' } },
+          { track: { id: 'track4' } },
+          { track: { id: 'track5' } }
+        ]
+      }
+    } as SpotifyPlaylistItem
+
+    mockSpotifyApi.getPlaylists.mockResolvedValue({ items: [playlist] })
+    mockSpotifyApi.getPlaylist.mockResolvedValue(playlist)
+    mockSpotifyApi.getCurrentlyPlaying.mockResolvedValue({
+      item: { id: 'track1' }
+    })
+
+    const result = await service.refreshPlaylist()
+
+    expect(result.success).toBe(false)
+    expect(result.message).toBe(
+      'Playlist has reached maximum length of 2 tracks. No new tracks needed.'
+    )
   })
 })
