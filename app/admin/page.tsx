@@ -230,8 +230,8 @@ export default function AdminPage(): JSX.Element {
   const updateTokenStatus = useCallback((): void => {
     const now = Date.now()
     const minutesUntilExpiry = (tokenInfo.expiryTime - now) / (60 * 1000)
-    
-    setHealthStatus(prev => ({
+
+    setHealthStatus((prev) => ({
       ...prev,
       token: minutesUntilExpiry > 0 ? 'valid' : 'expired',
       tokenExpiringSoon: minutesUntilExpiry <= 15
@@ -240,32 +240,35 @@ export default function AdminPage(): JSX.Element {
 
   useEffect(() => {
     if (tokenInfo.expiryTime === 0) {
-      refreshToken()
+      void refreshToken()
     } else {
       updateTokenStatus()
     }
-    
+
     const interval = setInterval(updateTokenStatus, 60000)
-    
+
     const handleTokenUpdate = (event: CustomEvent<TokenInfo>): void => {
       const newTokenInfo = event.detail
       const now = Date.now()
       const minutesUntilExpiry = (newTokenInfo.expiryTime - now) / (60 * 1000)
-      
-      setHealthStatus(prev => ({
+
+      setHealthStatus((prev) => ({
         ...prev,
         token: minutesUntilExpiry > 0 ? 'valid' : 'expired',
         tokenExpiringSoon: minutesUntilExpiry <= 15
       }))
-      
+
       setTokenInfo(newTokenInfo)
     }
-    
+
     window.addEventListener('tokenUpdate', handleTokenUpdate as EventListener)
-    
+
     return () => {
       clearInterval(interval)
-      window.removeEventListener('tokenUpdate', handleTokenUpdate as EventListener)
+      window.removeEventListener(
+        'tokenUpdate',
+        handleTokenUpdate as EventListener
+      )
     }
   }, [updateTokenStatus, refreshToken, tokenInfo.expiryTime])
 
@@ -276,7 +279,7 @@ export default function AdminPage(): JSX.Element {
       addLog('INFO', 'Token refreshed successfully')
     } catch (error) {
       console.error('[Token] Refresh failed:', error)
-      setHealthStatus(prev => ({
+      setHealthStatus((prev) => ({
         ...prev,
         token: 'error'
       }))
