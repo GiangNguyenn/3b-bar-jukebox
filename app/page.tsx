@@ -89,7 +89,11 @@ const Home = memo((): JSX.Element => {
   } = useFixedPlaylist()
   const { playlist, refreshPlaylist } = usePlaylist(fixedPlaylistId ?? '')
   const [searchQuery, setSearchQuery] = useState('')
-  const { searchTracks, tracks: searchResults, isLoading: isSearching } = useSearchTracks()
+  const {
+    searchTracks,
+    tracks: searchResults,
+    isLoading: isSearching
+  } = useSearchTracks()
 
   useEffect(() => {
     if (!fixedPlaylistId && isInitialFetchComplete) {

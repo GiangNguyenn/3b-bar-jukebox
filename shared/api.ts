@@ -60,7 +60,9 @@ async function processRequestQueue() {
     if (rateLimitState.isRateLimited) {
       const now = Date.now()
       if (now < rateLimitState.resetTime) {
-        await new Promise(resolve => setTimeout(resolve, rateLimitState.resetTime - now))
+        await new Promise((resolve) =>
+          setTimeout(resolve, rateLimitState.resetTime - now)
+        )
       }
       rateLimitState.isRateLimited = false
     }
@@ -145,20 +147,28 @@ export const sendApiRequest = async <T>({
 
         // Handle rate limiting
         if (response.status === 429) {
-          const retryAfter = parseInt(response.headers.get('Retry-After') || '0', 10)
+          const retryAfter = parseInt(
+            response.headers.get('Retry-After') || '0',
+            10
+          )
           rateLimitState.isRateLimited = true
-          rateLimitState.resetTime = Date.now() + (retryAfter * 1000)
-          
-          const maxRetries = retryConfig?.maxRetries ?? DEFAULT_RETRY_CONFIG.maxRetries
+          rateLimitState.resetTime = Date.now() + retryAfter * 1000
+
+          const maxRetries =
+            retryConfig?.maxRetries ?? DEFAULT_RETRY_CONFIG.maxRetries
           if (retryCount < maxRetries) {
-            const baseDelay = retryConfig?.baseDelay ?? DEFAULT_RETRY_CONFIG.baseDelay
-            const maxDelay = retryConfig?.maxDelay ?? DEFAULT_RETRY_CONFIG.maxDelay
+            const baseDelay =
+              retryConfig?.baseDelay ?? DEFAULT_RETRY_CONFIG.baseDelay
+            const maxDelay =
+              retryConfig?.maxDelay ?? DEFAULT_RETRY_CONFIG.maxDelay
             const delay = Math.min(
               baseDelay * Math.pow(2, retryCount),
               maxDelay
             )
-            console.log(`Rate limited. Retrying in ${delay}ms (attempt ${retryCount + 1}/${maxRetries})`)
-            await new Promise(resolve => setTimeout(resolve, delay))
+            console.log(
+              `Rate limited. Retrying in ${delay}ms (attempt ${retryCount + 1}/${maxRetries})`
+            )
+            await new Promise((resolve) => setTimeout(resolve, delay))
             return makeRequest(retryCount + 1)
           }
         }
@@ -183,7 +193,9 @@ export const sendApiRequest = async <T>({
         throw error
       }
       throw new ApiError(
-        error instanceof Error ? error.message : 'Unknown error occurred while making API request'
+        error instanceof Error
+          ? error.message
+          : 'Unknown error occurred while making API request'
       )
     }
   }
