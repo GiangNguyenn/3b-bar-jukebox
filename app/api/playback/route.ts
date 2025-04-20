@@ -2,8 +2,11 @@ import { NextResponse } from 'next/server'
 import { sendApiRequest } from '@/shared/api'
 import { SpotifyPlaybackState } from '@/shared/types'
 
-const MAX_RETRIES = 3
-const RETRY_DELAY = 1000 // 1 second
+const retryConfig = {
+  maxRetries: 3,
+  baseDelay: 1000,
+  maxDelay: 10000
+}
 
 interface PlaybackRequest {
   action: 'play' | 'skip'
@@ -16,7 +19,8 @@ async function verifyDeviceActive(deviceId: string): Promise<boolean> {
   try {
     const state = await sendApiRequest<SpotifyPlaybackState>({
       path: 'me/player',
-      method: 'GET'
+      method: 'GET',
+      retryConfig
     })
 
     console.log('[API Playback] Device verification state:', {
@@ -64,13 +68,15 @@ async function transferPlaybackToDevice(
       body: {
         device_ids: [deviceId],
         play: false
-      }
+      },
+      retryConfig
     })
 
     // Verify the transfer was successful
     const state = await sendApiRequest<SpotifyPlaybackState>({
       path: 'me/player',
-      method: 'GET'
+      method: 'GET',
+      retryConfig
     })
 
     console.log('[API Playback] Transfer verification state:', {
@@ -92,8 +98,12 @@ async function transferPlaybackToDevice(
       timestamp: new Date().toISOString()
     })
 
-    if (retryCount < MAX_RETRIES - 1) {
-      await new Promise((resolve) => setTimeout(resolve, RETRY_DELAY))
+    if (retryCount < retryConfig.maxRetries - 1) {
+      const delay = Math.min(
+        retryConfig.baseDelay * Math.pow(2, retryCount),
+        retryConfig.maxDelay
+      )
+      await new Promise((resolve) => setTimeout(resolve, delay))
       return transferPlaybackToDevice(deviceId, retryCount + 1)
     }
 
@@ -141,7 +151,8 @@ export async function POST(request: Request): Promise<NextResponse> {
         // Get current playback state to check if another device is playing
         const currentState = await sendApiRequest<SpotifyPlaybackState>({
           path: 'me/player',
-          method: 'GET'
+          method: 'GET',
+          retryConfig
         })
 
         console.log('[API Playback] Current playback state:', {
@@ -175,7 +186,8 @@ export async function POST(request: Request): Promise<NextResponse> {
         // Get the current state again to ensure we have the latest track info
         const latestState = await sendApiRequest<SpotifyPlaybackState>({
           path: 'me/player',
-          method: 'GET'
+          method: 'GET',
+          retryConfig
         })
 
         console.log('[API Playback] Latest state before playback:', {
@@ -186,84 +198,70 @@ export async function POST(request: Request): Promise<NextResponse> {
           timestamp: new Date().toISOString()
         })
 
-        // Then start playback with the playlist and position
+        // Start playback with the provided context and position
         await sendApiRequest({
           path: 'me/player/play',
           method: 'PUT',
           body: {
             context_uri: contextUri,
-            position_ms: position_ms,
-            offset: latestState?.item?.uri
-              ? { uri: latestState.item.uri }
-              : undefined
-          }
-        })
-      } catch (error: unknown) {
-        const errorMessage =
-          error instanceof Error ? error.message : 'Unknown error'
-        console.error('[API Playback] Detailed playback error:', {
-          message: errorMessage,
-          error,
-          deviceId,
-          contextUri,
-          position_ms,
-          timestamp: new Date().toISOString()
+            position_ms
+          },
+          retryConfig
         })
 
-        // Return a more specific error message
+        return NextResponse.json({ success: true })
+      } catch (error) {
+        console.error('[API Playback] Error during playback:', {
+          error,
+          message: error instanceof Error ? error.message : 'Unknown error',
+          timestamp: new Date().toISOString()
+        })
         return NextResponse.json(
           {
-            error: `Failed to control playback: ${errorMessage}`,
-            details: error
+            error: 'Failed to start playback',
+            details: error instanceof Error ? error.message : 'Unknown error'
           },
           { status: 500 }
         )
       }
     } else if (action === 'skip') {
       try {
-        console.log('[API Playback] Attempting to skip track:', {
-          deviceId,
-          timestamp: new Date().toISOString()
-        })
-
-        // The skip endpoint returns 204 No Content, so we don't need to parse the response
         await sendApiRequest({
           path: 'me/player/next',
-          method: 'POST'
+          method: 'POST',
+          retryConfig
         })
-      } catch (error: unknown) {
-        console.error('[API Playback] Skip error:', {
+        return NextResponse.json({ success: true })
+      } catch (error) {
+        console.error('[API Playback] Error skipping track:', {
           error,
-          deviceId,
           message: error instanceof Error ? error.message : 'Unknown error',
           timestamp: new Date().toISOString()
         })
-        const errorMessage =
-          error instanceof Error ? error.message : 'Unknown error'
         return NextResponse.json(
           {
-            error: `Failed to skip track: ${errorMessage}`,
-            details: error
+            error: 'Failed to skip track',
+            details: error instanceof Error ? error.message : 'Unknown error'
           },
           { status: 500 }
         )
       }
     }
 
-    return NextResponse.json({ success: true })
+    return NextResponse.json(
+      { error: 'Invalid action specified' },
+      { status: 400 }
+    )
   } catch (error) {
-    console.error('[API Playback] Top level error:', {
+    console.error('[API Playback] Error processing request:', {
       error,
       message: error instanceof Error ? error.message : 'Unknown error',
-      stack: error instanceof Error ? error.stack : undefined,
       timestamp: new Date().toISOString()
     })
-    const errorMessage =
-      error instanceof Error ? error.message : 'Unknown error'
     return NextResponse.json(
       {
-        error: `Playback control failed: ${errorMessage}`,
-        details: error
+        error: 'Failed to process playback request',
+        details: error instanceof Error ? error.message : 'Unknown error'
       },
       { status: 500 }
     )

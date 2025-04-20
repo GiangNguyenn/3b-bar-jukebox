@@ -34,45 +34,15 @@ const Playlist: React.FC<IPlaylistProps> = memo(({ tracks }): JSX.Element => {
     [tracks, currentTrackId]
   )
 
-  const shouldRemoveOldest = useMemo(
-    (): boolean => Boolean(currentTrackId) && tracks.length > 20,
-    [currentTrackId, tracks.length]
-  )
-
-  // Check for playlist changes every 5 seconds to catch any external changes
-  // Note: Direct playlist updates (like adding tracks) will trigger an immediate refresh
-  useEffect((): (() => void) => {
-    const interval = setInterval((): void => {
-      console.log('[Playlist] Checking for playlist changes')
-      void refetchPlaylist().catch((error) => {
-        console.error('[Playlist] Error refreshing playlist:', error)
-      })
-    }, 5000) // Reduced from 30000 to 5000 for more responsive updates
-
-    return (): void => clearInterval(interval)
-  }, [refetchPlaylist])
-
   // Only refresh when current track changes
   useEffect((): void => {
     if (currentTrackId !== previousTrackIdRef.current) {
-      console.log('[Playlist] Track changed, refreshing:', {
-        previous: previousTrackIdRef.current,
-        current: currentTrackId
-      })
       previousTrackIdRef.current = currentTrackId
       void refetchPlaylist().catch((error) => {
         console.error('[Playlist] Error refreshing playlist:', error)
       })
     }
   }, [currentTrackId, refetchPlaylist])
-
-  console.log('[Playlist] Component data:', {
-    totalTracks: tracks.length,
-    currentTrackId,
-    upcomingTracksLength: upcomingTracks?.length ?? 0,
-    shouldRemoveOldest,
-    tracks
-  })
 
   // If no track is currently playing, show all tracks
   const tracksToShow = useMemo(

@@ -197,16 +197,14 @@ export function useSpotifyPlayerState(
                 )
               }, 10000)
 
-              const checkSDK = () => {
-                if (window.Spotify) {
-                  clearTimeout(timeout)
-                  resolve()
-                } else {
-                  setTimeout(checkSDK, 100)
-                }
+              const handleSDKReady = () => {
+                clearTimeout(timeout)
+                resolve()
               }
 
-              checkSDK()
+              window.addEventListener('spotifySDKReady', handleSDKReady, {
+                once: true
+              })
             })
           }
 
