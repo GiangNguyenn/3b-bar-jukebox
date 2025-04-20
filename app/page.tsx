@@ -2,13 +2,14 @@
 import { useFixedPlaylist } from '@/hooks/useFixedPlaylist'
 import { usePlaylist } from '@/hooks/usePlaylist'
 import { useEffect, useState, useMemo, memo, useCallback } from 'react'
-import useSearchTracks from '../hooks/useSearchTracks'
+import { useSearchTracks } from '../hooks/useSearchTracks'
 import { TrackDetails } from '@/shared/types'
 import Playlist from '@/components/Playlist/Playlist'
 import Loading from './loading'
 import SearchInput from '@/components/SearchInput'
 import { useDebounce } from 'use-debounce'
 import { FALLBACK_GENRES } from '@/shared/constants/trackSuggestion'
+import { SpotifySearchRequest } from '@/hooks/useSearchTracks'
 
 const STORAGE_KEY = 'track-suggestions-state'
 
@@ -82,35 +83,19 @@ const getTrackSuggestionsState = (): TrackSuggestionsState => {
 
 const Home = memo((): JSX.Element => {
   const {
-    createPlaylist,
     fixedPlaylistId,
     isLoading: isCreatingPlaylist,
     isInitialFetchComplete
   } = useFixedPlaylist()
   const { playlist, refreshPlaylist } = usePlaylist(fixedPlaylistId ?? '')
   const [searchQuery, setSearchQuery] = useState('')
-  const [searchResults, setSearchResults] = useState<TrackDetails[]>([])
-  const { searchTracks } = useSearchTracks()
+  const { searchTracks, tracks: searchResults, isLoading: isSearching } = useSearchTracks()
 
   useEffect(() => {
-    const initPlaylist = async (): Promise<void> => {
-      if (!fixedPlaylistId && !isCreatingPlaylist && isInitialFetchComplete) {
-        console.log('[Fixed Playlist] Created new playlist')
-        try {
-          await createPlaylist()
-        } catch (error) {
-          console.error('[Fixed Playlist] Error creating playlist:', error)
-        }
-      }
+    if (!fixedPlaylistId && isInitialFetchComplete) {
+      console.error('[Fixed Playlist] Required playlist not found: 3B Saigon')
     }
-
-    void initPlaylist()
-  }, [
-    createPlaylist,
-    fixedPlaylistId,
-    isCreatingPlaylist,
-    isInitialFetchComplete
-  ])
+  }, [fixedPlaylistId, isInitialFetchComplete])
 
   const handleTrackAdded = useCallback(async (): Promise<void> => {
     const trackSuggestionsState = getTrackSuggestionsState()
@@ -119,30 +104,43 @@ const Home = memo((): JSX.Element => {
 
   const [debouncedSearchQuery] = useDebounce(searchQuery, 300)
 
+  const handleSearch = useCallback(
+    async (query: string) => {
+      if (!query.trim()) {
+        return
+      }
+
+      const searchRequest: SpotifySearchRequest = {
+        query,
+        type: 'track',
+        limit: 20
+      }
+
+      await searchTracks(searchRequest)
+    },
+    [searchTracks]
+  )
+
   useEffect(() => {
     const searchTrackDebounce = async (): Promise<void> => {
       try {
         if (debouncedSearchQuery !== '') {
-          const tracks = await searchTracks(debouncedSearchQuery)
-          setSearchResults(tracks)
-        } else {
-          setSearchResults([])
+          await handleSearch(debouncedSearchQuery)
         }
       } catch (error) {
         console.error('[Search] Error searching tracks:', error)
-        setSearchResults([])
       }
     }
 
     void searchTrackDebounce()
-  }, [debouncedSearchQuery, searchTracks])
+  }, [debouncedSearchQuery, handleSearch])
 
   const searchInputProps = useMemo(
     () => ({
       searchQuery,
       setSearchQuery,
       searchResults,
-      setSearchResults,
+      setSearchResults: () => {}, // This is handled by useSearchTracks now
       playlistId: fixedPlaylistId ?? '',
       onTrackAdded: handleTrackAdded
     }),

@@ -16,62 +16,57 @@ export interface SpotifySearchRequest {
   market?: string
 }
 
-interface SpotifySearchResponse {
-  href: string
-  limit: number
-  next: string | null
-  offset: number
-  previous: string | null
-  total: number
-  items: TrackDetails[]
-}
-
-const useSearchTracks = () => {
+export function useSearchTracks() {
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<AppError | null>(null)
+  const [tracks, setTracks] = useState<TrackDetails[]>([])
 
-  const searchTracks = useCallback(async (query: string) => {
-    setIsLoading(true)
-    setError(null)
+  const searchTracks = useCallback(
+    async (request: SpotifySearchRequest) => {
+      setIsLoading(true)
+      setError(null)
+      console.log('[Search] Making search request:', request)
 
-    try {
-      const response = await handleOperationError(
-        async () => {
-          const result = await sendApiRequest<{
-            tracks: SpotifySearchResponse
-          }>({
-            path: `search?q=${query}&type=track&limit=20`,
-            method: 'GET'
-          })
+      try {
+        const queryParams = new URLSearchParams({
+          q: request.query,
+          type: request.type,
+          ...(request.limit && { limit: request.limit.toString() }),
+          ...(request.offset && { offset: request.offset.toString() }),
+          ...(request.market && { market: request.market })
+        })
 
-          if (!result.tracks?.items) {
-            throw new AppError(
-              ERROR_MESSAGES.MALFORMED_RESPONSE,
-              'SearchTracks'
-            )
+        const response = await sendApiRequest<{ tracks: { items: TrackDetails[] } }>({
+          path: `search?${queryParams.toString()}`,
+          method: 'GET',
+          extraHeaders: {
+            'Content-Type': 'application/json'
+          },
+          retryConfig: {
+            maxRetries: 3,
+            baseDelay: 1000,
+            maxDelay: 10000
           }
+        })
 
-          return result.tracks.items
-        },
-        'SearchTracks',
-        (error) => {
-          console.error('[Search Tracks] Error during search:', error)
-          setError(error)
-        }
-      )
+        console.log('[Search] Received response:', response)
+        setTracks(response.tracks.items)
+      } catch (error) {
+        console.error('[Search] Error in search request:', error)
+        const appError = handleApiError(error, 'SearchTracks')
+        setError(appError)
+        setTracks([])
+      } finally {
+        setIsLoading(false)
+      }
+    },
+    []
+  )
 
-      return response ?? []
-    } catch (error) {
-      setError(
-        new AppError(ERROR_MESSAGES.FAILED_TO_LOAD, error, 'SearchTracks')
-      )
-      return []
-    } finally {
-      setIsLoading(false)
-    }
-  }, [])
-
-  return { searchTracks, isLoading, error }
+  return {
+    searchTracks,
+    tracks,
+    isLoading,
+    error
+  }
 }
-
-export default useSearchTracks

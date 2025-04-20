@@ -53,12 +53,6 @@ type SpotifyOwner = {
   display_name: string
 }
 
-export interface CreatePlaylistRequest {
-  name: string
-  description: string
-  public: boolean
-}
-
 export interface TrackItem {
   added_at: string
   added_by: {
