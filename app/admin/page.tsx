@@ -114,7 +114,7 @@ export default function AdminPage(): JSX.Element {
   const baseDelay = 2000 // 2 seconds
   const { logs: consoleLogs, addLog } = useConsoleLogs()
   const [uptime, setUptime] = useState(0)
-  const [tokenInfo, _setTokenInfo] = useState<TokenInfo>({
+  const [tokenInfo, setTokenInfo] = useState<TokenInfo>({
     lastRefresh: 0,
     expiresIn: 0,
     scope: '',
@@ -229,47 +229,60 @@ export default function AdminPage(): JSX.Element {
 
   const updateTokenStatus = useCallback((): void => {
     const now = Date.now()
-    const timeUntilExpiry = tokenInfo.expiryTime - now
-    const minutesUntilExpiry = timeUntilExpiry / (60 * 1000)
-
-    if (tokenInfo.expiryTime === 0) {
-      setHealthStatus((prev) => ({
-        ...prev,
-        token: 'unknown'
-      }))
-      return
-    }
-
-    if (minutesUntilExpiry < 0) {
-      setHealthStatus((prev) => ({
-        ...prev,
-        token: 'error'
-      }))
-      return
-    }
-
-    setHealthStatus((prev) => ({
+    const minutesUntilExpiry = (tokenInfo.expiryTime - now) / (60 * 1000)
+    
+    setHealthStatus(prev => ({
       ...prev,
-      token: 'valid',
-      tokenExpiringSoon: minutesUntilExpiry < 15
+      token: minutesUntilExpiry > 0 ? 'valid' : 'expired',
+      tokenExpiringSoon: minutesUntilExpiry <= 15
     }))
   }, [tokenInfo.expiryTime])
 
-  // Listen for token events from SpotifyPlayer
   useEffect(() => {
-    const handleTokenUpdate = (event: CustomEvent<TokenInfo>) => {
-      _setTokenInfo(event.detail)
+    if (tokenInfo.expiryTime === 0) {
+      refreshToken()
+    } else {
       updateTokenStatus()
     }
-
-    window.addEventListener('tokenUpdate', handleTokenUpdate as EventListener)
-    return () => {
-      window.removeEventListener(
-        'tokenUpdate',
-        handleTokenUpdate as EventListener
-      )
+    
+    const interval = setInterval(updateTokenStatus, 60000)
+    
+    const handleTokenUpdate = (event: CustomEvent<TokenInfo>): void => {
+      const newTokenInfo = event.detail
+      const now = Date.now()
+      const minutesUntilExpiry = (newTokenInfo.expiryTime - now) / (60 * 1000)
+      
+      setHealthStatus(prev => ({
+        ...prev,
+        token: minutesUntilExpiry > 0 ? 'valid' : 'expired',
+        tokenExpiringSoon: minutesUntilExpiry <= 15
+      }))
+      
+      setTokenInfo(newTokenInfo)
     }
-  }, [updateTokenStatus])
+    
+    window.addEventListener('tokenUpdate', handleTokenUpdate as EventListener)
+    
+    return () => {
+      clearInterval(interval)
+      window.removeEventListener('tokenUpdate', handleTokenUpdate as EventListener)
+    }
+  }, [updateTokenStatus, refreshToken, tokenInfo.expiryTime])
+
+  const handleTokenRefresh = async (): Promise<void> => {
+    try {
+      await refreshToken()
+      updateTokenStatus()
+      addLog('INFO', 'Token refreshed successfully')
+    } catch (error) {
+      console.error('[Token] Refresh failed:', error)
+      setHealthStatus(prev => ({
+        ...prev,
+        token: 'error'
+      }))
+      addLog('ERROR', 'Token refresh failed')
+    }
+  }
 
   // Keep periodic status updates
   const statusEffect: EffectCallback = () => {
@@ -733,21 +746,6 @@ export default function AdminPage(): JSX.Element {
         console.error('[Playback] Recovery failed:', recoveryError)
         // Keep the original error state if recovery fails
       }
-    } finally {
-      setIsLoading(false)
-    }
-  }
-
-  const handleTokenRefresh = async (): Promise<void> => {
-    try {
-      setIsLoading(true)
-      setError(null)
-      await refreshToken()
-      console.log('[Token] Manual refresh triggered successfully')
-    } catch (error) {
-      console.error('[Token] Manual refresh failed:', error)
-      setError('Failed to refresh token')
-      setHealthStatus((prev) => ({ ...prev, token: 'error' }))
     } finally {
       setIsLoading(false)
     }
