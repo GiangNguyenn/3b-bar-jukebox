@@ -252,7 +252,9 @@ export class PlaylistRefreshServiceImpl implements PlaylistRefreshService {
 
       return {
         success,
-        error: !success ? 'Failed to add track after multiple attempts' : undefined,
+        error: !success
+          ? 'Failed to add track after multiple attempts'
+          : undefined,
         searchDetails
       }
     } catch (error) {
@@ -264,7 +266,8 @@ export class PlaylistRefreshServiceImpl implements PlaylistRefreshService {
       })
       return {
         success: false,
-        error: error instanceof Error ? error.message : 'Unknown error occurred',
+        error:
+          error instanceof Error ? error.message : 'Unknown error occurred',
         searchDetails: undefined
       }
     }
@@ -413,7 +416,8 @@ export class PlaylistRefreshServiceImpl implements PlaylistRefreshService {
       })
       return {
         success: false,
-        message: error instanceof Error ? error.message : 'Unknown error occurred',
+        message:
+          error instanceof Error ? error.message : 'Unknown error occurred',
         timestamp: new Date().toISOString()
       }
     }

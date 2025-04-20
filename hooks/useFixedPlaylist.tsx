@@ -39,12 +39,14 @@ export const useFixedPlaylist = () => {
         setIsInitialFetchComplete(true)
       } catch (error) {
         console.error('[Fixed Playlist] Error fetching playlists:', error)
-        
+
         // Check if it's a rate limit error
         if (error instanceof Error && error.message.includes('429')) {
           if (retryCount < MAX_RETRIES) {
-            console.log(`[Fixed Playlist] Rate limited, retrying in ${RETRY_DELAY}ms (attempt ${retryCount + 1}/${MAX_RETRIES})`)
-            setRetryCount(prev => prev + 1)
+            console.log(
+              `[Fixed Playlist] Rate limited, retrying in ${RETRY_DELAY}ms (attempt ${retryCount + 1}/${MAX_RETRIES})`
+            )
+            setRetryCount((prev) => prev + 1)
             setTimeout(() => {
               void fetchPlaylists()
             }, RETRY_DELAY)
