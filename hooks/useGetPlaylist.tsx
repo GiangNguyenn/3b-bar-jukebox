@@ -6,18 +6,36 @@ import {
   handleApiError,
   handleOperationError
 } from '@/shared/utils/errorHandling'
+import { cache } from '@/shared/utils/cache'
 
 const userId = process.env.NEXT_PUBLIC_SPOTIFY_USER_ID ?? ''
 
 export const useGetPlaylist = (id: string) => {
   const fetcher = async () => {
     if (!id) return null
-    return sendApiRequest<SpotifyPlaylistItem>({
+
+    // Check cache first
+    const cacheKey = `playlist-${id}`
+    const cachedData = cache.get<SpotifyPlaylistItem>(cacheKey)
+    if (cachedData) {
+      return cachedData
+    }
+
+    // If not in cache, fetch from API
+    const data = await sendApiRequest<SpotifyPlaylistItem>({
       path: `users/${userId}/playlists/${id}`
     })
+
+    // Cache the result
+    cache.set(cacheKey, data)
+    return data
   }
 
-  const { data, error, mutate } = useSWR(`playlist-${id}`, fetcher)
+  const { data, error, mutate } = useSWR(`playlist-${id}`, fetcher, {
+    refreshInterval: 30000, // Refresh every 30 seconds
+    revalidateOnFocus: true,
+    revalidateOnReconnect: true
+  })
 
   const refetchPlaylist = async () => {
     await handleOperationError(async () => {
@@ -26,6 +44,8 @@ export const useGetPlaylist = (id: string) => {
           const newData = await sendApiRequest<SpotifyPlaylistItem>({
             path: `users/${userId}/playlists/${id}`
           })
+          // Update cache with new data
+          cache.set(`playlist-${id}`, newData)
           return newData
         },
         {

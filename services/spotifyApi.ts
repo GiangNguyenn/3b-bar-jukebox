@@ -17,6 +17,11 @@ export interface SpotifyApiClient {
 
 export class SpotifyApiService implements SpotifyApiClient {
   private static instance: SpotifyApiService
+  private readonly retryConfig = {
+    maxRetries: 3,
+    baseDelay: 1000,
+    maxDelay: 10000
+  }
 
   private constructor(private readonly apiClient = sendApiRequest) {}
 
@@ -31,7 +36,8 @@ export class SpotifyApiService implements SpotifyApiClient {
     return handleOperationError(
       async () =>
         this.apiClient<{ items: SpotifyPlaylistItem[] }>({
-          path: 'me/playlists'
+          path: 'me/playlists',
+          retryConfig: this.retryConfig
         }),
       'SpotifyApi.getPlaylists'
     )
@@ -41,7 +47,8 @@ export class SpotifyApiService implements SpotifyApiClient {
     return handleOperationError(
       async () =>
         this.apiClient<SpotifyPlaylistItem>({
-          path: `playlists/${playlistId}`
+          path: `playlists/${playlistId}`,
+          retryConfig: this.retryConfig
         }),
       'SpotifyApi.getPlaylist'
     )
@@ -51,7 +58,8 @@ export class SpotifyApiService implements SpotifyApiClient {
     return handleOperationError(
       async () =>
         this.apiClient<SpotifyPlaybackState>({
-          path: 'me/player/currently-playing'
+          path: 'me/player/currently-playing',
+          retryConfig: this.retryConfig
         }),
       'SpotifyApi.getCurrentlyPlaying'
     )
@@ -72,7 +80,8 @@ export class SpotifyApiService implements SpotifyApiClient {
           method: 'POST',
           body: {
             uris: [formattedUri]
-          }
+          },
+          retryConfig: this.retryConfig
         }),
       'SpotifyApi.addTrackToPlaylist'
     )
@@ -82,7 +91,8 @@ export class SpotifyApiService implements SpotifyApiClient {
     return handleOperationError(
       async () =>
         this.apiClient<SpotifyPlaybackState>({
-          path: 'me/player'
+          path: 'me/player',
+          retryConfig: this.retryConfig
         }),
       'SpotifyApi.getPlaybackState'
     )
@@ -92,7 +102,8 @@ export class SpotifyApiService implements SpotifyApiClient {
     return handleOperationError(
       async () =>
         this.apiClient<{ queue: SpotifyPlaybackState[] }>({
-          path: 'me/player/queue'
+          path: 'me/player/queue',
+          retryConfig: this.retryConfig
         }),
       'SpotifyApi.getQueue'
     )

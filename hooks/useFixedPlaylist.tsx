@@ -5,12 +5,15 @@ import { useEffect, useState } from 'react'
 import { ERROR_MESSAGES, ErrorMessage } from '@/shared/constants/errors'
 
 const FIXED_PLAYLIST_NAME = '3B Saigon'
+const MAX_RETRIES = 3
+const RETRY_DELAY = 1000 // 1 second
 
 export const useFixedPlaylist = () => {
   const [fixedPlaylistId, setFixedPlaylistId] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<ErrorMessage | null>(null)
   const [isInitialFetchComplete, setIsInitialFetchComplete] = useState(false)
+  const [retryCount, setRetryCount] = useState(0)
 
   const { data: playlists, isError, refetchPlaylists } = useMyPlaylists()
 
@@ -28,7 +31,7 @@ export const useFixedPlaylist = () => {
     }
   }, [playlists])
 
-  // Fetch playlists on mount
+  // Fetch playlists on mount with retry logic
   useEffect(() => {
     const fetchPlaylists = async () => {
       try {
@@ -36,21 +39,31 @@ export const useFixedPlaylist = () => {
         setIsInitialFetchComplete(true)
       } catch (error) {
         console.error('[Fixed Playlist] Error fetching playlists:', error)
+
+        // Check if it's a rate limit error
+        if (error instanceof Error && error.message.includes('429')) {
+          if (retryCount < MAX_RETRIES) {
+            console.log(
+              `[Fixed Playlist] Rate limited, retrying in ${RETRY_DELAY}ms (attempt ${retryCount + 1}/${MAX_RETRIES})`
+            )
+            setRetryCount((prev) => prev + 1)
+            setTimeout(() => {
+              void fetchPlaylists()
+            }, RETRY_DELAY)
+            return
+          }
+          setError(ERROR_MESSAGES.FAILED_TO_LOAD)
+        } else {
+          setError(ERROR_MESSAGES.FAILED_TO_LOAD)
+        }
         setIsInitialFetchComplete(true)
-        setError(ERROR_MESSAGES.FAILED_TO_LOAD)
       }
     }
     void fetchPlaylists()
-  }, [refetchPlaylists])
-
-  // No-op since we don't create playlists anymore
-  const createPlaylist = async (): Promise<SpotifyPlaylistItem | null> => {
-    return null
-  }
+  }, [refetchPlaylists, retryCount])
 
   return {
     fixedPlaylistId,
-    createPlaylist,
     playlists,
     isLoading,
     error,
