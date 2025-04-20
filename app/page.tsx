@@ -3,7 +3,6 @@ import { useFixedPlaylist } from '@/hooks/useFixedPlaylist'
 import { usePlaylist } from '@/hooks/usePlaylist'
 import { useEffect, useState, useMemo, memo, useCallback } from 'react'
 import { useSearchTracks } from '../hooks/useSearchTracks'
-import { TrackDetails } from '@/shared/types'
 import Playlist from '@/components/Playlist/Playlist'
 import Loading from './loading'
 import SearchInput from '@/components/SearchInput'
@@ -89,11 +88,7 @@ const Home = memo((): JSX.Element => {
   } = useFixedPlaylist()
   const { playlist, refreshPlaylist } = usePlaylist(fixedPlaylistId ?? '')
   const [searchQuery, setSearchQuery] = useState('')
-  const {
-    searchTracks,
-    tracks: searchResults,
-    isLoading: isSearching
-  } = useSearchTracks()
+  const { searchTracks, tracks: searchResults } = useSearchTracks()
 
   useEffect(() => {
     if (!fixedPlaylistId && isInitialFetchComplete) {
@@ -109,7 +104,7 @@ const Home = memo((): JSX.Element => {
   const [debouncedSearchQuery] = useDebounce(searchQuery, 300)
 
   const handleSearch = useCallback(
-    async (query: string) => {
+    async (query: string): Promise<void> => {
       if (!query.trim()) {
         return
       }

@@ -34,11 +34,6 @@ const Playlist: React.FC<IPlaylistProps> = memo(({ tracks }): JSX.Element => {
     [tracks, currentTrackId]
   )
 
-  const shouldRemoveOldest = useMemo(
-    (): boolean => Boolean(currentTrackId) && tracks.length > 20,
-    [currentTrackId, tracks.length]
-  )
-
   // Only refresh when current track changes
   useEffect((): void => {
     if (currentTrackId !== previousTrackIdRef.current) {
