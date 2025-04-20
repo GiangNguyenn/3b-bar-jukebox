@@ -32,8 +32,9 @@ export function GenresSelector({
   const filteredGenres = useMemo(() => {
     if (!Array.isArray(SPOTIFY_GENRES)) return []
     if (debouncedQuery.length < 3) return []
+    if (!debouncedQuery.trim()) return []
 
-    const lowerQuery = debouncedQuery.toLowerCase()
+    const lowerQuery = debouncedQuery.toLowerCase().trim()
 
     // Score each genre based on match quality
     const scoredGenres = SPOTIFY_GENRES.map((genre, index) => {
@@ -43,29 +44,67 @@ export function GenresSelector({
       // Exact match gets highest score
       if (lowerGenre === lowerQuery) score += 100
 
-      // Starts with query gets high score
-      if (lowerGenre.startsWith(lowerQuery)) score += 50
+      // Starts with query gets very high score
+      if (lowerGenre.startsWith(lowerQuery)) score += 80
 
-      // Contains query gets medium score
+      // Individual words match at start gets high score
+      const queryWords = lowerQuery.split(/\s+/)
+      const genreWords = lowerGenre.split(/\s+/)
+
+      for (const queryWord of queryWords) {
+        for (const genreWord of genreWords) {
+          if (genreWord.startsWith(queryWord)) score += 60
+          if (genreWord.includes(queryWord)) score += 40
+        }
+      }
+
+      // Contains full query as substring gets medium score
       if (lowerGenre.includes(lowerQuery)) score += 30
-
-      // Contains words from query gets lower score
-      const queryWords = lowerQuery.split(' ')
-      const genreWords = lowerGenre.split(' ')
-      const matchingWords = queryWords.filter((word) =>
-        genreWords.some((genreWord) => genreWord.includes(word))
-      )
-      score += matchingWords.length * 10
 
       return { genre, score }
     })
 
-    // Sort by score and take top 20
+    // Filter out zero scores and sort by score
     return scoredGenres
+      .filter((item) => item.score > 0)
       .sort((a, b) => b.score - a.score)
-      .slice(0, 20)
+      .slice(0, 30)
       .map((item) => item.genre)
   }, [debouncedQuery])
+
+  const renderOption = useCallback(
+    ({ index, style }: { index: number; style: React.CSSProperties }) => {
+      const genre = filteredGenres[index] as Genre
+      return (
+        <Combobox.Option
+          key={genre}
+          value={genre}
+          className={({ active }) =>
+            `relative cursor-default select-none py-2 pl-10 pr-4 ${
+              active ? 'bg-gray-200 font-medium' : 'bg-gray-100'
+            }`
+          }
+          style={style}
+        >
+          {({ selected }) => (
+            <>
+              <span
+                className={`block truncate ${selected ? 'font-medium' : 'font-normal'}`}
+              >
+                {genre}
+              </span>
+              {selected && (
+                <span className='absolute inset-y-0 left-0 flex items-center pl-3 text-blue-600'>
+                  <Check className='h-5 w-5' aria-hidden='true' />
+                </span>
+              )}
+            </>
+          )}
+        </Combobox.Option>
+      )
+    },
+    [filteredGenres]
+  )
 
   const handleGenreToggle = useCallback(
     (genres: Genre[]): void => {
@@ -110,7 +149,11 @@ export function GenresSelector({
               className='w-full rounded-lg border border-input bg-background px-4 py-3 text-base text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring'
               placeholder='Search genres...'
               onChange={(event: React.ChangeEvent<HTMLInputElement>) => {
-                setQuery(event.target.value)
+                const newValue = event.target.value
+                if (newValue !== query) {
+                  // Only update if value actually changed
+                  setQuery(newValue)
+                }
               }}
               onKeyDown={(event: React.KeyboardEvent) => {
                 if (event.key === 'Escape') {
@@ -136,40 +179,12 @@ export function GenresSelector({
                 </div>
               ) : (
                 <List
-                  key={filteredGenres.length}
                   height={Math.min(filteredGenres.length * 36, 240)}
                   itemCount={filteredGenres.length}
                   itemSize={36}
                   width='100%'
                 >
-                  {({ index, style }) => {
-                    const genre = filteredGenres[index] as Genre
-                    return (
-                      <Combobox.Option
-                        key={genre}
-                        value={genre}
-                        className={() =>
-                          `relative cursor-default select-none bg-gray-100 py-2 pl-10 pr-4 text-gray-900 hover:bg-gray-200 hover:font-medium`
-                        }
-                        style={style}
-                      >
-                        {({ selected }) => (
-                          <>
-                            <span
-                              className={`block truncate ${selected ? 'font-medium' : 'font-normal'}`}
-                            >
-                              {genre}
-                            </span>
-                            {selected && (
-                              <span className='absolute inset-y-0 left-0 flex items-center pl-3 text-blue-600'>
-                                <Check className='h-5 w-5' aria-hidden='true' />
-                              </span>
-                            )}
-                          </>
-                        )}
-                      </Combobox.Option>
-                    )
-                  }}
+                  {renderOption}
                 </List>
               )}
             </div>
