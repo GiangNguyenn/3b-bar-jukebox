@@ -12,6 +12,15 @@ let initializationPromise: Promise<void> | null = null
 let playerInstance: SpotifyPlayerInstance | null = null
 let currentAccessToken: string | null = null
 
+// Add a cleanup function to reset state
+function resetInitializationState(): void {
+  isInitializing = false
+  isInitialized = false
+  initializationPromise = null
+  playerInstance = null
+  currentAccessToken = null
+}
+
 interface UseSpotifyPlayerStateReturn {
   error: string | null
   setError: (error: string | null) => void
@@ -144,12 +153,16 @@ export function useSpotifyPlayerState(
 
     // If already initializing, wait for the promise to resolve
     if (isInitializing && initializationPromise) {
-      await initializationPromise
-      return
+      try {
+        await initializationPromise
+        return
+      } catch (error) {
+        // If the initialization failed, reset state and try again
+        resetInitializationState()
+      }
     }
 
     isInitializing = true
-    console.log('[SpotifyPlayer] Starting initialization')
 
     try {
       initializationPromise = (async () => {
@@ -241,16 +254,19 @@ export function useSpotifyPlayerState(
           player.addListener('initialization_error', ({ message }) => {
             console.error('[SpotifyPlayer] Initialization error:', message)
             setError(message)
+            resetInitializationState()
           })
 
           player.addListener('authentication_error', ({ message }) => {
             console.error('[SpotifyPlayer] Authentication error:', message)
             setError(message)
+            resetInitializationState()
           })
 
           player.addListener('account_error', ({ message }) => {
             console.error('[SpotifyPlayer] Account error:', message)
             setError(message)
+            resetInitializationState()
           })
 
           player.addListener('playback_error', ({ message }) => {
@@ -267,19 +283,14 @@ export function useSpotifyPlayerState(
             stack: error instanceof Error ? error.stack : undefined,
             timestamp: new Date().toISOString()
           })
-          isInitialized = false
-          playerInstance = null
+          resetInitializationState()
           throw error
-        } finally {
-          isInitializing = false
-          initializationPromise = null
         }
       })()
 
       await initializationPromise
     } catch (error) {
-      isInitializing = false
-      initializationPromise = null
+      resetInitializationState()
       throw error
     }
   }, [refreshToken, setDeviceId, setIsReady, setPlaybackState])
@@ -348,11 +359,9 @@ export function useSpotifyPlayerState(
           timestamp: new Date().toISOString()
         })
         setPlaybackState(state)
-        // If we have a valid device ID and playback state, we're ready
-        setIsReady(true)
+        // Don't modify isReady state here, let the player events handle it
       } else {
         console.log('[SpotifyPlayer] No active device found in state')
-        setIsReady(false)
       }
     } catch (error) {
       console.error('[SpotifyPlayer] Error refreshing player state:', {
@@ -360,9 +369,8 @@ export function useSpotifyPlayerState(
         message: error instanceof Error ? error.message : 'Unknown error',
         timestamp: new Date().toISOString()
       })
-      setIsReady(false)
     }
-  }, [setPlaybackState, setIsReady])
+  }, [setPlaybackState])
 
   const refreshPlaylistState = useCallback(async (): Promise<void> => {
     const currentDeviceId = useSpotifyPlayer.getState().deviceId
@@ -373,8 +381,6 @@ export function useSpotifyPlayerState(
     }
 
     try {
-      console.log('[SpotifyPlayer] Starting playlist state refresh')
-      console.log('[SpotifyPlayer] Dispatching playlistChecked event')
       window.dispatchEvent(
         new CustomEvent('playlistChecked', {
           detail: {
@@ -508,12 +514,43 @@ export function useSpotifyPlayerState(
 
       if (state?.device?.id) {
         setDeviceId(state.device.id)
-        setIsReady(true)
+        // Only set ready if we don't already have a device ID
+        if (!deviceId) {
+          setIsReady(true)
+        }
       }
     } catch (error) {
       console.error('[SpotifyPlayer] Error verifying player:', error)
     }
-  }, [setDeviceId, setIsReady])
+  }, [setDeviceId, setIsReady, deviceId])
+
+  useEffect(() => {
+    const checkDeviceStatus = async (): Promise<void> => {
+      if (!deviceId) {
+        void verifyPlayerReady()
+        return
+      }
+
+      try {
+        const state = await sendApiRequest<SpotifyPlaybackState>({
+          path: 'me/player',
+          method: 'GET'
+        })
+
+        if (state?.device?.id === deviceId) {
+          setPlaybackState(state)
+        } else if (state?.device?.id) {
+          // Only update device ID if we get a different one
+          setDeviceId(state.device.id)
+        }
+      } catch (error) {
+        console.error('[SpotifyPlayer] Error checking device status:', error)
+      }
+    }
+
+    const interval = setInterval(checkDeviceStatus, 5000)
+    return () => clearInterval(interval)
+  }, [deviceId, verifyPlayerReady, setDeviceId, setPlaybackState])
 
   useEffect(() => {
     const handleStateChange = (
@@ -534,35 +571,6 @@ export function useSpotifyPlayerState(
       )
     }
   }, [setPlaybackState])
-
-  useEffect(() => {
-    const checkDeviceStatus = async (): Promise<void> => {
-      if (!deviceId) {
-        void verifyPlayerReady()
-        return
-      }
-
-      try {
-        const state = await sendApiRequest<SpotifyPlaybackState>({
-          path: 'me/player',
-          method: 'GET'
-        })
-
-        if (state?.device?.id === deviceId) {
-          setPlaybackState(state)
-        } else {
-          setDeviceId(null)
-          setIsReady(false)
-          void verifyPlayerReady()
-        }
-      } catch (error) {
-        console.error('[SpotifyPlayer] Error checking device status:', error)
-      }
-    }
-
-    const interval = setInterval(checkDeviceStatus, 5000)
-    return () => clearInterval(interval)
-  }, [deviceId, verifyPlayerReady, setDeviceId, setIsReady, setPlaybackState])
 
   useEffect(() => {
     const handlePlaylistRefresh = async (): Promise<void> => {

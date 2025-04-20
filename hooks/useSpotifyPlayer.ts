@@ -28,6 +28,7 @@ export const useSpotifyPlayer = create<SpotifyPlayerState>((set) => ({
   setDeviceId: (deviceId) => {
     set((state) => ({
       deviceId,
+      isReady: false,
       debug: {
         ...state.debug,
         lastDeviceIdUpdate: Date.now()
@@ -36,7 +37,7 @@ export const useSpotifyPlayer = create<SpotifyPlayerState>((set) => ({
   },
   setIsReady: (isReady) => {
     set((state) => ({
-      isReady,
+      isReady: state.deviceId ? isReady : false,
       debug: {
         ...state.debug,
         lastReadyUpdate: Date.now()
