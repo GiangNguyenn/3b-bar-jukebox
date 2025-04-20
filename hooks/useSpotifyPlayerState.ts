@@ -149,7 +149,6 @@ export function useSpotifyPlayerState(
     }
 
     isInitializing = true
-    console.log('[SpotifyPlayer] Starting initialization')
 
     try {
       initializationPromise = (async () => {
@@ -373,8 +372,6 @@ export function useSpotifyPlayerState(
     }
 
     try {
-      console.log('[SpotifyPlayer] Starting playlist state refresh')
-      console.log('[SpotifyPlayer] Dispatching playlistChecked event')
       window.dispatchEvent(
         new CustomEvent('playlistChecked', {
           detail: {
