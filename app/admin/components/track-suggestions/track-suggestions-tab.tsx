@@ -104,6 +104,13 @@ export function TrackSuggestionsTab({
   const [state, setState] = useState<TrackSuggestionsState>(getInitialState)
   const lastTrackUriRef = useRef<string | null>(null)
   const pollTimeoutRef = useRef<NodeJS.Timeout>()
+  const isInitialMount = useRef(true)
+  const stateRef = useRef(state)
+
+  // Update ref when state changes
+  useEffect(() => {
+    stateRef.current = state
+  }, [state])
 
   // Persist state changes to localStorage
   useEffect(() => {
@@ -116,9 +123,13 @@ export function TrackSuggestionsTab({
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state))
   }, [state])
 
+  // Call onStateChange after initial mount
   useEffect(() => {
-    onStateChange(state)
-  }, [state, onStateChange])
+    if (!isInitialMount.current) {
+      onStateChange(stateRef.current)
+    }
+    isInitialMount.current = false
+  }, [onStateChange])
 
   const fetchLastSuggestedTrack = async (): Promise<void> => {
     try {
