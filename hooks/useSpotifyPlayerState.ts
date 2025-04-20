@@ -192,21 +192,15 @@ export function useSpotifyPlayerState(
             console.log('[SpotifyPlayer] Waiting for SDK to load...')
             await new Promise<void>((resolve, reject) => {
               const timeout = setTimeout(() => {
-                reject(
-                  new Error('Spotify SDK failed to load within 10 seconds')
-                )
+                reject(new Error('Spotify SDK failed to load within 10 seconds'))
               }, 10000)
 
-              const checkSDK = () => {
-                if (window.Spotify) {
-                  clearTimeout(timeout)
-                  resolve()
-                } else {
-                  setTimeout(checkSDK, 100)
-                }
+              const handleSDKReady = () => {
+                clearTimeout(timeout)
+                resolve()
               }
 
-              checkSDK()
+              window.addEventListener('spotifySDKReady', handleSDKReady, { once: true })
             })
           }
 

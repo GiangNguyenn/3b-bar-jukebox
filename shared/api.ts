@@ -5,6 +5,11 @@ interface ApiProps {
   extraHeaders?: Record<string, string>
   config?: Omit<RequestInit, 'method' | 'headers' | 'body'>
   isLocalApi?: boolean
+  retryConfig?: {
+    maxRetries?: number
+    baseDelay?: number
+    maxDelay?: number
+  }
 }
 
 interface SpotifyErrorResponse {
@@ -15,8 +20,63 @@ interface SpotifyErrorResponse {
   }
 }
 
+class ApiError extends Error {
+  constructor(
+    message: string,
+    public status?: number,
+    public retryAfter?: number,
+    public headers?: Headers
+  ) {
+    super(message)
+    this.name = 'ApiError'
+  }
+}
+
 const SPOTIFY_API_URL =
   process.env.NEXT_PUBLIC_SPOTIFY_BASE_URL || 'https://api.spotify.com/v1'
+
+const DEFAULT_RETRY_CONFIG = {
+  maxRetries: 3,
+  baseDelay: 1000,
+  maxDelay: 10000
+}
+
+// Rate limiting state
+const rateLimitState = {
+  requestCount: 0,
+  resetTime: Date.now(),
+  isRateLimited: false
+}
+
+// Request queue for rate limiting
+const requestQueue: Array<() => Promise<any>> = []
+let isProcessingQueue = false
+
+async function processRequestQueue() {
+  if (isProcessingQueue) return
+  isProcessingQueue = true
+
+  while (requestQueue.length > 0) {
+    if (rateLimitState.isRateLimited) {
+      const now = Date.now()
+      if (now < rateLimitState.resetTime) {
+        await new Promise(resolve => setTimeout(resolve, rateLimitState.resetTime - now))
+      }
+      rateLimitState.isRateLimited = false
+    }
+
+    const request = requestQueue.shift()
+    if (request) {
+      try {
+        await request()
+      } catch (error) {
+        console.error('Error processing queued request:', error)
+      }
+    }
+  }
+
+  isProcessingQueue = false
+}
 
 const DEBOUNCE_TIME = 10000 // 10 seconds in milliseconds
 const requestCache = new Map<
@@ -30,7 +90,8 @@ export const sendApiRequest = async <T>({
   body,
   extraHeaders,
   config = {},
-  isLocalApi = false
+  isLocalApi = false,
+  retryConfig = DEFAULT_RETRY_CONFIG
 }: ApiProps): Promise<T> => {
   const cacheKey = `${method}:${path}:${JSON.stringify(body)}`
   const now = Date.now()
@@ -41,15 +102,12 @@ export const sendApiRequest = async <T>({
     return cachedRequest.promise
   }
 
-  const makeRequest = async (): Promise<T> => {
+  const makeRequest = async (retryCount = 0): Promise<T> => {
     try {
-      // Determine the base URL based on whether this is a local API request
       const baseUrl = isLocalApi ? '' : SPOTIFY_API_URL
-      // Ensure path starts with a slash and remove any double slashes
       const normalizedPath = path.startsWith('/') ? path : `/${path}`
       const url = `${baseUrl}${normalizedPath}`
 
-      // Only include auth token for Spotify API requests
       const headers: Record<string, string> = {
         'Content-Type': 'application/json',
         ...(extraHeaders && { ...extraHeaders })
@@ -58,7 +116,7 @@ export const sendApiRequest = async <T>({
       if (!isLocalApi) {
         const authToken = await getSpotifyToken()
         if (!authToken) {
-          throw new Error('Failed to get Spotify token')
+          throw new ApiError('Failed to get Spotify token')
         }
         headers['Authorization'] = `Bearer ${authToken}`
       }
@@ -77,13 +135,39 @@ export const sendApiRequest = async <T>({
         try {
           errorData = JSON.parse(errorText)
         } catch {
-          throw new Error(
-            `API error: ${response.status} ${response.statusText}`
+          throw new ApiError(
+            `API error: ${response.status} ${response.statusText}`,
+            response.status,
+            undefined,
+            response.headers
           )
         }
 
-        throw new Error(
-          errorData.error.message || `API error: ${response.status}`
+        // Handle rate limiting
+        if (response.status === 429) {
+          const retryAfter = parseInt(response.headers.get('Retry-After') || '0', 10)
+          rateLimitState.isRateLimited = true
+          rateLimitState.resetTime = Date.now() + (retryAfter * 1000)
+          
+          const maxRetries = retryConfig?.maxRetries ?? DEFAULT_RETRY_CONFIG.maxRetries
+          if (retryCount < maxRetries) {
+            const baseDelay = retryConfig?.baseDelay ?? DEFAULT_RETRY_CONFIG.baseDelay
+            const maxDelay = retryConfig?.maxDelay ?? DEFAULT_RETRY_CONFIG.maxDelay
+            const delay = Math.min(
+              baseDelay * Math.pow(2, retryCount),
+              maxDelay
+            )
+            console.log(`Rate limited. Retrying in ${delay}ms (attempt ${retryCount + 1}/${maxRetries})`)
+            await new Promise(resolve => setTimeout(resolve, delay))
+            return makeRequest(retryCount + 1)
+          }
+        }
+
+        throw new ApiError(
+          errorData.error.message || `API error: ${response.status}`,
+          response.status,
+          undefined,
+          response.headers
         )
       }
 
@@ -95,20 +179,26 @@ export const sendApiRequest = async <T>({
       const data = await response.json()
       return data as T
     } catch (error) {
-      if (error instanceof Error) {
+      if (error instanceof ApiError) {
         throw error
       }
-      throw new Error('Unknown error occurred while making API request')
+      throw new ApiError(
+        error instanceof Error ? error.message : 'Unknown error occurred while making API request'
+      )
     }
   }
 
-  // Create a new promise for this request
-  const requestPromise = makeRequest()
-
-  // Cache the promise and timestamp
-  requestCache.set(cacheKey, { promise: requestPromise, timestamp: now })
-
-  return requestPromise
+  return new Promise((resolve, reject) => {
+    requestQueue.push(async () => {
+      try {
+        const result = await makeRequest()
+        resolve(result)
+      } catch (error) {
+        reject(error)
+      }
+    })
+    void processRequestQueue()
+  })
 }
 
 const tokenCache: { token: string | null; expiry: number } = {

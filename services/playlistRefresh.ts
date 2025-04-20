@@ -81,8 +81,11 @@ export interface PlaylistRefreshService {
 export class PlaylistRefreshServiceImpl implements PlaylistRefreshService {
   private static instance: PlaylistRefreshServiceImpl
   private lastAddTime: number = 0
-  private readonly MAX_RETRIES = 3
-  private readonly RETRY_DELAY_MS = 1000
+  private readonly retryConfig = {
+    maxRetries: 3,
+    baseDelay: 1000,
+    maxDelay: 10000
+  }
   private readonly FIXED_PLAYLIST_NAME = '3B Saigon'
   private readonly spotifyApi: SpotifyApiClient
   private lastSuggestedTrack: {
@@ -152,6 +155,14 @@ export class PlaylistRefreshServiceImpl implements PlaylistRefreshService {
       await this.spotifyApi.addTrackToPlaylist(playlistId, trackUri)
       return true
     } catch (error) {
+      if (error instanceof Error) {
+        console.error('Error adding track to playlist:', {
+          error: error.message,
+          trackUri,
+          playlistId,
+          timestamp: new Date().toISOString()
+        })
+      }
       throw error
     }
   }
@@ -170,27 +181,16 @@ export class PlaylistRefreshServiceImpl implements PlaylistRefreshService {
       songsBetweenRepeats: number
     }
   ): Promise<{ success: boolean; error?: string; searchDetails?: unknown }> {
-    console.log(
-      '[PARAM CHAIN] Genres received in addSuggestedTrackToPlaylist (playlistRefresh.ts):',
-      params?.genres
+    const existingTrackIds = Array.from(
+      new Set(allPlaylistTracks.map((track) => track.track.id))
     )
-    const existingTrackIds = allPlaylistTracks.map((t) => t.track.id)
-    const now = Date.now()
-
-    if (now - this.lastAddTime < COOLDOWN_MS) {
-      return { success: false, error: 'In cooldown period' }
-    }
-
-    if (upcomingTracks.length > MAX_PLAYLIST_LENGTH) {
-      return { success: false, error: 'Playlist too long' }
-    }
 
     try {
       let retryCount = 0
       let success = false
       let searchDetails: unknown
 
-      while (!success && retryCount < this.MAX_RETRIES) {
+      while (!success && retryCount < this.retryConfig.maxRetries) {
         console.log(
           '[PARAM CHAIN] Passing genres to findSuggestedTrack (playlistRefresh.ts):',
           params?.genres
@@ -235,31 +235,37 @@ export class PlaylistRefreshServiceImpl implements PlaylistRefreshService {
                 context_uri: playbackState.context.uri,
                 offset: { uri: playbackState.item.uri },
                 position_ms: playbackState.progress_ms ?? 0
-              }
+              },
+              retryConfig: this.retryConfig
             })
           }
         } else {
           retryCount++
           await new Promise((resolve) =>
-            setTimeout(resolve, this.RETRY_DELAY_MS * Math.pow(2, retryCount))
+            setTimeout(
+              resolve,
+              this.retryConfig.baseDelay * Math.pow(2, retryCount)
+            )
           )
         }
       }
 
-      if (success) {
-        this.lastAddTime = now
-        return { success: true, searchDetails }
+      return {
+        success,
+        error: !success ? 'Failed to add track after multiple attempts' : undefined,
+        searchDetails
       }
-
-      return { success: false, error: 'Failed to add track after retries' }
     } catch (error) {
-      console.error(
-        '[PlaylistRefresh] Error in addSuggestedTrackToPlaylist:',
-        error
-      )
+      console.error('Error in addSuggestedTrackToPlaylist:', {
+        error: error instanceof Error ? error.message : 'Unknown error',
+        playlistId,
+        currentTrackId,
+        timestamp: new Date().toISOString()
+      })
       return {
         success: false,
-        error: error instanceof Error ? error.message : 'Unknown error'
+        error: error instanceof Error ? error.message : 'Unknown error occurred',
+        searchDetails: undefined
       }
     }
   }
@@ -354,7 +360,8 @@ export class PlaylistRefreshServiceImpl implements PlaylistRefreshService {
             context_uri: playbackState.context.uri,
             offset: { uri: playbackState.item.uri },
             position_ms: playbackState.progress_ms ?? 0
-          }
+          },
+          retryConfig: this.retryConfig
         })
       }
 
@@ -400,10 +407,13 @@ export class PlaylistRefreshServiceImpl implements PlaylistRefreshService {
         playerStateRefresh: true
       }
     } catch (error) {
-      console.error('[PlaylistRefresh] Error in refreshPlaylist:', error)
+      console.error('Error in refreshPlaylist:', {
+        error: error instanceof Error ? error.message : 'Unknown error',
+        timestamp: new Date().toISOString()
+      })
       return {
         success: false,
-        message: error instanceof Error ? error.message : 'Unknown error',
+        message: error instanceof Error ? error.message : 'Unknown error occurred',
         timestamp: new Date().toISOString()
       }
     }
