@@ -10,29 +10,6 @@ import {
 
 export type Genre = string
 
-const GENRES = [
-  'rock',
-  'pop',
-  'jazz',
-  'classical',
-  'electronic',
-  'hip-hop',
-  'r&b',
-  'country',
-  'blues',
-  'folk',
-  'metal',
-  'punk',
-  'reggae',
-  'soul',
-  'funk',
-  'indie',
-  'alternative',
-  'ambient',
-  'dance',
-  'house'
-] as const
-
 // Utility: Select a random track from a filtered list
 export function selectRandomTrack(
   tracks: TrackDetails[],
