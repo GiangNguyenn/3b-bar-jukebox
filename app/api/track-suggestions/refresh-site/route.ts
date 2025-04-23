@@ -90,12 +90,19 @@ export async function POST(
       )
     }
 
+    const errorMessage =
+      error instanceof Error ? error.message : 'An error occurred'
     return NextResponse.json(
       {
         success: false,
-        message: error instanceof Error ? error.message : 'An error occurred'
+        message: errorMessage
       },
-      { status: 500 }
+      {
+        status: 500,
+        headers: {
+          'Content-Type': 'application/json'
+        }
+      }
     )
   }
 }
