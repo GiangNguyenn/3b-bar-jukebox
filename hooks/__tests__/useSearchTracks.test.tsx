@@ -79,7 +79,9 @@ describe('useSearchTracks', () => {
 
   beforeEach(() => {
     jest.clearAllMocks()
-    mockSendApiRequest.mockResolvedValue({ tracks: { items: [mockTrack] } } as SpotifySearchResponse)
+    mockSendApiRequest.mockResolvedValue({
+      tracks: { items: [mockTrack] }
+    } as SpotifySearchResponse)
   })
 
   it('should initialize with default values', () => {
@@ -133,7 +135,9 @@ describe('useSearchTracks', () => {
   })
 
   it('should handle empty search query', async () => {
-    mockSendApiRequest.mockResolvedValueOnce({ tracks: { items: [] } } as SpotifySearchResponse)
+    mockSendApiRequest.mockResolvedValueOnce({
+      tracks: { items: [] }
+    } as SpotifySearchResponse)
 
     const { result } = renderHook(() => useSearchTracks())
 
@@ -153,7 +157,9 @@ describe('useSearchTracks', () => {
   })
 
   it('should handle malformed API response', async () => {
-    mockSendApiRequest.mockResolvedValue({ tracks: { items: null } } as unknown as SpotifySearchResponse)
+    mockSendApiRequest.mockResolvedValue({
+      tracks: { items: null }
+    } as unknown as SpotifySearchResponse)
 
     const { result } = renderHook(() => useSearchTracks())
 
