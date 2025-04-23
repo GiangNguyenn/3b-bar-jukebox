@@ -19,4 +19,4 @@ export interface TrackSuggestionsState {
   maxSongLength: number
   songsBetweenRepeats: number
   lastSuggestedTrack?: LastSuggestedTrackInfo
-} 
+}

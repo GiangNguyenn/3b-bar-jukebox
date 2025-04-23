@@ -5,7 +5,7 @@ export async function GET(): Promise<NextResponse> {
   try {
     const service = PlaylistRefreshServiceImpl.getInstance()
     console.log('[API Last Suggested Track] Service instance:', service)
-    
+
     const lastSuggestedTrack = await Promise.resolve(
       service.getLastSuggestedTrack()
     )

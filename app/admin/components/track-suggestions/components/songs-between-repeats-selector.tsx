@@ -1,7 +1,11 @@
 'use client'
 
 import { RefreshCw } from 'lucide-react'
-import { SONGS_BETWEEN_REPEATS_DEFAULT, SONGS_BETWEEN_REPEATS_MAX, SONGS_BETWEEN_REPEATS_MIN } from '@/shared/validations/trackSuggestions'
+import {
+  SONGS_BETWEEN_REPEATS_DEFAULT,
+  SONGS_BETWEEN_REPEATS_MAX,
+  SONGS_BETWEEN_REPEATS_MIN
+} from '@/shared/validations/trackSuggestions'
 
 interface SongsBetweenRepeatsSelectorProps {
   count: number
