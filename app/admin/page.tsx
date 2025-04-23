@@ -20,6 +20,8 @@ import { TrackSuggestionsTab } from './components/track-suggestions/track-sugges
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useConsoleLogs } from '@/hooks/useConsoleLogs'
 import { FALLBACK_GENRES } from '@/shared/constants/trackSuggestion'
+import { validateSongsBetweenRepeats } from '@/shared/validations/trackSuggestions'
+import { type TrackSuggestionsState, type LastSuggestedTrackInfo } from '@/shared/types/trackSuggestions'
 
 const REFRESH_INTERVAL = 180000 // 3 minutes in milliseconds
 const DEVICE_CHECK_INTERVAL = {
@@ -70,19 +72,8 @@ interface RefreshResponse {
   }
 }
 
-interface TrackSuggestionsState {
-  genres: string[]
-  yearRange: [number, number]
-  popularity: number
-  allowExplicit: boolean
-  maxSongLength: number
-  songsBetweenRepeats: number
-  lastSuggestedTrack?: {
-    name: string
-    artist: string
-    album: string
-    uri: string
-  }
+interface TrackSuggestionsTabProps {
+  onStateChange: (state: TrackSuggestionsState) => void
 }
 
 export default function AdminPage(): JSX.Element {
@@ -804,12 +795,9 @@ export default function AdminPage(): JSX.Element {
       return
     }
 
-    if (
-      typeof songsBetweenRepeats !== 'number' ||
-      songsBetweenRepeats < 1 ||
-      songsBetweenRepeats > 50
-    ) {
-      setRefreshError('Invalid songs between repeats: must be between 1 and 50')
+    const songsBetweenRepeatsError = validateSongsBetweenRepeats(songsBetweenRepeats)
+    if (songsBetweenRepeatsError) {
+      setRefreshError(songsBetweenRepeatsError)
       return
     }
 

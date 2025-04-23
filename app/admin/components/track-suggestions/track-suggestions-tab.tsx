@@ -9,26 +9,7 @@ import { ExplicitContentToggle } from './components/explicit-content-toggle'
 import { MaxSongLengthSelector } from './components/max-song-length-selector'
 import { SongsBetweenRepeatsSelector } from './components/songs-between-repeats-selector'
 import { LastSuggestedTrack } from './components/last-suggested-track'
-
-interface LastSuggestedTrackInfo {
-  name: string
-  artist: string
-  album: string
-  uri: string
-  popularity: number
-  duration_ms: number
-  preview_url: string | null
-}
-
-interface TrackSuggestionsState {
-  genres: Genre[]
-  yearRange: [number, number]
-  popularity: number
-  allowExplicit: boolean
-  maxSongLength: number
-  songsBetweenRepeats: number
-  lastSuggestedTrack?: LastSuggestedTrackInfo
-}
+import { type TrackSuggestionsState, type LastSuggestedTrackInfo } from '@/shared/types/trackSuggestions'
 
 interface TrackSuggestionsTabProps {
   onStateChange: (state: TrackSuggestionsState) => void
@@ -139,11 +120,15 @@ export function TrackSuggestionsTab({
       const data = (await response.json()) as LastSuggestedTrackResponse
 
       if (data.track) {
-        setState((prev) => ({
-          ...prev,
-          lastSuggestedTrack: data.track ?? undefined
-        }))
-        lastTrackUriRef.current = data.track.uri
+        // Only update if the track has changed
+        if (data.track.uri !== lastTrackUriRef.current) {
+          console.log('[TrackSuggestions] New track detected:', data.track)
+          setState((prev) => ({
+            ...prev,
+            lastSuggestedTrack: data.track ?? undefined
+          }))
+          lastTrackUriRef.current = data.track.uri
+        }
       }
     } catch (error) {
       console.error(

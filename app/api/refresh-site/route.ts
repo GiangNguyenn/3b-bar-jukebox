@@ -1,13 +1,15 @@
 import { NextResponse } from 'next/server'
 import { PlaylistRefreshServiceImpl } from '@/services/playlistRefresh'
 import { z } from 'zod'
+import { songsBetweenRepeatsSchema } from '@/shared/validations/trackSuggestions'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 export const revalidate = 0
 
-// Set a timeout of 60 seconds (Vercel's default timeout is 30s)
-const TIMEOUT_MS = 60000
+// Set a timeout of 55 seconds (Vercel's default timeout is 30s)
+// Using 55s to ensure we have time to handle the timeout before Vercel's timeout
+const TIMEOUT_MS = 55000
 
 const refreshRequestSchema = z
   .object({
@@ -46,12 +48,7 @@ const refreshRequestSchema = z
       .max(20, 'Maximum song length cannot exceed 20 minutes')
       .transform((val) => Math.floor(val)), // Ensure integer values
 
-    songsBetweenRepeats: z
-      .number()
-      .int('Songs between repeats must be an integer')
-      .min(2, 'Songs between repeats must be at least 2')
-      .max(50, 'Songs between repeats cannot exceed 50')
-      .transform((val) => Math.floor(val)) // Ensure integer values
+    songsBetweenRepeats: songsBetweenRepeatsSchema
   })
   .refine((data) => data.yearRange[0] <= data.yearRange[1], {
     message: 'Start year must be before or equal to end year',
@@ -74,11 +71,10 @@ export function GET(): NextResponse<{ message: string }> {
 export async function POST(
   request: Request
 ): Promise<NextResponse<RefreshResponse>> {
-  const timeoutPromise = new Promise<never>((_, reject) => {
-    setTimeout(() => {
-      reject(new Error('Request timed out'))
-    }, TIMEOUT_MS)
-  })
+  const controller = new AbortController()
+  const timeoutId = setTimeout(() => {
+    controller.abort()
+  }, TIMEOUT_MS)
 
   try {
     const body = (await request.json()) as RefreshRequestType
@@ -140,13 +136,21 @@ export async function POST(
       songsBetweenRepeats
     }
 
-    const refreshPromise =
-      PlaylistRefreshServiceImpl.getInstance().refreshPlaylist(
-        false,
-        trackSuggestionsState
-      )
+    const refreshPromise = PlaylistRefreshServiceImpl.getInstance()
+      .refreshPlaylist(false, trackSuggestionsState)
+      .catch((error) => {
+        console.error('[Refresh Site] Playlist refresh error:', error)
+        throw error
+      })
 
-    const result = await Promise.race([refreshPromise, timeoutPromise])
+    const result = await Promise.race([
+      refreshPromise,
+      new Promise<never>((_, reject) => {
+        controller.signal.addEventListener('abort', () => {
+          reject(new Error('Request timed out'))
+        })
+      })
+    ])
 
     return NextResponse.json({
       success: result.success,
@@ -161,7 +165,12 @@ export async function POST(
       return NextResponse.json(
         {
           success: false,
-          message: 'Request timed out. Please try again.'
+          message: 'Request timed out. The operation took too long to complete. Please try again.',
+          error: {
+            type: 'timeout',
+            message: 'The playlist refresh operation exceeded the maximum allowed time',
+            timeoutMs: TIMEOUT_MS
+          }
         },
         { status: 504 }
       )
@@ -170,10 +179,15 @@ export async function POST(
     return NextResponse.json(
       {
         success: false,
-        message:
-          error instanceof Error ? error.message : 'Failed to refresh site'
+        message: 'Failed to refresh site',
+        error: {
+          type: 'internal',
+          message: error instanceof Error ? error.message : 'An unknown error occurred'
+        }
       },
       { status: 500 }
     )
+  } finally {
+    clearTimeout(timeoutId)
   }
 }
