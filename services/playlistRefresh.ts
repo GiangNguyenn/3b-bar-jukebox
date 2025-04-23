@@ -329,7 +329,10 @@ export class PlaylistRefreshServiceImpl implements PlaylistRefreshService {
     )
   }
 
-  private async withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
+  private async withTimeout<T>(
+    promise: Promise<T>,
+    timeoutMs: number
+  ): Promise<T> {
     const timeoutPromise = new Promise<never>((_, reject) => {
       setTimeout(() => {
         reject(new Error('Operation timed out'))
@@ -385,10 +388,8 @@ export class PlaylistRefreshServiceImpl implements PlaylistRefreshService {
         }
       }
 
-      const { id: currentTrackId, error: playbackError } = await this.withTimeout(
-        this.getCurrentlyPlaying(),
-        this.TIMEOUT_MS
-      )
+      const { id: currentTrackId, error: playbackError } =
+        await this.withTimeout(this.getCurrentlyPlaying(), this.TIMEOUT_MS)
 
       if (playbackError) {
         console.error('[PlaylistRefresh] Playback error:', {
