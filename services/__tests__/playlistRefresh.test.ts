@@ -1,10 +1,7 @@
 import { PlaylistRefreshServiceImpl } from '../playlistRefresh'
 import { SpotifyApiService } from '../spotifyApi'
 import { findSuggestedTrack } from '@/services/trackSuggestion'
-import {
-  SpotifyPlaylistItem,
-  TrackItem
-} from '@/shared/types'
+import { SpotifyPlaylistItem, TrackItem } from '@/shared/types'
 
 const MOCK_MARKET = 'US'
 const FIXED_PLAYLIST_NAME = '3B Saigon'
