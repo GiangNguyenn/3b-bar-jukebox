@@ -87,7 +87,7 @@ const Header = (): JSX.Element => {
           typeof window !== 'undefined' ? window.location.origin : 'server-side'
       })
 
-      const response = await fetch('/api/refresh-site', {
+      const response = await fetch('/api/track-suggestions/refresh-site', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'

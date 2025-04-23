@@ -20,6 +20,8 @@ import { TrackSuggestionsTab } from './components/track-suggestions/track-sugges
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useConsoleLogs } from '@/hooks/useConsoleLogs'
 import { FALLBACK_GENRES } from '@/shared/constants/trackSuggestion'
+import { validateSongsBetweenRepeats } from './components/track-suggestions/validations/trackSuggestions'
+import { type TrackSuggestionsState } from '@/shared/types/trackSuggestions'
 
 const REFRESH_INTERVAL = 180000 // 3 minutes in milliseconds
 const DEVICE_CHECK_INTERVAL = {
@@ -70,19 +72,8 @@ interface RefreshResponse {
   }
 }
 
-interface TrackSuggestionsState {
-  genres: string[]
-  yearRange: [number, number]
-  popularity: number
-  allowExplicit: boolean
-  maxSongLength: number
-  songsBetweenRepeats: number
-  lastSuggestedTrack?: {
-    name: string
-    artist: string
-    album: string
-    uri: string
-  }
+interface _TrackSuggestionsTabProps {
+  onStateChange: (state: TrackSuggestionsState) => void
 }
 
 export default function AdminPage(): JSX.Element {
@@ -155,7 +146,7 @@ export default function AdminPage(): JSX.Element {
         JSON.stringify(trackSuggestionsState, null, 2)
       )
 
-      const response = await fetch('/api/refresh-site', {
+      const response = await fetch('/api/track-suggestions/refresh-site', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
@@ -435,7 +426,7 @@ export default function AdminPage(): JSX.Element {
     }
   }, [])
 
-  // Automatic periodic refresh every 2 minutes
+  // Automatic periodic refresh every 3 minutes
   const autoRefreshEffect: EffectCallback = () => {
     const refreshInterval = setInterval(() => {
       if (!isLoading) {
@@ -457,20 +448,23 @@ export default function AdminPage(): JSX.Element {
                   songsBetweenRepeats: 5
                 }
 
-            const response = await fetch('/api/refresh-site', {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json'
-              },
-              body: JSON.stringify({
-                genres: trackSuggestionsState.genres,
-                yearRange: trackSuggestionsState.yearRange,
-                popularity: trackSuggestionsState.popularity,
-                allowExplicit: trackSuggestionsState.allowExplicit,
-                maxSongLength: trackSuggestionsState.maxSongLength,
-                songsBetweenRepeats: trackSuggestionsState.songsBetweenRepeats
-              })
-            })
+            const response = await fetch(
+              '/api/track-suggestions/refresh-site',
+              {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                  genres: trackSuggestionsState.genres,
+                  yearRange: trackSuggestionsState.yearRange,
+                  popularity: trackSuggestionsState.popularity,
+                  allowExplicit: trackSuggestionsState.allowExplicit,
+                  maxSongLength: trackSuggestionsState.maxSongLength,
+                  songsBetweenRepeats: trackSuggestionsState.songsBetweenRepeats
+                })
+              }
+            )
 
             const data = (await response.json()) as RefreshResponse
 
@@ -804,12 +798,10 @@ export default function AdminPage(): JSX.Element {
       return
     }
 
-    if (
-      typeof songsBetweenRepeats !== 'number' ||
-      songsBetweenRepeats < 1 ||
-      songsBetweenRepeats > 50
-    ) {
-      setRefreshError('Invalid songs between repeats: must be between 1 and 50')
+    const songsBetweenRepeatsError =
+      validateSongsBetweenRepeats(songsBetweenRepeats)
+    if (songsBetweenRepeatsError) {
+      setRefreshError(songsBetweenRepeatsError)
       return
     }
 
@@ -827,7 +819,7 @@ export default function AdminPage(): JSX.Element {
         songsBetweenRepeats
       }
 
-      const response = await fetch('/api/track-suggestions/refresh', {
+      const response = await fetch('/api/track-suggestions/refresh-site', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'

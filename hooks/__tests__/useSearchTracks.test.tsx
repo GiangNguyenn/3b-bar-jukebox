@@ -1,5 +1,5 @@
 import { renderHook, act } from '@testing-library/react-hooks'
-import useSearchTracks from '../useSearchTracks'
+import { useSearchTracks, SpotifySearchRequest } from '../useSearchTracks'
 import { sendApiRequest } from '@/shared/api'
 import { TrackDetails } from '@/shared/types'
 import { ERROR_MESSAGES } from '@/shared/constants/errors'
@@ -10,6 +10,12 @@ jest.mock('@/shared/api')
 const mockSendApiRequest = sendApiRequest as jest.MockedFunction<
   typeof sendApiRequest
 >
+
+interface SpotifySearchResponse {
+  tracks: {
+    items: TrackDetails[]
+  }
+}
 
 describe('useSearchTracks', () => {
   const mockTrack: TrackDetails = {
@@ -73,7 +79,9 @@ describe('useSearchTracks', () => {
 
   beforeEach(() => {
     jest.clearAllMocks()
-    mockSendApiRequest.mockResolvedValue({ tracks: { items: [mockTrack] } })
+    mockSendApiRequest.mockResolvedValue({
+      tracks: { items: [mockTrack] }
+    } as SpotifySearchResponse)
   })
 
   it('should initialize with default values', () => {
@@ -88,7 +96,12 @@ describe('useSearchTracks', () => {
 
     let searchResult: TrackDetails[] = []
     await act(async () => {
-      searchResult = await result.current.searchTracks('test query')
+      const searchRequest: SpotifySearchRequest = {
+        query: 'test query',
+        type: 'track',
+        limit: 20
+      }
+      searchResult = await result.current.searchTracks(searchRequest)
     })
 
     expect(mockSendApiRequest).toHaveBeenCalledWith({
@@ -101,13 +114,19 @@ describe('useSearchTracks', () => {
   })
 
   it('should handle API error', async () => {
-    mockSendApiRequest.mockRejectedValue(new Error('API Error'))
+    const mockError = new Error('API Error')
+    mockSendApiRequest.mockRejectedValue(mockError)
 
     const { result } = renderHook(() => useSearchTracks())
 
     let searchResult: TrackDetails[] = []
     await act(async () => {
-      searchResult = await result.current.searchTracks('test query')
+      const searchRequest: SpotifySearchRequest = {
+        query: 'test query',
+        type: 'track',
+        limit: 20
+      }
+      searchResult = await result.current.searchTracks(searchRequest)
     })
 
     expect(searchResult).toEqual([])
@@ -116,13 +135,20 @@ describe('useSearchTracks', () => {
   })
 
   it('should handle empty search query', async () => {
-    mockSendApiRequest.mockResolvedValueOnce({ tracks: { items: [] } })
+    mockSendApiRequest.mockResolvedValueOnce({
+      tracks: { items: [] }
+    } as SpotifySearchResponse)
 
     const { result } = renderHook(() => useSearchTracks())
 
     let searchResult: TrackDetails[] = []
     await act(async () => {
-      searchResult = await result.current.searchTracks('')
+      const searchRequest: SpotifySearchRequest = {
+        query: '',
+        type: 'track',
+        limit: 20
+      }
+      searchResult = await result.current.searchTracks(searchRequest)
     })
 
     expect(searchResult).toEqual([])
@@ -131,13 +157,20 @@ describe('useSearchTracks', () => {
   })
 
   it('should handle malformed API response', async () => {
-    mockSendApiRequest.mockResolvedValue({ tracks: { items: null } })
+    mockSendApiRequest.mockResolvedValue({
+      tracks: { items: null }
+    } as unknown as SpotifySearchResponse)
 
     const { result } = renderHook(() => useSearchTracks())
 
     let searchResult: TrackDetails[] = []
     await act(async () => {
-      searchResult = await result.current.searchTracks('test query')
+      const searchRequest: SpotifySearchRequest = {
+        query: 'test query',
+        type: 'track',
+        limit: 20
+      }
+      searchResult = await result.current.searchTracks(searchRequest)
     })
 
     expect(searchResult).toEqual([])

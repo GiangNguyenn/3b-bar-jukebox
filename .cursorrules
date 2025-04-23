@@ -10,6 +10,7 @@
 ## Naming Conventions
 - Use lowercase with dashes for directories (e.g., components/auth-wizard)
 - Favor named exports for components
+- Use PascalCase for component files and camelCase for utility files
 
 ## TypeScript Usage
 - Use TypeScript for all code; prefer interfaces over types
@@ -42,5 +43,43 @@
 
 ## Project Structure
 
-- Use components within /app subdirectories in a subdirectory for page-specific components
-- Adopt modular structure for features/domains with their own components, hooks, and utilities 
+### App Directory Organization
+- Use route groups with parentheses (e.g., (auth), (dashboard)) to organize related routes
+- Keep page-specific components within their respective route folders
+- Maintain clear separation between public and authenticated routes
+- Place error, loading, and not-found pages at appropriate levels
+
+### Feature-based Architecture
+- Organize domain-specific code in features directory:
+  ```
+  app/
+  ├── [feature-name]/
+  │   ├── components/
+  │   ├── hooks/
+  │   └── types/
+  ```
+- Keep feature-specific components, hooks, and types within their feature directory
+- Use barrel exports (index.ts) for clean imports
+
+### API and Data Layer
+- Organize API routes under app/api grouped by feature
+- Keep API handlers clean and focused
+- Use middleware for common API functionality
+- Place feature-specific services in respective feature directories
+
+### State Management
+- Place global contexts in contexts directory
+- Keep feature-specific contexts within feature directories
+- Prefer React Server Components where possible
+- Use URL state management with nuqs for shareable state
+
+### Asset Organization
+- Keep all public assets in the root public directory
+- Organize assets by type (images, icons, etc.)
+- Use appropriate image formats and optimization
+
+### Type Organization
+- Place global types in types directory
+- Keep feature-specific types within feature directories
+- Use consistent type naming conventions
+- Export types through barrel files 
