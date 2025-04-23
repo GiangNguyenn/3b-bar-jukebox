@@ -40,7 +40,9 @@ jest.mock('../useRemoveTrackFromPlaylist', () => ({
 // Mock sendApiRequest
 jest.mock('@/shared/api')
 
-const mockSendApiRequest = sendApiRequest as jest.MockedFunction<typeof sendApiRequest>
+const mockSendApiRequest = sendApiRequest as jest.MockedFunction<
+  typeof sendApiRequest
+>
 
 interface MockResponse {
   snapshot_id: string

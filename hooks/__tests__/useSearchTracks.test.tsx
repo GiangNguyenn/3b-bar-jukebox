@@ -7,7 +7,9 @@ import { AppError } from '@/shared/utils/errorHandling'
 
 jest.mock('@/shared/api')
 
-const mockSendApiRequest = sendApiRequest as jest.MockedFunction<typeof sendApiRequest>
+const mockSendApiRequest = sendApiRequest as jest.MockedFunction<
+  typeof sendApiRequest
+>
 
 describe('useSearchTracks', () => {
   const mockTrack: TrackDetails = {
