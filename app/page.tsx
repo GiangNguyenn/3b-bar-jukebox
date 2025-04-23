@@ -41,8 +41,8 @@ const getTrackSuggestionsState = (): TrackSuggestionsState => {
       yearRange: [1950, new Date().getFullYear()],
       popularity: 50,
       allowExplicit: false,
-      maxSongLength: 300,
-      songsBetweenRepeats: 5
+      maxSongLength: 20,
+      songsBetweenRepeats: 20
     }
   }
 
@@ -59,8 +59,8 @@ const getTrackSuggestionsState = (): TrackSuggestionsState => {
         yearRange: parsed.yearRange ?? [1950, new Date().getFullYear()],
         popularity: parsed.popularity ?? 50,
         allowExplicit: parsed.allowExplicit ?? false,
-        maxSongLength: parsed.maxSongLength ?? 300,
-        songsBetweenRepeats: parsed.songsBetweenRepeats ?? 5
+        maxSongLength: parsed.maxSongLength ?? 20,
+        songsBetweenRepeats: parsed.songsBetweenRepeats ?? 20
       }
     } catch (error) {
       console.error(
@@ -76,8 +76,8 @@ const getTrackSuggestionsState = (): TrackSuggestionsState => {
     yearRange: [1950, new Date().getFullYear()],
     popularity: 50,
     allowExplicit: false,
-    maxSongLength: 300,
-    songsBetweenRepeats: 5
+    maxSongLength: 20,
+    songsBetweenRepeats: 20
   }
 }
 
