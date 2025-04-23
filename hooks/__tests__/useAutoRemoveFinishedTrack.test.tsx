@@ -24,7 +24,7 @@ global.fetch = jest.fn(() =>
 // Mock useRemoveTrackFromPlaylist
 jest.mock('../useRemoveTrackFromPlaylist', () => ({
   useRemoveTrackFromPlaylist: () => ({
-    removeTrack: async (track: any) => {
+    removeTrack: async (track: TrackItem): Promise<void> => {
       await mockSendApiRequest({
         path: 'playlists/test-playlist-id/tracks',
         method: 'DELETE',
@@ -40,11 +40,13 @@ jest.mock('../useRemoveTrackFromPlaylist', () => ({
 // Mock sendApiRequest
 jest.mock('@/shared/api')
 
-const mockSendApiRequest = sendApiRequest as jest.MockedFunction<
-  typeof sendApiRequest
->
+const mockSendApiRequest = sendApiRequest as jest.MockedFunction<typeof sendApiRequest>
 
-beforeEach(() => {
+interface MockResponse {
+  snapshot_id: string
+}
+
+beforeEach((): void => {
   jest.clearAllTimers()
   mockSendApiRequest.mockClear()
   mockSendApiRequest.mockImplementation(async (params) => {
@@ -52,18 +54,18 @@ beforeEach(() => {
       params.path === 'playlists/test-playlist-id/tracks' &&
       params.method === 'DELETE'
     ) {
-      return { snapshot_id: 'mock-snapshot-id' } as any
+      return { snapshot_id: 'mock-snapshot-id' } as { snapshot_id: string }
     }
     throw new Error(`Unexpected API call: ${params.path}`)
   })
 })
 
-afterEach(() => {
+afterEach((): void => {
   jest.clearAllTimers()
   mockSendApiRequest.mockClear()
 })
 
-const mockTimers = jest.useFakeTimers()
+jest.useFakeTimers()
 
 const createMockTrack = (id: string): TrackItem => ({
   added_at: '2024-01-01T00:00:00Z',
@@ -183,15 +185,15 @@ const createMockPlaybackState = (id: string): SpotifyPlaybackState => {
 }
 
 describe('useAutoRemoveFinishedTrack', () => {
-  beforeEach(() => {
+  beforeEach((): void => {
     jest.clearAllTimers()
   })
 
-  afterEach(() => {
+  afterEach((): void => {
     jest.clearAllTimers()
   })
 
-  it('should remove oldest track when current track index is >= 20', async () => {
+  it('should remove oldest track when current track index is >= 20', async (): Promise<void> => {
     const tracks = Array.from({ length: 25 }, (_, i) =>
       createMockTrack(`track-${i}`)
     )
@@ -207,7 +209,7 @@ describe('useAutoRemoveFinishedTrack', () => {
     )
 
     // Fast-forward time by 5 seconds
-    act(() => {
+    act((): void => {
       jest.advanceTimersByTime(5000)
     })
 
@@ -220,7 +222,7 @@ describe('useAutoRemoveFinishedTrack', () => {
     })
   })
 
-  it('should not remove any track when current track index is < 20', async () => {
+  it('should not remove any track when current track index is < 20', async (): Promise<void> => {
     const tracks = Array.from({ length: 25 }, (_, i) =>
       createMockTrack(`track-${i}`)
     )
@@ -236,14 +238,14 @@ describe('useAutoRemoveFinishedTrack', () => {
     )
 
     // Fast-forward time by 5 seconds
-    act(() => {
+    act((): void => {
       jest.advanceTimersByTime(5000)
     })
 
     expect(sendApiRequest).not.toHaveBeenCalled()
   })
 
-  it('should not remove any track when playlist is empty', async () => {
+  it('should not remove any track when playlist is empty', async (): Promise<void> => {
     const playbackState = createMockPlaybackState('track-5')
 
     renderHook(() =>
@@ -256,7 +258,7 @@ describe('useAutoRemoveFinishedTrack', () => {
     )
 
     // Fast-forward time by 5 seconds
-    act(() => {
+    act((): void => {
       jest.advanceTimersByTime(5000)
     })
 

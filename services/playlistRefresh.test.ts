@@ -1,6 +1,5 @@
 import { PlaylistRefreshServiceImpl } from './playlistRefresh'
 import { SpotifyApiClient } from './spotifyApi'
-import { SpotifyPlaylistItem, TrackItem } from '@/shared/types'
 
 describe('PlaylistRefreshService', () => {
   let mockSpotifyApi: SpotifyApiClient
@@ -42,7 +41,7 @@ describe('PlaylistRefreshService', () => {
     // Initialize service with mock
     service = PlaylistRefreshServiceImpl.getInstance()
     // @ts-ignore - Override private spotifyApi for testing
-    service['spotifyApi'] = mockSpotifyApi
+    service.spotifyApi = mockSpotifyApi
   })
 
   afterEach(() => {

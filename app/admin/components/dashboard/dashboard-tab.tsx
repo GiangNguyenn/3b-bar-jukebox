@@ -25,14 +25,16 @@ export function DashboardTab({
   const { isInitialFetchComplete } = useFixedPlaylist()
 
   useEffect(() => {
-    const interval = setInterval((): void => {
-      setTimeLeft((prev) => {
+    function updateTimeLeft(): void {
+      setTimeLeft((prev: number): number => {
         if (prev <= 0) {
           return 120 // Reset to 2 minutes
         }
         return prev - 1
       })
-    }, 1000)
+    }
+
+    const interval = setInterval(updateTimeLeft, 1000)
 
     return () => clearInterval(interval)
   }, [])
