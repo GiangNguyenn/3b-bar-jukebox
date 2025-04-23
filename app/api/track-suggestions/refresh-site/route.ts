@@ -95,7 +95,7 @@ export async function POST(
 
     const errorMessage =
       error instanceof Error ? error.message : 'An error occurred'
-    
+
     // Ensure we always return valid JSON
     return NextResponse.json(
       {
@@ -103,7 +103,10 @@ export async function POST(
         message: errorMessage
       },
       {
-        status: error instanceof Error && error.message.includes('timeout') ? 504 : 500,
+        status:
+          error instanceof Error && error.message.includes('timeout')
+            ? 504
+            : 500,
         headers: {
           'Content-Type': 'application/json'
         }
