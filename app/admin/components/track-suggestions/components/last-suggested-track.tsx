@@ -32,7 +32,9 @@ export function LastSuggestedTrack({
             </p>
             <p className='text-sm text-muted-foreground'>
               <span className='font-medium'>Genres:</span>{' '}
-              {trackInfo.genres.length > 0 ? trackInfo.genres.join(', ') : 'No genres available'}
+              {trackInfo.genres.length > 0
+                ? trackInfo.genres.join(', ')
+                : 'No genres available'}
             </p>
             <p className='text-sm text-muted-foreground'>
               <span className='font-medium'>Popularity:</span>{' '}

@@ -229,7 +229,10 @@ export class PlaylistRefreshServiceImpl implements PlaylistRefreshService {
         }
 
         if (success) {
-          console.log('[PlaylistRefresh] Setting last suggested track:', result.track)
+          console.log(
+            '[PlaylistRefresh] Setting last suggested track:',
+            result.track
+          )
           this.lastSuggestedTrack = {
             name: result.track.name,
             artist: result.track.artists[0].name,
@@ -238,7 +241,11 @@ export class PlaylistRefreshServiceImpl implements PlaylistRefreshService {
             popularity: result.track.popularity,
             duration_ms: result.track.duration_ms,
             preview_url: result.track.preview_url ?? null,
-            genres: [result.searchDetails.genresTried[result.searchDetails.genresTried.length - 1]]
+            genres: [
+              result.searchDetails.genresTried[
+                result.searchDetails.genresTried.length - 1
+              ]
+            ]
           }
 
           // Get current playback state to resume at the same position
@@ -450,7 +457,10 @@ export class PlaylistRefreshServiceImpl implements PlaylistRefreshService {
     preview_url: string | null
     genres: string[]
   } | null {
-    console.log('[PlaylistRefresh] Getting last suggested track:', this.lastSuggestedTrack)
+    console.log(
+      '[PlaylistRefresh] Getting last suggested track:',
+      this.lastSuggestedTrack
+    )
     return this.lastSuggestedTrack
   }
 

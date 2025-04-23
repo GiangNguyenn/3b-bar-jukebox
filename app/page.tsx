@@ -9,6 +9,7 @@ import SearchInput from '@/components/SearchInput'
 import { useDebounce } from 'use-debounce'
 import { FALLBACK_GENRES } from '@/shared/constants/trackSuggestion'
 import { SpotifySearchRequest } from '@/hooks/useSearchTracks'
+import { TrackDetails } from '@/shared/types'
 
 const STORAGE_KEY = 'track-suggestions-state'
 
@@ -96,9 +97,9 @@ const Home = memo((): JSX.Element => {
     }
   }, [fixedPlaylistId, isInitialFetchComplete])
 
-  const handleTrackAdded = useCallback(async (): Promise<void> => {
+  const handleTrackAdded = useCallback((): void => {
     const trackSuggestionsState = getTrackSuggestionsState()
-    await refreshPlaylist(trackSuggestionsState)
+    void refreshPlaylist(trackSuggestionsState)
   }, [refreshPlaylist])
 
   const [debouncedSearchQuery] = useDebounce(searchQuery, 300)
@@ -134,7 +135,14 @@ const Home = memo((): JSX.Element => {
     void searchTrackDebounce()
   }, [debouncedSearchQuery, handleSearch])
 
-  const searchInputProps = useMemo(
+  const searchInputProps = useMemo<{
+    searchQuery: string
+    setSearchQuery: (query: string) => void
+    searchResults: TrackDetails[]
+    setSearchResults: () => void
+    playlistId: string
+    onTrackAdded: () => void
+  }>(
     () => ({
       searchQuery,
       setSearchQuery,

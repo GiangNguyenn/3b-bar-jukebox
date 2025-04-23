@@ -7,8 +7,14 @@ export const SONGS_BETWEEN_REPEATS_DEFAULT = 20
 export const songsBetweenRepeatsSchema = z
   .number()
   .int('Songs between repeats must be an integer')
-  .min(SONGS_BETWEEN_REPEATS_MIN, `Songs between repeats must be at least ${SONGS_BETWEEN_REPEATS_MIN}`)
-  .max(SONGS_BETWEEN_REPEATS_MAX, `Songs between repeats cannot exceed ${SONGS_BETWEEN_REPEATS_MAX}`)
+  .min(
+    SONGS_BETWEEN_REPEATS_MIN,
+    `Songs between repeats must be at least ${SONGS_BETWEEN_REPEATS_MIN}`
+  )
+  .max(
+    SONGS_BETWEEN_REPEATS_MAX,
+    `Songs between repeats cannot exceed ${SONGS_BETWEEN_REPEATS_MAX}`
+  )
   .transform((val) => Math.floor(val)) // Ensure integer values
 
 export function validateSongsBetweenRepeats(value: number): string | null {
@@ -25,4 +31,4 @@ export function validateSongsBetweenRepeats(value: number): string | null {
     return `Songs between repeats cannot exceed ${SONGS_BETWEEN_REPEATS_MAX}`
   }
   return null
-} 
+}

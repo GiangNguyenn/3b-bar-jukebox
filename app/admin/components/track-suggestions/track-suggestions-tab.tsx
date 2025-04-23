@@ -9,7 +9,10 @@ import { ExplicitContentToggle } from './components/explicit-content-toggle'
 import { MaxSongLengthSelector } from './components/max-song-length-selector'
 import { SongsBetweenRepeatsSelector } from './components/songs-between-repeats-selector'
 import { LastSuggestedTrack } from './components/last-suggested-track'
-import { type TrackSuggestionsState, type LastSuggestedTrackInfo } from '@/shared/types/trackSuggestions'
+import {
+  type TrackSuggestionsState,
+  type LastSuggestedTrackInfo
+} from '@/shared/types/trackSuggestions'
 
 interface TrackSuggestionsTabProps {
   onStateChange: (state: TrackSuggestionsState) => void

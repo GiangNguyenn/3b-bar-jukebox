@@ -165,10 +165,12 @@ export async function POST(
       return NextResponse.json(
         {
           success: false,
-          message: 'Request timed out. The operation took too long to complete. Please try again.',
+          message:
+            'Request timed out. The operation took too long to complete. Please try again.',
           error: {
             type: 'timeout',
-            message: 'The playlist refresh operation exceeded the maximum allowed time',
+            message:
+              'The playlist refresh operation exceeded the maximum allowed time',
             timeoutMs: TIMEOUT_MS
           }
         },
@@ -182,7 +184,8 @@ export async function POST(
         message: 'Failed to refresh site',
         error: {
           type: 'internal',
-          message: error instanceof Error ? error.message : 'An unknown error occurred'
+          message:
+            error instanceof Error ? error.message : 'An unknown error occurred'
         }
       },
       { status: 500 }

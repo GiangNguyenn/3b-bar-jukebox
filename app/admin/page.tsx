@@ -21,7 +21,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useConsoleLogs } from '@/hooks/useConsoleLogs'
 import { FALLBACK_GENRES } from '@/shared/constants/trackSuggestion'
 import { validateSongsBetweenRepeats } from '@/shared/validations/trackSuggestions'
-import { type TrackSuggestionsState, type LastSuggestedTrackInfo } from '@/shared/types/trackSuggestions'
+import { type TrackSuggestionsState } from '@/shared/types/trackSuggestions'
 
 const REFRESH_INTERVAL = 180000 // 3 minutes in milliseconds
 const DEVICE_CHECK_INTERVAL = {
@@ -72,7 +72,7 @@ interface RefreshResponse {
   }
 }
 
-interface TrackSuggestionsTabProps {
+interface _TrackSuggestionsTabProps {
   onStateChange: (state: TrackSuggestionsState) => void
 }
 
@@ -795,7 +795,8 @@ export default function AdminPage(): JSX.Element {
       return
     }
 
-    const songsBetweenRepeatsError = validateSongsBetweenRepeats(songsBetweenRepeats)
+    const songsBetweenRepeatsError =
+      validateSongsBetweenRepeats(songsBetweenRepeats)
     if (songsBetweenRepeatsError) {
       setRefreshError(songsBetweenRepeatsError)
       return
