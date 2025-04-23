@@ -7,6 +7,9 @@ export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 export const revalidate = 0
 
+// Configure timeout
+export const maxDuration = 60 // 60 seconds
+
 const refreshRequestSchema = z
   .object({
     genres: z
@@ -92,13 +95,15 @@ export async function POST(
 
     const errorMessage =
       error instanceof Error ? error.message : 'An error occurred'
+    
+    // Ensure we always return valid JSON
     return NextResponse.json(
       {
         success: false,
         message: errorMessage
       },
       {
-        status: 500,
+        status: error instanceof Error && error.message.includes('timeout') ? 504 : 500,
         headers: {
           'Content-Type': 'application/json'
         }

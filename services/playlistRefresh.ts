@@ -100,6 +100,7 @@ export class PlaylistRefreshServiceImpl implements PlaylistRefreshService {
     genres: string[]
   } | null = null
   private isRefreshing = false
+  private readonly TIMEOUT_MS = 45000 // 45 seconds timeout
 
   private constructor() {
     this.spotifyApi = SpotifyApiService.getInstance()
@@ -328,6 +329,16 @@ export class PlaylistRefreshServiceImpl implements PlaylistRefreshService {
     )
   }
 
+  private async withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      setTimeout(() => {
+        reject(new Error('Operation timed out'))
+      }, timeoutMs)
+    })
+
+    return Promise.race([promise, timeoutPromise])
+  }
+
   async refreshPlaylist(
     force = false,
     params?: {
@@ -346,8 +357,21 @@ export class PlaylistRefreshServiceImpl implements PlaylistRefreshService {
     forceRefresh?: boolean
     playerStateRefresh?: boolean
   }> {
+    if (this.isRefreshing) {
+      return {
+        success: false,
+        message: 'Refresh operation already in progress',
+        timestamp: new Date().toISOString()
+      }
+    }
+
     try {
-      const playlist = await this.getFixedPlaylist()
+      this.isRefreshing = true
+
+      const playlist = await this.withTimeout(
+        this.getFixedPlaylist(),
+        this.TIMEOUT_MS
+      )
 
       if (!playlist) {
         console.error('[PlaylistRefresh] No playlist found:', {
@@ -361,8 +385,10 @@ export class PlaylistRefreshServiceImpl implements PlaylistRefreshService {
         }
       }
 
-      const { id: currentTrackId, error: playbackError } =
-        await this.getCurrentlyPlaying()
+      const { id: currentTrackId, error: playbackError } = await this.withTimeout(
+        this.getCurrentlyPlaying(),
+        this.TIMEOUT_MS
+      )
 
       if (playbackError) {
         console.error('[PlaylistRefresh] Playback error:', {
@@ -378,27 +404,37 @@ export class PlaylistRefreshServiceImpl implements PlaylistRefreshService {
 
       const upcomingTracks = this.getUpcomingTracks(playlist, currentTrackId)
 
-      const playbackState = await this.spotifyApi.getPlaybackState()
-      const removedTrack = await this.autoRemoveFinishedTrack({
-        playlistId: playlist.id,
-        currentTrackId,
-        playlistTracks: playlist.tracks.items,
-        playbackState
-      })
+      const playbackState = await this.withTimeout(
+        this.spotifyApi.getPlaybackState(),
+        this.TIMEOUT_MS
+      )
+
+      const removedTrack = await this.withTimeout(
+        this.autoRemoveFinishedTrack({
+          playlistId: playlist.id,
+          currentTrackId,
+          playlistTracks: playlist.tracks.items,
+          playbackState
+        }),
+        this.TIMEOUT_MS
+      )
 
       // Resume playback at the last track's position and progress if needed
       if (playbackState?.context?.uri && playbackState?.item?.uri) {
         try {
-          await sendApiRequest({
-            path: 'me/player/play',
-            method: 'PUT',
-            body: {
-              context_uri: playbackState.context.uri,
-              offset: { uri: playbackState.item.uri },
-              position_ms: playbackState.progress_ms ?? 0
-            },
-            retryConfig: this.retryConfig
-          })
+          await this.withTimeout(
+            sendApiRequest({
+              path: 'me/player/play',
+              method: 'PUT',
+              body: {
+                context_uri: playbackState.context.uri,
+                offset: { uri: playbackState.item.uri },
+                position_ms: playbackState.progress_ms ?? 0
+              },
+              retryConfig: this.retryConfig
+            }),
+            this.TIMEOUT_MS
+          )
         } catch (error) {
           console.error('[PlaylistRefresh] Failed to resume playback:', {
             error: error instanceof Error ? error.message : 'Unknown error',
@@ -417,12 +453,15 @@ export class PlaylistRefreshServiceImpl implements PlaylistRefreshService {
         addedTrack: false
       }
 
-      const result = await this.addSuggestedTrackToPlaylist(
-        upcomingTracks,
-        playlist.id,
-        currentTrackId,
-        playlist.tracks.items,
-        params
+      const result = await this.withTimeout(
+        this.addSuggestedTrackToPlaylist(
+          upcomingTracks,
+          playlist.id,
+          currentTrackId,
+          playlist.tracks.items,
+          params
+        ),
+        this.TIMEOUT_MS
       )
 
       if (!result.success) {
@@ -465,6 +504,8 @@ export class PlaylistRefreshServiceImpl implements PlaylistRefreshService {
           error instanceof Error ? error.message : 'Failed to refresh playlist',
         timestamp: new Date().toISOString()
       }
+    } finally {
+      this.isRefreshing = false
     }
   }
 
