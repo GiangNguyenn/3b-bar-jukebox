@@ -1,5 +1,5 @@
 import { renderHook, act } from '@testing-library/react-hooks'
-import useSearchTracks from '../useSearchTracks'
+import { useSearchTracks, SpotifySearchRequest } from '../useSearchTracks'
 import { sendApiRequest } from '@/shared/api'
 import { TrackDetails } from '@/shared/types'
 import { ERROR_MESSAGES } from '@/shared/constants/errors'
@@ -7,9 +7,7 @@ import { AppError } from '@/shared/utils/errorHandling'
 
 jest.mock('@/shared/api')
 
-const mockSendApiRequest = sendApiRequest as jest.MockedFunction<
-  typeof sendApiRequest
->
+const mockSendApiRequest = sendApiRequest as jest.MockedFunction<typeof sendApiRequest>
 
 describe('useSearchTracks', () => {
   const mockTrack: TrackDetails = {
@@ -88,7 +86,12 @@ describe('useSearchTracks', () => {
 
     let searchResult: TrackDetails[] = []
     await act(async () => {
-      searchResult = await result.current.searchTracks('test query')
+      const searchRequest: SpotifySearchRequest = {
+        query: 'test query',
+        type: 'track',
+        limit: 20
+      }
+      searchResult = await result.current.searchTracks(searchRequest)
     })
 
     expect(mockSendApiRequest).toHaveBeenCalledWith({
@@ -107,7 +110,12 @@ describe('useSearchTracks', () => {
 
     let searchResult: TrackDetails[] = []
     await act(async () => {
-      searchResult = await result.current.searchTracks('test query')
+      const searchRequest: SpotifySearchRequest = {
+        query: 'test query',
+        type: 'track',
+        limit: 20
+      }
+      searchResult = await result.current.searchTracks(searchRequest)
     })
 
     expect(searchResult).toEqual([])
@@ -122,7 +130,12 @@ describe('useSearchTracks', () => {
 
     let searchResult: TrackDetails[] = []
     await act(async () => {
-      searchResult = await result.current.searchTracks('')
+      const searchRequest: SpotifySearchRequest = {
+        query: '',
+        type: 'track',
+        limit: 20
+      }
+      searchResult = await result.current.searchTracks(searchRequest)
     })
 
     expect(searchResult).toEqual([])
@@ -137,7 +150,12 @@ describe('useSearchTracks', () => {
 
     let searchResult: TrackDetails[] = []
     await act(async () => {
-      searchResult = await result.current.searchTracks('test query')
+      const searchRequest: SpotifySearchRequest = {
+        query: 'test query',
+        type: 'track',
+        limit: 20
+      }
+      searchResult = await result.current.searchTracks(searchRequest)
     })
 
     expect(searchResult).toEqual([])
