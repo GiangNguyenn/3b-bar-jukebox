@@ -5,7 +5,7 @@ import {
   SONGS_BETWEEN_REPEATS_DEFAULT,
   SONGS_BETWEEN_REPEATS_MAX,
   SONGS_BETWEEN_REPEATS_MIN
-} from '@/shared/validations/trackSuggestions'
+} from '../validations/trackSuggestions'
 
 interface SongsBetweenRepeatsSelectorProps {
   count: number

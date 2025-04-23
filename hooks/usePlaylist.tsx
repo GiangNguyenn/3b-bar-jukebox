@@ -76,9 +76,9 @@ export const usePlaylist = (
     playlistId ? ['playlist', playlistId] : null,
     () => fetcher(playlistId),
     {
-      refreshInterval: 10000,
-      revalidateOnFocus: true,
-      revalidateOnReconnect: true
+      refreshInterval: 30000,
+      revalidateOnFocus: false,
+      revalidateOnReconnect: false
     }
   )
 
@@ -86,9 +86,9 @@ export const usePlaylist = (
     'currently-playing',
     currentlyPlayingFetcher,
     {
-      refreshInterval: 1000,
-      revalidateOnFocus: true,
-      revalidateOnReconnect: true
+      refreshInterval: 10000,
+      revalidateOnFocus: false,
+      revalidateOnReconnect: false
     }
   )
 

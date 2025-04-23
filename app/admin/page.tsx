@@ -20,7 +20,7 @@ import { TrackSuggestionsTab } from './components/track-suggestions/track-sugges
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useConsoleLogs } from '@/hooks/useConsoleLogs'
 import { FALLBACK_GENRES } from '@/shared/constants/trackSuggestion'
-import { validateSongsBetweenRepeats } from '@/shared/validations/trackSuggestions'
+import { validateSongsBetweenRepeats } from './components/track-suggestions/validations/trackSuggestions'
 import { type TrackSuggestionsState } from '@/shared/types/trackSuggestions'
 
 const REFRESH_INTERVAL = 180000 // 3 minutes in milliseconds
@@ -146,7 +146,7 @@ export default function AdminPage(): JSX.Element {
         JSON.stringify(trackSuggestionsState, null, 2)
       )
 
-      const response = await fetch('/api/refresh-site', {
+      const response = await fetch('/api/track-suggestions/refresh-site', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
@@ -426,7 +426,7 @@ export default function AdminPage(): JSX.Element {
     }
   }, [])
 
-  // Automatic periodic refresh every 2 minutes
+  // Automatic periodic refresh every 3 minutes
   const autoRefreshEffect: EffectCallback = () => {
     const refreshInterval = setInterval(() => {
       if (!isLoading) {
@@ -448,20 +448,23 @@ export default function AdminPage(): JSX.Element {
                   songsBetweenRepeats: 5
                 }
 
-            const response = await fetch('/api/refresh-site', {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json'
-              },
-              body: JSON.stringify({
-                genres: trackSuggestionsState.genres,
-                yearRange: trackSuggestionsState.yearRange,
-                popularity: trackSuggestionsState.popularity,
-                allowExplicit: trackSuggestionsState.allowExplicit,
-                maxSongLength: trackSuggestionsState.maxSongLength,
-                songsBetweenRepeats: trackSuggestionsState.songsBetweenRepeats
-              })
-            })
+            const response = await fetch(
+              '/api/track-suggestions/refresh-site',
+              {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                  genres: trackSuggestionsState.genres,
+                  yearRange: trackSuggestionsState.yearRange,
+                  popularity: trackSuggestionsState.popularity,
+                  allowExplicit: trackSuggestionsState.allowExplicit,
+                  maxSongLength: trackSuggestionsState.maxSongLength,
+                  songsBetweenRepeats: trackSuggestionsState.songsBetweenRepeats
+                })
+              }
+            )
 
             const data = (await response.json()) as RefreshResponse
 
@@ -816,7 +819,7 @@ export default function AdminPage(): JSX.Element {
         songsBetweenRepeats
       }
 
-      const response = await fetch('/api/track-suggestions/refresh', {
+      const response = await fetch('/api/track-suggestions/refresh-site', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'

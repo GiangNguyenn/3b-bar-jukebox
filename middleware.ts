@@ -4,7 +4,7 @@ import type { NextRequest } from 'next/server'
 export function middleware(request: NextRequest) {
   // Allow both GET and POST requests for refresh-site endpoint
   if (
-    request.nextUrl.pathname === '/api/refresh-site' &&
+    request.nextUrl.pathname === '/api/track-suggestions/refresh-site' &&
     !['GET', 'POST'].includes(request.method)
   ) {
     return NextResponse.json(
@@ -19,5 +19,5 @@ export function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: '/api/refresh-site'
+  matcher: '/api/track-suggestions/refresh-site'
 }

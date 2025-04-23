@@ -147,7 +147,7 @@ const Home = memo((): JSX.Element => {
       searchQuery,
       setSearchQuery,
       searchResults,
-      setSearchResults: () => {}, // This is handled by useSearchTracks now
+      setSearchResults: (): void => {}, // This is handled by useSearchTracks now
       playlistId: fixedPlaylistId ?? '',
       onTrackAdded: handleTrackAdded
     }),
