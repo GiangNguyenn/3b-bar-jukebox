@@ -1,15 +1,9 @@
 'use client'
 
+import { type LastSuggestedTrackInfo } from '@/shared/types/trackSuggestions'
+
 interface LastSuggestedTrackProps {
-  trackInfo?: {
-    name: string
-    artist: string
-    album: string
-    uri: string
-    popularity: number
-    duration_ms: number
-    preview_url: string | null
-  }
+  trackInfo?: LastSuggestedTrackInfo
 }
 
 export function LastSuggestedTrack({
@@ -35,6 +29,12 @@ export function LastSuggestedTrack({
             </p>
             <p className='text-sm text-muted-foreground'>
               <span className='font-medium'>Album:</span> {trackInfo.album}
+            </p>
+            <p className='text-sm text-muted-foreground'>
+              <span className='font-medium'>Genres:</span>{' '}
+              {trackInfo.genres.length > 0
+                ? trackInfo.genres.join(', ')
+                : 'No genres available'}
             </p>
             <p className='text-sm text-muted-foreground'>
               <span className='font-medium'>Popularity:</span>{' '}

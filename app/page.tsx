@@ -9,6 +9,7 @@ import SearchInput from '@/components/SearchInput'
 import { useDebounce } from 'use-debounce'
 import { FALLBACK_GENRES } from '@/shared/constants/trackSuggestion'
 import { SpotifySearchRequest } from '@/hooks/useSearchTracks'
+import { TrackDetails } from '@/shared/types'
 
 const STORAGE_KEY = 'track-suggestions-state'
 
@@ -40,8 +41,8 @@ const getTrackSuggestionsState = (): TrackSuggestionsState => {
       yearRange: [1950, new Date().getFullYear()],
       popularity: 50,
       allowExplicit: false,
-      maxSongLength: 300,
-      songsBetweenRepeats: 5
+      maxSongLength: 20,
+      songsBetweenRepeats: 20
     }
   }
 
@@ -58,8 +59,8 @@ const getTrackSuggestionsState = (): TrackSuggestionsState => {
         yearRange: parsed.yearRange ?? [1950, new Date().getFullYear()],
         popularity: parsed.popularity ?? 50,
         allowExplicit: parsed.allowExplicit ?? false,
-        maxSongLength: parsed.maxSongLength ?? 300,
-        songsBetweenRepeats: parsed.songsBetweenRepeats ?? 5
+        maxSongLength: parsed.maxSongLength ?? 20,
+        songsBetweenRepeats: parsed.songsBetweenRepeats ?? 20
       }
     } catch (error) {
       console.error(
@@ -75,8 +76,8 @@ const getTrackSuggestionsState = (): TrackSuggestionsState => {
     yearRange: [1950, new Date().getFullYear()],
     popularity: 50,
     allowExplicit: false,
-    maxSongLength: 300,
-    songsBetweenRepeats: 5
+    maxSongLength: 20,
+    songsBetweenRepeats: 20
   }
 }
 
@@ -96,9 +97,9 @@ const Home = memo((): JSX.Element => {
     }
   }, [fixedPlaylistId, isInitialFetchComplete])
 
-  const handleTrackAdded = useCallback(async (): Promise<void> => {
+  const handleTrackAdded = useCallback((): void => {
     const trackSuggestionsState = getTrackSuggestionsState()
-    await refreshPlaylist(trackSuggestionsState)
+    void refreshPlaylist(trackSuggestionsState)
   }, [refreshPlaylist])
 
   const [debouncedSearchQuery] = useDebounce(searchQuery, 300)
@@ -134,12 +135,19 @@ const Home = memo((): JSX.Element => {
     void searchTrackDebounce()
   }, [debouncedSearchQuery, handleSearch])
 
-  const searchInputProps = useMemo(
+  const searchInputProps = useMemo<{
+    searchQuery: string
+    setSearchQuery: (query: string) => void
+    searchResults: TrackDetails[]
+    setSearchResults: () => void
+    playlistId: string
+    onTrackAdded: () => void
+  }>(
     () => ({
       searchQuery,
       setSearchQuery,
       searchResults,
-      setSearchResults: () => {}, // This is handled by useSearchTracks now
+      setSearchResults: (): void => {}, // This is handled by useSearchTracks now
       playlistId: fixedPlaylistId ?? '',
       onTrackAdded: handleTrackAdded
     }),

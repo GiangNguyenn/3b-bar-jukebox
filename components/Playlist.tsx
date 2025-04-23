@@ -41,7 +41,7 @@ const Playlist: React.FC<IPlaylistProps> = ({ tracks }): JSX.Element => {
             songsBetweenRepeats: 5
           }
 
-      const response = await fetch('/api/refresh-site', {
+      const response = await fetch('/api/track-suggestions/refresh-site', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
