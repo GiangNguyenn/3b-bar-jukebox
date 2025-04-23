@@ -86,6 +86,7 @@ export interface TrackDetails {
   type: string
   uri: string
   is_local: boolean
+  genres?: string[]
 }
 
 export interface Album {
