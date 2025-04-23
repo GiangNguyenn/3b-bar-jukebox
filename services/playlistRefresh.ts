@@ -350,6 +350,10 @@ export class PlaylistRefreshServiceImpl implements PlaylistRefreshService {
       const playlist = await this.getFixedPlaylist()
 
       if (!playlist) {
+        console.error('[PlaylistRefresh] No playlist found:', {
+          playlistName: this.FIXED_PLAYLIST_NAME,
+          timestamp: new Date().toISOString()
+        })
         return {
           success: false,
           message: `No playlist found with name: ${this.FIXED_PLAYLIST_NAME}`,
@@ -361,6 +365,10 @@ export class PlaylistRefreshServiceImpl implements PlaylistRefreshService {
         await this.getCurrentlyPlaying()
 
       if (playbackError) {
+        console.error('[PlaylistRefresh] Playback error:', {
+          error: playbackError,
+          timestamp: new Date().toISOString()
+        })
         return {
           success: false,
           message: playbackError,
@@ -380,16 +388,23 @@ export class PlaylistRefreshServiceImpl implements PlaylistRefreshService {
 
       // Resume playback at the last track's position and progress if needed
       if (playbackState?.context?.uri && playbackState?.item?.uri) {
-        await sendApiRequest({
-          path: 'me/player/play',
-          method: 'PUT',
-          body: {
-            context_uri: playbackState.context.uri,
-            offset: { uri: playbackState.item.uri },
-            position_ms: playbackState.progress_ms ?? 0
-          },
-          retryConfig: this.retryConfig
-        })
+        try {
+          await sendApiRequest({
+            path: 'me/player/play',
+            method: 'PUT',
+            body: {
+              context_uri: playbackState.context.uri,
+              offset: { uri: playbackState.item.uri },
+              position_ms: playbackState.progress_ms ?? 0
+            },
+            retryConfig: this.retryConfig
+          })
+        } catch (error) {
+          console.error('[PlaylistRefresh] Failed to resume playback:', {
+            error: error instanceof Error ? error.message : 'Unknown error',
+            timestamp: new Date().toISOString()
+          })
+        }
       }
 
       const diagnosticInfo = {
@@ -411,6 +426,11 @@ export class PlaylistRefreshServiceImpl implements PlaylistRefreshService {
       )
 
       if (!result.success) {
+        console.error('[PlaylistRefresh] Failed to add track:', {
+          error: result.error,
+          diagnosticInfo,
+          timestamp: new Date().toISOString()
+        })
         return {
           success: false,
           message:
@@ -434,14 +454,15 @@ export class PlaylistRefreshServiceImpl implements PlaylistRefreshService {
         playerStateRefresh: true
       }
     } catch (error) {
-      console.error('Error in refreshPlaylist:', {
+      console.error('[PlaylistRefresh] Error in refreshPlaylist:', {
         error: error instanceof Error ? error.message : 'Unknown error',
+        stack: error instanceof Error ? error.stack : undefined,
         timestamp: new Date().toISOString()
       })
       return {
         success: false,
         message:
-          error instanceof Error ? error.message : 'Unknown error occurred',
+          error instanceof Error ? error.message : 'Failed to refresh playlist',
         timestamp: new Date().toISOString()
       }
     }
