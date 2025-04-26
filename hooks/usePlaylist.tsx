@@ -113,7 +113,21 @@ export const usePlaylist = (
           body: trackSuggestionsState
         })
       }
-      await refreshPlaylist()
+      // Force a revalidation with fresh data
+      await refreshPlaylist(
+        async () => {
+          const response = await sendApiRequest<SpotifyPlaylistObjectFull>({
+            path: `playlists/${playlistId}`,
+            method: 'GET'
+          })
+          return response
+        },
+        {
+          revalidate: true,
+          populateCache: true,
+          rollbackOnError: true
+        }
+      )
     } catch (error) {
       console.error(
         `[Playlist] Error refreshing playlist ${playlistId}:`,
