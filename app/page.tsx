@@ -7,11 +7,9 @@ import Playlist from '@/components/Playlist/Playlist'
 import Loading from './loading'
 import SearchInput from '@/components/SearchInput'
 import { useDebounce } from 'use-debounce'
-import { FALLBACK_GENRES } from '@/shared/constants/trackSuggestion'
 import { SpotifySearchRequest } from '@/hooks/useSearchTracks'
 import { TrackDetails } from '@/shared/types'
-
-const STORAGE_KEY = 'track-suggestions-state'
+import { useMyPlaylists } from '@/hooks/useMyPlaylists'
 
 interface PlaylistRefreshEvent extends CustomEvent {
   detail: {
@@ -25,62 +23,6 @@ declare global {
   }
 }
 
-interface TrackSuggestionsState {
-  genres: string[]
-  yearRange: [number, number]
-  popularity: number
-  allowExplicit: boolean
-  maxSongLength: number
-  songsBetweenRepeats: number
-}
-
-const getTrackSuggestionsState = (): TrackSuggestionsState => {
-  if (typeof window === 'undefined') {
-    return {
-      genres: Array.from(FALLBACK_GENRES),
-      yearRange: [1950, new Date().getFullYear()],
-      popularity: 50,
-      allowExplicit: false,
-      maxSongLength: 20,
-      songsBetweenRepeats: 20
-    }
-  }
-
-  const savedState = localStorage.getItem(STORAGE_KEY)
-
-  if (savedState) {
-    try {
-      const parsed = JSON.parse(savedState) as Partial<TrackSuggestionsState>
-      return {
-        genres:
-          Array.isArray(parsed.genres) && parsed.genres.length > 0
-            ? parsed.genres
-            : Array.from(FALLBACK_GENRES),
-        yearRange: parsed.yearRange ?? [1950, new Date().getFullYear()],
-        popularity: parsed.popularity ?? 50,
-        allowExplicit: parsed.allowExplicit ?? false,
-        maxSongLength: parsed.maxSongLength ?? 20,
-        songsBetweenRepeats: parsed.songsBetweenRepeats ?? 20
-      }
-    } catch (error) {
-      console.error(
-        '[PARAM CHAIN] Failed to parse localStorage in getTrackSuggestionsState (page.tsx):',
-        error
-      )
-      // If parsing fails, return default state
-    }
-  }
-
-  return {
-    genres: Array.from(FALLBACK_GENRES),
-    yearRange: [1950, new Date().getFullYear()],
-    popularity: 50,
-    allowExplicit: false,
-    maxSongLength: 20,
-    songsBetweenRepeats: 20
-  }
-}
-
 const Home = memo((): JSX.Element => {
   const {
     fixedPlaylistId,
@@ -88,6 +30,7 @@ const Home = memo((): JSX.Element => {
     isInitialFetchComplete
   } = useFixedPlaylist()
   const { playlist, refreshPlaylist } = usePlaylist(fixedPlaylistId ?? '')
+  const { refetchPlaylists } = useMyPlaylists()
   const [searchQuery, setSearchQuery] = useState('')
   const { searchTracks, tracks: searchResults } = useSearchTracks()
 
@@ -98,9 +41,17 @@ const Home = memo((): JSX.Element => {
   }, [fixedPlaylistId, isInitialFetchComplete])
 
   const handleTrackAdded = useCallback((): void => {
-    const trackSuggestionsState = getTrackSuggestionsState()
-    void refreshPlaylist(trackSuggestionsState)
-  }, [refreshPlaylist])
+    // Force a revalidation with fresh data
+    void refreshPlaylist()
+    // Dispatch a custom event to force immediate UI update
+    window.dispatchEvent(
+      new CustomEvent('playlistRefresh', {
+        detail: { timestamp: Date.now() }
+      })
+    )
+    // Force a refresh of the playlists data
+    void refetchPlaylists()
+  }, [refreshPlaylist, refetchPlaylists])
 
   const [debouncedSearchQuery] = useDebounce(searchQuery, 300)
 

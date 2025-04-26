@@ -31,22 +31,6 @@ const DEVICE_CHECK_INTERVAL = {
   poor: 10000, // 10 seconds
   unknown: 5000 // 5 seconds for initial checks
 }
-const MAX_RECOVERY_ATTEMPTS = 3
-
-interface RefreshTimingConfig {
-  // Time before track end to consider for refresh
-  refreshThreshold: number // e.g., 5000ms
-  // Minimum time between refresh attempts
-  cooldownPeriod: number // e.g., 30000ms
-  // Maximum time to wait for natural pause
-  maxWaitTime: number // e.g., 180000ms
-}
-
-const REFRESH_CONFIG: RefreshTimingConfig = {
-  refreshThreshold: 5000,
-  cooldownPeriod: 30000,
-  maxWaitTime: 180000
-}
 
 interface HealthStatus {
   device: 'healthy' | 'unresponsive' | 'disconnected' | 'unknown'
@@ -109,7 +93,6 @@ export default function AdminPage(): JSX.Element {
     fixedPlaylist: 'unknown'
   })
   const [recoveryAttempts, setRecoveryAttempts] = useState(0)
-  const [networkErrorCount, setNetworkErrorCount] = useState(0)
   const isReady = useSpotifyPlayer((state) => state.isReady)
   const deviceId = useSpotifyPlayer((state) => state.deviceId)
   const { fixedPlaylistId, isInitialFetchComplete } = useFixedPlaylist()
@@ -117,7 +100,6 @@ export default function AdminPage(): JSX.Element {
   const deviceCheckInterval = useRef<NodeJS.Timeout | null>(null)
   const recoveryTimeout = useRef<NodeJS.Timeout | null>(null)
   const isRefreshing = useRef<boolean>(false)
-  const maxRecoveryAttempts = 5
   const baseDelay = 2000 // 2 seconds
   const { logs: consoleLogs, addLog } = useConsoleLogs()
   const [uptime, setUptime] = useState(0)
@@ -372,7 +354,7 @@ export default function AdminPage(): JSX.Element {
   useEffect(statusEffect, [mounted, updateTokenStatus])
 
   const attemptRecovery = useCallback(async (): Promise<void> => {
-    if (recoveryAttempts >= maxRecoveryAttempts) {
+    if (recoveryAttempts >= 5) {
       console.error('[Recovery] Max attempts reached')
       return
     }
@@ -942,8 +924,7 @@ export default function AdminPage(): JSX.Element {
                       : healthStatus.device === 'disconnected'
                         ? 'Device Disconnected'
                         : 'Device Status Unknown'}
-                  {recoveryAttempts > 0 &&
-                    ` (Recovery ${recoveryAttempts}/${maxRecoveryAttempts})`}
+                  {recoveryAttempts > 0 && ` (Recovery ${recoveryAttempts}/5)`}
                 </span>
               </div>
 
