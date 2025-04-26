@@ -1,61 +1,72 @@
 import { NextResponse } from 'next/server'
-import { PlaylistRefreshServiceImpl } from '@/services/playlistRefresh'
 import { z } from 'zod'
 import { songsBetweenRepeatsSchema } from '@/app/admin/components/track-suggestions/validations/trackSuggestions'
+import { findSuggestedTrack } from '@/services/trackSuggestion'
+import { DEFAULT_MARKET } from '@/shared/constants/trackSuggestion'
+import { sendApiRequest } from '@/shared/api'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
-export const revalidate = 0
 
 // Configure timeout
 export const maxDuration = 60 // 60 seconds
 
-const refreshRequestSchema = z
-  .object({
-    genres: z
-      .array(z.string().trim().min(1, 'Genre names cannot be empty'))
-      .min(1, 'At least one genre is required')
-      .transform((genres) => genres.map((g) => g.toLowerCase())), // Normalize genres
+interface SpotifyPlaylist {
+  id: string
+  name: string
+}
 
-    yearRange: z
-      .tuple([
-        z
-          .number()
-          .int('Start year must be an integer')
-          .min(1900, 'Start year must be at least 1900'),
-        z
-          .number()
-          .int('End year must be an integer')
-          .max(new Date().getFullYear(), 'End year cannot be in the future')
-      ])
-      .refine(([start, end]) => start <= end, {
-        message: 'Start year must be less than or equal to end year'
-      }),
+interface SpotifyPlaylistResponse {
+  items: SpotifyPlaylist[]
+}
 
-    popularity: z
-      .number()
-      .int('Popularity must be an integer')
-      .min(0, 'Popularity must be at least 0')
-      .max(100, 'Popularity cannot exceed 100'),
+interface SpotifyTrack {
+  id: string
+  track: {
+    id: string
+  }
+}
 
-    allowExplicit: z.boolean().default(false), // Provide a default value
+interface SpotifyPlaylistTracksResponse {
+  items: SpotifyTrack[]
+}
 
-    maxSongLength: z
-      .number()
-      .int('Song length must be an integer')
-      .min(3, 'Maximum song length must be at least 3 minutes')
-      .max(20, 'Maximum song length cannot exceed 20 minutes')
-      .transform((val) => Math.floor(val)), // Ensure integer values
+interface SpotifyPlaybackState {
+  item: {
+    id: string
+  } | null
+}
 
-    songsBetweenRepeats: songsBetweenRepeatsSchema
-  })
-  .strict()
+const refreshRequestSchema = z.object({
+  genres: z.array(z.string()).min(1).max(10),
+  yearRange: z.tuple([
+    z.number().min(1900),
+    z.number().max(new Date().getFullYear())
+  ]),
+  popularity: z.number().min(0).max(100),
+  allowExplicit: z.boolean(),
+  maxSongLength: z.number().min(3).max(20), // In minutes
+  songsBetweenRepeats: songsBetweenRepeatsSchema
+})
 
 interface RefreshResponse {
   success: boolean
   message?: string
-  playerStateRefresh?: boolean
-  errors?: Array<{ field: string; message: string }>
+  searchDetails?: {
+    attempts: number
+    totalTracksFound: number
+    excludedTrackIds: string[]
+    minPopularity: number
+    genresTried: string[]
+    trackDetails: Array<{
+      name: string
+      popularity: number
+      isExcluded: boolean
+      isPlayable: boolean
+      duration_ms: number
+      explicit: boolean
+    }>
+  }
 }
 
 export function GET(): NextResponse<{ message: string }> {
@@ -69,13 +80,74 @@ export async function POST(
     const body = (await request.json()) as unknown
     const validatedData = refreshRequestSchema.parse(body)
 
-    const service = PlaylistRefreshServiceImpl.getInstance()
-    const result = await service.refreshPlaylist(false, validatedData)
+    // Get current playlist tracks to check for duplicates
+    const playlistResponse = await sendApiRequest<SpotifyPlaylistResponse>({
+      path: 'me/playlists',
+      method: 'GET'
+    })
+
+    const fixedPlaylist = playlistResponse.items.find(
+      (playlist) => playlist.name === '3B Saigon'
+    )
+
+    if (!fixedPlaylist) {
+      return NextResponse.json(
+        {
+          success: false,
+          message: 'Fixed playlist not found'
+        },
+        { status: 404 }
+      )
+    }
+
+    const playlistTracks = await sendApiRequest<SpotifyPlaylistTracksResponse>({
+      path: `playlists/${fixedPlaylist.id}/tracks`,
+      method: 'GET'
+    })
+
+    const existingTrackIds = new Set(
+      playlistTracks.items.map((item) => item.track.id)
+    )
+
+    // Get currently playing track to avoid immediate repeats
+    const playbackState = await sendApiRequest<SpotifyPlaybackState>({
+      path: 'me/player',
+      method: 'GET'
+    })
+    const currentTrackId = playbackState?.item?.id ?? null
+
+    // Find a suggested track
+    const result = await findSuggestedTrack(
+      Array.from(existingTrackIds),
+      currentTrackId,
+      DEFAULT_MARKET,
+      validatedData
+    )
+
+    if (!result.track) {
+      return NextResponse.json(
+        {
+          success: false,
+          message: 'No suitable track found',
+          searchDetails: result.searchDetails
+        },
+        { status: 404 }
+      )
+    }
+
+    // Add the track to the playlist
+    await sendApiRequest({
+      path: `playlists/${fixedPlaylist.id}/tracks`,
+      method: 'POST',
+      body: {
+        uris: [result.track.uri]
+      }
+    })
 
     return NextResponse.json({
       success: true,
-      message: result.message,
-      playerStateRefresh: result.playerStateRefresh
+      message: 'Track added successfully',
+      searchDetails: result.searchDetails
     })
   } catch (error) {
     console.error('[Refresh Site] Error:', error)
@@ -96,7 +168,6 @@ export async function POST(
     const errorMessage =
       error instanceof Error ? error.message : 'An error occurred'
 
-    // Ensure we always return valid JSON
     return NextResponse.json(
       {
         success: false,
