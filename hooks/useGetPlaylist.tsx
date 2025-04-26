@@ -23,7 +23,7 @@ export const useGetPlaylist = (id: string) => {
 
     // If not in cache, fetch from API
     const data = await sendApiRequest<SpotifyPlaylistItem>({
-      path: `users/${userId}/playlists/${id}`
+      path: `playlists/${id}`
     })
 
     // Cache the result
@@ -39,17 +39,21 @@ export const useGetPlaylist = (id: string) => {
 
   const refetchPlaylist = async () => {
     await handleOperationError(async () => {
+      // Clear the cache first
+      cache.delete(`playlist-${id}`)
+
+      // Force a revalidation with fresh data
       await mutate(
         async () => {
           const newData = await sendApiRequest<SpotifyPlaylistItem>({
-            path: `users/${userId}/playlists/${id}`
+            path: `playlists/${id}`
           })
           // Update cache with new data
           cache.set(`playlist-${id}`, newData)
           return newData
         },
         {
-          revalidate: false,
+          revalidate: true,
           populateCache: true,
           rollbackOnError: true
         }

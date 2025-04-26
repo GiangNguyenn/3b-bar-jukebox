@@ -66,39 +66,34 @@ export function SpotifyPlayer(): React.ReactElement | null {
           method: 'GET'
         })
 
-        if (state?.is_playing) {
-          setPlaybackState('playing')
-          // Dispatch playback update event
+        if (state?.item) {
+          const timeUntilEnd = state.item.duration_ms - (state.progress_ms ?? 0)
+          if (state.is_playing) {
+            setPlaybackState('playing')
+          } else {
+            setPlaybackState('paused')
+          }
           window.dispatchEvent(
             new CustomEvent('playbackUpdate', {
               detail: {
-                isPlaying: true,
-                currentTrack: state.item?.name ?? '',
-                progress: state.progress_ms ?? 0
-              }
-            })
-          )
-        } else if (state?.item) {
-          setPlaybackState('paused')
-          // Dispatch playback update event
-          window.dispatchEvent(
-            new CustomEvent('playbackUpdate', {
-              detail: {
-                isPlaying: false,
+                isPlaying: state.is_playing,
                 currentTrack: state.item.name,
-                progress: state.progress_ms ?? 0
+                progress: state.progress_ms ?? 0,
+                duration_ms: state.item.duration_ms,
+                timeUntilEnd
               }
             })
           )
         } else {
           setPlaybackState('stopped')
-          // Dispatch playback update event
           window.dispatchEvent(
             new CustomEvent('playbackUpdate', {
               detail: {
                 isPlaying: false,
                 currentTrack: '',
-                progress: 0
+                progress: 0,
+                duration_ms: 0,
+                timeUntilEnd: 0
               }
             })
           )
