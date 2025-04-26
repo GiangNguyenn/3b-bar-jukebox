@@ -1,4 +1,4 @@
-import { SpotifyPlaylistItem } from '@/shared/types'
+import { SpotifyPlaylistItem, SpotifyPlaylists } from '@/shared/types'
 import { sendApiRequest } from '../shared/api'
 import { useMyPlaylists } from './useMyPlaylists'
 import { useEffect, useState } from 'react'
@@ -35,7 +35,20 @@ export const useFixedPlaylist = () => {
   useEffect(() => {
     const fetchPlaylists = async () => {
       try {
-        await refetchPlaylists()
+        // Force a revalidation with fresh data
+        await refetchPlaylists(
+          async () => {
+            const response = await sendApiRequest<SpotifyPlaylists>({
+              path: '/me/playlists'
+            })
+            return response
+          },
+          {
+            revalidate: true,
+            populateCache: true,
+            rollbackOnError: true
+          }
+        )
         setIsInitialFetchComplete(true)
       } catch (error) {
         console.error('[Fixed Playlist] Error fetching playlists:', error)

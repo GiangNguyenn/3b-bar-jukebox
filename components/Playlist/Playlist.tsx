@@ -21,6 +21,20 @@ const Playlist: React.FC<IPlaylistProps> = memo(({ tracks }): JSX.Element => {
   const { fixedPlaylistId } = useFixedPlaylist()
   const { refetchPlaylist } = useGetPlaylist(fixedPlaylistId ?? '')
 
+  // Listen for playlist refresh events
+  useEffect(() => {
+    const handlePlaylistRefresh = (): void => {
+      void refetchPlaylist().catch((error) => {
+        console.error('[Playlist] Error refreshing playlist:', error)
+      })
+    }
+
+    window.addEventListener('playlistRefresh', handlePlaylistRefresh)
+    return () => {
+      window.removeEventListener('playlistRefresh', handlePlaylistRefresh)
+    }
+  }, [refetchPlaylist])
+
   // Use the auto-remove hook
   useAutoRemoveFinishedTrack({
     currentTrackId,

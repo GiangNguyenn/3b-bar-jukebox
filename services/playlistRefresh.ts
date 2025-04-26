@@ -421,7 +421,12 @@ export class PlaylistRefreshServiceImpl implements PlaylistRefreshService {
       )
 
       // Resume playback at the last track's position and progress if needed
-      if (playbackState?.context?.uri && playbackState?.item?.uri) {
+      // Only resume if we have less than 2 tracks in the upcoming playlist
+      if (
+        upcomingTracks.length < 2 &&
+        playbackState?.context?.uri &&
+        playbackState?.item?.uri
+      ) {
         try {
           await this.withTimeout(
             sendApiRequest({

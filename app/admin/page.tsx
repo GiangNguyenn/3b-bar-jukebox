@@ -22,6 +22,7 @@ import { useConsoleLogs } from '@/hooks/useConsoleLogs'
 import { FALLBACK_GENRES } from '@/shared/constants/trackSuggestion'
 import { validateSongsBetweenRepeats } from './components/track-suggestions/validations/trackSuggestions'
 import { type TrackSuggestionsState } from '@/shared/types/trackSuggestions'
+import { PlaylistRefreshServiceImpl } from '@/services/playlistRefresh'
 
 const REFRESH_INTERVAL = 180000 // 3 minutes in milliseconds
 const DEVICE_CHECK_INTERVAL = {
@@ -30,7 +31,6 @@ const DEVICE_CHECK_INTERVAL = {
   poor: 10000, // 10 seconds
   unknown: 5000 // 5 seconds for initial checks
 }
-const MAX_RECOVERY_ATTEMPTS = 3
 
 interface HealthStatus {
   device: 'healthy' | 'unresponsive' | 'disconnected' | 'unknown'
@@ -50,6 +50,8 @@ interface PlaybackInfo {
   isPlaying: boolean
   currentTrack: string
   progress: number
+  duration_ms?: number
+  timeUntilEnd?: number
 }
 
 interface RefreshResponse {
@@ -80,28 +82,24 @@ export default function AdminPage(): JSX.Element {
   const [mounted, setMounted] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
   const [_error, setError] = useState<string | null>(null)
-  const [timeUntilRefresh, setTimeUntilRefresh] = useState(REFRESH_INTERVAL)
   const [playbackInfo, setPlaybackInfo] = useState<PlaybackInfo | null>(null)
   const [activeTab, setActiveTab] = useState('dashboard')
   const [healthStatus, setHealthStatus] = useState<HealthStatus>({
     device: 'unknown',
     playback: 'unknown',
-    token: 'unknown',
+    token: 'valid',
     connection: 'unknown',
     tokenExpiringSoon: false,
     fixedPlaylist: 'unknown'
   })
   const [recoveryAttempts, setRecoveryAttempts] = useState(0)
-  const [networkErrorCount, setNetworkErrorCount] = useState(0)
   const isReady = useSpotifyPlayer((state) => state.isReady)
   const deviceId = useSpotifyPlayer((state) => state.deviceId)
   const { fixedPlaylistId, isInitialFetchComplete } = useFixedPlaylist()
   const wakeLock = useRef<WakeLockSentinel | null>(null)
-  const lastRefreshTime = useRef<number>(Date.now())
   const deviceCheckInterval = useRef<NodeJS.Timeout | null>(null)
   const recoveryTimeout = useRef<NodeJS.Timeout | null>(null)
   const isRefreshing = useRef<boolean>(false)
-  const maxRecoveryAttempts = 5
   const baseDelay = 2000 // 2 seconds
   const { logs: consoleLogs, addLog } = useConsoleLogs()
   const [uptime, setUptime] = useState(0)
@@ -118,40 +116,39 @@ export default function AdminPage(): JSX.Element {
     useState<TrackSuggestionsState | null>(null)
   const [isRefreshingSuggestions, setIsRefreshingSuggestions] = useState(false)
   const [refreshError, setRefreshError] = useState<string | null>(null)
+  const [timeUntilRefresh, setTimeUntilRefresh] = useState(REFRESH_INTERVAL)
+  const lastRefreshTime = useRef<number>(Date.now())
 
   const { refreshToken } = useSpotifyPlayerState(fixedPlaylistId ?? '')
 
-  const handleRefresh = useCallback(async (): Promise<void> => {
-    if (isRefreshing.current) return
-    isRefreshing.current = true
-    setIsLoading(true)
-    setError(null)
+  // Declare handleRefresh first
+  const handleRefresh = useCallback(
+    async (source: 'auto' | 'manual' = 'manual'): Promise<void> => {
+      if (isRefreshing.current) {
+        console.log(`[Refresh] Skipping ${source} refresh - already refreshing`)
+        return
+      }
 
-    try {
-      // Get track suggestions state from localStorage
-      const savedState = localStorage.getItem('track-suggestions-state')
-      const trackSuggestionsState = savedState
-        ? (JSON.parse(savedState) as TrackSuggestionsState)
-        : {
-            genres: Array.from(FALLBACK_GENRES),
-            yearRange: [1950, new Date().getFullYear()],
-            popularity: 50,
-            allowExplicit: false,
-            maxSongLength: 300,
-            songsBetweenRepeats: 5
-          }
+      console.log(`[Refresh] Starting ${source} refresh`)
+      isRefreshing.current = true
+      setIsLoading(true)
+      setError(null)
 
-      console.log(
-        '[Refresh] Sending track suggestions state:',
-        JSON.stringify(trackSuggestionsState, null, 2)
-      )
+      try {
+        // Get track suggestions state from localStorage
+        const savedState = localStorage.getItem('track-suggestions-state')
+        const trackSuggestionsState = savedState
+          ? (JSON.parse(savedState) as TrackSuggestionsState)
+          : {
+              genres: Array.from(FALLBACK_GENRES),
+              yearRange: [1950, new Date().getFullYear()],
+              popularity: 50,
+              allowExplicit: false,
+              maxSongLength: 300,
+              songsBetweenRepeats: 5
+            }
 
-      const response = await fetch('/api/track-suggestions/refresh-site', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
+        console.log(`[Refresh] Calling refresh-site endpoint with params:`, {
           genres: trackSuggestionsState.genres,
           yearRange: trackSuggestionsState.yearRange,
           popularity: trackSuggestionsState.popularity,
@@ -159,59 +156,123 @@ export default function AdminPage(): JSX.Element {
           maxSongLength: trackSuggestionsState.maxSongLength,
           songsBetweenRepeats: trackSuggestionsState.songsBetweenRepeats
         })
+
+        const response = await fetch('/api/track-suggestions/refresh-site', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            genres: trackSuggestionsState.genres,
+            yearRange: trackSuggestionsState.yearRange,
+            popularity: trackSuggestionsState.popularity,
+            allowExplicit: trackSuggestionsState.allowExplicit,
+            maxSongLength: trackSuggestionsState.maxSongLength,
+            songsBetweenRepeats: trackSuggestionsState.songsBetweenRepeats
+          })
+        })
+
+        const data = (await response.json()) as RefreshResponse
+
+        if (!response.ok) {
+          console.error(
+            `[Refresh] ${source} refresh failed:`,
+            data.message ?? 'Unknown error'
+          )
+          return
+        }
+
+        // Removed the playlistRefresh event dispatch
+        console.log(
+          `[Refresh] ${source} refresh completed successfully - added suggested song`
+        )
+        addLog('INFO', 'Added suggested song successfully')
+      } catch (err) {
+        console.error(`[Refresh] ${source} refresh error:`, err)
+        addLog(
+          'ERROR',
+          'Failed to add suggested song',
+          undefined,
+          err instanceof Error ? err : new Error(String(err))
+        )
+      } finally {
+        setIsLoading(false)
+        isRefreshing.current = false
+      }
+    },
+    [addLog]
+  )
+
+  // Now we can safely create the ref
+  const handleRefreshRef = useRef(handleRefresh)
+
+  // Update the ref when handleRefresh changes
+  useEffect(() => {
+    handleRefreshRef.current = handleRefresh
+  }, [handleRefresh])
+
+  const handlePlaybackUpdate = useCallback(
+    (event: CustomEvent<PlaybackInfo>) => {
+      console.log('[Playback] Received update:', {
+        currentTrack: event.detail.currentTrack,
+        isPlaying: event.detail.isPlaying,
+        progress: event.detail.progress,
+        timeUntilEnd: event.detail.timeUntilEnd,
+        duration_ms: event.detail.duration_ms
       })
 
-      let data: RefreshResponse
-      try {
-        const responseData = (await response.json()) as unknown
-        if (!isValidRefreshResponse(responseData)) {
-          throw new Error('Invalid server response format')
+      setPlaybackInfo(event.detail)
+      setHealthStatus((prev) => ({
+        ...prev,
+        playback: event.detail.isPlaying ? 'playing' : 'paused'
+      }))
+
+      // Check if we're near the end of the track
+      if (event.detail.timeUntilEnd) {
+        console.log('[Playback] Track progress:', {
+          timeUntilEnd: event.detail.timeUntilEnd,
+          isNearEnd: event.detail.timeUntilEnd < 15000
+        })
+
+        if (event.detail.timeUntilEnd < 15000) {
+          console.log('[Playlist] Track nearing end:', {
+            currentTrack: event.detail.currentTrack,
+            timeUntilEnd: event.detail.timeUntilEnd,
+            progress: event.detail.progress,
+            duration_ms: event.detail.duration_ms
+          })
+
+          if (!isRefreshing.current) {
+            console.log('[Playlist] Triggering refresh due to track end')
+            const refreshService = PlaylistRefreshServiceImpl.getInstance()
+            void refreshService.refreshPlaylist()
+          } else {
+            console.log('[Playlist] Skipping refresh - already refreshing')
+          }
         }
-        data = responseData
-      } catch (error) {
-        if (error instanceof Error) {
-          throw new Error(`Failed to parse server response: ${error.message}`)
-        }
-        throw new Error('Failed to parse server response')
+      } else {
+        console.log('[Playback] No timeUntilEnd data available')
       }
+    },
+    []
+  ) // No dependencies needed now
 
-      if (!response.ok) {
-        throw new Error(data.message ?? 'Failed to refresh site')
-      }
-
-      console.log('[Refresh] Success:', data.message)
-      lastRefreshTime.current = Date.now()
-      setTimeUntilRefresh(REFRESH_INTERVAL)
-      addLog('INFO', 'Playlist refreshed successfully')
-    } catch (error) {
-      console.error('[Refresh] Error:', error)
-      const errorMessage =
-        error instanceof Error ? error.message : 'Failed to refresh site'
-      setError(errorMessage)
-      addLog(
-        'ERROR',
-        'Failed to refresh playlist',
-        undefined,
-        error instanceof Error ? error : new Error(errorMessage)
-      )
-    } finally {
-      setIsLoading(false)
-      isRefreshing.current = false
-    }
-  }, [setError, setIsLoading, setTimeUntilRefresh, addLog])
-
-  // Type guard for RefreshResponse
-  function isValidRefreshResponse(data: unknown): data is RefreshResponse {
-    if (typeof data !== 'object' || data === null) return false
-    const response = data as Record<string, unknown>
-    return (
-      typeof response.success === 'boolean' &&
-      (response.message === undefined ||
-        typeof response.message === 'string') &&
-      (response.playerStateRefresh === undefined ||
-        typeof response.playerStateRefresh === 'boolean')
+  // Listen for playback state updates from SpotifyPlayer
+  useEffect(() => {
+    console.log('[Playback] Setting up event listener')
+    window.addEventListener(
+      'playbackUpdate',
+      handlePlaybackUpdate as EventListener
     )
-  }
+
+    return () => {
+      console.log('[Playback] Cleaning up event listener')
+      window.removeEventListener(
+        'playbackUpdate',
+        handlePlaybackUpdate as EventListener
+      )
+    }
+  }, [handlePlaybackUpdate])
 
   // Set mounted state
   useEffect((): void => {
@@ -293,7 +354,7 @@ export default function AdminPage(): JSX.Element {
   useEffect(statusEffect, [mounted, updateTokenStatus])
 
   const attemptRecovery = useCallback(async (): Promise<void> => {
-    if (recoveryAttempts >= maxRecoveryAttempts) {
+    if (recoveryAttempts >= 5) {
       console.error('[Recovery] Max attempts reached')
       return
     }
@@ -426,176 +487,6 @@ export default function AdminPage(): JSX.Element {
     }
   }, [])
 
-  // Automatic periodic refresh every 3 minutes
-  const autoRefreshEffect: EffectCallback = () => {
-    const refreshInterval = setInterval(() => {
-      if (!isLoading) {
-        // Don't refresh if already loading
-        void (async () => {
-          try {
-            setIsLoading(true)
-
-            // Get track suggestions state from localStorage
-            const savedState = localStorage.getItem('track-suggestions-state')
-            const trackSuggestionsState = savedState
-              ? (JSON.parse(savedState) as TrackSuggestionsState)
-              : {
-                  genres: Array.from(FALLBACK_GENRES),
-                  yearRange: [1950, new Date().getFullYear()],
-                  popularity: 50,
-                  allowExplicit: false,
-                  maxSongLength: 300,
-                  songsBetweenRepeats: 5
-                }
-
-            const response = await fetch(
-              '/api/track-suggestions/refresh-site',
-              {
-                method: 'POST',
-                headers: {
-                  'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                  genres: trackSuggestionsState.genres,
-                  yearRange: trackSuggestionsState.yearRange,
-                  popularity: trackSuggestionsState.popularity,
-                  allowExplicit: trackSuggestionsState.allowExplicit,
-                  maxSongLength: trackSuggestionsState.maxSongLength,
-                  songsBetweenRepeats: trackSuggestionsState.songsBetweenRepeats
-                })
-              }
-            )
-
-            const data = (await response.json()) as RefreshResponse
-
-            if (!response.ok) {
-              console.error(
-                '[Refresh] Failed:',
-                data.message ?? 'Unknown error'
-              )
-              return
-            }
-
-            // Dispatch refresh event for the player to handle
-            window.dispatchEvent(new CustomEvent('playlistRefresh'))
-            lastRefreshTime.current = Date.now()
-          } catch (err) {
-            console.error('[Refresh] Error:', err)
-          } finally {
-            setIsLoading(false)
-          }
-        })()
-      }
-    }, REFRESH_INTERVAL)
-
-    return () => clearInterval(refreshInterval)
-  }
-
-  useEffect(autoRefreshEffect, [isLoading])
-
-  // Network error handling and recovery
-  const networkEffect = () => {
-    const attemptNetworkRecovery = async (): Promise<void> => {
-      try {
-        const response = await fetch('/api/playback-state')
-        if (!response.ok) {
-          throw new Error('Network error')
-        }
-        setNetworkErrorCount(0)
-        setHealthStatus((prev) => ({ ...prev, connection: 'good' }))
-      } catch (error) {
-        console.error('[Network] Recovery failed:', error)
-        setNetworkErrorCount((prev) => prev + 1)
-        if (networkErrorCount >= 3) {
-          setHealthStatus((prev) => ({ ...prev, connection: 'poor' }))
-        } else {
-          setHealthStatus((prev) => ({ ...prev, connection: 'unstable' }))
-        }
-      }
-    }
-
-    const handleNetworkError = () => {
-      setNetworkErrorCount((prev) => prev + 1)
-      if (networkErrorCount >= 3) {
-        setHealthStatus((prev) => ({ ...prev, connection: 'poor' }))
-      } else {
-        setHealthStatus((prev) => ({ ...prev, connection: 'unstable' }))
-      }
-      void attemptNetworkRecovery()
-    }
-
-    const handleOffline = () => {
-      setHealthStatus((prev) => ({ ...prev, connection: 'poor' }))
-    }
-
-    const handleOnline = () => {
-      void attemptNetworkRecovery()
-    }
-
-    // Initial connection check
-    void attemptNetworkRecovery()
-
-    // Set up event listeners
-    window.addEventListener('error', handleNetworkError)
-    window.addEventListener('offline', handleOffline)
-    window.addEventListener('online', handleOnline)
-
-    return () => {
-      window.removeEventListener('error', handleNetworkError)
-      window.removeEventListener('offline', handleOffline)
-      window.removeEventListener('online', handleOnline)
-    }
-  }
-
-  useEffect(networkEffect, [networkErrorCount])
-
-  // Countdown timer with debounced refresh
-  const timerEffect: EffectCallback = () => {
-    const timer = setInterval((): void => {
-      const now = Date.now()
-      const timeSinceLastRefresh = now - lastRefreshTime.current
-      const remainingTime = Math.max(0, REFRESH_INTERVAL - timeSinceLastRefresh)
-      setTimeUntilRefresh(remainingTime)
-
-      // Trigger refresh when timer reaches zero and not already refreshing
-      if (remainingTime === 0 && !isRefreshing.current) {
-        void handleRefresh()
-      }
-    }, 1000)
-
-    return () => clearInterval(timer)
-  }
-
-  useEffect(timerEffect, [handleRefresh])
-
-  // Listen for playback state updates from SpotifyPlayer
-  // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
-  const playbackEffect = () => {
-    // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
-    const handlePlaybackUpdate = (event: CustomEvent<PlaybackInfo>) => {
-      setPlaybackInfo(event.detail)
-      setHealthStatus((prev) => ({
-        ...prev,
-        playback: event.detail.isPlaying ? 'playing' : 'paused'
-      }))
-    }
-
-    window.addEventListener(
-      'playbackUpdate',
-      handlePlaybackUpdate as EventListener
-    )
-
-    // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
-    return () => {
-      window.removeEventListener(
-        'playbackUpdate',
-        handlePlaybackUpdate as EventListener
-      )
-    }
-  }
-
-  useEffect(playbackEffect, [])
-
   // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
   const handlePlaylistChecked = useCallback(
     (event: CustomEvent<PlaylistCheckedInfo>) => {
@@ -658,6 +549,8 @@ export default function AdminPage(): JSX.Element {
       setIsLoading(true)
       setError(null)
 
+      console.log('[Spotify] Calling play API with action:', action)
+
       // First, transfer playback to our device
       await sendApiRequest({
         path: 'me/player',
@@ -678,16 +571,50 @@ export default function AdminPage(): JSX.Element {
           method: 'GET'
         })
 
-        await sendApiRequest({
-          path: 'me/player/play',
-          method: 'PUT',
-          body: {
-            context_uri: `spotify:playlist:${fixedPlaylistId}`,
-            position_ms: state?.progress_ms ?? 0,
-            offset: state?.item?.uri ? { uri: state.item.uri } : undefined
-          }
+        // Check if the current track is playable
+        if (state?.item?.is_playable === false) {
+          console.log(
+            '[Spotify] Current track is not playable, skipping to next track'
+          )
+          await sendApiRequest({
+            path: 'me/player/next',
+            method: 'POST'
+          })
+          return
+        }
+
+        console.log('[Spotify] Starting playback with state:', {
+          context_uri: `spotify:playlist:${fixedPlaylistId}`,
+          position_ms: state?.progress_ms ?? 0,
+          offset: state?.item?.uri ? { uri: state.item.uri } : undefined
         })
+
+        try {
+          await sendApiRequest({
+            path: 'me/player/play',
+            method: 'PUT',
+            body: {
+              context_uri: `spotify:playlist:${fixedPlaylistId}`,
+              position_ms: state?.progress_ms ?? 0,
+              offset: state?.item?.uri ? { uri: state.item.uri } : undefined
+            }
+          })
+        } catch (playError) {
+          if (
+            playError instanceof Error &&
+            playError.message.includes('Restriction violated')
+          ) {
+            console.log('[Spotify] Playback restricted, skipping to next track')
+            await sendApiRequest({
+              path: 'me/player/next',
+              method: 'POST'
+            })
+            return
+          }
+          throw playError
+        }
       } else {
+        console.log('[Spotify] Skipping to next track')
         await sendApiRequest({
           path: 'me/player/next',
           method: 'POST'
@@ -695,13 +622,15 @@ export default function AdminPage(): JSX.Element {
       }
 
       setHealthStatus((prev) => ({ ...prev, playback: 'playing' }))
+      console.log('[Spotify] Playback action completed successfully')
     } catch (error) {
-      console.error('[Playback] Control failed:', error)
+      console.error('[Spotify] Playback control failed:', error)
       setError('Failed to control playback')
       setHealthStatus((prev) => ({ ...prev, playback: 'error' }))
 
       // Attempt automatic recovery
       try {
+        console.log('[Spotify] Attempting recovery...')
         // First try to refresh the player state
         if (typeof window.refreshSpotifyPlayer === 'function') {
           await window.refreshSpotifyPlayer()
@@ -720,16 +649,55 @@ export default function AdminPage(): JSX.Element {
             method: 'GET'
           })
 
-          await sendApiRequest({
-            path: 'me/player/play',
-            method: 'PUT',
-            body: {
+          // Check if the current track is playable
+          if (state?.item?.is_playable === false) {
+            console.log(
+              '[Spotify] Current track is not playable, skipping to next track'
+            )
+            await sendApiRequest({
+              path: 'me/player/next',
+              method: 'POST'
+            })
+            return
+          }
+
+          console.log(
+            '[Spotify] Retrying playback after recovery with state:',
+            {
               context_uri: `spotify:playlist:${fixedPlaylistId}`,
               position_ms: state?.progress_ms ?? 0,
               offset: state?.item?.uri ? { uri: state.item.uri } : undefined
             }
-          })
+          )
+
+          try {
+            await sendApiRequest({
+              path: 'me/player/play',
+              method: 'PUT',
+              body: {
+                context_uri: `spotify:playlist:${fixedPlaylistId}`,
+                position_ms: state?.progress_ms ?? 0,
+                offset: state?.item?.uri ? { uri: state.item.uri } : undefined
+              }
+            })
+          } catch (playError) {
+            if (
+              playError instanceof Error &&
+              playError.message.includes('Restriction violated')
+            ) {
+              console.log(
+                '[Spotify] Playback restricted, skipping to next track'
+              )
+              await sendApiRequest({
+                path: 'me/player/next',
+                method: 'POST'
+              })
+              return
+            }
+            throw playError
+          }
         } else {
+          console.log('[Spotify] Retrying skip after recovery')
           await sendApiRequest({
             path: 'me/player/next',
             method: 'POST'
@@ -739,8 +707,9 @@ export default function AdminPage(): JSX.Element {
         // If we get here, recovery was successful
         setError(null)
         setHealthStatus((prev) => ({ ...prev, playback: 'playing' }))
+        console.log('[Spotify] Recovery completed successfully')
       } catch (recoveryError) {
-        console.error('[Playback] Recovery failed:', recoveryError)
+        console.error('[Spotify] Recovery failed:', recoveryError)
         // Keep the original error state if recovery fails
       }
     } finally {
@@ -866,6 +835,24 @@ export default function AdminPage(): JSX.Element {
     setTrackSuggestionsState(newState)
   }
 
+  // Auto-refresh timer effect
+  useEffect(() => {
+    const timer = setInterval(() => {
+      const now = Date.now()
+      const timeSinceLastRefresh = now - lastRefreshTime.current
+      const remainingTime = REFRESH_INTERVAL - timeSinceLastRefresh
+
+      setTimeUntilRefresh(remainingTime)
+
+      if (timeSinceLastRefresh >= REFRESH_INTERVAL) {
+        void handleRefresh('auto')
+        lastRefreshTime.current = now
+      }
+    }, 1000) // Update every second
+
+    return () => clearInterval(timer)
+  }, [handleRefresh])
+
   // Only render content after mounting to prevent hydration mismatch
   if (!mounted) {
     return (
@@ -937,8 +924,7 @@ export default function AdminPage(): JSX.Element {
                       : healthStatus.device === 'disconnected'
                         ? 'Device Disconnected'
                         : 'Device Status Unknown'}
-                  {recoveryAttempts > 0 &&
-                    ` (Recovery ${recoveryAttempts}/${MAX_RECOVERY_ATTEMPTS})`}
+                  {recoveryAttempts > 0 && ` (Recovery ${recoveryAttempts}/5)`}
                 </span>
               </div>
 
@@ -1113,7 +1099,7 @@ export default function AdminPage(): JSX.Element {
                   {isLoading ? 'Loading...' : 'Skip'}
                 </button>
                 <button
-                  onClick={() => void handleRefresh()}
+                  onClick={() => void handleRefresh('manual')}
                   disabled={isLoading || !isReady}
                   className='text-white flex-1 rounded-lg bg-purple-600 px-4 py-2 font-medium transition-colors hover:bg-purple-700 disabled:cursor-not-allowed disabled:opacity-50'
                 >
