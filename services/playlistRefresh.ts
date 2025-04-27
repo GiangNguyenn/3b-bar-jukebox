@@ -5,7 +5,6 @@ import {
 } from '@/shared/types'
 import { SpotifyApiClient, SpotifyApiService } from './spotifyApi'
 import {
-  COOLDOWN_MS,
   MAX_PLAYLIST_LENGTH,
   FALLBACK_GENRES
 } from '@/shared/constants/trackSuggestion'
