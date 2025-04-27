@@ -101,6 +101,7 @@ export class PlaylistRefreshServiceImpl implements PlaylistRefreshService {
   } | null = null
   private isRefreshing = false
   private readonly TIMEOUT_MS = 45000 // 45 seconds timeout
+  private lastSnapshotId: string | null = null
 
   private constructor() {
     this.spotifyApi = SpotifyApiService.getInstance()
@@ -118,17 +119,18 @@ export class PlaylistRefreshServiceImpl implements PlaylistRefreshService {
     PlaylistRefreshServiceImpl.instance = undefined as any
   }
 
-  private async getFixedPlaylist(): Promise<SpotifyPlaylistItem | null> {
+  private async getFixedPlaylist(): Promise<{ playlist: SpotifyPlaylistItem | null; snapshotId: string | null }> {
     const playlists = await this.spotifyApi.getPlaylists()
     const fixedPlaylist = playlists.items.find(
       (playlist) => playlist.name === this.FIXED_PLAYLIST_NAME
     )
 
     if (!fixedPlaylist) {
-      return null
+      return { playlist: null, snapshotId: null }
     }
 
-    return this.spotifyApi.getPlaylist(fixedPlaylist.id)
+    const playlist = await this.spotifyApi.getPlaylist(fixedPlaylist.id)
+    return { playlist, snapshotId: playlist.snapshot_id }
   }
 
   private async getCurrentlyPlaying(): Promise<{
@@ -371,7 +373,7 @@ export class PlaylistRefreshServiceImpl implements PlaylistRefreshService {
     try {
       this.isRefreshing = true
 
-      const playlist = await this.withTimeout(
+      const { playlist, snapshotId } = await this.withTimeout(
         this.getFixedPlaylist(),
         this.TIMEOUT_MS
       )
@@ -387,6 +389,18 @@ export class PlaylistRefreshServiceImpl implements PlaylistRefreshService {
           timestamp: new Date().toISOString()
         }
       }
+
+      // Check if the snapshot_id has changed
+      const hasPlaylistChanged = this.lastSnapshotId !== snapshotId
+      console.log('[PlaylistRefresh] Snapshot ID comparison:', {
+        lastSnapshotId: this.lastSnapshotId,
+        currentSnapshotId: snapshotId,
+        hasPlaylistChanged,
+        timestamp: new Date().toISOString()
+      })
+
+      // Update the lastSnapshotId
+      this.lastSnapshotId = snapshotId
 
       const { id: currentTrackId, error: playbackError } =
         await this.withTimeout(this.getCurrentlyPlaying(), this.TIMEOUT_MS)
@@ -420,13 +434,8 @@ export class PlaylistRefreshServiceImpl implements PlaylistRefreshService {
         this.TIMEOUT_MS
       )
 
-      // Resume playback at the last track's position and progress if needed
-      // Only resume if we have less than 2 tracks in the upcoming playlist
-      if (
-        upcomingTracks.length < 2 &&
-        playbackState?.context?.uri &&
-        playbackState?.item?.uri
-      ) {
+      // Resume playback if the playlist has changed
+      if (hasPlaylistChanged && playbackState?.context?.uri && playbackState?.item?.uri) {
         try {
           await this.withTimeout(
             sendApiRequest({
@@ -565,25 +574,21 @@ export class PlaylistRefreshServiceImpl implements PlaylistRefreshService {
       timestamp: string
     }
   }> {
-    console.log(
-      '[PARAM CHAIN] Genres received in refreshTrackSuggestions (playlistRefresh.ts):',
-      params.genres
-    )
     if (this.isRefreshing) {
       return {
         success: false,
-        message: 'Refresh already in progress'
+        message: 'Refresh operation already in progress'
       }
     }
 
     try {
       this.isRefreshing = true
 
-      const playlist = await this.getFixedPlaylist()
+      const { playlist } = await this.getFixedPlaylist()
       if (!playlist) {
         return {
           success: false,
-          message: 'Fixed playlist not found'
+          message: `No playlist found with name: ${this.FIXED_PLAYLIST_NAME}`
         }
       }
 
