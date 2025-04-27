@@ -6,7 +6,8 @@ import {
 import { SpotifyApiClient, SpotifyApiService } from './spotifyApi'
 import {
   COOLDOWN_MS,
-  MAX_PLAYLIST_LENGTH
+  MAX_PLAYLIST_LENGTH,
+  FALLBACK_GENRES
 } from '@/shared/constants/trackSuggestion'
 import { findSuggestedTrack, Genre } from '@/services/trackSuggestion'
 import { filterUpcomingTracks } from '@/lib/utils'
@@ -14,6 +15,7 @@ import { autoRemoveTrack } from '@/shared/utils/autoRemoveTrack'
 import { handleOperationError } from '@/shared/utils/errorHandling'
 import { DEFAULT_MARKET } from '@/shared/constants/trackSuggestion'
 import { sendApiRequest } from '@/shared/api'
+import { type TrackSuggestionsState } from '@/shared/types/trackSuggestions'
 
 export interface PlaylistRefreshService {
   refreshPlaylist(force?: boolean): Promise<{
@@ -101,6 +103,7 @@ export class PlaylistRefreshServiceImpl implements PlaylistRefreshService {
   } | null = null
   private isRefreshing = false
   private readonly TIMEOUT_MS = 45000 // 45 seconds timeout
+  private lastSnapshotId: string | null = null
 
   private constructor() {
     this.spotifyApi = SpotifyApiService.getInstance()
@@ -118,17 +121,21 @@ export class PlaylistRefreshServiceImpl implements PlaylistRefreshService {
     PlaylistRefreshServiceImpl.instance = undefined as any
   }
 
-  private async getFixedPlaylist(): Promise<SpotifyPlaylistItem | null> {
+  private async getFixedPlaylist(): Promise<{
+    playlist: SpotifyPlaylistItem | null
+    snapshotId: string | null
+  }> {
     const playlists = await this.spotifyApi.getPlaylists()
     const fixedPlaylist = playlists.items.find(
       (playlist) => playlist.name === this.FIXED_PLAYLIST_NAME
     )
 
     if (!fixedPlaylist) {
-      return null
+      return { playlist: null, snapshotId: null }
     }
 
-    return this.spotifyApi.getPlaylist(fixedPlaylist.id)
+    const playlist = await this.spotifyApi.getPlaylist(fixedPlaylist.id)
+    return { playlist, snapshotId: playlist.snapshot_id }
   }
 
   private async getCurrentlyPlaying(): Promise<{
@@ -206,16 +213,47 @@ export class PlaylistRefreshServiceImpl implements PlaylistRefreshService {
       let success = false
       let searchDetails: unknown
 
+      // Get parameters from localStorage or use defaults
+      const savedState =
+        typeof window !== 'undefined'
+          ? localStorage.getItem('track-suggestions-state')
+          : null
+      const savedParams = savedState
+        ? (JSON.parse(savedState) as TrackSuggestionsState)
+        : null
+
+      const defaultParams = {
+        genres: Array.from(FALLBACK_GENRES) as Genre[],
+        yearRange: [1950, new Date().getFullYear()] as [number, number],
+        popularity: 50,
+        allowExplicit: false,
+        maxSongLength: 300,
+        songsBetweenRepeats: 5
+      }
+
+      // Merge provided params with saved params or defaults
+      const mergedParams = {
+        ...defaultParams,
+        ...(savedParams || {}),
+        ...params
+      }
+
+      console.log('[PlaylistRefresh] Using parameters:', {
+        savedParams,
+        providedParams: params,
+        mergedParams
+      })
+
       while (!success && retryCount < this.retryConfig.maxRetries) {
         console.log(
           '[PARAM CHAIN] Passing genres to findSuggestedTrack (playlistRefresh.ts):',
-          params?.genres
+          mergedParams.genres
         )
         const result = await findSuggestedTrack(
           existingTrackIds,
           currentTrackId,
           DEFAULT_MARKET,
-          params
+          mergedParams
         )
 
         if (!result.track) {
@@ -371,7 +409,7 @@ export class PlaylistRefreshServiceImpl implements PlaylistRefreshService {
     try {
       this.isRefreshing = true
 
-      const playlist = await this.withTimeout(
+      const { playlist, snapshotId } = await this.withTimeout(
         this.getFixedPlaylist(),
         this.TIMEOUT_MS
       )
@@ -387,6 +425,18 @@ export class PlaylistRefreshServiceImpl implements PlaylistRefreshService {
           timestamp: new Date().toISOString()
         }
       }
+
+      // Check if the snapshot_id has changed
+      const hasPlaylistChanged = this.lastSnapshotId !== snapshotId
+      console.log('[PlaylistRefresh] Snapshot ID comparison:', {
+        lastSnapshotId: this.lastSnapshotId,
+        currentSnapshotId: snapshotId,
+        hasPlaylistChanged,
+        timestamp: new Date().toISOString()
+      })
+
+      // Update the lastSnapshotId
+      this.lastSnapshotId = snapshotId
 
       const { id: currentTrackId, error: playbackError } =
         await this.withTimeout(this.getCurrentlyPlaying(), this.TIMEOUT_MS)
@@ -420,10 +470,9 @@ export class PlaylistRefreshServiceImpl implements PlaylistRefreshService {
         this.TIMEOUT_MS
       )
 
-      // Resume playback at the last track's position and progress if needed
-      // Only resume if we have less than 2 tracks in the upcoming playlist
+      // Resume playback if the playlist has changed
       if (
-        upcomingTracks.length < 2 &&
+        hasPlaylistChanged &&
         playbackState?.context?.uri &&
         playbackState?.item?.uri
       ) {
@@ -565,25 +614,21 @@ export class PlaylistRefreshServiceImpl implements PlaylistRefreshService {
       timestamp: string
     }
   }> {
-    console.log(
-      '[PARAM CHAIN] Genres received in refreshTrackSuggestions (playlistRefresh.ts):',
-      params.genres
-    )
     if (this.isRefreshing) {
       return {
         success: false,
-        message: 'Refresh already in progress'
+        message: 'Refresh operation already in progress'
       }
     }
 
     try {
       this.isRefreshing = true
 
-      const playlist = await this.getFixedPlaylist()
+      const { playlist } = await this.getFixedPlaylist()
       if (!playlist) {
         return {
           success: false,
-          message: 'Fixed playlist not found'
+          message: `No playlist found with name: ${this.FIXED_PLAYLIST_NAME}`
         }
       }
 
