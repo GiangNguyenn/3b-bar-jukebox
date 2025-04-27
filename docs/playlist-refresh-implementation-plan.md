@@ -1,218 +1,282 @@
-# Playlist Refresh Service Restructuring Plan
+# Playlist Refresh Service Implementation Plan
 
-## Objective
+## Overview
 
-Restructure the playlist refresh service to only trigger during natural pauses in playback (e.g., near the end of a track) to provide a smoother user experience while leveraging existing monitoring systems. This implementation will work for both the admin page and regular playlist view.
-
-## Current Implementation Analysis
-
-The current system has several components for track progress monitoring:
-
-1. **SpotifyPlayer Component**
-
-   - Implements dynamic polling intervals based on playback state
-   - Uses custom events for state updates
-   - Dispatches `playbackUpdate` events with track progress
-   - Used by both admin page and regular playlist view
-
-2. **Admin Page Implementation**
-
-   - Listens to `playbackUpdate` events
-   - Manages refresh timing and state
-   - Handles health monitoring and recovery
-
-3. **useSpotifyPlayerState Hook**
-   - Manages player state and device status
-   - Handles playback state changes
-   - Implements playlist state refresh logic
-
-## Proposed Changes
-
-### 1. Enhance SpotifyPlayer Component
-
-Add track progress monitoring to the existing component:
-
-```typescript
-interface EnhancedPlaybackUpdate {
-  isPlaying: boolean
-  currentTrack: string
-  progress: number
-  duration_ms?: number
-  timeUntilEnd?: number
-}
-
-// In SpotifyPlayer.tsx
-const updatePlaybackState = async (): Promise<void> => {
-  try {
-    const state = await sendApiRequest<SpotifyPlaybackState>({
-      path: 'me/player',
-      method: 'GET'
-    })
-
-    if (state?.item) {
-      const timeUntilEnd = state.item.duration_ms - (state.progress_ms ?? 0)
-      window.dispatchEvent(
-        new CustomEvent('playbackUpdate', {
-          detail: {
-            isPlaying: state.is_playing,
-            currentTrack: state.item.name,
-            progress: state.progress_ms ?? 0,
-            duration_ms: state.item.duration_ms,
-            timeUntilEnd
-          }
-        })
-      )
-    }
-  } catch (error) {
-    console.error('[SpotifyPlayer] Error updating playback state:', error)
-  }
-}
-```
-
-### 2. Update Admin Page Refresh Logic
-
-Enhance the admin page to use track progress for refresh timing:
-
-```typescript
-// In admin/page.tsx
-const handlePlaybackUpdate = (event: CustomEvent<EnhancedPlaybackUpdate>) => {
-  setPlaybackInfo(event.detail)
-
-  // Check if we're near the end of the track
-  const isNearEnd =
-    event.detail.timeUntilEnd && event.detail.timeUntilEnd < 5000 // 5 seconds before end
-
-  if (isNearEnd && !isRefreshing.current) {
-    void handleRefresh()
-  }
-}
-```
-
-### 3. Optimize Refresh Timing
-
-Add smart refresh timing to the existing refresh mechanism:
-
-```typescript
-interface RefreshTimingConfig {
-  // Time before track end to consider for refresh
-  refreshThreshold: number // e.g., 5000ms
-  // Minimum time between refresh attempts
-  cooldownPeriod: number // e.g., 30000ms
-  // Maximum time to wait for natural pause
-  maxWaitTime: number // e.g., 180000ms
-}
-
-const REFRESH_CONFIG: RefreshTimingConfig = {
-  refreshThreshold: 5000,
-  cooldownPeriod: 30000,
-  maxWaitTime: 180000
-}
-```
+We will modify the `PlaylistRefreshServiceImpl` to detect changes in the playlist using the `snapshot_id` from the Spotify API. This will replace the current condition of checking for fewer than 2 upcoming tracks.
 
 ## Implementation Steps
 
-1. **Enhance SpotifyPlayer Component**
+### 1. Add a New Private Field
 
-   - Add track duration and progress tracking
-   - Update event payload with timing information
-   - Optimize polling intervals
+- Add a private field to store the last known `snapshot_id`:
+  ```typescript
+  private lastSnapshotId: string | null = null;
+  ```
 
-2. **Update Admin Page**
+### 2. Modify `getFixedPlaylist` Method
 
-   - Add refresh timing logic
-   - Implement cooldown mechanism
-   - Add progress-based refresh triggers
-   - Enhance error handling
+- Update the method to return both the playlist and its `snapshot_id`:
 
-3. **Optimize State Management**
+  ```typescript
+  private async getFixedPlaylist(): Promise<{ playlist: SpotifyPlaylistItem | null; snapshotId: string | null }> {
+    const playlists = await this.spotifyApi.getPlaylists();
+    const fixedPlaylist = playlists.items.find(
+      (playlist) => playlist.name === this.FIXED_PLAYLEST_NAME
+    );
 
-   - Use existing event system
-   - Implement local progress tracking
-   - Add state prediction
-   - Optimize event handling
+    if (!fixedPlaylist) {
+      return { playlist: null, snapshotId: null };
+    }
 
-4. **Add Error Handling and Recovery**
-   - Enhance existing error handling
-   - Add fallback mechanisms
-   - Improve logging
-   - Add state recovery
+    const playlist = await this.spotifyApi.getPlaylist(fixedPlaylist.id);
+    return { playlist, snapshotId: playlist.snapshot_id };
+  }
+  ```
+
+### 3. Update `refreshPlaylist` Method
+
+- Modify the method to compare the new `snapshot_id` with the saved one:
+
+  ```typescript
+  async refreshPlaylist(
+    force = false,
+    params?: {
+      genres: Genre[];
+      yearRange: [number, number];
+      popularity: number;
+      allowExplicit: boolean;
+      maxSongLength: number;
+      songsBetweenRepeats: number;
+    }
+  ): Promise<{
+    success: boolean;
+    message: string;
+    timestamp: string;
+    diagnosticInfo?: Record<string, unknown>;
+    forceRefresh?: boolean;
+    playerStateRefresh?: boolean;
+  }> {
+    if (this.isRefreshing) {
+      return {
+        success: false,
+        message: 'Refresh operation already in progress',
+        timestamp: new Date().toISOString()
+      };
+    }
+
+    try {
+      this.isRefreshing = true;
+
+      const { playlist, snapshotId } = await this.withTimeout(
+        this.getFixedPlaylist(),
+        this.TIMEOUT_MS
+      );
+
+      if (!playlist) {
+        console.error('[PlaylistRefresh] No playlist found:', {
+          playlistName: this.FIXED_PLAYLIST_NAME,
+          timestamp: new Date().toISOString()
+        });
+        return {
+          success: false,
+          message: `No playlist found with name: ${this.FIXED_PLAYLIST_NAME}`,
+          timestamp: new Date().toISOString()
+        };
+      }
+
+      // Check if the snapshot_id has changed
+      const hasPlaylistChanged = this.lastSnapshotId !== snapshotId;
+
+      // Update the lastSnapshotId
+      this.lastSnapshotId = snapshotId;
+
+      const { id: currentTrackId, error: playbackError } =
+        await this.withTimeout(this.getCurrentlyPlaying(), this.TIMEOUT_MS);
+
+      if (playbackError) {
+        console.error('[PlaylistRefresh] Playback error:', {
+          error: playbackError,
+          timestamp: new Date().toISOString()
+        });
+        return {
+          success: false,
+          message: playbackError,
+          timestamp: new Date().toISOString()
+        };
+      }
+
+      const upcomingTracks = this.getUpcomingTracks(playlist, currentTrackId);
+
+      const playbackState = await this.withTimeout(
+        this.spotifyApi.getPlaybackState(),
+        this.TIMEOUT_MS
+      );
+
+      const removedTrack = await this.withTimeout(
+        this.autoRemoveFinishedTrack({
+          playlistId: playlist.id,
+          currentTrackId,
+          playlistTracks: playlist.tracks.items,
+          playbackState
+        }),
+        this.TIMEOUT_MS
+      );
+
+      // Resume playback if the playlist has changed
+      if (hasPlaylistChanged && playbackState?.context?.uri && playbackState?.item?.uri) {
+        try {
+          await this.withTimeout(
+            sendApiRequest({
+              path: 'me/player/play',
+              method: 'PUT',
+              body: {
+                context_uri: playbackState.context.uri,
+                offset: { uri: playbackState.item.uri },
+                position_ms: playbackState.progress_ms ?? 0
+              },
+              retryConfig: this.retryConfig
+            }),
+            this.TIMEOUT_MS
+          );
+        } catch (error) {
+          console.error('[PlaylistRefresh] Failed to resume playback:', {
+            error: error instanceof Error ? error.message : 'Unknown error',
+            timestamp: new Date().toISOString()
+          });
+        }
+      }
+
+      const diagnosticInfo = {
+        currentTrackId,
+        totalTracks: playlist.tracks.items.length,
+        upcomingTracksCount: upcomingTracks.length,
+        playlistTrackIds: playlist.tracks.items.map((t) => t.track.id),
+        upcomingTrackIds: upcomingTracks.map((t) => t.track.id),
+        removedTrack,
+        addedTrack: false
+      };
+
+      const result = await this.withTimeout(
+        this.addSuggestedTrackToPlaylist(
+          upcomingTracks,
+          playlist.id,
+          currentTrackId,
+          playlist.tracks.items,
+          params
+        ),
+        this.TIMEOUT_MS
+      );
+
+      if (!result.success) {
+        console.error('[PlaylistRefresh] Failed to add track:', {
+          error: result.error,
+          diagnosticInfo,
+          timestamp: new Date().toISOString()
+        });
+        return {
+          success: false,
+          message:
+            result.error === 'Playlist too long'
+              ? `Playlist has reached maximum length of ${MAX_PLAYLIST_LENGTH} tracks. No new tracks needed.`
+              : result.error || 'Failed to add track',
+          timestamp: new Date().toISOString(),
+          diagnosticInfo,
+          forceRefresh: force
+        };
+      }
+
+      diagnosticInfo.addedTrack = true;
+
+      return {
+        success: true,
+        message: 'Track added successfully',
+        timestamp: new Date().toISOString(),
+        diagnosticInfo,
+        forceRefresh: force,
+        playerStateRefresh: true
+      };
+    } catch (error) {
+      console.error('[PlaylistRefresh] Error in refreshPlaylist:', {
+        error: error instanceof Error ? error.message : 'Unknown error',
+        stack: error instanceof Error ? error.stack : undefined,
+        timestamp: new Date().toISOString()
+      });
+      return {
+        success: false,
+        message:
+          error instanceof Error ? error.message : 'Failed to refresh playlist',
+        timestamp: new Date().toISOString()
+      };
+    } finally {
+      this.isRefreshing = false;
+    }
+  }
+  ```
+
+### 4. Update `refreshTrackSuggestions` Method
+
+- Ensure the `refreshTrackSuggestions` method also uses the updated `getFixedPlaylist` method to maintain consistency.
+
+### 5. Testing
+
+- Test the changes to ensure that the `snapshot_id` comparison works correctly and that the play endpoint is called only when the playlist has changed.
 
 ## Technical Considerations
 
-### Performance Optimizations
+### Performance
 
-- **State Management**
+- The `snapshot_id` comparison is a lightweight operation
+- No additional API calls are required as we're already fetching the playlist data
+- The change detection is more accurate than the previous track count check
 
-  - Use existing event system
-  - Implement local progress tracking
-  - Add state prediction
-  - Optimize event handling
+### Error Handling
 
-- **Polling Strategy**
-  - Use existing dynamic intervals
-  - Add smart refresh timing
-  - Implement progress prediction
-  - Optimize API calls
+- Maintain existing error handling for API calls
+- Add specific error handling for `snapshot_id` comparison
+- Ensure proper logging of playlist changes
 
-### Reliability
+### State Management
 
-- Enhance existing error handling
-- Add circuit breaker for API calls
-- Improve recovery mechanisms
-- Add health checks
-
-### User Experience
-
-- Ensure smooth transitions
-- Minimize visible updates
-- Provide feedback
-- Handle edge cases
+- The `lastSnapshotId` field maintains state between refresh operations
+- State is persisted within the singleton instance
+- No additional storage requirements
 
 ## Migration Strategy
 
-1. **Phase 1: Component Updates**
+1. **Phase 1: Implementation**
 
-   - Update `SpotifyPlayer`
-   - Add progress tracking
-   - Implement smart timing
-   - Add local prediction
+   - Add `lastSnapshotId` field
+   - Update `getFixedPlaylist` method
+   - Modify `refreshPlaylist` method
+   - Update `refreshTrackSuggestions` method
 
-2. **Phase 2: Admin Page Updates**
+2. **Phase 2: Testing**
 
-   - Enhance refresh logic
-   - Add scheduling logic
-   - Update error handling
-   - Optimize state management
+   - Unit tests for new functionality
+   - Integration tests for playlist change detection
+   - End-to-end tests for playback resume
+   - Performance testing
 
-3. **Phase 3: Testing**
-
-   - Validate existing tests
-   - Add new test cases
-   - Monitor performance
-   - Gather feedback
-
-4. **Phase 4: Production Rollout**
+3. **Phase 3: Deployment**
    - Gradual rollout
-   - Monitor metrics
-   - Adjust as needed
-   - Optimize further
+   - Monitor for any issues
+   - Gather metrics on playlist change detection accuracy
+   - Verify playback resume functionality
 
 ## Success Metrics
 
-- Reduced API calls (target: 50% reduction)
-- Improved response times
-- Decreased error rates
-- Better user experience
-- Reduced server load
+- Accurate detection of playlist changes
+- Proper playback resume after changes
+- No unnecessary playback interruptions
+- Improved user experience during playlist updates
 
 ## Timeline
 
-1. Component Updates: 1 week
-2. Admin Page Updates: 1 week
-3. Testing: 1 week
-4. Production Rollout: 1 week
+1. Implementation: 2 days
+2. Testing: 1 day
+3. Deployment: 1 day
 
-Total estimated time: 4 weeks
+Total estimated time: 4 days
 
 ## Monitoring and Analytics
 
