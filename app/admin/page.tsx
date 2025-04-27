@@ -538,6 +538,88 @@ export default function AdminPage(): JSX.Element {
     }
   }, [fixedPlaylistId, isInitialFetchComplete])
 
+  // Monitor connection quality
+  useEffect(() => {
+    if (!mounted) return
+
+    // Define Network Information API types
+    interface NetworkInformation extends EventTarget {
+      readonly type?:
+        | 'bluetooth'
+        | 'cellular'
+        | 'ethernet'
+        | 'none'
+        | 'wifi'
+        | 'wimax'
+        | 'other'
+        | 'unknown'
+      readonly effectiveType?: 'slow-2g' | '2g' | '3g' | '4g'
+      readonly downlink?: number
+      readonly rtt?: number
+      readonly saveData?: boolean
+      onchange?: (this: NetworkInformation, ev: Event) => void
+    }
+
+    const updateConnectionStatus = (): void => {
+      if (!navigator.onLine) {
+        setHealthStatus((prev) => ({ ...prev, connection: 'poor' }))
+        return
+      }
+
+      // Check connection type and effective type if available
+      const connection = (navigator as { connection?: NetworkInformation })
+        .connection
+      if (connection) {
+        const { effectiveType, downlink, rtt } = connection
+
+        if (
+          effectiveType === '4g' &&
+          downlink &&
+          downlink > 2 &&
+          rtt &&
+          rtt < 100
+        ) {
+          setHealthStatus((prev) => ({ ...prev, connection: 'good' }))
+        } else if (
+          effectiveType === '4g' ||
+          (effectiveType === '3g' && downlink && downlink > 1)
+        ) {
+          setHealthStatus((prev) => ({ ...prev, connection: 'unstable' }))
+        } else {
+          setHealthStatus((prev) => ({ ...prev, connection: 'poor' }))
+        }
+      } else {
+        // Fallback to online/offline status if connection API is not available
+        setHealthStatus((prev) => ({
+          ...prev,
+          connection: navigator.onLine ? 'good' : 'poor'
+        }))
+      }
+    }
+
+    // Initial status update
+    updateConnectionStatus()
+
+    // Listen for online/offline events
+    window.addEventListener('online', updateConnectionStatus)
+    window.addEventListener('offline', updateConnectionStatus)
+
+    // Listen for connection changes if available
+    const connection = (navigator as { connection?: NetworkInformation })
+      .connection
+    if (connection) {
+      connection.addEventListener('change', updateConnectionStatus)
+    }
+
+    return () => {
+      window.removeEventListener('online', updateConnectionStatus)
+      window.removeEventListener('offline', updateConnectionStatus)
+      if (connection) {
+        connection.removeEventListener('change', updateConnectionStatus)
+      }
+    }
+  }, [mounted])
+
   const formatTime = (ms: number): string => {
     const minutes = Math.floor(ms / 60000)
     const seconds = Math.floor((ms % 60000) / 1000)
