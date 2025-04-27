@@ -23,6 +23,15 @@ import { FALLBACK_GENRES } from '@/shared/constants/trackSuggestion'
 import { validateSongsBetweenRepeats } from './components/track-suggestions/validations/trackSuggestions'
 import { type TrackSuggestionsState } from '@/shared/types/trackSuggestions'
 import { PlaylistRefreshServiceImpl } from '@/services/playlistRefresh'
+import type { SpotifyPlayerInstance } from '@/types/spotify'
+
+declare global {
+  interface Window {
+    refreshSpotifyPlayer: () => Promise<void>
+    spotifyPlayerInstance: SpotifyPlayerInstance | null
+    initializeSpotifyPlayer: () => Promise<void>
+  }
+}
 
 const REFRESH_INTERVAL = 180000 // 3 minutes in milliseconds
 const DEVICE_CHECK_INTERVAL = {
@@ -118,8 +127,24 @@ export default function AdminPage(): JSX.Element {
   const [refreshError, setRefreshError] = useState<string | null>(null)
   const [timeUntilRefresh, setTimeUntilRefresh] = useState(REFRESH_INTERVAL)
   const lastRefreshTime = useRef<number>(Date.now())
+  const [recoveryStatus, setRecoveryStatus] = useState<{
+    isRecovering: boolean
+    message: string
+    progress: number
+  }>({
+    isRecovering: false,
+    message: '',
+    progress: 0
+  })
 
   const { refreshToken } = useSpotifyPlayerState(fixedPlaylistId ?? '')
+
+  const MAX_RECOVERY_ATTEMPTS = 5
+  const RECOVERY_STEPS = [
+    { message: 'Refreshing player state...', weight: 0.2 },
+    { message: 'Attempting to reconnect...', weight: 0.3 },
+    { message: 'Reinitializing player...', weight: 0.5 }
+  ]
 
   // Declare handleRefresh first
   const handleRefresh = useCallback(
@@ -354,25 +379,105 @@ export default function AdminPage(): JSX.Element {
   useEffect(statusEffect, [mounted, updateTokenStatus])
 
   const attemptRecovery = useCallback(async (): Promise<void> => {
-    if (recoveryAttempts >= 5) {
-      console.error('[Recovery] Max attempts reached')
+    if (recoveryAttempts >= MAX_RECOVERY_ATTEMPTS) {
+      console.error('[Recovery] Max attempts reached, reloading page...')
+      setRecoveryStatus({
+        isRecovering: true,
+        message: 'All recovery attempts failed. Reloading page...',
+        progress: 100
+      })
+      setTimeout(() => {
+        window.location.reload()
+      }, 2000)
       return
     }
 
     try {
-      // First, try to refresh the player state
-      if (typeof window.refreshSpotifyPlayer === 'function') {
-        await window.refreshSpotifyPlayer()
+      setRecoveryStatus({
+        isRecovering: true,
+        message: 'Starting recovery process...',
+        progress: 0
+      })
+
+      let currentProgress = 0
+      const updateProgress = (step: number, success: boolean): void => {
+        currentProgress += RECOVERY_STEPS[step].weight * 100
+        setRecoveryStatus((prev) => ({
+          ...prev,
+          message: `${RECOVERY_STEPS[step].message} ${success ? '✓' : '✗'}`,
+          progress: Math.min(currentProgress, 100)
+        }))
       }
 
-      // Then try to reconnect the player
+      // Step 1: Refresh player state
+      if (typeof window.refreshSpotifyPlayer === 'function') {
+        try {
+          await window.refreshSpotifyPlayer()
+          updateProgress(0, true)
+        } catch (error) {
+          console.error('[Recovery] Failed to refresh player state:', error)
+          updateProgress(0, false)
+        }
+      }
+
+      // Step 2: Reconnect player
       if (typeof window.spotifyPlayerInstance?.connect === 'function') {
-        await window.spotifyPlayerInstance.connect()
+        try {
+          await window.spotifyPlayerInstance.connect()
+          updateProgress(1, true)
+        } catch (error) {
+          console.error('[Recovery] Failed to reconnect player:', error)
+          updateProgress(1, false)
+        }
+      }
+
+      // Step 3: Reinitialize player and resume playback
+      if (typeof window.initializeSpotifyPlayer === 'function') {
+        try {
+          // Get current playback state before reinitializing
+          const state = await sendApiRequest<SpotifyPlaybackState>({
+            path: 'me/player',
+            method: 'GET'
+          })
+
+          await window.initializeSpotifyPlayer()
+          updateProgress(2, true)
+
+          // Resume playback from last position
+          if (state?.item?.uri) {
+            await sendApiRequest({
+              path: 'me/player/play',
+              method: 'PUT',
+              body: {
+                context_uri: `spotify:playlist:${fixedPlaylistId}`,
+                position_ms: state.progress_ms ?? 0,
+                offset: { uri: state.item.uri }
+              }
+            })
+          }
+        } catch (error) {
+          console.error('[Recovery] Failed to reinitialize player:', error)
+          updateProgress(2, false)
+        }
       }
 
       // If we get here, recovery was successful
       setHealthStatus((prev) => ({ ...prev, device: 'healthy' }))
       setRecoveryAttempts(0)
+      setRecoveryStatus({
+        isRecovering: false,
+        message: 'Recovery successful!',
+        progress: 100
+      })
+
+      // Clear recovery status after 3 seconds
+      setTimeout(() => {
+        setRecoveryStatus({
+          isRecovering: false,
+          message: '',
+          progress: 0
+        })
+      }, 3000)
     } catch (error) {
       console.error('[Recovery] Failed:', error)
       setRecoveryAttempts((prev) => prev + 1)
@@ -383,7 +488,7 @@ export default function AdminPage(): JSX.Element {
         void attemptRecovery()
       }, delay)
     }
-  }, [recoveryAttempts])
+  }, [recoveryAttempts, baseDelay, fixedPlaylistId])
 
   // Listen for player verification errors
   useEffect(() => {
@@ -945,6 +1050,33 @@ export default function AdminPage(): JSX.Element {
   return (
     <div className='text-white min-h-screen bg-black p-4'>
       <SpotifyPlayer />
+
+      {/* Add recovery status indicator */}
+      {recoveryStatus.isRecovering && (
+        <div className='fixed bottom-4 left-4 right-4 mx-auto max-w-md rounded-lg bg-gray-900/90 p-4 shadow-lg'>
+          <div className='flex items-center gap-4'>
+            <div className='flex-1'>
+              <div className='mb-1 text-sm font-medium'>
+                {recoveryStatus.message}
+              </div>
+              <div className='h-2 w-full rounded-full bg-gray-700'>
+                <div
+                  className='h-2 rounded-full bg-blue-500 transition-all duration-300'
+                  style={{ width: `${recoveryStatus.progress}%` }}
+                />
+              </div>
+            </div>
+            {recoveryStatus.progress === 100 && (
+              <button
+                onClick={() => window.location.reload()}
+                className='rounded bg-blue-600 px-3 py-1 text-sm font-medium transition-colors hover:bg-blue-700'
+              >
+                Reload Now
+              </button>
+            )}
+          </div>
+        </div>
+      )}
 
       <div className='mx-auto max-w-xl space-y-4'>
         <h1 className='mb-8 text-2xl font-bold'>Admin Controls</h1>
