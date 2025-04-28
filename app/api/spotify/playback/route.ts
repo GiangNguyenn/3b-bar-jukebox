@@ -115,7 +115,7 @@ export async function POST(request: Request): Promise<Response> {
           body: JSON.stringify({
             ...(trackUri ? { uris: [trackUri] } : {}),
             ...(contextUri ? { context_uri: contextUri } : {}),
-            position_ms: positionMs ?? currentPosition,
+            position_ms: currentPosition,
             offset: currentTrackUri ? { uri: currentTrackUri } : undefined
           })
         }
