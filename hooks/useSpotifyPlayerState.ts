@@ -600,11 +600,19 @@ export function useSpotifyPlayerState(
 
   const reinitializePlayback = useCallback(async (): Promise<void> => {
     try {
+      // Get current playback state
+      const state = await sendApiRequest<SpotifyPlaybackState>({
+        path: 'me/player',
+        method: 'GET'
+      })
+
       await sendApiRequest({
         path: 'me/player/play',
         method: 'PUT',
         body: {
-          context_uri: `spotify:playlist:${playlistId}`
+          context_uri: `spotify:playlist:${playlistId}`,
+          position_ms: state?.progress_ms ?? 0,
+          offset: state?.item?.uri ? { uri: state.item.uri } : undefined
         }
       })
     } catch (error) {
