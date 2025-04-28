@@ -488,7 +488,7 @@ export default function AdminPage(): JSX.Element {
         void attemptRecovery()
       }, delay)
     }
-  }, [recoveryAttempts, baseDelay, fixedPlaylistId])
+  }, [recoveryAttempts, baseDelay, fixedPlaylistId, RECOVERY_STEPS])
 
   // Listen for player verification errors
   useEffect(() => {
