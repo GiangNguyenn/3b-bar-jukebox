@@ -54,7 +54,7 @@ async function retryWithBackoff<T>(
 export async function POST(request: Request): Promise<Response> {
   try {
     const body = (await request.json()) as PlaybackRequest
-    const { accessToken, deviceId, trackUri, positionMs, contextUri } = body
+    const { accessToken, deviceId, trackUri, contextUri } = body
 
     if (!accessToken || !deviceId) {
       return new Response(
@@ -115,7 +115,7 @@ export async function POST(request: Request): Promise<Response> {
           body: JSON.stringify({
             ...(trackUri ? { uris: [trackUri] } : {}),
             ...(contextUri ? { context_uri: contextUri } : {}),
-            position_ms: positionMs ?? currentPosition,
+            position_ms: currentPosition,
             offset: currentTrackUri ? { uri: currentTrackUri } : undefined
           })
         }
