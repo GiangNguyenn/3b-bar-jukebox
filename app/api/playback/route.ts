@@ -193,18 +193,17 @@ export async function POST(request: Request): Promise<NextResponse> {
         console.log('[API Playback] Latest state before playback:', {
           deviceId,
           contextUri,
-          position_ms,
           currentTrack: latestState?.item?.name,
           timestamp: new Date().toISOString()
         })
 
-        // Start playback with the provided context and position
+        // Start playback with the provided context and use the current progress
         await sendApiRequest({
           path: 'me/player/play',
           method: 'PUT',
           body: {
             context_uri: contextUri,
-            position_ms
+            position_ms: latestState?.progress_ms
           },
           retryConfig
         })
