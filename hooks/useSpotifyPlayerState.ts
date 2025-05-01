@@ -448,7 +448,8 @@ export function useSpotifyPlayerState(
                 context_uri: state.context.uri,
                 position_ms: currentPosition,
                 offset: currentTrackUri ? { uri: currentTrackUri } : undefined
-              }
+              },
+              debounceTime: 60000 // 1 minute debounce
             })
 
             // Restore previous playback state
@@ -613,7 +614,8 @@ export function useSpotifyPlayerState(
           context_uri: `spotify:playlist:${playlistId}`,
           position_ms: state?.progress_ms ?? 0,
           offset: state?.item?.uri ? { uri: state.item.uri } : undefined
-        }
+        },
+        debounceTime: 60000 // 1 minute debounce
       })
     } catch (error) {
       console.error('[SpotifyPlayer] Error reinitializing playback:', error)
