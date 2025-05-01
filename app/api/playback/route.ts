@@ -205,7 +205,8 @@ export async function POST(request: Request): Promise<NextResponse> {
             context_uri: contextUri,
             position_ms: latestState?.progress_ms
           },
-          retryConfig
+          retryConfig,
+          debounceTime: 60000 // 1 minute debounce
         })
 
         return NextResponse.json({ success: true })

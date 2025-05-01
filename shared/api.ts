@@ -10,6 +10,7 @@ interface ApiProps {
     baseDelay?: number
     maxDelay?: number
   }
+  debounceTime?: number // Custom debounce time in milliseconds
 }
 
 interface SpotifyErrorResponse {
@@ -93,14 +94,15 @@ export const sendApiRequest = async <T>({
   extraHeaders,
   config = {},
   isLocalApi = false,
-  retryConfig = DEFAULT_RETRY_CONFIG
+  retryConfig = DEFAULT_RETRY_CONFIG,
+  debounceTime = DEBOUNCE_TIME // Use custom debounce time if provided, otherwise use default
 }: ApiProps): Promise<T> => {
   const cacheKey = `${method}:${path}:${JSON.stringify(body)}`
   const now = Date.now()
 
   // Check if we have a cached request that's still valid
   const cachedRequest = requestCache.get(cacheKey)
-  if (cachedRequest && now - cachedRequest.timestamp < DEBOUNCE_TIME) {
+  if (cachedRequest && now - cachedRequest.timestamp < debounceTime) {
     return cachedRequest.promise
   }
 
