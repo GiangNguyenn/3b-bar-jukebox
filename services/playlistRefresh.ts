@@ -298,7 +298,8 @@ export class PlaylistRefreshServiceImpl implements PlaylistRefreshService {
                 offset: { uri: playbackState.item.uri },
                 position_ms: playbackState.progress_ms ?? 0
               },
-              retryConfig: this.retryConfig
+              retryConfig: this.retryConfig,
+              debounceTime: 60000 // 1 minute debounce
             })
           }
         } else {
@@ -485,7 +486,8 @@ export class PlaylistRefreshServiceImpl implements PlaylistRefreshService {
                 offset: { uri: playbackState.item.uri },
                 position_ms: playbackState.progress_ms ?? 0
               },
-              retryConfig: this.retryConfig
+              retryConfig: this.retryConfig,
+              debounceTime: 60000 // 1 minute debounce
             }),
             this.TIMEOUT_MS
           )

@@ -452,7 +452,8 @@ export default function AdminPage(): JSX.Element {
                 context_uri: `spotify:playlist:${fixedPlaylistId}`,
                 position_ms: state.progress_ms ?? 0,
                 offset: { uri: state.item.uri }
-              }
+              },
+              debounceTime: 60000 // 1 minute debounce
             })
           }
         } catch (error) {
@@ -784,7 +785,8 @@ export default function AdminPage(): JSX.Element {
               context_uri: `spotify:playlist:${fixedPlaylistId}`,
               position_ms: state?.progress_ms ?? 0,
               offset: state?.item?.uri ? { uri: state.item.uri } : undefined
-            }
+            },
+            debounceTime: 60000 // 1 minute debounce
           })
         } catch (playError) {
           if (
@@ -865,7 +867,8 @@ export default function AdminPage(): JSX.Element {
                 context_uri: `spotify:playlist:${fixedPlaylistId}`,
                 position_ms: state?.progress_ms ?? 0,
                 offset: state?.item?.uri ? { uri: state.item.uri } : undefined
-              }
+              },
+              debounceTime: 60000 // 1 minute debounce
             })
           } catch (playError) {
             if (
