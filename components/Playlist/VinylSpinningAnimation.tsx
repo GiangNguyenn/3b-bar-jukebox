@@ -1,5 +1,5 @@
 import React from 'react'
-import Image from 'next/image'
+// Using img instead of next/image for Spotify album art to avoid 402 errors from Spotify's CDN
 
 interface IVinylSpinningAnimationProps {
   is_playing: boolean
@@ -23,7 +23,7 @@ const VinylSpinningAnimation: React.FC<IVinylSpinningAnimationProps> = ({
 
         {albumCover && (
           <div className='absolute inset-0 flex items-center justify-center'>
-            <Image
+            <img
               src={albumCover}
               alt='Album Cover'
               width={80}
