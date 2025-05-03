@@ -278,6 +278,16 @@ export default function AdminPage(): JSX.Element {
       } else {
         console.log('[Playback] No timeUntilEnd data available')
       }
+
+      // Resume playback if stopped or paused, but only if we have an active device
+      if (!event.detail.isPlaying) {
+        if (!deviceId) {
+          console.warn('[Playback] No active device. Cannot resume playback.')
+          return
+        }
+        console.log('[Playback] Track is stopped or paused, resuming playback')
+        void handlePlayback('play')
+      }
     },
     []
   ) // No dependencies needed now
