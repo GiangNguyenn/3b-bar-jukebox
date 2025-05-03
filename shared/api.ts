@@ -206,7 +206,7 @@ export const sendApiRequest = async <T>({
     requestQueue.push(async () => {
       try {
         const result = await makeRequest()
-        resolve(result)
+          resolve(result)
       } catch (error) {
         reject(error)
       }
