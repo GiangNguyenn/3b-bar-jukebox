@@ -282,7 +282,31 @@ export default function AdminPage(): JSX.Element {
       // Resume playback if stopped or paused, but only if we have an active device
       if (!event.detail.isPlaying) {
         if (!deviceId) {
-          console.warn('[Playback] No active device. Cannot resume playback.')
+          console.warn(
+            '[Playback] No active device. Attempting recovery before resuming playback.'
+          )
+          void attemptRecovery().then(async () => {
+            // Poll for deviceId for up to 10 seconds
+            const maxWait = 10000
+            const pollInterval = 500
+            let waited = 0
+            let foundDeviceId = useSpotifyPlayer.getState().deviceId
+
+            while (!foundDeviceId && waited < maxWait) {
+              await new Promise((resolve) => setTimeout(resolve, pollInterval))
+              waited += pollInterval
+              foundDeviceId = useSpotifyPlayer.getState().deviceId
+            }
+
+            if (foundDeviceId) {
+              console.log('[Playback] Recovery complete, resuming playback')
+              void handlePlayback('play')
+            } else {
+              console.error(
+                '[Playback] Recovery failed, still no active device after waiting.'
+              )
+            }
+          })
           return
         }
         console.log('[Playback] Track is stopped or paused, resuming playback')
