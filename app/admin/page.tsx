@@ -278,6 +278,11 @@ export default function AdminPage(): JSX.Element {
         }
       } else {
         console.log('[Playback] No timeUntilEnd data available')
+        // If we're not playing and there's no timeUntilEnd data, try to skip to next track
+        if (!event.detail.isPlaying) {
+          console.log('[Playback] Attempting to skip to next track due to missing timeUntilEnd')
+          void handlePlayback('skip')
+        }
       }
 
       // Only auto-resume if it's not a manual pause
