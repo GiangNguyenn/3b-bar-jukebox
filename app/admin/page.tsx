@@ -280,7 +280,9 @@ export default function AdminPage(): JSX.Element {
         console.log('[Playback] No timeUntilEnd data available')
         // If we're not playing and there's no timeUntilEnd data, try to skip to next track
         if (!event.detail.isPlaying) {
-          console.log('[Playback] Attempting to skip to next track due to missing timeUntilEnd')
+          console.log(
+            '[Playback] Attempting to skip to next track due to missing timeUntilEnd'
+          )
           void handlePlayback('skip')
         }
       }
