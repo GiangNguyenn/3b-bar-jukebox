@@ -38,6 +38,8 @@ export function SpotifyPlayer(): React.ReactElement | null {
     const initialize = async (): Promise<void> => {
       try {
         await initializePlayer()
+        // Dispatch event when player is ready
+        window.dispatchEvent(new CustomEvent('playerReady'))
       } catch (error) {
         console.error('[SpotifyPlayer] Error during initialization:', error)
       }
