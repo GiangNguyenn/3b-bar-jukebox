@@ -41,6 +41,10 @@ const DEVICE_CHECK_INTERVAL = {
   unknown: 5000 // 5 seconds for initial checks
 }
 
+// Add initialization constants
+const INITIALIZATION_TIMEOUT = 15000 // 15 seconds max
+const INITIALIZATION_CHECK_INTERVAL = 500 // Check every 500ms
+
 interface HealthStatus {
   device: 'healthy' | 'unresponsive' | 'disconnected' | 'unknown'
   playback: 'playing' | 'paused' | 'stopped' | 'error' | 'unknown'
@@ -48,6 +52,16 @@ interface HealthStatus {
   connection: 'good' | 'unstable' | 'poor' | 'unknown'
   tokenExpiringSoon: boolean
   fixedPlaylist: 'found' | 'not_found' | 'error' | 'unknown'
+}
+
+interface RecoveryState {
+  lastSuccessfulPlayback: {
+    trackUri: string | null
+    position: number
+    timestamp: number
+  }
+  consecutiveFailures: number
+  lastErrorType: 'auth' | 'playback' | 'connection' | 'device' | null
 }
 
 interface PlaylistCheckedInfo {
@@ -137,6 +151,18 @@ export default function AdminPage(): JSX.Element {
     message: '',
     progress: 0
   })
+  const [recoveryState, setRecoveryState] = useState<RecoveryState>({
+    lastSuccessfulPlayback: {
+      trackUri: null,
+      position: 0,
+      timestamp: 0
+    },
+    consecutiveFailures: 0,
+    lastErrorType: null
+  })
+  const [isInitializing, setIsInitializing] = useState(true)
+  const initializationTimeout = useRef<NodeJS.Timeout | null>(null)
+  const initializationCheckInterval = useRef<NodeJS.Timeout | null>(null)
 
   const { refreshToken } = useSpotifyPlayerState(fixedPlaylistId ?? '')
 
@@ -252,6 +278,20 @@ export default function AdminPage(): JSX.Element {
         ...prev,
         playback: event.detail.isPlaying ? 'playing' : 'paused'
       }))
+
+      // Store successful playback state
+      if (event.detail.isPlaying && event.detail.currentTrack) {
+        setRecoveryState((prev) => ({
+          ...prev,
+          lastSuccessfulPlayback: {
+            trackUri: event.detail.currentTrack,
+            position: event.detail.progress,
+            timestamp: Date.now()
+          },
+          consecutiveFailures: 0,
+          lastErrorType: null
+        }))
+      }
 
       // Check if we're near the end of the track
       if (event.detail.timeUntilEnd) {
@@ -422,7 +462,47 @@ export default function AdminPage(): JSX.Element {
 
   const attemptRecovery = useCallback(async (): Promise<void> => {
     if (recoveryAttempts >= MAX_RECOVERY_ATTEMPTS) {
-      console.error('[Recovery] Max attempts reached, reloading page...')
+      console.error(
+        '[Recovery] Max attempts reached, attempting final recovery...'
+      )
+      setRecoveryStatus({
+        isRecovering: true,
+        message: 'Attempting final recovery with stored state...',
+        progress: 90
+      })
+
+      // Try one last recovery with stored state
+      const lastState = recoveryState.lastSuccessfulPlayback
+      if (lastState && Date.now() - lastState.timestamp < 300000) {
+        // Within 5 minutes
+        try {
+          console.log(
+            '[Recovery] Attempting recovery with stored state:',
+            lastState
+          )
+          await sendApiRequest({
+            path: 'me/player/play',
+            method: 'PUT',
+            body: {
+              context_uri: `spotify:playlist:${fixedPlaylistId}`,
+              position_ms: lastState.position,
+              offset: { uri: lastState.trackUri }
+            }
+          })
+          // If successful, reset recovery attempts
+          setRecoveryAttempts(0)
+          setRecoveryStatus({
+            isRecovering: false,
+            message: 'Recovery successful!',
+            progress: 100
+          })
+          return
+        } catch (error) {
+          console.error('[Recovery] Final recovery attempt failed:', error)
+        }
+      }
+
+      // If we get here, reload the page
       setRecoveryStatus({
         isRecovering: true,
         message: 'All recovery attempts failed. Reloading page...',
@@ -459,6 +539,11 @@ export default function AdminPage(): JSX.Element {
         } catch (error) {
           console.error('[Recovery] Failed to refresh player state:', error)
           updateProgress(0, false)
+          setRecoveryState((prev) => ({
+            ...prev,
+            consecutiveFailures: prev.consecutiveFailures + 1,
+            lastErrorType: 'device'
+          }))
         }
       }
 
@@ -470,6 +555,11 @@ export default function AdminPage(): JSX.Element {
         } catch (error) {
           console.error('[Recovery] Failed to reconnect player:', error)
           updateProgress(1, false)
+          setRecoveryState((prev) => ({
+            ...prev,
+            consecutiveFailures: prev.consecutiveFailures + 1,
+            lastErrorType: 'connection'
+          }))
         }
       }
 
@@ -501,12 +591,22 @@ export default function AdminPage(): JSX.Element {
         } catch (error) {
           console.error('[Recovery] Failed to reinitialize player:', error)
           updateProgress(2, false)
+          setRecoveryState((prev) => ({
+            ...prev,
+            consecutiveFailures: prev.consecutiveFailures + 1,
+            lastErrorType: 'playback'
+          }))
         }
       }
 
       // If we get here, recovery was successful
       setHealthStatus((prev) => ({ ...prev, device: 'healthy' }))
       setRecoveryAttempts(0)
+      setRecoveryState((prev) => ({
+        ...prev,
+        consecutiveFailures: 0,
+        lastErrorType: null
+      }))
       setRecoveryStatus({
         isRecovering: false,
         message: 'Recovery successful!',
@@ -524,6 +624,11 @@ export default function AdminPage(): JSX.Element {
     } catch (error) {
       console.error('[Recovery] Failed:', error)
       setRecoveryAttempts((prev) => prev + 1)
+      setRecoveryState((prev) => ({
+        ...prev,
+        consecutiveFailures: prev.consecutiveFailures + 1,
+        lastErrorType: 'playback'
+      }))
 
       // Calculate delay with exponential backoff
       const delay = baseDelay * Math.pow(2, recoveryAttempts)
@@ -531,7 +636,13 @@ export default function AdminPage(): JSX.Element {
         void attemptRecovery()
       }, delay)
     }
-  }, [recoveryAttempts, baseDelay, fixedPlaylistId, RECOVERY_STEPS])
+  }, [
+    recoveryAttempts,
+    baseDelay,
+    fixedPlaylistId,
+    RECOVERY_STEPS,
+    recoveryState
+  ])
 
   // Listen for player verification errors
   useEffect(() => {
@@ -774,7 +885,76 @@ export default function AdminPage(): JSX.Element {
     return `${minutes}:${seconds.toString().padStart(2, '0')}`
   }
 
+  // Add initialization check effect
+  useEffect(() => {
+    const checkInitialization = async () => {
+      try {
+        // Wait for SDK to be ready
+        if (!window.Spotify) {
+          await new Promise<void>((resolve) => {
+            const handleSDKReady = () => {
+              window.removeEventListener('spotifySDKReady', handleSDKReady)
+              resolve()
+            }
+            window.addEventListener('spotifySDKReady', handleSDKReady)
+          })
+        }
+
+        // Wait for player instance
+        if (!window.spotifyPlayerInstance) {
+          await new Promise<void>((resolve) => {
+            const handlePlayerReady = () => {
+              window.removeEventListener('playerReady', handlePlayerReady)
+              resolve()
+            }
+            window.addEventListener('playerReady', handlePlayerReady)
+          })
+        }
+
+        // Wait for device ID
+        const maxWait = 10000 // 10 seconds
+        const startTime = Date.now()
+        while (
+          !useSpotifyPlayer.getState().deviceId &&
+          Date.now() - startTime < maxWait
+        ) {
+          await new Promise((resolve) =>
+            setTimeout(resolve, INITIALIZATION_CHECK_INTERVAL)
+          )
+        }
+
+        setIsInitializing(false)
+      } catch (error) {
+        console.error('[Admin] Initialization check failed:', error)
+        setIsInitializing(false)
+      }
+    }
+
+    void checkInitialization()
+
+    // Set a timeout to prevent infinite initialization
+    initializationTimeout.current = setTimeout(() => {
+      setIsInitializing(false)
+    }, INITIALIZATION_TIMEOUT)
+
+    return () => {
+      if (initializationTimeout.current) {
+        clearTimeout(initializationTimeout.current)
+      }
+      if (initializationCheckInterval.current) {
+        clearInterval(initializationCheckInterval.current)
+      }
+    }
+  }, [])
+
+  // Modify handlePlayback to check initialization
   const handlePlayback = async (action: 'play' | 'skip'): Promise<void> => {
+    if (isInitializing) {
+      console.log(
+        '[Spotify] Skipping playback action - player still initializing'
+      )
+      return
+    }
     try {
       setIsLoading(true)
       setError(null)
@@ -1101,10 +1281,17 @@ export default function AdminPage(): JSX.Element {
     return () => clearInterval(timer)
   }, [handleRefresh])
 
-  // Only render content after mounting to prevent hydration mismatch
-  if (!mounted) {
+  // Add loading state to UI
+  if (!mounted || isInitializing) {
     return (
-      <div className='text-white min-h-screen bg-black p-4'>Loading...</div>
+      <div className='text-white min-h-screen bg-black p-4'>
+        <div className='flex h-screen items-center justify-center'>
+          <div className='text-center'>
+            <div className='mb-4 text-lg'>Initializing Spotify Player...</div>
+            <div className='border-white mx-auto h-8 w-8 animate-spin rounded-full border-b-2 border-t-2'></div>
+          </div>
+        </div>
+      </div>
     )
   }
 
