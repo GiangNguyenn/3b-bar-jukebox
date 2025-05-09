@@ -1,11 +1,6 @@
 'use client'
 
 import { RefreshCw } from 'lucide-react'
-import {
-  SONGS_BETWEEN_REPEATS_DEFAULT,
-  SONGS_BETWEEN_REPEATS_MAX,
-  SONGS_BETWEEN_REPEATS_MIN
-} from '../validations/trackSuggestions'
 
 interface SongsBetweenRepeatsSelectorProps {
   count: number
@@ -21,7 +16,7 @@ export function SongsBetweenRepeatsSelector({
   }
 
   const handleReset = (): void => {
-    onCountChange(SONGS_BETWEEN_REPEATS_DEFAULT)
+    onCountChange(50) // Reset to middle value
   }
 
   return (
@@ -49,16 +44,16 @@ export function SongsBetweenRepeatsSelector({
             <input
               id='songs-between'
               type='range'
-              min={SONGS_BETWEEN_REPEATS_MIN}
-              max={SONGS_BETWEEN_REPEATS_MAX}
+              min={2}
+              max={100}
               value={count}
               onChange={handleChange}
               className='accent-primary mt-1 block w-full'
             />
             <div className='flex justify-between text-xs text-muted-foreground'>
-              <span>{SONGS_BETWEEN_REPEATS_MIN}</span>
-              <span>{SONGS_BETWEEN_REPEATS_DEFAULT}</span>
-              <span>{SONGS_BETWEEN_REPEATS_MAX}</span>
+              <span>2</span>
+              <span>50</span>
+              <span>100</span>
             </div>
           </div>
         </div>
