@@ -453,7 +453,7 @@ export default function AdminPage(): JSX.Element {
   }, [handleRefresh])
 
   const handlePlaybackUpdate = useCallback(
-    async (event: CustomEvent<PlaybackInfo>) => {
+    async (event: CustomEvent<PlaybackInfo>): Promise<void> => {
       console.log('[Playback] Received update:', {
         currentTrack: event.detail.currentTrack,
         isPlaying: event.detail.isPlaying,
@@ -470,6 +470,14 @@ export default function AdminPage(): JSX.Element {
           method: 'GET'
         })
 
+        // If no state is returned, we're definitely not playing
+        if (!initialState) {
+          console.log('[Playback] No playback state returned from API')
+          setPlaybackInfo(null)
+          setHealthStatus((prev) => ({ ...prev, playback: 'stopped' }))
+          return
+        }
+
         // Wait a short time to check if progress advances
         await new Promise((resolve) => setTimeout(resolve, 1000))
 
@@ -479,36 +487,60 @@ export default function AdminPage(): JSX.Element {
           method: 'GET'
         })
 
+        // If second state is null, we're definitely not playing
+        if (!secondState) {
+          console.log('[Playback] No second playback state returned from API')
+          setPlaybackInfo(null)
+          setHealthStatus((prev) => ({ ...prev, playback: 'stopped' }))
+          return
+        }
+
         // Check if progress has advanced
-        const initialProgress = initialState?.progress_ms ?? 0
-        const secondProgress = secondState?.progress_ms ?? 0
+        const initialProgress = initialState.progress_ms ?? 0
+        const secondProgress = secondState.progress_ms ?? 0
         const progressAdvanced = secondProgress > initialProgress
 
-        // Only consider it playing if both states report playing AND progress has advanced
-        const actualIsPlaying =
-          initialState?.is_playing &&
-          secondState?.is_playing &&
-          progressAdvanced
+        // Only consider it playing if:
+        // 1. Both states report playing
+        // 2. Progress has advanced
+        // 3. We have a valid track
+        const actualIsPlaying = Boolean(
+          initialState.is_playing &&
+          secondState.is_playing &&
+          progressAdvanced &&
+          secondState.item?.name
+        )
+
         const actualProgress = secondProgress
-        const actualTrack = secondState?.item?.name ?? ''
+        const actualTrack = secondState.item?.name ?? ''
+
+        console.log('[Playback] Verified state:', {
+          initialPlaying: initialState.is_playing,
+          secondPlaying: secondState.is_playing,
+          progressAdvanced,
+          hasTrack: Boolean(secondState.item?.name),
+          actualIsPlaying,
+          actualTrack,
+          actualProgress
+        })
 
         // Update playback info with verified state
         setPlaybackInfo({
           isPlaying: actualIsPlaying,
           currentTrack: actualTrack,
           progress: actualProgress,
-          duration_ms: secondState?.item?.duration_ms,
-          timeUntilEnd: secondState?.item?.duration_ms
+          duration_ms: secondState.item?.duration_ms,
+          timeUntilEnd: secondState.item?.duration_ms
             ? secondState.item.duration_ms - actualProgress
             : undefined
         })
 
         setHealthStatus((prev) => ({
           ...prev,
-          playback: actualIsPlaying ? 'playing' : 'paused'
+          playback: actualIsPlaying ? 'playing' : 'stopped'
         }))
 
-        // Store successful playback state
+        // Store successful playback state only if we're actually playing
         if (actualIsPlaying && actualTrack) {
           setRecoveryState((prev) => ({
             ...prev,
@@ -521,74 +553,45 @@ export default function AdminPage(): JSX.Element {
             lastErrorType: null
           }))
         }
+
+        // Only auto-resume if it's not a manual pause and we're not actually playing
+        if (!actualIsPlaying && !isManualPause) {
+          if (!deviceId) {
+            console.warn(
+              '[Playback] No active device. Attempting recovery before resuming playback.'
+            )
+            void attemptRecovery().then(async () => {
+              // Poll for deviceId for up to 10 seconds
+              const maxWait = 10000
+              const pollInterval = 500
+              let waited = 0
+              let foundDeviceId = useSpotifyPlayer.getState().deviceId
+
+              while (!foundDeviceId && waited < maxWait) {
+                await new Promise((resolve) => setTimeout(resolve, pollInterval))
+                waited += pollInterval
+                foundDeviceId = useSpotifyPlayer.getState().deviceId
+              }
+
+              if (foundDeviceId) {
+                console.log('[Playback] Recovery complete, resuming playback')
+                void handlePlayback('play')
+              } else {
+                console.error(
+                  '[Playback] Recovery failed, still no active device after waiting.'
+                )
+              }
+            })
+            return
+          }
+          console.log('[Playback] Track is stopped, resuming playback')
+          void handlePlayback('play')
+        }
       } catch (error) {
         console.error('[Playback] Failed to verify state:', error)
         // On error, assume not playing
         setPlaybackInfo(null)
-        setHealthStatus((prev) => ({ ...prev, playback: 'paused' }))
-      }
-
-      // Check if we're near the end of the track
-      if (event.detail.timeUntilEnd) {
-        if (event.detail.timeUntilEnd < 15000) {
-          console.log('[Playlist] Track nearing end:', {
-            currentTrack: event.detail.currentTrack,
-            timeUntilEnd: event.detail.timeUntilEnd,
-            progress: event.detail.progress,
-            duration_ms: event.detail.duration_ms
-          })
-
-          if (!isRefreshing.current) {
-            console.log('[Playlist] Triggering refresh due to track end')
-            const refreshService = PlaylistRefreshServiceImpl.getInstance()
-            void refreshService.refreshPlaylist()
-          } else {
-            console.log('[Playlist] Skipping refresh - already refreshing')
-          }
-        }
-      } else {
-        console.log('[Playback] No timeUntilEnd data available')
-        // If we're not playing and there's no timeUntilEnd data, try to skip to next track
-        if (!event.detail.isPlaying) {
-          console.log(
-            '[Playback] Attempting to skip to next track due to missing timeUntilEnd'
-          )
-          void handlePlayback('skip')
-        }
-      }
-
-      // Only auto-resume if it's not a manual pause
-      if (!event.detail.isPlaying && !isManualPause) {
-        if (!deviceId) {
-          console.warn(
-            '[Playback] No active device. Attempting recovery before resuming playback.'
-          )
-          void attemptRecovery().then(async () => {
-            // Poll for deviceId for up to 10 seconds
-            const maxWait = 10000
-            const pollInterval = 500
-            let waited = 0
-            let foundDeviceId = useSpotifyPlayer.getState().deviceId
-
-            while (!foundDeviceId && waited < maxWait) {
-              await new Promise((resolve) => setTimeout(resolve, pollInterval))
-              waited += pollInterval
-              foundDeviceId = useSpotifyPlayer.getState().deviceId
-            }
-
-            if (foundDeviceId) {
-              console.log('[Playback] Recovery complete, resuming playback')
-              void handlePlayback('play')
-            } else {
-              console.error(
-                '[Playback] Recovery failed, still no active device after waiting.'
-              )
-            }
-          })
-          return
-        }
-        console.log('[Playback] Track is stopped or paused, resuming playback')
-        void handlePlayback('play')
+        setHealthStatus((prev) => ({ ...prev, playback: 'stopped' }))
       }
     },
     [isManualPause, deviceId]
