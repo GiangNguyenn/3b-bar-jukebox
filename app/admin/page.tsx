@@ -101,6 +101,200 @@ interface _TrackSuggestionsTabProps {
   onStateChange: (state: TrackSuggestionsState) => void
 }
 
+interface PlaybackVerificationResult {
+  isSuccessful: boolean
+  reason?: string
+  details?: {
+    deviceMatch: boolean
+    isPlaying: boolean
+    progressAdvancing: boolean
+    contextMatch: boolean
+    currentTrack?: string
+    expectedTrack?: string
+    timestamp: number
+    verificationDuration: number
+  }
+}
+
+async function verifyPlaybackResume(
+  expectedContextUri: string,
+  currentDeviceId: string | null,
+  maxVerificationTime: number = 10000, // 10 seconds
+  checkInterval: number = 1000 // 1 second
+): Promise<PlaybackVerificationResult> {
+  const startTime = Date.now()
+  console.log('[Playback Verification] Starting verification process', {
+    expectedContextUri,
+    currentDeviceId,
+    maxVerificationTime,
+    checkInterval,
+    timestamp: new Date().toISOString()
+  })
+
+  const initialState = await sendApiRequest<SpotifyPlaybackState>({
+    path: 'me/player',
+    method: 'GET'
+  })
+
+  console.log('[Playback Verification] Initial state:', {
+    deviceId: initialState?.device?.id,
+    isPlaying: initialState?.is_playing,
+    progress: initialState?.progress_ms,
+    context: initialState?.context?.uri,
+    currentTrack: initialState?.item?.name,
+    timestamp: new Date().toISOString()
+  })
+
+  const initialProgress = initialState?.progress_ms ?? 0
+  let lastProgress = initialProgress
+  let progressStalled = false
+  let checkCount = 0
+  let currentState: SpotifyPlaybackState | null = null
+
+  while (Date.now() - startTime < maxVerificationTime) {
+    checkCount++
+    currentState = await sendApiRequest<SpotifyPlaybackState>({
+      path: 'me/player',
+      method: 'GET'
+    })
+
+    // Log each verification check
+    console.log(`[Playback Verification] Check #${checkCount}:`, {
+      deviceId: currentState?.device?.id,
+      expectedDeviceId: currentDeviceId,
+      isPlaying: currentState?.is_playing,
+      progress: currentState?.progress_ms,
+      lastProgress,
+      context: currentState?.context?.uri,
+      expectedContext: expectedContextUri,
+      currentTrack: currentState?.item?.name,
+      timestamp: new Date().toISOString()
+    })
+
+    // Check device match
+    if (currentState?.device?.id !== currentDeviceId) {
+      console.error('[Playback Verification] Device mismatch:', {
+        expected: currentDeviceId,
+        actual: currentState?.device?.id,
+        timestamp: new Date().toISOString()
+      })
+      return {
+        isSuccessful: false,
+        reason: 'Device mismatch',
+        details: {
+          deviceMatch: false,
+          isPlaying: currentState?.is_playing ?? false,
+          progressAdvancing: false,
+          contextMatch: false,
+          timestamp: Date.now(),
+          verificationDuration: Date.now() - startTime
+        }
+      }
+    }
+
+    // Check if playing
+    if (!currentState?.is_playing) {
+      console.error('[Playback Verification] Playback not started:', {
+        deviceId: currentState?.device?.id,
+        context: currentState?.context?.uri,
+        timestamp: new Date().toISOString()
+      })
+      return {
+        isSuccessful: false,
+        reason: 'Playback not started',
+        details: {
+          deviceMatch: true,
+          isPlaying: false,
+          progressAdvancing: false,
+          contextMatch: currentState?.context?.uri === expectedContextUri,
+          timestamp: Date.now(),
+          verificationDuration: Date.now() - startTime
+        }
+      }
+    }
+
+    // Check progress advancement
+    const currentProgress = currentState.progress_ms ?? 0
+    if (currentProgress <= lastProgress) {
+      progressStalled = true
+      console.warn('[Playback Verification] Progress stalled:', {
+        currentProgress,
+        lastProgress,
+        timestamp: new Date().toISOString()
+      })
+    } else {
+      progressStalled = false
+    }
+    lastProgress = currentProgress
+
+    // Check context match
+    const contextMatch = currentState?.context?.uri === expectedContextUri
+    if (!contextMatch) {
+      console.warn('[Playback Verification] Context mismatch:', {
+        expected: expectedContextUri,
+        actual: currentState?.context?.uri,
+        timestamp: new Date().toISOString()
+      })
+    }
+
+    // If all checks pass, return success
+    if (contextMatch && !progressStalled) {
+      console.log('[Playback Verification] Verification successful:', {
+        deviceId: currentState?.device?.id,
+        isPlaying: currentState?.is_playing,
+        progress: currentState?.progress_ms,
+        context: currentState?.context?.uri,
+        currentTrack: currentState?.item?.name,
+        verificationDuration: Date.now() - startTime,
+        timestamp: new Date().toISOString()
+      })
+      return {
+        isSuccessful: true,
+        details: {
+          deviceMatch: true,
+          isPlaying: true,
+          progressAdvancing: true,
+          contextMatch: true,
+          currentTrack: currentState.item?.name,
+          expectedTrack: currentState.item?.name,
+          timestamp: Date.now(),
+          verificationDuration: Date.now() - startTime
+        }
+      }
+    }
+
+    // Wait before next check
+    await new Promise((resolve) => setTimeout(resolve, checkInterval))
+  }
+
+  // If we get here, verification timed out
+  console.error('[Playback Verification] Verification timeout:', {
+    maxVerificationTime,
+    checkCount,
+    finalState: {
+      deviceId: currentState?.device?.id,
+      isPlaying: currentState?.is_playing,
+      progress: currentState?.progress_ms,
+      context: currentState?.context?.uri,
+      currentTrack: currentState?.item?.name
+    },
+    timestamp: new Date().toISOString()
+  })
+
+  return {
+    isSuccessful: false,
+    reason: 'Verification timeout',
+    details: {
+      deviceMatch: true,
+      isPlaying: true,
+      progressAdvancing: !progressStalled,
+      contextMatch: false,
+      timestamp: Date.now(),
+      verificationDuration: Date.now() - startTime
+    }
+  }
+}
+
 export default function AdminPage(): JSX.Element {
   const [mounted, setMounted] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
@@ -169,8 +363,9 @@ export default function AdminPage(): JSX.Element {
   const MAX_RECOVERY_ATTEMPTS = 5
   const RECOVERY_STEPS = [
     { message: 'Refreshing player state...', weight: 0.2 },
+    { message: 'Ensuring active device...', weight: 0.2 },
     { message: 'Attempting to reconnect...', weight: 0.3 },
-    { message: 'Reinitializing player...', weight: 0.5 }
+    { message: 'Reinitializing player...', weight: 0.3 }
   ]
 
   // Declare handleRefresh first
@@ -547,14 +742,63 @@ export default function AdminPage(): JSX.Element {
         }
       }
 
-      // Step 2: Reconnect player
+      // Step 2: Ensure active device
+      try {
+        // Get current playback state
+        const currentState = await sendApiRequest<SpotifyPlaybackState>({
+          path: 'me/player',
+          method: 'GET'
+        })
+
+        if (!currentState?.device?.id) {
+          // No active device found, try to transfer playback
+          if (deviceId) {
+            await sendApiRequest({
+              path: 'me/player',
+              method: 'PUT',
+              body: {
+                device_ids: [deviceId],
+                play: false
+              }
+            })
+            // Wait for transfer to take effect
+            await new Promise((resolve) => setTimeout(resolve, 1000))
+
+            // Verify transfer was successful
+            const newState = await sendApiRequest<SpotifyPlaybackState>({
+              path: 'me/player',
+              method: 'GET'
+            })
+
+            if (newState?.device?.id === deviceId) {
+              updateProgress(1, true)
+            } else {
+              throw new Error('Device transfer failed')
+            }
+          } else {
+            throw new Error('No device ID available')
+          }
+        } else {
+          updateProgress(1, true)
+        }
+      } catch (error) {
+        console.error('[Recovery] Failed to ensure active device:', error)
+        updateProgress(1, false)
+        setRecoveryState((prev) => ({
+          ...prev,
+          consecutiveFailures: prev.consecutiveFailures + 1,
+          lastErrorType: 'device'
+        }))
+      }
+
+      // Step 3: Reconnect player
       if (typeof window.spotifyPlayerInstance?.connect === 'function') {
         try {
           await window.spotifyPlayerInstance.connect()
-          updateProgress(1, true)
+          updateProgress(2, true)
         } catch (error) {
           console.error('[Recovery] Failed to reconnect player:', error)
-          updateProgress(1, false)
+          updateProgress(2, false)
           setRecoveryState((prev) => ({
             ...prev,
             consecutiveFailures: prev.consecutiveFailures + 1,
@@ -563,34 +807,98 @@ export default function AdminPage(): JSX.Element {
         }
       }
 
-      // Step 3: Reinitialize player and resume playback
+      // Step 4: Reinitialize player and resume playback
       if (typeof window.initializeSpotifyPlayer === 'function') {
         try {
           // Get current playback state before reinitializing
-          const state = await sendApiRequest<SpotifyPlaybackState>({
+          const currentState = await sendApiRequest<SpotifyPlaybackState>({
             path: 'me/player',
             method: 'GET'
           })
 
           await window.initializeSpotifyPlayer()
-          updateProgress(2, true)
+          updateProgress(3, true)
 
           // Resume playback from last position
-          if (state?.item?.uri) {
+          if (currentState?.item?.uri) {
             await sendApiRequest({
               path: 'me/player/play',
               method: 'PUT',
               body: {
                 context_uri: `spotify:playlist:${fixedPlaylistId}`,
-                position_ms: state.progress_ms ?? 0,
-                offset: { uri: state.item.uri }
+                position_ms: currentState.progress_ms ?? 0,
+                offset: { uri: currentState.item.uri }
               },
               debounceTime: 60000 // 1 minute debounce
             })
           }
+
+          // Verify playback resumed correctly
+          console.log('[Recovery] Starting playback verification')
+          const verificationResult = await verifyPlaybackResume(
+            `spotify:playlist:${fixedPlaylistId}`,
+            deviceId
+          )
+
+          if (!verificationResult.isSuccessful) {
+            console.error('[Recovery] Playback verification failed:', {
+              reason: verificationResult.reason,
+              details: verificationResult.details,
+              timestamp: new Date().toISOString()
+            })
+
+            // Attempt retry with different strategy based on failure reason
+            if (verificationResult.details?.deviceMatch === false) {
+              console.log('[Recovery] Retrying device transfer')
+              await sendApiRequest({
+                path: 'me/player',
+                method: 'PUT',
+                body: {
+                  device_ids: [deviceId],
+                  play: false
+                }
+              })
+            } else if (verificationResult.details?.isPlaying === false) {
+              console.log('[Recovery] Retrying playback start')
+              await sendApiRequest({
+                path: 'me/player/play',
+                method: 'PUT',
+                body: {
+                  context_uri: `spotify:playlist:${fixedPlaylistId}`,
+                  position_ms: currentState?.progress_ms ?? 0
+                }
+              })
+            } else if (
+              verificationResult.details?.progressAdvancing === false
+            ) {
+              console.log('[Recovery] Retrying with next track')
+              await sendApiRequest({
+                path: 'me/player/next',
+                method: 'POST'
+              })
+            }
+
+            // Verify again after retry
+            console.log('[Recovery] Starting retry verification')
+            const retryVerification = await verifyPlaybackResume(
+              `spotify:playlist:${fixedPlaylistId}`,
+              deviceId
+            )
+
+            if (!retryVerification.isSuccessful) {
+              console.error('[Recovery] Retry verification failed:', {
+                reason: retryVerification.reason,
+                details: retryVerification.details,
+                timestamp: new Date().toISOString()
+              })
+              throw new Error(
+                `Playback verification failed after retry: ${retryVerification.reason}`
+              )
+            }
+          }
         } catch (error) {
           console.error('[Recovery] Failed to reinitialize player:', error)
-          updateProgress(2, false)
+          updateProgress(3, false)
           setRecoveryState((prev) => ({
             ...prev,
             consecutiveFailures: prev.consecutiveFailures + 1,
@@ -641,7 +949,8 @@ export default function AdminPage(): JSX.Element {
     baseDelay,
     fixedPlaylistId,
     RECOVERY_STEPS,
-    recoveryState
+    recoveryState,
+    deviceId
   ])
 
   // Listen for player verification errors
