@@ -19,11 +19,10 @@ import { useSpotifyPlayerState } from '@/hooks/useSpotifyPlayerState'
 import { TrackSuggestionsTab } from './components/track-suggestions/track-suggestions-tab'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useConsoleLogs } from '@/hooks/useConsoleLogs'
-import { FALLBACK_GENRES } from '@/shared/constants/trackSuggestion'
 import { validateSongsBetweenRepeats } from './components/track-suggestions/validations/trackSuggestions'
 import { type TrackSuggestionsState } from '@/shared/types/trackSuggestions'
-import { PlaylistRefreshServiceImpl } from '@/services/playlistRefresh'
 import type { SpotifyPlayerInstance } from '@/types/spotify'
+import { useTrackSuggestions } from './components/track-suggestions/hooks/useTrackSuggestions'
 
 declare global {
   interface Window {
@@ -330,8 +329,10 @@ export default function AdminPage(): JSX.Element {
     expiryTime: 0
   })
   const [_currentYear, _setCurrentYear] = useState(new Date().getFullYear())
-  const [trackSuggestionsState, setTrackSuggestionsState] =
-    useState<TrackSuggestionsState | null>(null)
+  const {
+    state: trackSuggestionsState,
+    updateState: updateTrackSuggestionsState
+  } = useTrackSuggestions()
   const [isRefreshingSuggestions, setIsRefreshingSuggestions] = useState(false)
   const [refreshError, setRefreshError] = useState<string | null>(null)
   const [timeUntilRefresh, setTimeUntilRefresh] = useState(REFRESH_INTERVAL)
@@ -382,18 +383,11 @@ export default function AdminPage(): JSX.Element {
       setError(null)
 
       try {
-        // Get track suggestions state from localStorage
-        const savedState = localStorage.getItem('track-suggestions-state')
-        const trackSuggestionsState = savedState
-          ? (JSON.parse(savedState) as TrackSuggestionsState)
-          : {
-              genres: Array.from(FALLBACK_GENRES),
-              yearRange: [1950, new Date().getFullYear()],
-              popularity: 50,
-              allowExplicit: false,
-              maxSongLength: 300,
-              songsBetweenRepeats: 5
-            }
+        // Use trackSuggestionsState from the hook
+        if (!trackSuggestionsState) {
+          console.error('[Refresh] No track suggestions state available')
+          throw new Error('No track suggestions state available')
+        }
 
         console.log(`[Refresh] Calling refresh-site endpoint with params:`, {
           genres: trackSuggestionsState.genres,
@@ -429,7 +423,6 @@ export default function AdminPage(): JSX.Element {
           return
         }
 
-        // Removed the playlistRefresh event dispatch
         console.log(
           `[Refresh] ${source} refresh completed successfully - added suggested song`
         )
@@ -447,7 +440,7 @@ export default function AdminPage(): JSX.Element {
         isRefreshing.current = false
       }
     },
-    [addLog]
+    [addLog, trackSuggestionsState]
   )
 
   // Now we can safely create the ref
@@ -459,7 +452,7 @@ export default function AdminPage(): JSX.Element {
   }, [handleRefresh])
 
   const handlePlaybackUpdate = useCallback(
-    async (event: CustomEvent<PlaybackInfo>) => {
+    async (event: CustomEvent<PlaybackInfo>): Promise<void> => {
       console.log('[Playback] Received update:', {
         currentTrack: event.detail.currentTrack,
         isPlaying: event.detail.isPlaying,
@@ -476,6 +469,14 @@ export default function AdminPage(): JSX.Element {
           method: 'GET'
         })
 
+        // If no state is returned, we're definitely not playing
+        if (!initialState) {
+          console.log('[Playback] No playback state returned from API')
+          setPlaybackInfo(null)
+          setHealthStatus((prev) => ({ ...prev, playback: 'stopped' }))
+          return
+        }
+
         // Wait a short time to check if progress advances
         await new Promise((resolve) => setTimeout(resolve, 1000))
 
@@ -485,36 +486,60 @@ export default function AdminPage(): JSX.Element {
           method: 'GET'
         })
 
+        // If second state is null, we're definitely not playing
+        if (!secondState) {
+          console.log('[Playback] No second playback state returned from API')
+          setPlaybackInfo(null)
+          setHealthStatus((prev) => ({ ...prev, playback: 'stopped' }))
+          return
+        }
+
         // Check if progress has advanced
-        const initialProgress = initialState?.progress_ms ?? 0
-        const secondProgress = secondState?.progress_ms ?? 0
+        const initialProgress = initialState.progress_ms ?? 0
+        const secondProgress = secondState.progress_ms ?? 0
         const progressAdvanced = secondProgress > initialProgress
 
-        // Only consider it playing if both states report playing AND progress has advanced
-        const actualIsPlaying =
-          initialState?.is_playing &&
-          secondState?.is_playing &&
-          progressAdvanced
+        // Only consider it playing if:
+        // 1. Both states report playing
+        // 2. Progress has advanced
+        // 3. We have a valid track
+        const actualIsPlaying = Boolean(
+          initialState.is_playing &&
+            secondState.is_playing &&
+            progressAdvanced &&
+            secondState.item?.name
+        )
+
         const actualProgress = secondProgress
-        const actualTrack = secondState?.item?.name ?? ''
+        const actualTrack = secondState.item?.name ?? ''
+
+        console.log('[Playback] Verified state:', {
+          initialPlaying: initialState.is_playing,
+          secondPlaying: secondState.is_playing,
+          progressAdvanced,
+          hasTrack: Boolean(secondState.item?.name),
+          actualIsPlaying,
+          actualTrack,
+          actualProgress
+        })
 
         // Update playback info with verified state
         setPlaybackInfo({
           isPlaying: actualIsPlaying,
           currentTrack: actualTrack,
           progress: actualProgress,
-          duration_ms: secondState?.item?.duration_ms,
-          timeUntilEnd: secondState?.item?.duration_ms
+          duration_ms: secondState.item?.duration_ms,
+          timeUntilEnd: secondState.item?.duration_ms
             ? secondState.item.duration_ms - actualProgress
             : undefined
         })
 
         setHealthStatus((prev) => ({
           ...prev,
-          playback: actualIsPlaying ? 'playing' : 'paused'
+          playback: actualIsPlaying ? 'playing' : 'stopped'
         }))
 
-        // Store successful playback state
+        // Store successful playback state only if we're actually playing
         if (actualIsPlaying && actualTrack) {
           setRecoveryState((prev) => ({
             ...prev,
@@ -527,74 +552,47 @@ export default function AdminPage(): JSX.Element {
             lastErrorType: null
           }))
         }
+
+        // Only auto-resume if it's not a manual pause and we're not actually playing
+        if (!actualIsPlaying && !isManualPause) {
+          if (!deviceId) {
+            console.warn(
+              '[Playback] No active device. Attempting recovery before resuming playback.'
+            )
+            void attemptRecovery().then(async () => {
+              // Poll for deviceId for up to 10 seconds
+              const maxWait = 10000
+              const pollInterval = 500
+              let waited = 0
+              let foundDeviceId = useSpotifyPlayer.getState().deviceId
+
+              while (!foundDeviceId && waited < maxWait) {
+                await new Promise((resolve) =>
+                  setTimeout(resolve, pollInterval)
+                )
+                waited += pollInterval
+                foundDeviceId = useSpotifyPlayer.getState().deviceId
+              }
+
+              if (foundDeviceId) {
+                console.log('[Playback] Recovery complete, resuming playback')
+                void handlePlayback('play')
+              } else {
+                console.error(
+                  '[Playback] Recovery failed, still no active device after waiting.'
+                )
+              }
+            })
+            return
+          }
+          console.log('[Playback] Track is stopped, resuming playback')
+          void handlePlayback('play')
+        }
       } catch (error) {
         console.error('[Playback] Failed to verify state:', error)
         // On error, assume not playing
         setPlaybackInfo(null)
-        setHealthStatus((prev) => ({ ...prev, playback: 'paused' }))
-      }
-
-      // Check if we're near the end of the track
-      if (event.detail.timeUntilEnd) {
-        if (event.detail.timeUntilEnd < 15000) {
-          console.log('[Playlist] Track nearing end:', {
-            currentTrack: event.detail.currentTrack,
-            timeUntilEnd: event.detail.timeUntilEnd,
-            progress: event.detail.progress,
-            duration_ms: event.detail.duration_ms
-          })
-
-          if (!isRefreshing.current) {
-            console.log('[Playlist] Triggering refresh due to track end')
-            const refreshService = PlaylistRefreshServiceImpl.getInstance()
-            void refreshService.refreshPlaylist()
-          } else {
-            console.log('[Playlist] Skipping refresh - already refreshing')
-          }
-        }
-      } else {
-        console.log('[Playback] No timeUntilEnd data available')
-        // If we're not playing and there's no timeUntilEnd data, try to skip to next track
-        if (!event.detail.isPlaying) {
-          console.log(
-            '[Playback] Attempting to skip to next track due to missing timeUntilEnd'
-          )
-          void handlePlayback('skip')
-        }
-      }
-
-      // Only auto-resume if it's not a manual pause
-      if (!event.detail.isPlaying && !isManualPause) {
-        if (!deviceId) {
-          console.warn(
-            '[Playback] No active device. Attempting recovery before resuming playback.'
-          )
-          void attemptRecovery().then(async () => {
-            // Poll for deviceId for up to 10 seconds
-            const maxWait = 10000
-            const pollInterval = 500
-            let waited = 0
-            let foundDeviceId = useSpotifyPlayer.getState().deviceId
-
-            while (!foundDeviceId && waited < maxWait) {
-              await new Promise((resolve) => setTimeout(resolve, pollInterval))
-              waited += pollInterval
-              foundDeviceId = useSpotifyPlayer.getState().deviceId
-            }
-
-            if (foundDeviceId) {
-              console.log('[Playback] Recovery complete, resuming playback')
-              void handlePlayback('play')
-            } else {
-              console.error(
-                '[Playback] Recovery failed, still no active device after waiting.'
-              )
-            }
-          })
-          return
-        }
-        console.log('[Playback] Track is stopped or paused, resuming playback')
-        void handlePlayback('play')
+        setHealthStatus((prev) => ({ ...prev, playback: 'stopped' }))
       }
     },
     [isManualPause, deviceId]
@@ -647,15 +645,29 @@ export default function AdminPage(): JSX.Element {
       const now = Date.now()
       const minutesUntilExpiry = (newTokenInfo.expiryTime - now) / (60 * 1000)
 
-      setHealthStatus((prev) => ({
-        ...prev,
-        token: minutesUntilExpiry > 0 ? 'valid' : 'expired',
-        tokenExpiringSoon: minutesUntilExpiry <= 15
-      }))
+      // Only update if the new token has a different expiry time
+      if (newTokenInfo.expiryTime !== tokenInfo.expiryTime) {
+        console.log('[Token] Updating token info:', {
+          oldExpiry: tokenInfo.expiryTime,
+          newExpiry: newTokenInfo.expiryTime,
+          minutesUntilExpiry
+        })
 
-      setTokenInfo(newTokenInfo)
+        setHealthStatus((prev) => ({
+          ...prev,
+          token: minutesUntilExpiry > 0 ? 'valid' : 'expired',
+          tokenExpiringSoon: minutesUntilExpiry <= 15
+        }))
+
+        setTokenInfo(newTokenInfo)
+      }
     }
 
+    // Remove any existing token update listeners before adding a new one
+    window.removeEventListener(
+      'tokenUpdate',
+      handleTokenUpdate as EventListener
+    )
     window.addEventListener('tokenUpdate', handleTokenUpdate as EventListener)
 
     return () => {
@@ -1384,41 +1396,21 @@ export default function AdminPage(): JSX.Element {
         timestamp: Date.now()
       })
 
-      if (action === 'play') {
-        // If currently playing, pause the playback
-        if (state?.is_playing) {
-          console.log('[Spotify] Pausing playback')
+      // Ensure our device is active before proceeding
+      if (!state?.device?.id || state.device.id !== deviceId) {
+        console.log('[Spotify] Ensuring device is active')
+        try {
           await sendApiRequest({
-            path: 'me/player/pause',
-            method: 'PUT'
-          })
-          setHealthStatus((prev) => ({ ...prev, playback: 'paused' }))
-          setIsManualPause(true) // Set manual pause flag
-        } else {
-          // If not playing, first ensure our device is active
-          console.log('[Spotify] Ensuring device is active')
-          try {
-            await sendApiRequest({
-              path: 'me/player',
-              method: 'PUT',
-              body: {
-                device_ids: [deviceId],
-                play: false
-              }
-            })
-            console.log('[Spotify] Device transfer successful')
-          } catch (error) {
-            console.error('[Spotify] Device transfer failed:', error)
-            // If device transfer fails, try to refresh the player
-            if (typeof window.refreshSpotifyPlayer === 'function') {
-              console.log('[Spotify] Attempting to refresh player')
-              await window.refreshSpotifyPlayer()
-              // Wait a bit for the refresh to take effect
-              await new Promise((resolve) => setTimeout(resolve, 1000))
+            path: 'me/player',
+            method: 'PUT',
+            body: {
+              device_ids: [deviceId],
+              play: false
             }
-          }
+          })
+          console.log('[Spotify] Device transfer successful')
 
-          // Wait a bit for the transfer to take effect
+          // Wait for device transfer to take effect
           await new Promise((resolve) => setTimeout(resolve, 1000))
 
           // Verify device is active
@@ -1434,16 +1426,49 @@ export default function AdminPage(): JSX.Element {
             })
             throw new Error('Device verification failed')
           }
+        } catch (error) {
+          console.error('[Spotify] Device transfer failed:', error)
+          // If device transfer fails, try to refresh the player
+          if (typeof window.refreshSpotifyPlayer === 'function') {
+            console.log('[Spotify] Attempting to refresh player')
+            await window.refreshSpotifyPlayer()
+            // Wait a bit for the refresh to take effect
+            await new Promise((resolve) => setTimeout(resolve, 1000))
 
-          console.log('[Spotify] Device verified, starting playback')
+            // Try device transfer again
+            await sendApiRequest({
+              path: 'me/player',
+              method: 'PUT',
+              body: {
+                device_ids: [deviceId],
+                play: false
+              }
+            })
+          }
+        }
+      }
 
+      if (action === 'play') {
+        // If currently playing, pause the playback
+        if (state?.is_playing) {
+          console.log('[Spotify] Pausing playback')
+          await sendApiRequest({
+            path: `me/player/pause?device_id=${deviceId}`,
+            method: 'PUT'
+          })
+          setHealthStatus((prev: HealthStatus) => ({
+            ...prev,
+            playback: 'paused'
+          }))
+          setIsManualPause(true) // Set manual pause flag
+        } else {
           // Check if the current track is playable
           if (state?.item?.is_playable === false) {
             console.log(
               '[Spotify] Current track is not playable, skipping to next track'
             )
             await sendApiRequest({
-              path: 'me/player/next',
+              path: `me/player/next?device_id=${deviceId}`,
               method: 'POST'
             })
             return
@@ -1467,7 +1492,10 @@ export default function AdminPage(): JSX.Element {
               },
               debounceTime: 60000 // 1 minute debounce
             })
-            setHealthStatus((prev) => ({ ...prev, playback: 'playing' }))
+            setHealthStatus((prev: HealthStatus) => ({
+              ...prev,
+              playback: 'playing'
+            }))
             setIsManualPause(false) // Clear manual pause flag
           } catch (playError) {
             if (
@@ -1478,7 +1506,7 @@ export default function AdminPage(): JSX.Element {
                 '[Spotify] Playback restricted, skipping to next track'
               )
               await sendApiRequest({
-                path: 'me/player/next',
+                path: `me/player/next?device_id=${deviceId}`,
                 method: 'POST'
               })
               return
@@ -1489,7 +1517,7 @@ export default function AdminPage(): JSX.Element {
       } else {
         console.log('[Spotify] Skipping to next track')
         await sendApiRequest({
-          path: 'me/player/next',
+          path: `me/player/next?device_id=${deviceId}`,
           method: 'POST'
         })
       }
@@ -1498,7 +1526,7 @@ export default function AdminPage(): JSX.Element {
     } catch (error) {
       console.error('[Spotify] Playback control failed:', error)
       setError('Failed to control playback')
-      setHealthStatus((prev) => ({ ...prev, playback: 'error' }))
+      setHealthStatus((prev: HealthStatus) => ({ ...prev, playback: 'error' }))
 
       // Attempt automatic recovery
       try {
@@ -1527,7 +1555,7 @@ export default function AdminPage(): JSX.Element {
               '[Spotify] Current track is not playable, skipping to next track'
             )
             await sendApiRequest({
-              path: 'me/player/next',
+              path: `me/player/next?device_id=${deviceId}`,
               method: 'POST'
             })
             return
@@ -1554,7 +1582,10 @@ export default function AdminPage(): JSX.Element {
               },
               debounceTime: 60000 // 1 minute debounce
             })
-            setHealthStatus((prev) => ({ ...prev, playback: 'playing' }))
+            setHealthStatus((prev: HealthStatus) => ({
+              ...prev,
+              playback: 'playing'
+            }))
             setIsManualPause(false) // Clear manual pause flag after recovery
           } catch (playError) {
             if (
@@ -1565,7 +1596,7 @@ export default function AdminPage(): JSX.Element {
                 '[Spotify] Playback restricted, skipping to next track'
               )
               await sendApiRequest({
-                path: 'me/player/next',
+                path: `me/player/next?device_id=${deviceId}`,
                 method: 'POST'
               })
               return
@@ -1575,7 +1606,7 @@ export default function AdminPage(): JSX.Element {
         } else {
           console.log('[Spotify] Retrying skip after recovery')
           await sendApiRequest({
-            path: 'me/player/next',
+            path: `me/player/next?device_id=${deviceId}`,
             method: 'POST'
           })
         }
@@ -1707,7 +1738,7 @@ export default function AdminPage(): JSX.Element {
   const handleTrackSuggestionsStateChange = (
     newState: TrackSuggestionsState
   ): void => {
-    setTrackSuggestionsState(newState)
+    updateTrackSuggestionsState(newState)
   }
 
   // Auto-refresh timer effect
@@ -2000,7 +2031,7 @@ export default function AdminPage(): JSX.Element {
                 >
                   {isLoading
                     ? 'Loading...'
-                    : healthStatus.playback === 'playing'
+                    : playbackInfo?.isPlaying
                       ? 'Pause'
                       : 'Play'}
                 </button>
