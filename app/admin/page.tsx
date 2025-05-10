@@ -661,12 +661,18 @@ export default function AdminPage(): JSX.Element {
     }
 
     // Remove any existing token update listeners before adding a new one
-    window.removeEventListener('tokenUpdate', handleTokenUpdate as EventListener)
+    window.removeEventListener(
+      'tokenUpdate',
+      handleTokenUpdate as EventListener
+    )
     window.addEventListener('tokenUpdate', handleTokenUpdate as EventListener)
 
     return () => {
       clearInterval(interval)
-      window.removeEventListener('tokenUpdate', handleTokenUpdate as EventListener)
+      window.removeEventListener(
+        'tokenUpdate',
+        handleTokenUpdate as EventListener
+      )
     }
   }, [updateTokenStatus, refreshToken, tokenInfo.expiryTime])
 
@@ -1356,9 +1362,7 @@ export default function AdminPage(): JSX.Element {
   // Modify handlePlayback to check initialization
   const handlePlayback = async (action: 'play' | 'skip'): Promise<void> => {
     if (isInitializing) {
-      console.log(
-        '[Spotify] Skipping playback action - player still initializing'
-      )
+      console.log('[Spotify] Skipping playback action - player still initializing')
       return
     }
 
@@ -1444,7 +1448,7 @@ export default function AdminPage(): JSX.Element {
         if (state?.is_playing) {
           console.log('[Spotify] Pausing playback')
           await sendApiRequest({
-            path: 'me/player/pause',
+            path: `me/player/pause?device_id=${deviceId}`,
             method: 'PUT'
           })
           setHealthStatus((prev: HealthStatus) => ({
@@ -1455,11 +1459,9 @@ export default function AdminPage(): JSX.Element {
         } else {
           // Check if the current track is playable
           if (state?.item?.is_playable === false) {
-            console.log(
-              '[Spotify] Current track is not playable, skipping to next track'
-            )
+            console.log('[Spotify] Current track is not playable, skipping to next track')
             await sendApiRequest({
-              path: 'me/player/next',
+              path: `me/player/next?device_id=${deviceId}`,
               method: 'POST'
             })
             return
@@ -1489,15 +1491,10 @@ export default function AdminPage(): JSX.Element {
             }))
             setIsManualPause(false) // Clear manual pause flag
           } catch (playError) {
-            if (
-              playError instanceof Error &&
-              playError.message.includes('Restriction violated')
-            ) {
-              console.log(
-                '[Spotify] Playback restricted, skipping to next track'
-              )
+            if (playError instanceof Error && playError.message.includes('Restriction violated')) {
+              console.log('[Spotify] Playback restricted, skipping to next track')
               await sendApiRequest({
-                path: 'me/player/next',
+                path: `me/player/next?device_id=${deviceId}`,
                 method: 'POST'
               })
               return
@@ -1508,7 +1505,7 @@ export default function AdminPage(): JSX.Element {
       } else {
         console.log('[Spotify] Skipping to next track')
         await sendApiRequest({
-          path: 'me/player/next',
+          path: `me/player/next?device_id=${deviceId}`,
           method: 'POST'
         })
       }
@@ -1542,25 +1539,20 @@ export default function AdminPage(): JSX.Element {
 
           // Check if the current track is playable
           if (state?.item?.is_playable === false) {
-            console.log(
-              '[Spotify] Current track is not playable, skipping to next track'
-            )
+            console.log('[Spotify] Current track is not playable, skipping to next track')
             await sendApiRequest({
-              path: 'me/player/next',
+              path: `me/player/next?device_id=${deviceId}`,
               method: 'POST'
             })
             return
           }
 
-          console.log(
-            '[Spotify] Retrying playback after recovery with state:',
-            {
-              device_id: deviceId,
-              context_uri: `spotify:playlist:${fixedPlaylistId}`,
-              position_ms: state?.progress_ms ?? 0,
-              offset: state?.item?.uri ? { uri: state.item.uri } : undefined
-            }
-          )
+          console.log('[Spotify] Retrying playback after recovery with state:', {
+            device_id: deviceId,
+            context_uri: `spotify:playlist:${fixedPlaylistId}`,
+            position_ms: state?.progress_ms ?? 0,
+            offset: state?.item?.uri ? { uri: state.item.uri } : undefined
+          })
 
           try {
             await sendApiRequest({
@@ -1579,15 +1571,10 @@ export default function AdminPage(): JSX.Element {
             }))
             setIsManualPause(false) // Clear manual pause flag after recovery
           } catch (playError) {
-            if (
-              playError instanceof Error &&
-              playError.message.includes('Restriction violated')
-            ) {
-              console.log(
-                '[Spotify] Playback restricted, skipping to next track'
-              )
+            if (playError instanceof Error && playError.message.includes('Restriction violated')) {
+              console.log('[Spotify] Playback restricted, skipping to next track')
               await sendApiRequest({
-                path: 'me/player/next',
+                path: `me/player/next?device_id=${deviceId}`,
                 method: 'POST'
               })
               return
@@ -1597,7 +1584,7 @@ export default function AdminPage(): JSX.Element {
         } else {
           console.log('[Spotify] Retrying skip after recovery')
           await sendApiRequest({
-            path: 'me/player/next',
+            path: `me/player/next?device_id=${deviceId}`,
             method: 'POST'
           })
         }
