@@ -459,7 +459,7 @@ export default function AdminPage(): JSX.Element {
   }, [handleRefresh])
 
   const handlePlaybackUpdate = useCallback(
-    (event: CustomEvent<PlaybackInfo>) => {
+    async (event: CustomEvent<PlaybackInfo>) => {
       console.log('[Playback] Received update:', {
         currentTrack: event.detail.currentTrack,
         isPlaying: event.detail.isPlaying,
@@ -468,24 +468,88 @@ export default function AdminPage(): JSX.Element {
         duration_ms: event.detail.duration_ms
       })
 
-      setPlaybackInfo(event.detail)
-      setHealthStatus((prev) => ({
-        ...prev,
-        playback: event.detail.isPlaying ? 'playing' : 'paused'
-      }))
+      // Verify actual playback state from Spotify API
+      try {
+        // Get initial state
+        const initialState = await sendApiRequest<SpotifyPlaybackState>({
+          path: 'me/player',
+          method: 'GET'
+        })
 
-      // Store successful playback state
-      if (event.detail.isPlaying && event.detail.currentTrack) {
-        setRecoveryState((prev) => ({
+        console.log('[Playback] Initial state from API:', {
+          isPlaying: initialState?.is_playing,
+          deviceId: initialState?.device?.id,
+          currentDeviceId: deviceId,
+          progress: initialState?.progress_ms,
+          timestamp: Date.now()
+        })
+
+        // Wait a short time to check if progress advances
+        await new Promise(resolve => setTimeout(resolve, 1000))
+
+        // Get state again to check progress
+        const secondState = await sendApiRequest<SpotifyPlaybackState>({
+          path: 'me/player',
+          method: 'GET'
+        })
+
+        console.log('[Playback] Second state from API:', {
+          isPlaying: secondState?.is_playing,
+          deviceId: secondState?.device?.id,
+          currentDeviceId: deviceId,
+          progress: secondState?.progress_ms,
+          timestamp: Date.now()
+        })
+
+        // Check if progress has advanced
+        const initialProgress = initialState?.progress_ms ?? 0
+        const secondProgress = secondState?.progress_ms ?? 0
+        const progressAdvanced = secondProgress > initialProgress
+
+        console.log('[Playback] Progress check:', {
+          initialProgress,
+          secondProgress,
+          progressAdvanced,
+          timestamp: Date.now()
+        })
+
+        // Only consider it playing if both states report playing AND progress has advanced
+        const actualIsPlaying = initialState?.is_playing && secondState?.is_playing && progressAdvanced
+        const actualProgress = secondProgress
+        const actualTrack = secondState?.item?.name ?? ''
+
+        // Update playback info with verified state
+        setPlaybackInfo({
+          isPlaying: actualIsPlaying,
+          currentTrack: actualTrack,
+          progress: actualProgress,
+          duration_ms: secondState?.item?.duration_ms,
+          timeUntilEnd: secondState?.item?.duration_ms ? secondState.item.duration_ms - actualProgress : undefined
+        })
+
+        setHealthStatus((prev) => ({
           ...prev,
-          lastSuccessfulPlayback: {
-            trackUri: event.detail.currentTrack,
-            position: event.detail.progress,
-            timestamp: Date.now()
-          },
-          consecutiveFailures: 0,
-          lastErrorType: null
+          playback: actualIsPlaying ? 'playing' : 'paused'
         }))
+
+        // Store successful playback state
+        if (actualIsPlaying && actualTrack) {
+          setRecoveryState((prev) => ({
+            ...prev,
+            lastSuccessfulPlayback: {
+              trackUri: secondState.item?.uri ?? null,
+              position: actualProgress,
+              timestamp: Date.now()
+            },
+            consecutiveFailures: 0,
+            lastErrorType: null
+          }))
+        }
+      } catch (error) {
+        console.error('[Playback] Failed to verify state:', error)
+        // On error, assume not playing
+        setPlaybackInfo(null)
+        setHealthStatus((prev) => ({ ...prev, playback: 'paused' }))
       }
 
       // Check if we're near the end of the track
@@ -551,23 +615,23 @@ export default function AdminPage(): JSX.Element {
         void handlePlayback('play')
       }
     },
-    [isManualPause]
+    [isManualPause, deviceId]
   )
 
   // Listen for playback state updates from SpotifyPlayer
   useEffect(() => {
     console.log('[Playback] Setting up event listener')
-    window.addEventListener(
-      'playbackUpdate',
-      handlePlaybackUpdate as EventListener
-    )
+    const handleEvent = (event: Event) => {
+      if (event instanceof CustomEvent) {
+        void handlePlaybackUpdate(event as CustomEvent<PlaybackInfo>)
+      }
+    }
+
+    window.addEventListener('playbackUpdate', handleEvent)
 
     return () => {
       console.log('[Playback] Cleaning up event listener')
-      window.removeEventListener(
-        'playbackUpdate',
-        handlePlaybackUpdate as EventListener
-      )
+      window.removeEventListener('playbackUpdate', handleEvent)
     }
   }, [handlePlaybackUpdate])
 
@@ -996,14 +1060,34 @@ export default function AdminPage(): JSX.Element {
           return
         }
 
+        // If we have a device ID and the player is ready, mark as healthy
+        if (isReady) {
+          console.log('[Device] Player is ready, marking as healthy:', {
+            deviceId,
+            isReady,
+            timestamp: Date.now()
+          })
+          setHealthStatus((prev) => ({ ...prev, device: 'healthy' }))
+          setRecoveryAttempts(0)
+          return
+        }
+
+        // If device IDs don't match, mark as disconnected
         if (state.device.id !== deviceId) {
+          console.log('[Device] Device ID mismatch:', {
+            currentId: deviceId,
+            reportedId: state.device.id,
+            isReady,
+            timestamp: Date.now()
+          })
           setHealthStatus((prev) => ({ ...prev, device: 'disconnected' }))
           void attemptRecovery()
           return
         }
 
-        setHealthStatus((prev) => ({ ...prev, device: 'healthy' }))
-        setRecoveryAttempts(0)
+        // If we have a matching device ID but player isn't ready, mark as unresponsive
+        setHealthStatus((prev) => ({ ...prev, device: 'unresponsive' }))
+        void attemptRecovery()
       } catch (error) {
         console.error('[Device] Health check failed:', error)
         setHealthStatus((prev) => ({ ...prev, device: 'unresponsive' }))
@@ -1027,7 +1111,19 @@ export default function AdminPage(): JSX.Element {
         clearTimeout(recoveryTimeout.current)
       }
     }
-  }, [deviceId, healthStatus.connection, attemptRecovery])
+  }, [deviceId, healthStatus.connection, attemptRecovery, isReady])
+
+  // Add a new effect to update device status when ready state changes
+  useEffect(() => {
+    if (isReady && deviceId) {
+      console.log('[Device] Player ready state changed, updating health status:', {
+        deviceId,
+        isReady,
+        timestamp: Date.now()
+      })
+      setHealthStatus((prev) => ({ ...prev, device: 'healthy' }))
+    }
+  }, [isReady, deviceId])
 
   // Request wake lock to prevent device sleep
   useEffect(() => {
@@ -1125,34 +1221,43 @@ export default function AdminPage(): JSX.Element {
 
     const updateConnectionStatus = (): void => {
       if (!navigator.onLine) {
+        console.log('[Connection] Device is offline')
         setHealthStatus((prev) => ({ ...prev, connection: 'poor' }))
         return
       }
 
       // Check connection type and effective type if available
-      const connection = (navigator as { connection?: NetworkInformation })
-        .connection
+      const connection = (navigator as { connection?: NetworkInformation }).connection
       if (connection) {
         const { effectiveType, downlink, rtt } = connection
+        console.log('[Connection] Network info:', {
+          effectiveType,
+          downlink,
+          rtt,
+          type: connection.type
+        })
 
-        if (
-          effectiveType === '4g' &&
-          downlink &&
-          downlink > 2 &&
-          rtt &&
-          rtt < 100
-        ) {
+        // Default to 'good' for ethernet and wifi connections
+        if (connection.type === 'ethernet' || connection.type === 'wifi') {
+          console.log('[Connection] Using ethernet/wifi, marking as good')
           setHealthStatus((prev) => ({ ...prev, connection: 'good' }))
-        } else if (
-          effectiveType === '4g' ||
-          (effectiveType === '3g' && downlink && downlink > 1)
-        ) {
+          return
+        }
+
+        // For other connection types, use effectiveType and metrics
+        if (effectiveType === '4g' && downlink && downlink >= 2 && rtt && rtt < 100) {
+          console.log('[Connection] Good 4G connection')
+          setHealthStatus((prev) => ({ ...prev, connection: 'good' }))
+        } else if (effectiveType === '3g' && downlink && downlink >= 1) {
+          console.log('[Connection] Unstable 3G connection')
           setHealthStatus((prev) => ({ ...prev, connection: 'unstable' }))
         } else {
+          console.log('[Connection] Poor connection')
           setHealthStatus((prev) => ({ ...prev, connection: 'poor' }))
         }
       } else {
-        // Fallback to online/offline status if connection API is not available
+        // If Network Information API is not available, use online status
+        console.log('[Connection] Network API not available, using online status')
         setHealthStatus((prev) => ({
           ...prev,
           connection: navigator.onLine ? 'good' : 'poor'
@@ -1168,8 +1273,7 @@ export default function AdminPage(): JSX.Element {
     window.addEventListener('offline', updateConnectionStatus)
 
     // Listen for connection changes if available
-    const connection = (navigator as { connection?: NetworkInformation })
-      .connection
+    const connection = (navigator as { connection?: NetworkInformation }).connection
     if (connection) {
       connection.addEventListener('change', updateConnectionStatus)
     }
@@ -1259,11 +1363,18 @@ export default function AdminPage(): JSX.Element {
       )
       return
     }
+
     try {
       setIsLoading(true)
       setError(null)
 
-      console.log('[Spotify] Calling play API with action:', action)
+      console.log('[Spotify] Starting playback sequence')
+
+      // First, ensure we have a valid device ID
+      if (!deviceId) {
+        console.error('[Spotify] No device ID available')
+        throw new Error('No device ID available')
+      }
 
       // Get current state first
       const state = await sendApiRequest<SpotifyPlaybackState>({
@@ -1271,9 +1382,16 @@ export default function AdminPage(): JSX.Element {
         method: 'GET'
       })
 
+      console.log('[Spotify] Current playback state:', {
+        isPlaying: state?.is_playing,
+        deviceId: state?.device?.id,
+        currentDeviceId: deviceId,
+        timestamp: Date.now()
+      })
+
       if (action === 'play') {
+        // If currently playing, pause the playback
         if (state?.is_playing) {
-          // If currently playing, pause the playback
           console.log('[Spotify] Pausing playback')
           await sendApiRequest({
             path: 'me/player/pause',
@@ -1282,19 +1400,47 @@ export default function AdminPage(): JSX.Element {
           setHealthStatus((prev) => ({ ...prev, playback: 'paused' }))
           setIsManualPause(true) // Set manual pause flag
         } else {
-          // If not playing, transfer playback to our device and start playback
-          console.log('[Spotify] Starting playback')
-          await sendApiRequest({
-            path: 'me/player',
-            method: 'PUT',
-            body: {
-              device_ids: [deviceId],
-              play: false
+          // If not playing, first ensure our device is active
+          console.log('[Spotify] Ensuring device is active')
+          try {
+            await sendApiRequest({
+              path: 'me/player',
+              method: 'PUT',
+              body: {
+                device_ids: [deviceId],
+                play: false
+              }
+            })
+            console.log('[Spotify] Device transfer successful')
+          } catch (error) {
+            console.error('[Spotify] Device transfer failed:', error)
+            // If device transfer fails, try to refresh the player
+            if (typeof window.refreshSpotifyPlayer === 'function') {
+              console.log('[Spotify] Attempting to refresh player')
+              await window.refreshSpotifyPlayer()
+              // Wait a bit for the refresh to take effect
+              await new Promise(resolve => setTimeout(resolve, 1000))
             }
-          })
+          }
 
           // Wait a bit for the transfer to take effect
-          await new Promise((resolve) => setTimeout(resolve, 1000))
+          await new Promise(resolve => setTimeout(resolve, 1000))
+
+          // Verify device is active
+          const verifyState = await sendApiRequest<SpotifyPlaybackState>({
+            path: 'me/player',
+            method: 'GET'
+          })
+
+          if (verifyState?.device?.id !== deviceId) {
+            console.error('[Spotify] Device verification failed:', {
+              expected: deviceId,
+              actual: verifyState?.device?.id
+            })
+            throw new Error('Device verification failed')
+          }
+
+          console.log('[Spotify] Device verified, starting playback')
 
           // Check if the current track is playable
           if (state?.item?.is_playable === false) {
