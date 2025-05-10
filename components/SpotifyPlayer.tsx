@@ -23,7 +23,9 @@ export function SpotifyPlayer(): React.ReactElement | null {
     initializePlayer,
     reconnectPlayer
   } = useSpotifyPlayerState(fixedPlaylistId ?? '')
-  const [playbackState, setPlaybackState] = useState<'playing' | 'paused' | 'stopped'>('stopped')
+  const [playbackState, setPlaybackState] = useState<
+    'playing' | 'paused' | 'stopped'
+  >('stopped')
   const hasInitialized = useRef(false)
   const initAttempts = useRef(0)
   const MAX_INIT_ATTEMPTS = 3
@@ -47,9 +49,12 @@ export function SpotifyPlayer(): React.ReactElement | null {
       }
 
       try {
-        console.log('[SpotifyPlayer] Starting initialization attempt', initAttempts.current + 1)
+        console.log(
+          '[SpotifyPlayer] Starting initialization attempt',
+          initAttempts.current + 1
+        )
         initAttempts.current++
-        
+
         // Ensure SDK is actually ready
         if (!window.Spotify) {
           console.error('[SpotifyPlayer] SDK not available despite ready event')
@@ -64,7 +69,7 @@ export function SpotifyPlayer(): React.ReactElement | null {
         console.error('[SpotifyPlayer] Error during initialization:', error)
         // Reset initialization state on error
         hasInitialized.current = false
-        
+
         // Try again after a delay if we haven't hit max attempts
         if (initAttempts.current < MAX_INIT_ATTEMPTS) {
           const delay = Math.pow(2, initAttempts.current) * 1000 // Exponential backoff
@@ -109,7 +114,7 @@ export function SpotifyPlayer(): React.ReactElement | null {
         if (state.item) {
           const timeUntilEnd = state.item.duration_ms - (state.progress_ms ?? 0)
           const newPlaybackState = state.is_playing ? 'playing' : 'paused'
-          
+
           if (newPlaybackState !== playbackState) {
             setPlaybackState(newPlaybackState)
           }
