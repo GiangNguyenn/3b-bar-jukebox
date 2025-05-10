@@ -21,7 +21,6 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useConsoleLogs } from '@/hooks/useConsoleLogs'
 import { validateSongsBetweenRepeats } from './components/track-suggestions/validations/trackSuggestions'
 import { type TrackSuggestionsState } from '@/shared/types/trackSuggestions'
-import { PlaylistRefreshServiceImpl } from '@/services/playlistRefresh'
 import type { SpotifyPlayerInstance } from '@/types/spotify'
 import { useTrackSuggestions } from './components/track-suggestions/hooks/useTrackSuggestions'
 
