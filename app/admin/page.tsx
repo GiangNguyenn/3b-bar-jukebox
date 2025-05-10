@@ -2031,7 +2031,7 @@ export default function AdminPage(): JSX.Element {
                 >
                   {isLoading
                     ? 'Loading...'
-                    : healthStatus.playback === 'playing'
+                    : playbackInfo?.isPlaying
                       ? 'Pause'
                       : 'Play'}
                 </button>
