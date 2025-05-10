@@ -199,11 +199,11 @@ export async function POST(request: Request): Promise<NextResponse> {
 
         // Start playback with the provided context and use the current progress
         await sendApiRequest({
-          path: 'me/player/play',
+          path: `me/player/play?device_id=${deviceId}`,
           method: 'PUT',
           body: {
             context_uri: contextUri,
-            position_ms: latestState?.progress_ms
+            position_ms: latestState?.progress_ms ?? 0
           },
           retryConfig,
           debounceTime: 60000 // 1 minute debounce
