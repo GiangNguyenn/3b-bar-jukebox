@@ -2,13 +2,7 @@
 /* eslint-disable @typescript-eslint/explicit-function-return-type */
 'use client'
 
-import {
-  useState,
-  useEffect,
-  useRef,
-  useCallback,
-  type EffectCallback
-} from 'react'
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { useSpotifyPlayer } from '@/hooks/useSpotifyPlayer'
 import { useFixedPlaylist } from '@/hooks/useFixedPlaylist'
 import { SpotifyPlayer } from '@/components/SpotifyPlayer'
@@ -362,12 +356,347 @@ export default function AdminPage(): JSX.Element {
   const { refreshToken } = useSpotifyPlayerState(fixedPlaylistId ?? '')
 
   const MAX_RECOVERY_ATTEMPTS = 5
-  const RECOVERY_STEPS = [
-    { message: 'Refreshing player state...', weight: 0.2 },
-    { message: 'Ensuring active device...', weight: 0.2 },
-    { message: 'Attempting to reconnect...', weight: 0.3 },
-    { message: 'Reinitializing player...', weight: 0.3 }
-  ]
+  const RECOVERY_STEPS = useMemo(
+    () => [
+      { message: 'Refreshing player state...', weight: 0.2 },
+      { message: 'Ensuring active device...', weight: 0.2 },
+      { message: 'Attempting to reconnect...', weight: 0.3 },
+      { message: 'Reinitializing player...', weight: 0.3 }
+    ],
+    []
+  )
+
+  // Add token refresh lock
+  const isRefreshingToken = useRef(false)
+  const refreshTokenTimeout = useRef<NodeJS.Timeout | null>(null)
+
+  const handleTokenRefresh = async (): Promise<void> => {
+    // Prevent concurrent token refreshes
+    if (isRefreshingToken.current) {
+      console.log('[Token] Token refresh already in progress, skipping')
+      return
+    }
+
+    try {
+      isRefreshingToken.current = true
+      console.log('[Token] Starting token refresh')
+      await refreshToken()
+      updateTokenStatus()
+      addLog('INFO', 'Token refreshed successfully')
+
+      // After successful token refresh, verify playback state
+      const state = await sendApiRequest<SpotifyPlaybackState>({
+        path: 'me/player',
+        method: 'GET'
+      })
+
+      if (!state) {
+        console.error('[Token] Failed to get playback state after refresh')
+        throw new Error('Failed to verify playback state after token refresh')
+      }
+
+      // If we were playing before, try to resume playback
+      if (playbackInfo?.isPlaying) {
+        console.log('[Token] Attempting to resume playback after token refresh')
+        await handlePlayback('play')
+      }
+    } catch (error) {
+      console.error('[Token] Refresh failed:', error)
+      setHealthStatus((prev) => ({
+        ...prev,
+        token: 'error'
+      }))
+      addLog(
+        'ERROR',
+        'Token refresh failed',
+        undefined,
+        error instanceof Error ? error : new Error(String(error))
+      )
+
+      // If token refresh fails, try to recover
+      try {
+        console.log('[Token] Attempting token recovery')
+        // First try to refresh the player state
+        if (typeof window.refreshSpotifyPlayer === 'function') {
+          await window.refreshSpotifyPlayer()
+        }
+
+        // Then try to reconnect the player
+        if (typeof window.spotifyPlayerInstance?.connect === 'function') {
+          await window.spotifyPlayerInstance.connect()
+        }
+
+        // Finally try to refresh the token again
+        await refreshToken()
+        updateTokenStatus()
+        addLog('INFO', 'Token recovery successful')
+      } catch (recoveryError) {
+        console.error('[Token] Recovery failed:', recoveryError)
+        addLog(
+          'ERROR',
+          'Token recovery failed',
+          undefined,
+          recoveryError instanceof Error
+            ? recoveryError
+            : new Error(String(recoveryError))
+        )
+
+        // If all recovery attempts fail, reload the page
+        console.log('[Token] All recovery attempts failed, reloading page')
+        if (refreshTokenTimeout.current) {
+          clearTimeout(refreshTokenTimeout.current)
+        }
+        refreshTokenTimeout.current = setTimeout(() => {
+          window.location.reload()
+        }, 2000)
+      }
+    } finally {
+      isRefreshingToken.current = false
+    }
+  }
+
+  // Add cleanup for all timeouts and intervals
+  useEffect(() => {
+    return () => {
+      if (refreshTokenTimeout.current) {
+        clearTimeout(refreshTokenTimeout.current)
+      }
+      if (deviceCheckInterval.current) {
+        clearInterval(deviceCheckInterval.current)
+      }
+      if (recoveryTimeout.current) {
+        clearTimeout(recoveryTimeout.current)
+      }
+      if (initializationTimeout.current) {
+        clearTimeout(initializationTimeout.current)
+      }
+      if (initializationCheckInterval.current) {
+        clearInterval(initializationCheckInterval.current)
+      }
+    }
+  }, [])
+
+  // Add error boundary for critical operations
+  const executeWithErrorBoundary = async <T,>(
+    operation: () => Promise<T>,
+    errorContext: string
+  ): Promise<T | null> => {
+    try {
+      return await operation()
+    } catch (error) {
+      console.error(`[${errorContext}] Operation failed:`, error)
+      addLog(
+        'ERROR',
+        `${errorContext} operation failed`,
+        undefined,
+        error instanceof Error ? error : new Error(String(error))
+      )
+      return null
+    }
+  }
+
+  // Update handlePlayback to use error boundary
+  const handlePlayback = async (action: 'play' | 'skip'): Promise<void> => {
+    if (isInitializing) {
+      console.log(
+        '[Spotify] Skipping playback action - player still initializing'
+      )
+      return
+    }
+
+    try {
+      setIsLoading(true)
+      setError(null)
+
+      console.log('[Spotify] Starting playback sequence')
+
+      // First, ensure we have a valid device ID
+      if (!deviceId) {
+        console.error('[Spotify] No device ID available')
+        throw new Error('No device ID available')
+      }
+
+      // Get current state first
+      const state = await executeWithErrorBoundary(
+        () =>
+          sendApiRequestWithTokenRecovery<SpotifyPlaybackState>({
+            path: 'me/player',
+            method: 'GET'
+          }),
+        'Playback'
+      )
+
+      if (!state) {
+        throw new Error('Failed to get playback state')
+      }
+
+      console.log('[Spotify] Current playback state:', {
+        isPlaying: state.is_playing,
+        deviceId: state.device?.id,
+        currentDeviceId: deviceId,
+        timestamp: Date.now()
+      })
+
+      // Ensure our device is active before proceeding
+      if (!state?.device?.id || state.device.id !== deviceId) {
+        console.log('[Spotify] Ensuring device is active')
+        try {
+          await sendApiRequest({
+            path: 'me/player',
+            method: 'PUT',
+            body: {
+              device_ids: [deviceId],
+              play: false
+            }
+          })
+          console.log('[Spotify] Device transfer successful')
+
+          // Wait for device transfer to take effect
+          await new Promise((resolve) => setTimeout(resolve, 1000))
+
+          // Verify device is active
+          const verifyState = await sendApiRequest<SpotifyPlaybackState>({
+            path: 'me/player',
+            method: 'GET'
+          })
+
+          if (verifyState?.device?.id !== deviceId) {
+            console.error('[Spotify] Device verification failed:', {
+              expected: deviceId,
+              actual: verifyState?.device?.id
+            })
+            throw new Error('Device verification failed')
+          }
+        } catch (error) {
+          console.error('[Spotify] Device transfer failed:', error)
+          // If device transfer fails, try to refresh the player
+          if (typeof window.refreshSpotifyPlayer === 'function') {
+            console.log('[Spotify] Attempting to refresh player')
+            await window.refreshSpotifyPlayer()
+            // Wait a bit for the refresh to take effect
+            await new Promise((resolve) => setTimeout(resolve, 1000))
+
+            // Try device transfer again
+            await sendApiRequest({
+              path: 'me/player',
+              method: 'PUT',
+              body: {
+                device_ids: [deviceId],
+                play: false
+              }
+            })
+          }
+        }
+      }
+
+      if (action === 'play') {
+        // If currently playing, pause the playback
+        if (state?.is_playing) {
+          console.log('[Spotify] Pausing playback')
+          await sendApiRequest({
+            path: `me/player/pause?device_id=${deviceId}`,
+            method: 'PUT'
+          })
+          setHealthStatus((prev: HealthStatus) => ({
+            ...prev,
+            playback: 'paused'
+          }))
+          setIsManualPause(true) // Set manual pause flag
+        } else {
+          // Check if the current track is playable
+          if (state?.item?.is_playable === false) {
+            console.log(
+              '[Spotify] Current track is not playable, skipping to next track'
+            )
+            await sendApiRequest({
+              path: `me/player/next?device_id=${deviceId}`,
+              method: 'POST'
+            })
+            return
+          }
+
+          console.log('[Spotify] Starting playback with state:', {
+            device_id: deviceId,
+            context_uri: `spotify:playlist:${fixedPlaylistId}`,
+            position_ms: state?.progress_ms ?? 0,
+            offset: state?.item?.uri ? { uri: state.item.uri } : undefined
+          })
+
+          try {
+            await sendApiRequest({
+              path: `me/player/play?device_id=${deviceId}`,
+              method: 'PUT',
+              body: {
+                context_uri: `spotify:playlist:${fixedPlaylistId}`,
+                position_ms: state?.progress_ms ?? 0,
+                offset: state?.item?.uri ? { uri: state.item.uri } : undefined
+              },
+              debounceTime: 60000 // 1 minute debounce
+            })
+            setHealthStatus((prev: HealthStatus) => ({
+              ...prev,
+              playback: 'playing'
+            }))
+            setIsManualPause(false) // Clear manual pause flag
+          } catch (playError) {
+            if (
+              playError instanceof Error &&
+              playError.message.includes('Restriction violated')
+            ) {
+              console.log(
+                '[Spotify] Playback restricted, skipping to next track'
+              )
+              await sendApiRequest({
+                path: `me/player/next?device_id=${deviceId}`,
+                method: 'POST'
+              })
+              return
+            }
+            throw playError
+          }
+        }
+      } else {
+        console.log('[Spotify] Skipping to next track')
+        await sendApiRequest({
+          path: `me/player/next?device_id=${deviceId}`,
+          method: 'POST'
+        })
+      }
+
+      console.log('[Spotify] Playback action completed successfully')
+    } catch (error) {
+      console.error('[Spotify] Playback control failed:', error)
+      setError('Failed to control playback')
+      setHealthStatus((prev: HealthStatus) => ({ ...prev, playback: 'error' }))
+
+      // Attempt automatic recovery
+      try {
+        console.log('[Spotify] Attempting recovery...')
+        await executeWithErrorBoundary(async () => {
+          // First try to refresh the player state
+          if (typeof window.refreshSpotifyPlayer === 'function') {
+            await window.refreshSpotifyPlayer()
+          }
+
+          // Then try to reconnect the player
+          if (typeof window.spotifyPlayerInstance?.connect === 'function') {
+            await window.spotifyPlayerInstance.connect()
+          }
+
+          // Finally try the original playback action again
+          if (action === 'play') {
+            await handlePlayback('play')
+          } else {
+            await handlePlayback('skip')
+          }
+        }, 'Playback Recovery')
+      } catch (recoveryError) {
+        console.error('[Spotify] Recovery failed:', recoveryError)
+      }
+    } finally {
+      setIsLoading(false)
+    }
+  }
 
   // Declare handleRefresh first
   const handleRefresh = useCallback(
@@ -631,6 +960,64 @@ export default function AdminPage(): JSX.Element {
     }))
   }, [tokenInfo.expiryTime])
 
+  // Add token error detection to API requests
+  const handleApiError = useCallback((error: unknown): void => {
+    if (error instanceof Error) {
+      const errorMessage = error.message.toLowerCase()
+
+      // Check for various error types
+      if (
+        errorMessage.includes('token') ||
+        errorMessage.includes('authentication') ||
+        errorMessage.includes('unauthorized') ||
+        errorMessage.includes('forbidden') ||
+        errorMessage.includes('expired')
+      ) {
+        console.log(
+          '[Token] Detected token error in API request:',
+          errorMessage
+        )
+        void handleTokenRefresh()
+      } else if (
+        errorMessage.includes('rate limit') ||
+        errorMessage.includes('too many requests') ||
+        errorMessage.includes('429')
+      ) {
+        console.log('[API] Rate limit detected, backing off...')
+        addLog('WARN', 'Rate limit reached, backing off requests')
+        // Add exponential backoff for rate limits
+        setTimeout(() => {
+          void handleTokenRefresh()
+        }, 5000) // Wait 5 seconds before retrying
+      } else if (
+        errorMessage.includes('network') ||
+        errorMessage.includes('timeout') ||
+        errorMessage.includes('connection') ||
+        errorMessage.includes('dns')
+      ) {
+        console.log('[Network] Network error detected:', errorMessage)
+        addLog('WARN', 'Network error detected, will retry')
+        // Add network error recovery
+        setTimeout(() => {
+          void handleTokenRefresh()
+        }, 2000) // Wait 2 seconds before retrying
+      }
+    }
+  }, [])
+
+  // Modify the sendApiRequest wrapper to handle token errors
+  const sendApiRequestWithTokenRecovery = async <T,>(
+    request: Parameters<typeof sendApiRequest>[0]
+  ): Promise<T> => {
+    try {
+      return await sendApiRequest<T>(request)
+    } catch (error) {
+      handleApiError(error)
+      throw error
+    }
+  }
+
+  // Update token status check to be more frequent
   useEffect(() => {
     if (tokenInfo.expiryTime === 0) {
       void refreshToken()
@@ -638,7 +1025,8 @@ export default function AdminPage(): JSX.Element {
       updateTokenStatus()
     }
 
-    const interval = setInterval(updateTokenStatus, 60000)
+    // Check token status every 30 seconds instead of every minute
+    const interval = setInterval(updateTokenStatus, 30000)
 
     const handleTokenUpdate = (event: CustomEvent<TokenInfo>): void => {
       const newTokenInfo = event.detail
@@ -679,34 +1067,39 @@ export default function AdminPage(): JSX.Element {
     }
   }, [updateTokenStatus, refreshToken, tokenInfo.expiryTime])
 
-  const handleTokenRefresh = async (): Promise<void> => {
-    try {
-      await refreshToken()
-      updateTokenStatus()
-      addLog('INFO', 'Token refreshed successfully')
-    } catch (error) {
-      console.error('[Token] Refresh failed:', error)
-      setHealthStatus((prev) => ({
-        ...prev,
-        token: 'error'
-      }))
-      addLog('ERROR', 'Token refresh failed')
+  // Add token error detection to playback state updates
+  useEffect(() => {
+    const checkPlaybackState = async (): Promise<void> => {
+      try {
+        const state =
+          await sendApiRequestWithTokenRecovery<SpotifyPlaybackState>({
+            path: 'me/player',
+            method: 'GET'
+          })
+
+        if (!state) {
+          console.error('[Playback] Failed to get playback state')
+          return
+        }
+
+        // If we get a valid state, clear any token errors
+        setHealthStatus((prev) => ({
+          ...prev,
+          token: 'valid'
+        }))
+      } catch (error) {
+        console.error('[Playback] State check failed:', error)
+        handleApiError(error)
+      }
     }
-  }
 
-  // Keep periodic status updates
-  const statusEffect: EffectCallback = () => {
-    if (!mounted) return
+    // Check playback state every minute
+    const interval = setInterval(() => {
+      void checkPlaybackState()
+    }, 60000)
 
-    const statusInterval = setInterval(updateTokenStatus, 60000) // Check every minute
-    updateTokenStatus() // Initial status update
-
-    return () => {
-      clearInterval(statusInterval)
-    }
-  }
-
-  useEffect(statusEffect, [mounted, updateTokenStatus])
+    return () => clearInterval(interval)
+  }, [handleApiError])
 
   const attemptRecovery = useCallback(async (): Promise<void> => {
     if (recoveryAttempts >= MAX_RECOVERY_ATTEMPTS) {
@@ -1361,267 +1754,6 @@ export default function AdminPage(): JSX.Element {
       }
     }
   }, [])
-
-  // Modify handlePlayback to check initialization
-  const handlePlayback = async (action: 'play' | 'skip'): Promise<void> => {
-    if (isInitializing) {
-      console.log(
-        '[Spotify] Skipping playback action - player still initializing'
-      )
-      return
-    }
-
-    try {
-      setIsLoading(true)
-      setError(null)
-
-      console.log('[Spotify] Starting playback sequence')
-
-      // First, ensure we have a valid device ID
-      if (!deviceId) {
-        console.error('[Spotify] No device ID available')
-        throw new Error('No device ID available')
-      }
-
-      // Get current state first
-      const state = await sendApiRequest<SpotifyPlaybackState>({
-        path: 'me/player',
-        method: 'GET'
-      })
-
-      console.log('[Spotify] Current playback state:', {
-        isPlaying: state?.is_playing,
-        deviceId: state?.device?.id,
-        currentDeviceId: deviceId,
-        timestamp: Date.now()
-      })
-
-      // Ensure our device is active before proceeding
-      if (!state?.device?.id || state.device.id !== deviceId) {
-        console.log('[Spotify] Ensuring device is active')
-        try {
-          await sendApiRequest({
-            path: 'me/player',
-            method: 'PUT',
-            body: {
-              device_ids: [deviceId],
-              play: false
-            }
-          })
-          console.log('[Spotify] Device transfer successful')
-
-          // Wait for device transfer to take effect
-          await new Promise((resolve) => setTimeout(resolve, 1000))
-
-          // Verify device is active
-          const verifyState = await sendApiRequest<SpotifyPlaybackState>({
-            path: 'me/player',
-            method: 'GET'
-          })
-
-          if (verifyState?.device?.id !== deviceId) {
-            console.error('[Spotify] Device verification failed:', {
-              expected: deviceId,
-              actual: verifyState?.device?.id
-            })
-            throw new Error('Device verification failed')
-          }
-        } catch (error) {
-          console.error('[Spotify] Device transfer failed:', error)
-          // If device transfer fails, try to refresh the player
-          if (typeof window.refreshSpotifyPlayer === 'function') {
-            console.log('[Spotify] Attempting to refresh player')
-            await window.refreshSpotifyPlayer()
-            // Wait a bit for the refresh to take effect
-            await new Promise((resolve) => setTimeout(resolve, 1000))
-
-            // Try device transfer again
-            await sendApiRequest({
-              path: 'me/player',
-              method: 'PUT',
-              body: {
-                device_ids: [deviceId],
-                play: false
-              }
-            })
-          }
-        }
-      }
-
-      if (action === 'play') {
-        // If currently playing, pause the playback
-        if (state?.is_playing) {
-          console.log('[Spotify] Pausing playback')
-          await sendApiRequest({
-            path: `me/player/pause?device_id=${deviceId}`,
-            method: 'PUT'
-          })
-          setHealthStatus((prev: HealthStatus) => ({
-            ...prev,
-            playback: 'paused'
-          }))
-          setIsManualPause(true) // Set manual pause flag
-        } else {
-          // Check if the current track is playable
-          if (state?.item?.is_playable === false) {
-            console.log(
-              '[Spotify] Current track is not playable, skipping to next track'
-            )
-            await sendApiRequest({
-              path: `me/player/next?device_id=${deviceId}`,
-              method: 'POST'
-            })
-            return
-          }
-
-          console.log('[Spotify] Starting playback with state:', {
-            device_id: deviceId,
-            context_uri: `spotify:playlist:${fixedPlaylistId}`,
-            position_ms: state?.progress_ms ?? 0,
-            offset: state?.item?.uri ? { uri: state.item.uri } : undefined
-          })
-
-          try {
-            await sendApiRequest({
-              path: `me/player/play?device_id=${deviceId}`,
-              method: 'PUT',
-              body: {
-                context_uri: `spotify:playlist:${fixedPlaylistId}`,
-                position_ms: state?.progress_ms ?? 0,
-                offset: state?.item?.uri ? { uri: state.item.uri } : undefined
-              },
-              debounceTime: 60000 // 1 minute debounce
-            })
-            setHealthStatus((prev: HealthStatus) => ({
-              ...prev,
-              playback: 'playing'
-            }))
-            setIsManualPause(false) // Clear manual pause flag
-          } catch (playError) {
-            if (
-              playError instanceof Error &&
-              playError.message.includes('Restriction violated')
-            ) {
-              console.log(
-                '[Spotify] Playback restricted, skipping to next track'
-              )
-              await sendApiRequest({
-                path: `me/player/next?device_id=${deviceId}`,
-                method: 'POST'
-              })
-              return
-            }
-            throw playError
-          }
-        }
-      } else {
-        console.log('[Spotify] Skipping to next track')
-        await sendApiRequest({
-          path: `me/player/next?device_id=${deviceId}`,
-          method: 'POST'
-        })
-      }
-
-      console.log('[Spotify] Playback action completed successfully')
-    } catch (error) {
-      console.error('[Spotify] Playback control failed:', error)
-      setError('Failed to control playback')
-      setHealthStatus((prev: HealthStatus) => ({ ...prev, playback: 'error' }))
-
-      // Attempt automatic recovery
-      try {
-        console.log('[Spotify] Attempting recovery...')
-        // First try to refresh the player state
-        if (typeof window.refreshSpotifyPlayer === 'function') {
-          await window.refreshSpotifyPlayer()
-        }
-
-        // Then try to reconnect the player
-        if (typeof window.spotifyPlayerInstance?.connect === 'function') {
-          await window.spotifyPlayerInstance.connect()
-        }
-
-        // Finally try the original playback action again
-        if (action === 'play') {
-          // Get current state to ensure we resume at the right track
-          const state = await sendApiRequest<SpotifyPlaybackState>({
-            path: 'me/player',
-            method: 'GET'
-          })
-
-          // Check if the current track is playable
-          if (state?.item?.is_playable === false) {
-            console.log(
-              '[Spotify] Current track is not playable, skipping to next track'
-            )
-            await sendApiRequest({
-              path: `me/player/next?device_id=${deviceId}`,
-              method: 'POST'
-            })
-            return
-          }
-
-          console.log(
-            '[Spotify] Retrying playback after recovery with state:',
-            {
-              device_id: deviceId,
-              context_uri: `spotify:playlist:${fixedPlaylistId}`,
-              position_ms: state?.progress_ms ?? 0,
-              offset: state?.item?.uri ? { uri: state.item.uri } : undefined
-            }
-          )
-
-          try {
-            await sendApiRequest({
-              path: `me/player/play?device_id=${deviceId}`,
-              method: 'PUT',
-              body: {
-                context_uri: `spotify:playlist:${fixedPlaylistId}`,
-                position_ms: state?.progress_ms ?? 0,
-                offset: state?.item?.uri ? { uri: state.item.uri } : undefined
-              },
-              debounceTime: 60000 // 1 minute debounce
-            })
-            setHealthStatus((prev: HealthStatus) => ({
-              ...prev,
-              playback: 'playing'
-            }))
-            setIsManualPause(false) // Clear manual pause flag after recovery
-          } catch (playError) {
-            if (
-              playError instanceof Error &&
-              playError.message.includes('Restriction violated')
-            ) {
-              console.log(
-                '[Spotify] Playback restricted, skipping to next track'
-              )
-              await sendApiRequest({
-                path: `me/player/next?device_id=${deviceId}`,
-                method: 'POST'
-              })
-              return
-            }
-            throw playError
-          }
-        } else {
-          console.log('[Spotify] Retrying skip after recovery')
-          await sendApiRequest({
-            path: `me/player/next?device_id=${deviceId}`,
-            method: 'POST'
-          })
-        }
-
-        // If we get here, recovery was successful
-        setError(null)
-        console.log('[Spotify] Recovery completed successfully')
-      } catch (recoveryError) {
-        console.error('[Spotify] Recovery failed:', recoveryError)
-        // Keep the original error state if recovery fails
-      }
-    } finally {
-      setIsLoading(false)
-    }
-  }
 
   const handleTrackSuggestionsRefresh = async (): Promise<void> => {
     if (!trackSuggestionsState) {
