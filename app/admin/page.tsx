@@ -24,6 +24,7 @@ import { validateSongsBetweenRepeats } from './components/track-suggestions/vali
 import { type TrackSuggestionsState } from '@/shared/types/trackSuggestions'
 import { PlaylistRefreshServiceImpl } from '@/services/playlistRefresh'
 import type { SpotifyPlayerInstance } from '@/types/spotify'
+import { useTrackSuggestions } from './components/track-suggestions/hooks/useTrackSuggestions'
 
 declare global {
   interface Window {
@@ -330,8 +331,7 @@ export default function AdminPage(): JSX.Element {
     expiryTime: 0
   })
   const [_currentYear, _setCurrentYear] = useState(new Date().getFullYear())
-  const [trackSuggestionsState, setTrackSuggestionsState] =
-    useState<TrackSuggestionsState | null>(null)
+  const { state: trackSuggestionsState, updateState: updateTrackSuggestionsState } = useTrackSuggestions()
   const [isRefreshingSuggestions, setIsRefreshingSuggestions] = useState(false)
   const [refreshError, setRefreshError] = useState<string | null>(null)
   const [timeUntilRefresh, setTimeUntilRefresh] = useState(REFRESH_INTERVAL)
@@ -382,18 +382,11 @@ export default function AdminPage(): JSX.Element {
       setError(null)
 
       try {
-        // Get track suggestions state from localStorage
-        const savedState = localStorage.getItem('track-suggestions-state')
-        const trackSuggestionsState = savedState
-          ? (JSON.parse(savedState) as TrackSuggestionsState)
-          : {
-              genres: Array.from(FALLBACK_GENRES),
-              yearRange: [1950, new Date().getFullYear()],
-              popularity: 50,
-              allowExplicit: false,
-              maxSongLength: 300,
-              songsBetweenRepeats: 5
-            }
+        // Use trackSuggestionsState from the hook
+        if (!trackSuggestionsState) {
+          console.error('[Refresh] No track suggestions state available')
+          throw new Error('No track suggestions state available')
+        }
 
         console.log(`[Refresh] Calling refresh-site endpoint with params:`, {
           genres: trackSuggestionsState.genres,
@@ -429,7 +422,6 @@ export default function AdminPage(): JSX.Element {
           return
         }
 
-        // Removed the playlistRefresh event dispatch
         console.log(
           `[Refresh] ${source} refresh completed successfully - added suggested song`
         )
@@ -447,7 +439,7 @@ export default function AdminPage(): JSX.Element {
         isRefreshing.current = false
       }
     },
-    [addLog]
+    [addLog, trackSuggestionsState]
   )
 
   // Now we can safely create the ref
@@ -1726,7 +1718,7 @@ export default function AdminPage(): JSX.Element {
   const handleTrackSuggestionsStateChange = (
     newState: TrackSuggestionsState
   ): void => {
-    setTrackSuggestionsState(newState)
+    updateTrackSuggestionsState(newState)
   }
 
   // Auto-refresh timer effect
