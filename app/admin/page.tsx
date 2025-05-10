@@ -476,16 +476,8 @@ export default function AdminPage(): JSX.Element {
           method: 'GET'
         })
 
-        console.log('[Playback] Initial state from API:', {
-          isPlaying: initialState?.is_playing,
-          deviceId: initialState?.device?.id,
-          currentDeviceId: deviceId,
-          progress: initialState?.progress_ms,
-          timestamp: Date.now()
-        })
-
         // Wait a short time to check if progress advances
-        await new Promise(resolve => setTimeout(resolve, 1000))
+        await new Promise((resolve) => setTimeout(resolve, 1000))
 
         // Get state again to check progress
         const secondState = await sendApiRequest<SpotifyPlaybackState>({
@@ -493,28 +485,16 @@ export default function AdminPage(): JSX.Element {
           method: 'GET'
         })
 
-        console.log('[Playback] Second state from API:', {
-          isPlaying: secondState?.is_playing,
-          deviceId: secondState?.device?.id,
-          currentDeviceId: deviceId,
-          progress: secondState?.progress_ms,
-          timestamp: Date.now()
-        })
-
         // Check if progress has advanced
         const initialProgress = initialState?.progress_ms ?? 0
         const secondProgress = secondState?.progress_ms ?? 0
         const progressAdvanced = secondProgress > initialProgress
 
-        console.log('[Playback] Progress check:', {
-          initialProgress,
-          secondProgress,
-          progressAdvanced,
-          timestamp: Date.now()
-        })
-
         // Only consider it playing if both states report playing AND progress has advanced
-        const actualIsPlaying = initialState?.is_playing && secondState?.is_playing && progressAdvanced
+        const actualIsPlaying =
+          initialState?.is_playing &&
+          secondState?.is_playing &&
+          progressAdvanced
         const actualProgress = secondProgress
         const actualTrack = secondState?.item?.name ?? ''
 
@@ -524,7 +504,9 @@ export default function AdminPage(): JSX.Element {
           currentTrack: actualTrack,
           progress: actualProgress,
           duration_ms: secondState?.item?.duration_ms,
-          timeUntilEnd: secondState?.item?.duration_ms ? secondState.item.duration_ms - actualProgress : undefined
+          timeUntilEnd: secondState?.item?.duration_ms
+            ? secondState.item.duration_ms - actualProgress
+            : undefined
         })
 
         setHealthStatus((prev) => ({
@@ -1116,11 +1098,14 @@ export default function AdminPage(): JSX.Element {
   // Add a new effect to update device status when ready state changes
   useEffect(() => {
     if (isReady && deviceId) {
-      console.log('[Device] Player ready state changed, updating health status:', {
-        deviceId,
-        isReady,
-        timestamp: Date.now()
-      })
+      console.log(
+        '[Device] Player ready state changed, updating health status:',
+        {
+          deviceId,
+          isReady,
+          timestamp: Date.now()
+        }
+      )
       setHealthStatus((prev) => ({ ...prev, device: 'healthy' }))
     }
   }, [isReady, deviceId])
@@ -1227,7 +1212,8 @@ export default function AdminPage(): JSX.Element {
       }
 
       // Check connection type and effective type if available
-      const connection = (navigator as { connection?: NetworkInformation }).connection
+      const connection = (navigator as { connection?: NetworkInformation })
+        .connection
       if (connection) {
         const { effectiveType, downlink, rtt } = connection
         console.log('[Connection] Network info:', {
@@ -1245,7 +1231,13 @@ export default function AdminPage(): JSX.Element {
         }
 
         // For other connection types, use effectiveType and metrics
-        if (effectiveType === '4g' && downlink && downlink >= 2 && rtt && rtt < 100) {
+        if (
+          effectiveType === '4g' &&
+          downlink &&
+          downlink >= 2 &&
+          rtt &&
+          rtt < 100
+        ) {
           console.log('[Connection] Good 4G connection')
           setHealthStatus((prev) => ({ ...prev, connection: 'good' }))
         } else if (effectiveType === '3g' && downlink && downlink >= 1) {
@@ -1257,7 +1249,9 @@ export default function AdminPage(): JSX.Element {
         }
       } else {
         // If Network Information API is not available, use online status
-        console.log('[Connection] Network API not available, using online status')
+        console.log(
+          '[Connection] Network API not available, using online status'
+        )
         setHealthStatus((prev) => ({
           ...prev,
           connection: navigator.onLine ? 'good' : 'poor'
@@ -1273,7 +1267,8 @@ export default function AdminPage(): JSX.Element {
     window.addEventListener('offline', updateConnectionStatus)
 
     // Listen for connection changes if available
-    const connection = (navigator as { connection?: NetworkInformation }).connection
+    const connection = (navigator as { connection?: NetworkInformation })
+      .connection
     if (connection) {
       connection.addEventListener('change', updateConnectionStatus)
     }
@@ -1419,12 +1414,12 @@ export default function AdminPage(): JSX.Element {
               console.log('[Spotify] Attempting to refresh player')
               await window.refreshSpotifyPlayer()
               // Wait a bit for the refresh to take effect
-              await new Promise(resolve => setTimeout(resolve, 1000))
+              await new Promise((resolve) => setTimeout(resolve, 1000))
             }
           }
 
           // Wait a bit for the transfer to take effect
-          await new Promise(resolve => setTimeout(resolve, 1000))
+          await new Promise((resolve) => setTimeout(resolve, 1000))
 
           // Verify device is active
           const verifyState = await sendApiRequest<SpotifyPlaybackState>({

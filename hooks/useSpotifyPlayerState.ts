@@ -246,7 +246,10 @@ export function useSpotifyPlayerState(
 
           // Set up player event listeners
           player.addListener('ready', ({ device_id }) => {
-            console.log('[SpotifyPlayer] Player ready with device ID:', device_id)
+            console.log(
+              '[SpotifyPlayer] Player ready with device ID:',
+              device_id
+            )
             setDeviceId(device_id)
             setIsReady(true)
             isInitialized = true
@@ -299,7 +302,9 @@ export function useSpotifyPlayerState(
             setError(message)
           })
 
-          console.log('[SpotifyPlayer] Player instance created and listeners attached')
+          console.log(
+            '[SpotifyPlayer] Player instance created and listeners attached'
+          )
         } catch (error) {
           console.error('[SpotifyPlayer] Error during initialization:', {
             error,

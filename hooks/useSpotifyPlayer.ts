@@ -34,12 +34,15 @@ export const useSpotifyPlayer = create<SpotifyPlayerState>((set) => ({
 
       // Don't update if we already have a device ID and the player is ready
       if (state.deviceId && state.isReady) {
-        console.log('[SpotifyPlayer] Ignoring device ID change after initialization:', {
-          currentId: state.deviceId,
-          newId: deviceId,
-          isReady: state.isReady,
-          timestamp: Date.now()
-        })
+        console.log(
+          '[SpotifyPlayer] Ignoring device ID change after initialization:',
+          {
+            currentId: state.deviceId,
+            newId: deviceId,
+            isReady: state.isReady,
+            timestamp: Date.now()
+          }
+        )
         return state
       }
 
