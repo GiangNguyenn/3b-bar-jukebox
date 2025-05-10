@@ -490,11 +490,6 @@ export default function AdminPage(): JSX.Element {
 
       // Check if we're near the end of the track
       if (event.detail.timeUntilEnd) {
-        console.log('[Playback] Track progress:', {
-          timeUntilEnd: event.detail.timeUntilEnd,
-          isNearEnd: event.detail.timeUntilEnd < 15000
-        })
-
         if (event.detail.timeUntilEnd < 15000) {
           console.log('[Playlist] Track nearing end:', {
             currentTrack: event.detail.currentTrack,
@@ -1314,6 +1309,7 @@ export default function AdminPage(): JSX.Element {
           }
 
           console.log('[Spotify] Starting playback with state:', {
+            device_id: deviceId,
             context_uri: `spotify:playlist:${fixedPlaylistId}`,
             position_ms: state?.progress_ms ?? 0,
             offset: state?.item?.uri ? { uri: state.item.uri } : undefined
@@ -1321,7 +1317,7 @@ export default function AdminPage(): JSX.Element {
 
           try {
             await sendApiRequest({
-              path: 'me/player/play',
+              path: `me/player/play?device_id=${deviceId}`,
               method: 'PUT',
               body: {
                 context_uri: `spotify:playlist:${fixedPlaylistId}`,
@@ -1399,6 +1395,7 @@ export default function AdminPage(): JSX.Element {
           console.log(
             '[Spotify] Retrying playback after recovery with state:',
             {
+              device_id: deviceId,
               context_uri: `spotify:playlist:${fixedPlaylistId}`,
               position_ms: state?.progress_ms ?? 0,
               offset: state?.item?.uri ? { uri: state.item.uri } : undefined
@@ -1407,7 +1404,7 @@ export default function AdminPage(): JSX.Element {
 
           try {
             await sendApiRequest({
-              path: 'me/player/play',
+              path: `me/player/play?device_id=${deviceId}`,
               method: 'PUT',
               body: {
                 context_uri: `spotify:playlist:${fixedPlaylistId}`,

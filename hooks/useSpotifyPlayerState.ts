@@ -442,11 +442,11 @@ export function useSpotifyPlayerState(
 
             // Reinitialize playback with the current context
             await sendApiRequest({
-              path: 'me/player/play',
+              path: `me/player/play?device_id=${state.device.id}`,
               method: 'PUT',
               body: {
                 context_uri: state.context.uri,
-                position_ms: currentPosition,
+                position_ms: currentPosition ?? 0,
                 offset: currentTrackUri ? { uri: currentTrackUri } : undefined
               },
               debounceTime: 60000 // 1 minute debounce
@@ -608,7 +608,7 @@ export function useSpotifyPlayerState(
       })
 
       await sendApiRequest({
-        path: 'me/player/play',
+        path: `me/player/play?device_id=${state.device.id}`,
         method: 'PUT',
         body: {
           context_uri: `spotify:playlist:${playlistId}`,
