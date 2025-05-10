@@ -506,9 +506,9 @@ export default function AdminPage(): JSX.Element {
         // 3. We have a valid track
         const actualIsPlaying = Boolean(
           initialState.is_playing &&
-          secondState.is_playing &&
-          progressAdvanced &&
-          secondState.item?.name
+            secondState.is_playing &&
+            progressAdvanced &&
+            secondState.item?.name
         )
 
         const actualProgress = secondProgress
@@ -568,7 +568,9 @@ export default function AdminPage(): JSX.Element {
               let foundDeviceId = useSpotifyPlayer.getState().deviceId
 
               while (!foundDeviceId && waited < maxWait) {
-                await new Promise((resolve) => setTimeout(resolve, pollInterval))
+                await new Promise((resolve) =>
+                  setTimeout(resolve, pollInterval)
+                )
                 waited += pollInterval
                 foundDeviceId = useSpotifyPlayer.getState().deviceId
               }
