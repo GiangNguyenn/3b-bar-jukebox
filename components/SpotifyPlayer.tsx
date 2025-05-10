@@ -20,44 +20,77 @@ export function SpotifyPlayer(): React.ReactElement | null {
     deviceId,
     reconnectAttempts,
     MAX_RECONNECT_ATTEMPTS,
-    initializationCheckInterval,
-    playlistRefreshInterval,
     initializePlayer,
-    reconnectPlayer,
-    refreshPlaylistState
+    reconnectPlayer
   } = useSpotifyPlayerState(fixedPlaylistId ?? '')
-  const [playbackState, setPlaybackState] = useState<
-    'playing' | 'paused' | 'stopped'
-  >('stopped')
+  const [playbackState, setPlaybackState] = useState<'playing' | 'paused' | 'stopped'>('stopped')
+  const hasInitialized = useRef(false)
+  const initAttempts = useRef(0)
+  const MAX_INIT_ATTEMPTS = 3
 
+  // Handle SDK initialization
   useEffect(() => {
-    isMounted.current = true
-    const currentInitInterval = initializationCheckInterval.current
-    const currentPlaylistInterval = playlistRefreshInterval.current
+    if (hasInitialized.current) {
+      console.log('[SpotifyPlayer] Already initialized, skipping')
+      return
+    }
 
-    const initialize = async (): Promise<void> => {
+    const handleSDKReady = async (): Promise<void> => {
+      if (hasInitialized.current) {
+        console.log('[SpotifyPlayer] Already initialized, skipping')
+        return
+      }
+
+      if (initAttempts.current >= MAX_INIT_ATTEMPTS) {
+        console.error('[SpotifyPlayer] Max initialization attempts reached')
+        return
+      }
+
       try {
+        console.log('[SpotifyPlayer] Starting initialization attempt', initAttempts.current + 1)
+        initAttempts.current++
+        
+        // Ensure SDK is actually ready
+        if (!window.Spotify) {
+          console.error('[SpotifyPlayer] SDK not available despite ready event')
+          return
+        }
+
         await initializePlayer()
-        // Dispatch event when player is ready
+        hasInitialized.current = true
+        console.log('[SpotifyPlayer] Initialization successful')
         window.dispatchEvent(new CustomEvent('playerReady'))
       } catch (error) {
         console.error('[SpotifyPlayer] Error during initialization:', error)
+        // Reset initialization state on error
+        hasInitialized.current = false
+        
+        // Try again after a delay if we haven't hit max attempts
+        if (initAttempts.current < MAX_INIT_ATTEMPTS) {
+          const delay = Math.pow(2, initAttempts.current) * 1000 // Exponential backoff
+          console.log(`[SpotifyPlayer] Retrying initialization in ${delay}ms`)
+          setTimeout(() => {
+            void handleSDKReady()
+          }, delay)
+        }
       }
     }
 
-    void initialize()
-
-    return (): void => {
-      isMounted.current = false
-      if (currentInitInterval) {
-        clearInterval(currentInitInterval)
-      }
-      if (currentPlaylistInterval) {
-        clearInterval(currentPlaylistInterval)
-      }
+    // Check if SDK is already ready
+    if (window.Spotify) {
+      console.log('[SpotifyPlayer] SDK already ready, starting initialization')
+      void handleSDKReady()
+    } else {
+      console.log('[SpotifyPlayer] Waiting for SDK ready event')
+      window.addEventListener('spotifySDKReady', handleSDKReady)
     }
-  }, [initializePlayer, initializationCheckInterval, playlistRefreshInterval])
 
+    return () => {
+      window.removeEventListener('spotifySDKReady', handleSDKReady)
+    }
+  }, [initializePlayer])
+
+  // Handle playback state updates
   useEffect(() => {
     if (!deviceId) return
 
@@ -68,13 +101,19 @@ export function SpotifyPlayer(): React.ReactElement | null {
           method: 'GET'
         })
 
-        if (state?.item) {
+        if (!state) {
+          console.log('[SpotifyPlayer] No playback state available')
+          return
+        }
+
+        if (state.item) {
           const timeUntilEnd = state.item.duration_ms - (state.progress_ms ?? 0)
-          if (state.is_playing) {
-            setPlaybackState('playing')
-          } else {
-            setPlaybackState('paused')
+          const newPlaybackState = state.is_playing ? 'playing' : 'paused'
+          
+          if (newPlaybackState !== playbackState) {
+            setPlaybackState(newPlaybackState)
           }
+
           window.dispatchEvent(
             new CustomEvent('playbackUpdate', {
               detail: {
@@ -87,7 +126,9 @@ export function SpotifyPlayer(): React.ReactElement | null {
             })
           )
         } else {
-          setPlaybackState('stopped')
+          if (playbackState !== 'stopped') {
+            setPlaybackState('stopped')
+          }
           window.dispatchEvent(
             new CustomEvent('playbackUpdate', {
               detail: {
@@ -111,15 +152,12 @@ export function SpotifyPlayer(): React.ReactElement | null {
     // Set up interval based on current playback state
     const interval = setInterval(() => {
       void updatePlaybackState()
-      void refreshPlaylistState()
     }, PLAYBACK_INTERVALS[playbackState])
 
-    return (): void => {
-      if (interval) {
-        clearInterval(interval)
-      }
+    return () => {
+      clearInterval(interval)
     }
-  }, [deviceId, refreshPlaylistState, playbackState])
+  }, [deviceId, playbackState])
 
   if (error) {
     const retryCount = reconnectAttempts?.current ?? 0

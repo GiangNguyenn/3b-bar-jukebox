@@ -97,7 +97,9 @@ export function useSpotifyHealthMonitor(fixedPlaylistId: string | null) {
 
   const attemptRecovery = useCallback(async (): Promise<void> => {
     if (recoveryAttempts >= MAX_RECOVERY_ATTEMPTS) {
-      console.error('[Recovery] Max attempts reached, attempting final recovery...')
+      console.error(
+        '[Recovery] Max attempts reached, attempting final recovery...'
+      )
       setRecoveryStatus({
         isRecovering: true,
         message: 'Attempting final recovery with stored state...',
@@ -108,7 +110,10 @@ export function useSpotifyHealthMonitor(fixedPlaylistId: string | null) {
       const lastState = recoveryState.lastSuccessfulPlayback
       if (lastState && Date.now() - lastState.timestamp < 300000) {
         try {
-          console.log('[Recovery] Attempting recovery with stored state:', lastState)
+          console.log(
+            '[Recovery] Attempting recovery with stored state:',
+            lastState
+          )
           await sendApiRequest({
             path: 'me/player/play',
             method: 'PUT',
@@ -419,7 +424,9 @@ export function useSpotifyHealthMonitor(fixedPlaylistId: string | null) {
           setHealthStatus((prev) => ({ ...prev, connection: 'poor' }))
         }
       } else {
-        console.log('[Connection] Network API not available, using online status')
+        console.log(
+          '[Connection] Network API not available, using online status'
+        )
         setHealthStatus((prev) => ({
           ...prev,
           connection: navigator.onLine ? 'good' : 'poor'
@@ -453,4 +460,4 @@ export function useSpotifyHealthMonitor(fixedPlaylistId: string | null) {
     recoveryAttempts,
     attemptRecovery
   }
-} 
+}

@@ -331,7 +331,10 @@ export default function AdminPage(): JSX.Element {
     expiryTime: 0
   })
   const [_currentYear, _setCurrentYear] = useState(new Date().getFullYear())
-  const { state: trackSuggestionsState, updateState: updateTrackSuggestionsState } = useTrackSuggestions()
+  const {
+    state: trackSuggestionsState,
+    updateState: updateTrackSuggestionsState
+  } = useTrackSuggestions()
   const [isRefreshingSuggestions, setIsRefreshingSuggestions] = useState(false)
   const [refreshError, setRefreshError] = useState<string | null>(null)
   const [timeUntilRefresh, setTimeUntilRefresh] = useState(REFRESH_INTERVAL)
@@ -639,23 +642,31 @@ export default function AdminPage(): JSX.Element {
       const now = Date.now()
       const minutesUntilExpiry = (newTokenInfo.expiryTime - now) / (60 * 1000)
 
-      setHealthStatus((prev) => ({
-        ...prev,
-        token: minutesUntilExpiry > 0 ? 'valid' : 'expired',
-        tokenExpiringSoon: minutesUntilExpiry <= 15
-      }))
+      // Only update if the new token has a different expiry time
+      if (newTokenInfo.expiryTime !== tokenInfo.expiryTime) {
+        console.log('[Token] Updating token info:', {
+          oldExpiry: tokenInfo.expiryTime,
+          newExpiry: newTokenInfo.expiryTime,
+          minutesUntilExpiry
+        })
 
-      setTokenInfo(newTokenInfo)
+        setHealthStatus((prev) => ({
+          ...prev,
+          token: minutesUntilExpiry > 0 ? 'valid' : 'expired',
+          tokenExpiringSoon: minutesUntilExpiry <= 15
+        }))
+
+        setTokenInfo(newTokenInfo)
+      }
     }
 
+    // Remove any existing token update listeners before adding a new one
+    window.removeEventListener('tokenUpdate', handleTokenUpdate as EventListener)
     window.addEventListener('tokenUpdate', handleTokenUpdate as EventListener)
 
     return () => {
       clearInterval(interval)
-      window.removeEventListener(
-        'tokenUpdate',
-        handleTokenUpdate as EventListener
-      )
+      window.removeEventListener('tokenUpdate', handleTokenUpdate as EventListener)
     }
   }, [updateTokenStatus, refreshToken, tokenInfo.expiryTime])
 
