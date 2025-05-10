@@ -85,7 +85,13 @@ export function useSpotifyPlayerState(
         return false
       }
 
-      if (state.device.id !== currentDeviceId) {
+      // Only update device ID if it's different and we don't already have a valid one
+      if (state.device.id !== currentDeviceId && !isInitialized) {
+        console.log('[SpotifyPlayer] Updating device ID during ready check:', {
+          oldId: currentDeviceId,
+          newId: state.device.id,
+          isInitialized
+        })
         setDeviceId(state.device.id)
       }
 
@@ -240,30 +246,54 @@ export function useSpotifyPlayerState(
 
           // Set up player event listeners
           player.addListener('ready', ({ device_id }) => {
+            console.log(
+              '[SpotifyPlayer] Player ready with device ID:',
+              device_id
+            )
             setDeviceId(device_id)
             setIsReady(true)
+            isInitialized = true
+            console.log('[SpotifyPlayer] Player initialization complete:', {
+              deviceId: device_id,
+              isReady: true,
+              isInitialized: true,
+              timestamp: Date.now()
+            })
           })
 
           player.addListener('not_ready', ({ device_id }) => {
             console.log('[SpotifyPlayer] Not ready with device ID:', device_id)
             setIsReady(false)
+            isInitialized = false
+            console.log('[SpotifyPlayer] Player not ready:', {
+              deviceId: device_id,
+              isReady: false,
+              isInitialized: false,
+              timestamp: Date.now()
+            })
           })
 
           player.addListener('initialization_error', ({ message }) => {
             console.error('[SpotifyPlayer] Initialization error:', message)
             setError(message)
+            setIsReady(false)
+            isInitialized = false
             resetInitializationState()
           })
 
           player.addListener('authentication_error', ({ message }) => {
             console.error('[SpotifyPlayer] Authentication error:', message)
             setError(message)
+            setIsReady(false)
+            isInitialized = false
             resetInitializationState()
           })
 
           player.addListener('account_error', ({ message }) => {
             console.error('[SpotifyPlayer] Account error:', message)
             setError(message)
+            setIsReady(false)
+            isInitialized = false
             resetInitializationState()
           })
 
@@ -272,8 +302,9 @@ export function useSpotifyPlayerState(
             setError(message)
           })
 
-          isInitialized = true
-          console.log('[SpotifyPlayer] Initialization complete')
+          console.log(
+            '[SpotifyPlayer] Player instance created and listeners attached'
+          )
         } catch (error) {
           console.error('[SpotifyPlayer] Error during initialization:', {
             error,
@@ -442,11 +473,11 @@ export function useSpotifyPlayerState(
 
             // Reinitialize playback with the current context
             await sendApiRequest({
-              path: 'me/player/play',
+              path: `me/player/play?device_id=${state.device.id}`,
               method: 'PUT',
               body: {
                 context_uri: state.context.uri,
-                position_ms: currentPosition,
+                position_ms: currentPosition ?? 0,
                 offset: currentTrackUri ? { uri: currentTrackUri } : undefined
               },
               debounceTime: 60000 // 1 minute debounce
@@ -608,7 +639,7 @@ export function useSpotifyPlayerState(
       })
 
       await sendApiRequest({
-        path: 'me/player/play',
+        path: `me/player/play?device_id=${state.device.id}`,
         method: 'PUT',
         body: {
           context_uri: `spotify:playlist:${playlistId}`,

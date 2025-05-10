@@ -291,7 +291,7 @@ export class PlaylistRefreshServiceImpl implements PlaylistRefreshService {
           if (playbackState?.context?.uri && playbackState?.item?.uri) {
             // Resume playback at the exact same track and position
             await sendApiRequest({
-              path: 'me/player/play',
+              path: `me/player/play?device_id=${playbackState.device.id}`,
               method: 'PUT',
               body: {
                 context_uri: playbackState.context.uri,
@@ -479,7 +479,7 @@ export class PlaylistRefreshServiceImpl implements PlaylistRefreshService {
         try {
           await this.withTimeout(
             sendApiRequest({
-              path: 'me/player/play',
+              path: `me/player/play?device_id=${playbackState.device.id}`,
               method: 'PUT',
               body: {
                 context_uri: playbackState.context.uri,
