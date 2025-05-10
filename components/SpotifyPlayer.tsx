@@ -13,7 +13,6 @@ const PLAYBACK_INTERVALS = {
 }
 
 export function SpotifyPlayer(): React.ReactElement | null {
-  const isMounted = useRef(true)
   const { fixedPlaylistId } = useFixedPlaylist()
   const {
     error,
@@ -87,11 +86,11 @@ export function SpotifyPlayer(): React.ReactElement | null {
       void handleSDKReady()
     } else {
       console.log('[SpotifyPlayer] Waiting for SDK ready event')
-      window.addEventListener('spotifySDKReady', handleSDKReady)
+      window.addEventListener('spotifySDKReady', () => void handleSDKReady())
     }
 
     return () => {
-      window.removeEventListener('spotifySDKReady', handleSDKReady)
+      window.removeEventListener('spotifySDKReady', () => void handleSDKReady())
     }
   }, [initializePlayer])
 
