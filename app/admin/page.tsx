@@ -17,6 +17,7 @@ import { validateSongsBetweenRepeats } from './components/track-suggestions/vali
 import { type TrackSuggestionsState } from '@/shared/types/trackSuggestions'
 import type { SpotifyPlayerInstance } from '@/types/spotify'
 import { useTrackSuggestions } from './components/track-suggestions/hooks/useTrackSuggestions'
+import { PlaylistRefreshServiceImpl } from '@/services/playlistRefresh'
 
 declare global {
   interface Window {
@@ -718,7 +719,11 @@ export default function AdminPage(): JSX.Element {
           throw new Error('No track suggestions state available')
         }
 
-        console.log(`[Refresh] Calling refresh-site endpoint with params:`, {
+        // Get the PlaylistRefreshService instance
+        const playlistRefreshService = PlaylistRefreshServiceImpl.getInstance()
+
+        // Call the service's refreshTrackSuggestions method
+        const result = await playlistRefreshService.refreshTrackSuggestions({
           genres: trackSuggestionsState.genres,
           yearRange: trackSuggestionsState.yearRange,
           popularity: trackSuggestionsState.popularity,
@@ -727,35 +732,14 @@ export default function AdminPage(): JSX.Element {
           songsBetweenRepeats: trackSuggestionsState.songsBetweenRepeats
         })
 
-        const response = await fetch('/api/track-suggestions/refresh-site', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({
-            genres: trackSuggestionsState.genres,
-            yearRange: trackSuggestionsState.yearRange,
-            popularity: trackSuggestionsState.popularity,
-            allowExplicit: trackSuggestionsState.allowExplicit,
-            maxSongLength: trackSuggestionsState.maxSongLength,
-            songsBetweenRepeats: trackSuggestionsState.songsBetweenRepeats
-          })
-        })
-
-        const data = (await response.json()) as RefreshResponse
-
-        if (!response.ok) {
-          console.error(
-            `[Refresh] ${source} refresh failed:`,
-            data.message ?? 'Unknown error'
-          )
-          return
+        if (!result.success) {
+          throw new Error(result.message)
         }
 
         console.log(
           `[Refresh] ${source} refresh completed successfully - added suggested song`
         )
-        addLog('INFO', 'Added suggested song successfully')
+        addLog('INFO', 'Added suggested song successfully', JSON.stringify(result.searchDetails))
       } catch (err) {
         console.error(`[Refresh] ${source} refresh error:`, err)
         addLog(
@@ -851,6 +835,32 @@ export default function AdminPage(): JSX.Element {
           actualTrack,
           actualProgress
         })
+
+        // Check if song is near end and trigger refresh if needed
+        if (actualIsPlaying && secondState.item?.duration_ms) {
+          const timeUntilEnd = secondState.item.duration_ms - actualProgress
+          const END_THRESHOLD = 15000 // 15 seconds
+
+          console.log('[Playback] Checking song end:', {
+            timeUntilEnd,
+            duration_ms: secondState.item.duration_ms,
+            progress: actualProgress,
+            currentTrack: actualTrack,
+            isNearEnd: timeUntilEnd <= END_THRESHOLD,
+            timestamp: new Date().toISOString()
+          })
+
+          if (timeUntilEnd <= END_THRESHOLD) {
+            console.log('[Playback] Song near end, refreshing playlist:', {
+              timeUntilEnd,
+              currentTrack: actualTrack,
+              timestamp: new Date().toISOString()
+            })
+            
+            // Trigger playlist refresh
+            void handleRefresh('auto')
+          }
+        }
 
         // Update playback info with verified state
         setPlaybackInfo({
