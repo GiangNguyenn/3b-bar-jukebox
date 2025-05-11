@@ -25,6 +25,11 @@ export function SpotifyPlayer(): React.ReactElement | null {
   const [playbackState, setPlaybackState] = useState<
     'playing' | 'paused' | 'stopped'
   >('stopped')
+  const [currentTrack, setCurrentTrack] = useState<{
+    name: string
+    progress: number
+    duration: number
+  } | null>(null)
   const hasInitialized = useRef(false)
   const initAttempts = useRef(0)
   const MAX_INIT_ATTEMPTS = 3
@@ -118,6 +123,13 @@ export function SpotifyPlayer(): React.ReactElement | null {
             setPlaybackState(newPlaybackState)
           }
 
+          // Update current track info
+          setCurrentTrack({
+            name: state.item.name,
+            progress: state.progress_ms ?? 0,
+            duration: state.item.duration_ms
+          })
+
           window.dispatchEvent(
             new CustomEvent('playbackUpdate', {
               detail: {
@@ -133,6 +145,7 @@ export function SpotifyPlayer(): React.ReactElement | null {
           if (playbackState !== 'stopped') {
             setPlaybackState('stopped')
           }
+          setCurrentTrack(null)
           window.dispatchEvent(
             new CustomEvent('playbackUpdate', {
               detail: {
@@ -178,6 +191,10 @@ export function SpotifyPlayer(): React.ReactElement | null {
         )}
       </div>
     )
+  }
+
+  if (!currentTrack) {
+    return null
   }
 
   return null

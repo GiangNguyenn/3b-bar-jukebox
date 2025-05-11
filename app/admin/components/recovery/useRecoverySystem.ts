@@ -1,7 +1,6 @@
 import { useState, useCallback, useRef } from 'react'
 import { sendApiRequest } from '@/shared/api'
-import { SpotifyPlaybackState } from '@/shared/types'
-import { executeWithErrorBoundary } from '@/shared/utils/errorBoundary'
+import { SpotifyPlaybackState, HealthStatus } from '@/shared/types'
 
 interface RecoveryState {
   lastSuccessfulPlayback: {
@@ -17,6 +16,8 @@ interface RecoveryStatus {
   isRecovering: boolean
   message: string
   progress: number
+  currentStep: number
+  totalSteps: number
 }
 
 interface PlaybackVerificationResult {
@@ -75,7 +76,6 @@ async function verifyPlaybackResume(
 
   const initialProgress = initialState?.progress_ms ?? 0
   const lastProgress = initialProgress
-  const _progressStalled = false
   let currentState: SpotifyPlaybackState | null = null
 
   while (Date.now() - startTime < maxVerificationTime) {
@@ -109,13 +109,43 @@ async function verifyPlaybackResume(
 export function useRecoverySystem(
   deviceId: string | null,
   fixedPlaylistId: string | null,
-  onHealthStatusUpdate: (status: { device: string }) => void
-) {
+  onDeviceStatusChange: (status: HealthStatus) => void
+): {
+  recoveryStatus: {
+    isRecovering: boolean
+    progress: number
+    currentStep: number
+    totalSteps: number
+    message: string
+  }
+  recoveryState: {
+    lastSuccessfulPlayback: {
+      trackUri: string | null
+      position: number
+      timestamp: number
+    }
+    consecutiveFailures: number
+    lastErrorType: 'auth' | 'playback' | 'connection' | 'device' | null
+  }
+  recoveryAttempts: number
+  attemptRecovery: () => Promise<void>
+  setRecoveryState: (state: {
+    lastSuccessfulPlayback: {
+      trackUri: string | null
+      position: number
+      timestamp: number
+    }
+    consecutiveFailures: number
+    lastErrorType: 'auth' | 'playback' | 'connection' | 'device' | null
+  }) => void
+} {
   const [recoveryAttempts, setRecoveryAttempts] = useState(0)
   const [recoveryStatus, setRecoveryStatus] = useState<RecoveryStatus>({
     isRecovering: false,
     message: '',
-    progress: 0
+    progress: 0,
+    currentStep: 0,
+    totalSteps: 4
   })
   const [recoveryState, setRecoveryState] = useState<RecoveryState>({
     lastSuccessfulPlayback: {
@@ -136,7 +166,9 @@ export function useRecoverySystem(
       setRecoveryStatus({
         isRecovering: true,
         message: 'Attempting final recovery with stored state...',
-        progress: 90
+        progress: 90,
+        currentStep: 0,
+        totalSteps: 4
       })
 
       // Try one last recovery with stored state
@@ -162,7 +194,9 @@ export function useRecoverySystem(
           setRecoveryStatus({
             isRecovering: false,
             message: 'Recovery successful!',
-            progress: 100
+            progress: 100,
+            currentStep: 4,
+            totalSteps: 4
           })
           return
         } catch (error) {
@@ -174,7 +208,9 @@ export function useRecoverySystem(
       setRecoveryStatus({
         isRecovering: true,
         message: 'All recovery attempts failed. Reloading page...',
-        progress: 100
+        progress: 100,
+        currentStep: 0,
+        totalSteps: 4
       })
       setTimeout(() => {
         window.location.reload()
@@ -186,7 +222,9 @@ export function useRecoverySystem(
       setRecoveryStatus({
         isRecovering: true,
         message: 'Starting recovery process...',
-        progress: 0
+        progress: 0,
+        currentStep: 0,
+        totalSteps: 4
       })
 
       let currentProgress = 0
@@ -381,7 +419,14 @@ export function useRecoverySystem(
       }
 
       // If we get here, recovery was successful
-      onHealthStatusUpdate({ device: 'healthy' })
+      onDeviceStatusChange({
+        device: 'healthy',
+        playback: 'unknown',
+        token: 'unknown',
+        connection: 'unknown',
+        tokenExpiringSoon: false,
+        fixedPlaylist: 'unknown'
+      })
       setRecoveryAttempts(0)
       setRecoveryState((prev) => ({
         ...prev,
@@ -391,7 +436,9 @@ export function useRecoverySystem(
       setRecoveryStatus({
         isRecovering: false,
         message: 'Recovery successful!',
-        progress: 100
+        progress: 100,
+        currentStep: 4,
+        totalSteps: 4
       })
 
       // Clear recovery status after 3 seconds
@@ -399,7 +446,9 @@ export function useRecoverySystem(
         setRecoveryStatus({
           isRecovering: false,
           message: '',
-          progress: 0
+          progress: 0,
+          currentStep: 0,
+          totalSteps: 4
         })
       }, 3000)
     } catch (error) {
@@ -422,7 +471,7 @@ export function useRecoverySystem(
     fixedPlaylistId,
     deviceId,
     recoveryState,
-    onHealthStatusUpdate
+    onDeviceStatusChange
   ])
 
   return {
