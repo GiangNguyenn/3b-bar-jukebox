@@ -196,8 +196,8 @@ async function verifyPlaybackProgress(
     }
 
     // Wait a bit longer to ensure we can detect progress
-    await new Promise(resolve => setTimeout(resolve, 2000))
-    
+    await new Promise((resolve) => setTimeout(resolve, 2000))
+
     const newState = await sendApiRequest<SpotifyPlaybackState>({
       path: 'me/player',
       method: 'GET'
@@ -215,9 +215,11 @@ async function verifyPlaybackProgress(
     // 1. Progress has changed OR
     // 2. We're within the first 5 seconds of the track (might not see progress yet) OR
     // 3. We're near the end of the track (progress might be stalled)
-    const isActuallyPlaying = progressChanged || 
-      currentProgress < 5000 || 
-      (newState.item?.duration_ms && (newState.item.duration_ms - currentProgress) < 5000) ||
+    const isActuallyPlaying =
+      progressChanged ||
+      currentProgress < 5000 ||
+      (newState.item?.duration_ms &&
+        newState.item.duration_ms - currentProgress < 5000) ||
       timeSinceLastCheck < maxStallTime
 
     console.log('[Playback Verification] Progress check:', {
@@ -264,10 +266,11 @@ export default function AdminPage(): JSX.Element {
     recoveryAttempts,
     attemptRecovery,
     setRecoveryState
-  } = useRecoverySystem(
-    deviceId,
-    fixedPlaylistId,
-    (status) => setHealthStatus((prev) => ({ ...prev, device: status.device as HealthStatus['device'] }))
+  } = useRecoverySystem(deviceId, fixedPlaylistId, (status) =>
+    setHealthStatus((prev) => ({
+      ...prev,
+      device: status.device as HealthStatus['device']
+    }))
   )
   const wakeLock = useRef<WakeLockSentinel | null>(null)
   const deviceCheckInterval = useRef<NodeJS.Timeout | null>(null)
@@ -435,7 +438,9 @@ export default function AdminPage(): JSX.Element {
               ...prev,
               playback: 'paused'
             }))
-            setPlaybackInfo((prev) => prev ? { ...prev, isPlaying: false } : null)
+            setPlaybackInfo((prev) =>
+              prev ? { ...prev, isPlaying: false } : null
+            )
             setIsManualPause(true) // Set manual pause flag
           } else {
             // Check if the current track is playable
@@ -472,7 +477,9 @@ export default function AdminPage(): JSX.Element {
                 ...prev,
                 playback: 'playing'
               }))
-              setPlaybackInfo((prev) => prev ? { ...prev, isPlaying: true } : null)
+              setPlaybackInfo((prev) =>
+                prev ? { ...prev, isPlaying: true } : null
+              )
               setIsManualPause(false) // Clear manual pause flag
             } catch (playError) {
               if (
@@ -508,7 +515,7 @@ export default function AdminPage(): JSX.Element {
           playback: 'error'
         }))
         // Reset playback state on error
-        setPlaybackInfo((prev) => prev ? { ...prev, isPlaying: false } : null)
+        setPlaybackInfo((prev) => (prev ? { ...prev, isPlaying: false } : null))
 
         // Attempt automatic recovery
         try {
@@ -704,19 +711,24 @@ export default function AdminPage(): JSX.Element {
         })
 
         if (!response?.device?.id) {
-          console.log('[Device Check] No active device found, waiting before recovery...', {
-            deviceId,
-            timestamp: new Date().toISOString()
-          })
+          console.log(
+            '[Device Check] No active device found, waiting before recovery...',
+            {
+              deviceId,
+              timestamp: new Date().toISOString()
+            }
+          )
           // Wait a bit before attempting recovery
-          await new Promise(resolve => setTimeout(resolve, 2000))
-          
+          await new Promise((resolve) => setTimeout(resolve, 2000))
+
           setHealthStatus((prev) => ({ ...prev, device: 'disconnected' }))
           // Reset playback state when device is disconnected
-          setPlaybackInfo((prev) => prev ? { ...prev, isPlaying: false, progressStalled: true } : null)
+          setPlaybackInfo((prev) =>
+            prev ? { ...prev, isPlaying: false, progressStalled: true } : null
+          )
           setHealthStatus((prev) => ({ ...prev, playback: 'paused' }))
           setIsDeviceCheckComplete(false)
-          
+
           // Attempt recovery if we have a deviceId
           if (deviceId) {
             try {
@@ -729,16 +741,16 @@ export default function AdminPage(): JSX.Element {
                 }
               })
               console.log('[Device Check] Device transfer initiated')
-              
+
               // Wait for transfer to take effect
-              await new Promise(resolve => setTimeout(resolve, 2000))
-              
+              await new Promise((resolve) => setTimeout(resolve, 2000))
+
               // Verify transfer was successful
               const verifyState = await sendApiRequest<SpotifyPlaybackState>({
                 path: 'me/player',
                 method: 'GET'
               })
-              
+
               if (verifyState?.device?.id === deviceId) {
                 console.log('[Device Check] Device transfer successful')
                 setHealthStatus((prev) => ({ ...prev, device: 'healthy' }))
@@ -766,7 +778,9 @@ export default function AdminPage(): JSX.Element {
           })
           setHealthStatus((prev) => ({ ...prev, device: 'unresponsive' }))
           // Reset playback state when device is mismatched
-          setPlaybackInfo((prev) => prev ? { ...prev, isPlaying: false, progressStalled: true } : null)
+          setPlaybackInfo((prev) =>
+            prev ? { ...prev, isPlaying: false, progressStalled: true } : null
+          )
           setHealthStatus((prev) => ({ ...prev, playback: 'paused' }))
           setIsDeviceCheckComplete(false)
 
@@ -780,25 +794,28 @@ export default function AdminPage(): JSX.Element {
               }
             })
             console.log('[Device Check] Device transfer successful')
-            
+
             // Wait for transfer to take effect
-            await new Promise(resolve => setTimeout(resolve, 2000))
-            
+            await new Promise((resolve) => setTimeout(resolve, 2000))
+
             // Verify transfer was successful
             const verifyState = await sendApiRequest<SpotifyPlaybackState>({
               path: 'me/player',
               method: 'GET'
             })
-            
+
             if (verifyState?.device?.id === deviceId) {
               console.log('[Device Check] Device transfer verified')
               setHealthStatus((prev) => ({ ...prev, device: 'healthy' }))
               setIsDeviceCheckComplete(true)
             } else {
-              console.error('[Device Check] Device transfer verification failed:', {
-                expected: deviceId,
-                actual: verifyState?.device?.id
-              })
+              console.error(
+                '[Device Check] Device transfer verification failed:',
+                {
+                  expected: deviceId,
+                  actual: verifyState?.device?.id
+                }
+              )
               throw new Error('Device transfer verification failed')
             }
           } catch (error) {
@@ -816,15 +833,17 @@ export default function AdminPage(): JSX.Element {
         })
         setHealthStatus((prev) => ({ ...prev, device: 'healthy' }))
         setIsDeviceCheckComplete(true)
-        
+
         // Verify actual playback state
         if (response.item) {
-          const { isActuallyPlaying, progress } = await verifyPlaybackProgress(deviceId)
+          const { isActuallyPlaying, progress } =
+            await verifyPlaybackProgress(deviceId)
           const currentTime = Date.now()
-          
+
           setPlaybackInfo((prev) => {
             const lastCheck = prev?.lastProgressCheck ?? 0
-            const progressStalled = !isActuallyPlaying && (currentTime - lastCheck) > 5000
+            const progressStalled =
+              !isActuallyPlaying && currentTime - lastCheck > 5000
 
             return {
               isPlaying: isActuallyPlaying,
@@ -852,14 +871,16 @@ export default function AdminPage(): JSX.Element {
         console.error('[Device Check] Failed:', error)
         setHealthStatus((prev) => ({ ...prev, device: 'unresponsive' }))
         // Reset playback state on error
-        setPlaybackInfo((prev) => prev ? { ...prev, isPlaying: false, progressStalled: true } : null)
+        setPlaybackInfo((prev) =>
+          prev ? { ...prev, isPlaying: false, progressStalled: true } : null
+        )
         setHealthStatus((prev) => ({ ...prev, playback: 'paused' }))
         setIsDeviceCheckComplete(false)
       }
     }
 
     deviceCheckInterval.current = setInterval(checkDevice, 60000)
-    
+
     return () => {
       clearTimeout(initialDelay)
       if (deviceCheckInterval.current) {
@@ -1082,7 +1103,10 @@ export default function AdminPage(): JSX.Element {
       setIsInitializing(false)
     }, INITIALIZATION_TIMEOUT)
 
-    const interval = setInterval(checkInitialization, INITIALIZATION_CHECK_INTERVAL)
+    const interval = setInterval(
+      checkInitialization,
+      INITIALIZATION_CHECK_INTERVAL
+    )
 
     return () => {
       if (initializationTimeout.current) {
@@ -1240,8 +1264,9 @@ export default function AdminPage(): JSX.Element {
       })
 
       // Verify device is still active and playback is actually progressing
-      const { isActuallyPlaying, progress } = await verifyPlaybackProgress(deviceId)
-      
+      const { isActuallyPlaying, progress } =
+        await verifyPlaybackProgress(deviceId)
+
       if (isActuallyPlaying) {
         setPlaybackInfo({
           ...customEvent.detail,
@@ -1256,16 +1281,20 @@ export default function AdminPage(): JSX.Element {
         }))
 
         // Check if track is about to finish (less than 15 seconds remaining)
-        if (customEvent.detail.timeUntilEnd && customEvent.detail.timeUntilEnd < 15000) {
+        if (
+          customEvent.detail.timeUntilEnd &&
+          customEvent.detail.timeUntilEnd < 15000
+        ) {
           console.log('[Playback] Track ending soon, refreshing playlist:', {
             timeUntilEnd: customEvent.detail.timeUntilEnd,
             currentTrack: customEvent.detail.currentTrack,
             timestamp: new Date().toISOString()
           })
-          
+
           // Get the PlaylistRefreshService instance
-          const playlistRefreshService = PlaylistRefreshServiceImpl.getInstance()
-          
+          const playlistRefreshService =
+            PlaylistRefreshServiceImpl.getInstance()
+
           // Call refreshTrackSuggestions
           void playlistRefreshService.refreshTrackSuggestions({
             genres: trackSuggestionsState.genres,
@@ -1315,7 +1344,8 @@ export default function AdminPage(): JSX.Element {
         })
 
         if (state?.item) {
-          const { isActuallyPlaying, progress } = await verifyPlaybackProgress(deviceId)
+          const { isActuallyPlaying, progress } =
+            await verifyPlaybackProgress(deviceId)
           setPlaybackInfo({
             isPlaying: isActuallyPlaying,
             currentTrack: state.item.name,
@@ -1372,7 +1402,10 @@ export default function AdminPage(): JSX.Element {
 
     window.addEventListener('tokenUpdate', handleTokenUpdate as EventListener)
     return () => {
-      window.removeEventListener('tokenUpdate', handleTokenUpdate as EventListener)
+      window.removeEventListener(
+        'tokenUpdate',
+        handleTokenUpdate as EventListener
+      )
     }
   }, [])
 
