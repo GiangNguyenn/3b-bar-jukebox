@@ -7,7 +7,7 @@ import { sendApiRequest } from '@/shared/api'
 import { SpotifyPlaybackState } from '@/shared/types'
 
 const PLAYBACK_INTERVALS = {
-  playing: 15000, // 15 seconds when playing
+  playing: 10000, // 10 seconds when playing (changed from 5)
   paused: 30000, // 30 seconds when paused
   stopped: 60000 // 60 seconds when stopped
 }
