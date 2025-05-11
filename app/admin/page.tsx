@@ -181,7 +181,7 @@ async function verifyPlaybackProgress(
 
 export default function AdminPage(): JSX.Element {
   const [mounted, setMounted] = useState(false)
-  const [isLoading, setIsLoading] = useState(true)
+  const [isLoading, setIsLoading] = useState(false)
   const [_error, setError] = useState<string | null>(null)
   const [playbackInfo, setPlaybackInfo] = useState<PlaybackInfo | null>(null)
   const [activeTab, setActiveTab] = useState('dashboard')
@@ -251,30 +251,34 @@ export default function AdminPage(): JSX.Element {
   >(null)
 
   // Move handleApiError before sendApiRequestWithTokenRecovery
-  const handleApiError = useCallback((error: unknown): void => {
-    console.error('[API Error]', error)
-    if (error instanceof Error) {
-      if (error.message.includes('token')) {
-        setHealthStatus((prev) => ({ ...prev, auth: 'error' }))
-      } else if (error.message.includes('device')) {
-        setHealthStatus((prev) => ({ ...prev, device: 'unresponsive' }))
-      } else if (error.message.includes('playback')) {
-        setHealthStatus((prev) => ({ ...prev, playback: 'error' }))
+  const handleApiError = useCallback(
+    (error: unknown): void => {
+      console.error('[API Error]', error)
+      if (error instanceof Error) {
+        if (error.message.includes('token')) {
+          setHealthStatus((prev) => ({ ...prev, auth: 'error' }))
+        } else if (error.message.includes('device')) {
+          setHealthStatus((prev) => ({ ...prev, device: 'unresponsive' }))
+        } else if (error.message.includes('playback')) {
+          setHealthStatus((prev) => ({ ...prev, playback: 'error' }))
+        }
       }
-    }
-  }, [setHealthStatus])
+    },
+    [setHealthStatus]
+  )
 
   // Wrap sendApiRequestWithTokenRecovery in useCallback
-  const sendApiRequestWithTokenRecovery = useCallback(async <T,>(
-    request: Parameters<typeof sendApiRequest>[0]
-  ): Promise<T> => {
-    try {
-      return await sendApiRequest<T>(request)
-    } catch (error) {
-      handleApiError(error)
-      throw error
-    }
-  }, [handleApiError])
+  const sendApiRequestWithTokenRecovery = useCallback(
+    async <T,>(request: Parameters<typeof sendApiRequest>[0]): Promise<T> => {
+      try {
+        return await sendApiRequest<T>(request)
+      } catch (error) {
+        handleApiError(error)
+        throw error
+      }
+    },
+    [handleApiError]
+  )
 
   // Update the ref when sendApiRequestWithTokenRecovery changes
   useEffect(() => {
@@ -291,8 +295,8 @@ export default function AdminPage(): JSX.Element {
         return
       }
 
+      setIsLoading(true)
       try {
-        setIsLoading(true)
         setError(null)
 
         console.log('[Spotify] Starting playback sequence')
@@ -492,14 +496,10 @@ export default function AdminPage(): JSX.Element {
           }, 'Playback Recovery')
         } catch (recoveryError) {
           console.error('[Spotify] Recovery failed:', recoveryError)
-          // Ensure loading state is cleared even if recovery fails
-          setIsLoading(false)
         }
       } finally {
-        // Only clear loading state if we haven't already in the recovery catch block
-        if (isLoading) {
-          setIsLoading(false)
-        }
+        // Always clear loading state
+        setIsLoading(false)
       }
     },
     [
@@ -833,7 +833,9 @@ export default function AdminPage(): JSX.Element {
     }
 
     // Instead of passing checkDevice directly, wrap it:
-    deviceCheckInterval.current = setInterval(() => { void checkDevice() }, 60000)
+    deviceCheckInterval.current = setInterval(() => {
+      void checkDevice()
+    }, 60000)
 
     return () => {
       clearTimeout(initialDelay)
@@ -1058,7 +1060,9 @@ export default function AdminPage(): JSX.Element {
     }, INITIALIZATION_TIMEOUT)
 
     // Only keep the wrapped setInterval version for checkInitialization
-    const interval = setInterval(() => { void checkInitialization() }, INITIALIZATION_CHECK_INTERVAL)
+    const interval = setInterval(() => {
+      void checkInitialization()
+    }, INITIALIZATION_CHECK_INTERVAL)
 
     return () => {
       if (initializationTimeout.current) {
@@ -1196,77 +1200,82 @@ export default function AdminPage(): JSX.Element {
   }, [handleRefresh])
 
   // Fix the playback update handler
-  const handlePlaybackUpdate = useCallback((event: Event): void => {
-    const customEvent = event as CustomEvent<PlaybackInfo>
-    if (!deviceId) {
-      console.log('[Playback] Ignoring update - no device ID:', {
-        timestamp: new Date().toISOString()
-      })
-      return
-    }
-
-    void (async () => {
-      // Verify device is still active and playback is actually progressing
-      const { isActuallyPlaying, progress } = await verifyPlaybackProgress(deviceId)
-
-      if (isActuallyPlaying) {
-        setPlaybackInfo({
-          ...customEvent.detail,
-          isPlaying: true,
-          progress,
-          lastProgressCheck: Date.now(),
-          progressStalled: false
+  const handlePlaybackUpdate = useCallback(
+    (event: Event): void => {
+      const customEvent = event as CustomEvent<PlaybackInfo>
+      if (!deviceId) {
+        console.log('[Playback] Ignoring update - no device ID:', {
+          timestamp: new Date().toISOString()
         })
-        setHealthStatus((prev) => ({
-          ...prev,
-          playback: 'playing'
-        }))
-
-        // Check if track is about to finish (less than 15 seconds remaining)
-        if (
-          customEvent.detail.timeUntilEnd &&
-          customEvent.detail.timeUntilEnd < 15000
-        ) {
-          console.log('[Playback] Track ending soon, refreshing playlist:', {
-            timeUntilEnd: customEvent.detail.timeUntilEnd,
-            currentTrack: customEvent.detail.currentTrack,
-            timestamp: new Date().toISOString()
-          })
-
-          // Get the PlaylistRefreshService instance
-          const playlistRefreshService = PlaylistRefreshServiceImpl.getInstance()
-
-          // Call refreshTrackSuggestions
-          void playlistRefreshService.refreshTrackSuggestions({
-            genres: trackSuggestionsState.genres,
-            yearRange: trackSuggestionsState.yearRange,
-            popularity: trackSuggestionsState.popularity,
-            allowExplicit: trackSuggestionsState.allowExplicit,
-            maxSongLength: trackSuggestionsState.maxSongLength,
-            songsBetweenRepeats: trackSuggestionsState.songsBetweenRepeats
-          })
-        }
-      } else {
-        setPlaybackInfo({
-          ...customEvent.detail,
-          isPlaying: false,
-          progress,
-          lastProgressCheck: Date.now(),
-          progressStalled: true
-        })
-        setHealthStatus((prev) => ({
-          ...prev,
-          playback: 'paused'
-        }))
+        return
       }
 
-      console.log('[Playback] State verified:', {
-        isActuallyPlaying,
-        progress,
-        timestamp: new Date().toISOString()
-      })
-    })()
-  }, [deviceId, trackSuggestionsState])
+      void (async () => {
+        // Verify device is still active and playback is actually progressing
+        const { isActuallyPlaying, progress } =
+          await verifyPlaybackProgress(deviceId)
+
+        if (isActuallyPlaying) {
+          setPlaybackInfo({
+            ...customEvent.detail,
+            isPlaying: true,
+            progress,
+            lastProgressCheck: Date.now(),
+            progressStalled: false
+          })
+          setHealthStatus((prev) => ({
+            ...prev,
+            playback: 'playing'
+          }))
+
+          // Check if track is about to finish (less than 15 seconds remaining)
+          if (
+            customEvent.detail.timeUntilEnd &&
+            customEvent.detail.timeUntilEnd < 15000
+          ) {
+            console.log('[Playback] Track ending soon, refreshing playlist:', {
+              timeUntilEnd: customEvent.detail.timeUntilEnd,
+              currentTrack: customEvent.detail.currentTrack,
+              timestamp: new Date().toISOString()
+            })
+
+            // Get the PlaylistRefreshService instance
+            const playlistRefreshService =
+              PlaylistRefreshServiceImpl.getInstance()
+
+            // Call refreshTrackSuggestions
+            void playlistRefreshService.refreshTrackSuggestions({
+              genres: trackSuggestionsState.genres,
+              yearRange: trackSuggestionsState.yearRange,
+              popularity: trackSuggestionsState.popularity,
+              allowExplicit: trackSuggestionsState.allowExplicit,
+              maxSongLength: trackSuggestionsState.maxSongLength,
+              songsBetweenRepeats: trackSuggestionsState.songsBetweenRepeats
+            })
+          }
+        } else {
+          setPlaybackInfo({
+            ...customEvent.detail,
+            isPlaying: false,
+            progress,
+            lastProgressCheck: Date.now(),
+            progressStalled: true
+          })
+          setHealthStatus((prev) => ({
+            ...prev,
+            playback: 'paused'
+          }))
+        }
+
+        console.log('[Playback] State verified:', {
+          isActuallyPlaying,
+          progress,
+          timestamp: new Date().toISOString()
+        })
+      })()
+    },
+    [deviceId, trackSuggestionsState]
+  )
 
   // Update the event listener setup
   useEffect(() => {
@@ -1474,16 +1483,21 @@ export default function AdminPage(): JSX.Element {
                     </span>
                     {playbackInfo?.currentTrack && (
                       <span className='text-sm text-gray-400'>
-                        - <span className='text-white font-medium'>{playbackInfo.currentTrack}</span>
+                        -{' '}
+                        <span className='text-white font-medium'>
+                          {playbackInfo.currentTrack}
+                        </span>
                       </span>
                     )}
                   </div>
                   {playbackInfo?.duration_ms && (
                     <div className='space-y-1'>
-                      <div className='relative h-1.5 bg-gray-700 rounded-full overflow-hidden'>
-                        <div 
-                          className='absolute top-0 left-0 h-full bg-green-500 transition-all duration-1000 ease-linear'
-                          style={{ width: `${(playbackInfo.progress / playbackInfo.duration_ms) * 100}%` }}
+                      <div className='relative h-1.5 overflow-hidden rounded-full bg-gray-700'>
+                        <div
+                          className='absolute left-0 top-0 h-full bg-green-500 transition-all duration-1000 ease-linear'
+                          style={{
+                            width: `${(playbackInfo.progress / playbackInfo.duration_ms) * 100}%`
+                          }}
                         />
                       </div>
                       <div className='flex justify-between text-xs text-gray-500'>

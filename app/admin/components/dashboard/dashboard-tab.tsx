@@ -46,33 +46,36 @@ export function DashboardTab({
   }
 
   const handlePlayPause = (): void => {
+    if (isLoading) return
     setIsLoading(true)
     try {
       // Implementation
-    } catch {
-      // Handle error
+    } catch (error) {
+      console.error('Play/Pause failed:', error)
     } finally {
       setIsLoading(false)
     }
   }
 
   const handleSkipNext = (): void => {
+    if (isLoading) return
     setIsLoading(true)
     try {
       // Implementation
-    } catch {
-      // Handle error
+    } catch (error) {
+      console.error('Skip next failed:', error)
     } finally {
       setIsLoading(false)
     }
   }
 
   const handleSkipPrevious = (): void => {
+    if (isLoading) return
     setIsLoading(true)
     try {
       // Implementation
-    } catch {
-      // Handle error
+    } catch (error) {
+      console.error('Skip previous failed:', error)
     } finally {
       setIsLoading(false)
     }
@@ -92,10 +95,12 @@ export function DashboardTab({
       <ErrorBoundary>
         <PlaybackControls
           playbackState={playbackInfo}
-          canControlPlayback={!isLoading && playbackInfo !== null}
-          onPlayPause={handlePlayPause}
-          onSkipNext={handleSkipNext}
-          onSkipPrevious={handleSkipPrevious}
+          canControlPlayback={
+            isPlayerReady && !isLoading && playbackInfo !== null
+          }
+          onPlayPause={() => handlePlayPause()}
+          onSkipNext={() => handleSkipNext()}
+          onSkipPrevious={() => handleSkipPrevious()}
         />
       </ErrorBoundary>
 

@@ -28,11 +28,12 @@ export function PlaybackControls({
         className={cn(
           'flex h-8 w-8 items-center justify-center rounded-full transition-colors',
           canControlPlayback
-            ? 'hover:bg-muted'
+            ? 'hover:bg-muted active:scale-95'
             : 'cursor-not-allowed opacity-50'
         )}
         onClick={onSkipPrevious}
         disabled={!canControlPlayback}
+        aria-label='Previous track'
       >
         <SkipBack className='h-4 w-4' />
       </button>
@@ -40,11 +41,12 @@ export function PlaybackControls({
         className={cn(
           'flex h-8 w-8 items-center justify-center rounded-full transition-colors',
           canControlPlayback
-            ? 'hover:bg-muted'
+            ? 'hover:bg-muted active:scale-95'
             : 'cursor-not-allowed opacity-50'
         )}
         onClick={onPlayPause}
         disabled={!canControlPlayback}
+        aria-label={isPlaying ? 'Pause' : 'Play'}
       >
         <Image
           src={isPlaying ? '/pause.svg' : '/play.svg'}
@@ -58,11 +60,12 @@ export function PlaybackControls({
         className={cn(
           'flex h-8 w-8 items-center justify-center rounded-full transition-colors',
           canControlPlayback
-            ? 'hover:bg-muted'
+            ? 'hover:bg-muted active:scale-95'
             : 'cursor-not-allowed opacity-50'
         )}
         onClick={onSkipNext}
         disabled={!canControlPlayback}
+        aria-label='Next track'
       >
         <SkipForward className='h-4 w-4' />
       </button>
