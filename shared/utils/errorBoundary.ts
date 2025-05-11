@@ -1,4 +1,4 @@
-export const executeWithErrorBoundary = async <T,>(
+export const executeWithErrorBoundary = async <T>(
   operation: () => Promise<T>,
   errorContext: string
 ): Promise<T | null> => {
@@ -8,4 +8,4 @@ export const executeWithErrorBoundary = async <T,>(
     console.error(`[${errorContext}] Operation failed:`, error)
     return null
   }
-} 
+}

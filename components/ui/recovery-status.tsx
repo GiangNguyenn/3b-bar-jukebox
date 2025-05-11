@@ -16,18 +16,14 @@ export function RecoveryStatus({
   }
 
   return (
-    <div className="fixed top-0 left-0 right-0 z-50 bg-black/90 p-4">
-      <div className="mx-auto max-w-xl">
-        <div className="flex items-center justify-between mb-2">
-          <span className="text-sm font-medium text-white">
-            {message}
-          </span>
-          <span className="text-sm text-white/60">
-            {progress}%
-          </span>
+    <div className='fixed left-0 right-0 top-0 z-50 bg-black/90 p-4'>
+      <div className='mx-auto max-w-xl'>
+        <div className='mb-2 flex items-center justify-between'>
+          <span className='text-white text-sm font-medium'>{message}</span>
+          <span className='text-white/60 text-sm'>{progress}%</span>
         </div>
-        <Progress value={progress} className="h-2" />
+        <Progress value={progress} className='h-2' />
       </div>
     </div>
   )
-} 
+}
