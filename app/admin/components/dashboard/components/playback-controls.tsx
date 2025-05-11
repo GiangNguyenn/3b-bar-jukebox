@@ -8,6 +8,8 @@ import { SpotifyPlaybackState } from '@/shared/types/spotify'
 interface PlaybackControlsProps {
   playbackState: SpotifyPlaybackState | null
   canControlPlayback: boolean
+  isLoading: boolean
+  loadingAction: 'playPause' | 'next' | 'previous' | null
   onPlayPause: () => void
   onSkipNext: () => void
   onSkipPrevious: () => void
@@ -16,6 +18,8 @@ interface PlaybackControlsProps {
 export function PlaybackControls({
   playbackState,
   canControlPlayback,
+  isLoading,
+  loadingAction,
   onPlayPause,
   onSkipNext,
   onSkipPrevious
@@ -27,25 +31,30 @@ export function PlaybackControls({
       <button
         className={cn(
           'flex h-8 w-8 items-center justify-center rounded-full transition-colors',
-          canControlPlayback
+          canControlPlayback && !isLoading
             ? 'hover:bg-muted active:scale-95'
             : 'cursor-not-allowed opacity-50'
         )}
         onClick={onSkipPrevious}
-        disabled={!canControlPlayback}
+        disabled={!canControlPlayback || isLoading}
         aria-label='Previous track'
       >
-        <SkipBack className='h-4 w-4' />
+        <SkipBack
+          className={cn(
+            'h-4 w-4',
+            loadingAction === 'previous' && 'animate-spin'
+          )}
+        />
       </button>
       <button
         className={cn(
           'flex h-8 w-8 items-center justify-center rounded-full transition-colors',
-          canControlPlayback
+          canControlPlayback && !isLoading
             ? 'hover:bg-muted active:scale-95'
             : 'cursor-not-allowed opacity-50'
         )}
         onClick={onPlayPause}
-        disabled={!canControlPlayback}
+        disabled={!canControlPlayback || isLoading}
         aria-label={isPlaying ? 'Pause' : 'Play'}
       >
         <Image
@@ -53,21 +62,26 @@ export function PlaybackControls({
           alt={isPlaying ? 'Pause' : 'Play'}
           width={16}
           height={16}
-          className='h-4 w-4'
+          className={cn(
+            'h-4 w-4',
+            loadingAction === 'playPause' && 'animate-spin'
+          )}
         />
       </button>
       <button
         className={cn(
           'flex h-8 w-8 items-center justify-center rounded-full transition-colors',
-          canControlPlayback
+          canControlPlayback && !isLoading
             ? 'hover:bg-muted active:scale-95'
             : 'cursor-not-allowed opacity-50'
         )}
         onClick={onSkipNext}
-        disabled={!canControlPlayback}
+        disabled={!canControlPlayback || isLoading}
         aria-label='Next track'
       >
-        <SkipForward className='h-4 w-4' />
+        <SkipForward
+          className={cn('h-4 w-4', loadingAction === 'next' && 'animate-spin')}
+        />
       </button>
     </div>
   )
