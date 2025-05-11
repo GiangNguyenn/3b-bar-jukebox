@@ -31,7 +31,7 @@ declare global {
 }
 
 const REFRESH_INTERVAL = 180000 // 3 minutes in milliseconds
-const DEVICE_CHECK_INTERVAL = {
+const _DEVICE_CHECK_INTERVAL = {
   good: 30000, // 30 seconds
   unstable: 15000, // 15 seconds
   poor: 10000, // 10 seconds
@@ -42,7 +42,7 @@ const DEVICE_CHECK_INTERVAL = {
 const INITIALIZATION_TIMEOUT = 15000 // 15 seconds max
 const INITIALIZATION_CHECK_INTERVAL = 500 // Check every 500ms
 
-interface RecoveryState {
+interface _RecoveryState {
   lastSuccessfulPlayback: {
     trackUri: string | null
     position: number
@@ -109,68 +109,6 @@ interface PlaybackVerificationResult {
     timestamp: number
     verificationDuration: number
   }
-}
-
-async function verifyPlaybackResume(
-  expectedContextUri: string,
-  currentDeviceId: string | null,
-  maxVerificationTime: number = 10000, // 10 seconds
-  checkInterval: number = 1000 // 1 second
-): Promise<PlaybackVerificationResult> {
-  const startTime = Date.now()
-  console.log('[Playback Verification] Starting verification process', {
-    expectedContextUri,
-    currentDeviceId,
-    maxVerificationTime,
-    checkInterval,
-    timestamp: new Date().toISOString()
-  })
-
-  const initialState = await sendApiRequest<SpotifyPlaybackState>({
-    path: 'me/player',
-    method: 'GET'
-  })
-
-  console.log('[Playback Verification] Initial state:', {
-    deviceId: initialState?.device?.id,
-    isPlaying: initialState?.is_playing,
-    progress: initialState?.progress_ms,
-    context: initialState?.context?.uri,
-    currentTrack: initialState?.item?.name,
-    timestamp: new Date().toISOString()
-  })
-
-  const initialProgress = initialState?.progress_ms ?? 0
-  const lastProgress = initialProgress
-  const _progressStalled = false
-  let currentState: SpotifyPlaybackState | null = null
-
-  while (Date.now() - startTime < maxVerificationTime) {
-    currentState = await sendApiRequest<SpotifyPlaybackState>({
-      path: 'me/player',
-      method: 'GET'
-    })
-  }
-
-  if (!currentState) {
-    throw new Error('Failed to get playback state')
-  }
-
-  const verificationResult: PlaybackVerificationResult = {
-    isSuccessful: true,
-    reason: 'Playback resumed successfully',
-    details: {
-      deviceMatch: currentState.device?.id === currentDeviceId,
-      isPlaying: currentState.is_playing,
-      progressAdvancing: currentState.progress_ms > lastProgress,
-      contextMatch: currentState.context?.uri === expectedContextUri,
-      currentTrack: currentState.item?.name,
-      timestamp: Date.now(),
-      verificationDuration: Date.now() - startTime
-    }
-  }
-
-  return verificationResult
 }
 
 // Add playback verification function
@@ -269,14 +207,14 @@ export default function AdminPage(): JSX.Element {
   } = useRecoverySystem(deviceId, fixedPlaylistId, (status) =>
     setHealthStatus((prev) => ({
       ...prev,
-      device: status.device as HealthStatus['device']
+      device: status.device
     }))
   )
   const wakeLock = useRef<WakeLockSentinel | null>(null)
   const deviceCheckInterval = useRef<NodeJS.Timeout | null>(null)
   const recoveryTimeout = useRef<NodeJS.Timeout | null>(null)
   const isRefreshing = useRef<boolean>(false)
-  const baseDelay = 2000 // 2 seconds
+  const _baseDelay = 2000 // 2 seconds
   const { logs: consoleLogs } = useConsoleLogs()
   const [uptime, setUptime] = useState(0)
   const [_currentYear, _setCurrentYear] = useState(new Date().getFullYear())
@@ -286,15 +224,15 @@ export default function AdminPage(): JSX.Element {
   } = useTrackSuggestions()
   const [isRefreshingSuggestions, setIsRefreshingSuggestions] = useState(false)
   const [refreshError, setRefreshError] = useState<string | null>(null)
-  const [timeUntilRefresh, setTimeUntilRefresh] = useState(REFRESH_INTERVAL)
+  const [_timeUntilRefresh, setTimeUntilRefresh] = useState(REFRESH_INTERVAL)
   const lastRefreshTime = useRef<number>(Date.now())
   const initializationTimeout = useRef<NodeJS.Timeout | null>(null)
   const initializationCheckInterval = useRef<NodeJS.Timeout | null>(null)
 
   const { refreshToken } = useSpotifyPlayerState(fixedPlaylistId ?? '')
 
-  const MAX_RECOVERY_ATTEMPTS = 5
-  const RECOVERY_STEPS = useMemo(
+  const _MAX_RECOVERY_ATTEMPTS = 5
+  const _RECOVERY_STEPS = useMemo(
     () => [
       { message: 'Refreshing player state...', weight: 0.2 },
       { message: 'Ensuring active device...', weight: 0.2 },
@@ -312,8 +250,22 @@ export default function AdminPage(): JSX.Element {
     typeof sendApiRequestWithTokenRecovery | null
   >(null)
 
-  // Define sendApiRequestWithTokenRecovery
-  const sendApiRequestWithTokenRecovery = async <T,>(
+  // Move handleApiError before sendApiRequestWithTokenRecovery
+  const handleApiError = useCallback((error: unknown): void => {
+    console.error('[API Error]', error)
+    if (error instanceof Error) {
+      if (error.message.includes('token')) {
+        setHealthStatus((prev) => ({ ...prev, auth: 'error' }))
+      } else if (error.message.includes('device')) {
+        setHealthStatus((prev) => ({ ...prev, device: 'unresponsive' }))
+      } else if (error.message.includes('playback')) {
+        setHealthStatus((prev) => ({ ...prev, playback: 'error' }))
+      }
+    }
+  }, [setHealthStatus])
+
+  // Wrap sendApiRequestWithTokenRecovery in useCallback
+  const sendApiRequestWithTokenRecovery = useCallback(async <T,>(
     request: Parameters<typeof sendApiRequest>[0]
   ): Promise<T> => {
     try {
@@ -322,14 +274,14 @@ export default function AdminPage(): JSX.Element {
       handleApiError(error)
       throw error
     }
-  }
+  }, [handleApiError])
 
   // Update the ref when sendApiRequestWithTokenRecovery changes
   useEffect(() => {
     sendApiRequestWithTokenRecoveryRef.current = sendApiRequestWithTokenRecovery
   }, [sendApiRequestWithTokenRecovery])
 
-  // Define handlePlayback
+  // Update handlePlayback dependencies
   const handlePlayback = useCallback(
     async (action: 'play' | 'skip'): Promise<void> => {
       if (isInitializing) {
@@ -540,9 +492,14 @@ export default function AdminPage(): JSX.Element {
           }, 'Playback Recovery')
         } catch (recoveryError) {
           console.error('[Spotify] Recovery failed:', recoveryError)
+          // Ensure loading state is cleared even if recovery fails
+          setIsLoading(false)
         }
       } finally {
-        setIsLoading(false)
+        // Only clear loading state if we haven't already in the recovery catch block
+        if (isLoading) {
+          setIsLoading(false)
+        }
       }
     },
     [
@@ -554,7 +511,8 @@ export default function AdminPage(): JSX.Element {
       setHealthStatus,
       setIsLoading,
       setError,
-      setIsManualPause
+      setIsManualPause,
+      isLoading
     ]
   )
 
@@ -641,11 +599,6 @@ export default function AdminPage(): JSX.Element {
         clearInterval(initializationCheckInterval.current)
       }
     }
-  }, [])
-
-  // Add token error detection to API requests
-  const handleApiError = useCallback((error: unknown): void => {
-    console.error('[API] Error:', error)
   }, [])
 
   // Add a new effect to update device status when ready state changes
@@ -879,7 +832,8 @@ export default function AdminPage(): JSX.Element {
       }
     }
 
-    deviceCheckInterval.current = setInterval(checkDevice, 60000)
+    // Instead of passing checkDevice directly, wrap it:
+    deviceCheckInterval.current = setInterval(() => { void checkDevice() }, 60000)
 
     return () => {
       clearTimeout(initialDelay)
@@ -910,9 +864,9 @@ export default function AdminPage(): JSX.Element {
     }
   }, [])
 
-  // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
+  // Fix the playlist checked handler
   const handlePlaylistChecked = useCallback(
-    (event: CustomEvent<PlaylistCheckedInfo>) => {
+    (event: CustomEvent<PlaylistCheckedInfo>): void => {
       const { hasChanges } = event.detail
       if (hasChanges) {
         void handleRefresh()
@@ -1103,10 +1057,8 @@ export default function AdminPage(): JSX.Element {
       setIsInitializing(false)
     }, INITIALIZATION_TIMEOUT)
 
-    const interval = setInterval(
-      checkInitialization,
-      INITIALIZATION_CHECK_INTERVAL
-    )
+    // Only keep the wrapped setInterval version for checkInitialization
+    const interval = setInterval(() => { void checkInitialization() }, INITIALIZATION_CHECK_INTERVAL)
 
     return () => {
       if (initializationTimeout.current) {
@@ -1226,46 +1178,36 @@ export default function AdminPage(): JSX.Element {
     updateTrackSuggestionsState(newState)
   }
 
-  // Auto-refresh timer effect
+  // Update the refresh timer effect
   useEffect(() => {
     const timer = setInterval(() => {
-      const now = Date.now()
-      const timeSinceLastRefresh = now - lastRefreshTime.current
+      const timeSinceLastRefresh = Date.now() - lastRefreshTime.current
       const remainingTime = REFRESH_INTERVAL - timeSinceLastRefresh
 
       setTimeUntilRefresh(remainingTime)
 
       if (timeSinceLastRefresh >= REFRESH_INTERVAL) {
         void handleRefresh('auto')
-        lastRefreshTime.current = now
+        lastRefreshTime.current = Date.now()
       }
-    }, 1000) // Update every second
+    }, 1000)
 
     return () => clearInterval(timer)
   }, [handleRefresh])
 
-  // Update the playback update handler
-  useEffect(() => {
-    const handlePlaybackUpdate = async (event: Event): Promise<void> => {
-      const customEvent = event as CustomEvent<PlaybackInfo>
-      // Only update if we have a valid device ID
-      if (!deviceId) {
-        console.log('[Playback] Ignoring update - no device ID:', {
-          timestamp: new Date().toISOString()
-        })
-        return
-      }
-
-      console.log('[Playback] State update received:', {
-        isPlaying: customEvent.detail.isPlaying,
-        currentTrack: customEvent.detail.currentTrack,
-        deviceId,
+  // Fix the playback update handler
+  const handlePlaybackUpdate = useCallback((event: Event): void => {
+    const customEvent = event as CustomEvent<PlaybackInfo>
+    if (!deviceId) {
+      console.log('[Playback] Ignoring update - no device ID:', {
         timestamp: new Date().toISOString()
       })
+      return
+    }
 
+    void (async () => {
       // Verify device is still active and playback is actually progressing
-      const { isActuallyPlaying, progress } =
-        await verifyPlaybackProgress(deviceId)
+      const { isActuallyPlaying, progress } = await verifyPlaybackProgress(deviceId)
 
       if (isActuallyPlaying) {
         setPlaybackInfo({
@@ -1292,8 +1234,7 @@ export default function AdminPage(): JSX.Element {
           })
 
           // Get the PlaylistRefreshService instance
-          const playlistRefreshService =
-            PlaylistRefreshServiceImpl.getInstance()
+          const playlistRefreshService = PlaylistRefreshServiceImpl.getInstance()
 
           // Call refreshTrackSuggestions
           void playlistRefreshService.refreshTrackSuggestions({
@@ -1324,13 +1265,16 @@ export default function AdminPage(): JSX.Element {
         progress,
         timestamp: new Date().toISOString()
       })
-    }
+    })()
+  }, [deviceId, trackSuggestionsState])
 
+  // Update the event listener setup
+  useEffect(() => {
     window.addEventListener('playbackUpdate', handlePlaybackUpdate)
     return () => {
       window.removeEventListener('playbackUpdate', handlePlaybackUpdate)
     }
-  }, [deviceId, trackSuggestionsState])
+  }, [handlePlaybackUpdate])
 
   // Add initial playback state check
   useEffect(() => {
@@ -1408,6 +1352,19 @@ export default function AdminPage(): JSX.Element {
       )
     }
   }, [])
+
+  // Move these hooks before any conditional returns
+  const handlePlaybackClick = useCallback(() => {
+    void handlePlayback('play')
+  }, [handlePlayback])
+
+  const handleSkipClick = useCallback(() => {
+    void handlePlayback('skip')
+  }, [handlePlayback])
+
+  const handleRefreshClick = useCallback(() => {
+    void handleRefresh('manual')
+  }, [handleRefresh])
 
   // Add loading state to UI
   if (!mounted || isInitializing) {
@@ -1504,24 +1461,36 @@ export default function AdminPage(): JSX.Element {
                           : 'bg-gray-500'
                   }`}
                 />
-                <div className='flex flex-1 items-center gap-2'>
-                  <span className='font-medium'>
-                    {healthStatus.playback === 'playing'
-                      ? 'Playback Active'
-                      : healthStatus.playback === 'paused'
-                        ? 'Playback Paused'
-                        : healthStatus.playback === 'error'
-                          ? 'Playback Error'
-                          : 'Playback Stopped'}
-                  </span>
-                  {playbackInfo?.currentTrack && (
-                    <span className='text-sm text-gray-400'>
-                      -{' '}
-                      <span className='text-white font-medium'>
-                        {playbackInfo.currentTrack}
-                      </span>{' '}
-                      ({formatTime(playbackInfo.progress)})
+                <div className='flex flex-1 flex-col gap-2'>
+                  <div className='flex items-center gap-2'>
+                    <span className='font-medium'>
+                      {healthStatus.playback === 'playing'
+                        ? 'Playback Active'
+                        : healthStatus.playback === 'paused'
+                          ? 'Playback Paused'
+                          : healthStatus.playback === 'error'
+                            ? 'Playback Error'
+                            : 'Playback Stopped'}
                     </span>
+                    {playbackInfo?.currentTrack && (
+                      <span className='text-sm text-gray-400'>
+                        - <span className='text-white font-medium'>{playbackInfo.currentTrack}</span>
+                      </span>
+                    )}
+                  </div>
+                  {playbackInfo?.duration_ms && (
+                    <div className='space-y-1'>
+                      <div className='relative h-1.5 bg-gray-700 rounded-full overflow-hidden'>
+                        <div 
+                          className='absolute top-0 left-0 h-full bg-green-500 transition-all duration-1000 ease-linear'
+                          style={{ width: `${(playbackInfo.progress / playbackInfo.duration_ms) * 100}%` }}
+                        />
+                      </div>
+                      <div className='flex justify-between text-xs text-gray-500'>
+                        <span>{formatTime(playbackInfo.progress)}</span>
+                        <span>{formatTime(playbackInfo.duration_ms)}</span>
+                      </div>
+                    </div>
                   )}
                 </div>
               </div>
@@ -1604,7 +1573,7 @@ export default function AdminPage(): JSX.Element {
               <h2 className='text-xl font-semibold'>Controls</h2>
               <div className='flex gap-4'>
                 <button
-                  onClick={() => void handlePlayback('play')}
+                  onClick={handlePlaybackClick}
                   disabled={isLoading || !isReady || !isDeviceCheckComplete}
                   className='text-white flex-1 rounded-lg bg-green-600 px-4 py-2 font-medium transition-colors hover:bg-green-700 disabled:cursor-not-allowed disabled:opacity-50'
                 >
@@ -1617,7 +1586,7 @@ export default function AdminPage(): JSX.Element {
                         : 'Play'}
                 </button>
                 <button
-                  onClick={() => void handlePlayback('skip')}
+                  onClick={handleSkipClick}
                   disabled={isLoading || !isReady || !isDeviceCheckComplete}
                   className='text-white flex-1 rounded-lg bg-blue-600 px-4 py-2 font-medium transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50'
                 >
@@ -1628,8 +1597,8 @@ export default function AdminPage(): JSX.Element {
                       : 'Skip'}
                 </button>
                 <button
-                  onClick={() => void handleRefresh('manual')}
-                  disabled={isLoading || !isReady || !isDeviceCheckComplete}
+                  onClick={handleRefreshClick}
+                  disabled={isLoading || isRefreshingSuggestions}
                   className='text-white flex-1 rounded-lg bg-purple-600 px-4 py-2 font-medium transition-colors hover:bg-purple-700 disabled:cursor-not-allowed disabled:opacity-50'
                 >
                   {isLoading

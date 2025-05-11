@@ -5,7 +5,7 @@ interface ProgressProps {
   className?: string
 }
 
-export function Progress({ value, className = '' }: ProgressProps) {
+export function Progress({ value, className = '' }: ProgressProps): JSX.Element {
   return (
     <div className={`w-full rounded bg-gray-700 ${className}`}>
       <div

@@ -1,7 +1,7 @@
 import { useState, useCallback, useRef } from 'react'
 import { sendApiRequest } from '@/shared/api'
 import { SpotifyPlaybackState } from '@/shared/types'
-import { executeWithErrorBoundary } from '@/shared/utils'
+import { executeWithErrorBoundary } from '@/shared/utils/errorBoundary'
 
 interface RecoveryState {
   lastSuccessfulPlayback: {
