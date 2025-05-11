@@ -251,3 +251,12 @@ export interface TokenInfo {
   lastActualRefresh: number
   expiryTime: number
 }
+
+export interface HealthStatus {
+  device: 'healthy' | 'unresponsive' | 'disconnected' | 'unknown'
+  playback: 'playing' | 'paused' | 'stopped' | 'error' | 'unknown'
+  token: 'valid' | 'expired' | 'error' | 'unknown'
+  connection: 'good' | 'unstable' | 'poor' | 'unknown'
+  tokenExpiringSoon: boolean
+  fixedPlaylist: 'found' | 'not_found' | 'error' | 'unknown'
+}
