@@ -8,6 +8,7 @@ import { PlaybackControls } from './components/playback-controls'
 import { ErrorBoundary } from './components/error-boundary'
 import { useSpotifyPlayer } from '@/hooks/useSpotifyPlayer'
 import { useFixedPlaylist } from '@/hooks/useFixedPlaylist'
+import { sendApiRequest } from '@/shared/api'
 
 interface DashboardTabProps {
   healthStatus: HealthStatus
@@ -18,10 +19,13 @@ export function DashboardTab({
   healthStatus,
   playbackInfo
 }: DashboardTabProps): JSX.Element {
-  const [error] = useState<string | null>(null)
-  const [isLoading, setIsLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [loadingAction, setLoadingAction] = useState<
+    'playPause' | 'next' | 'previous' | null
+  >(null)
   const [timeLeft, setTimeLeft] = useState<number>(120) // 2 minutes in seconds
   const isPlayerReady = useSpotifyPlayer((state) => state.isReady)
+  const deviceId = useSpotifyPlayer((state) => state.deviceId)
   const { isInitialFetchComplete } = useFixedPlaylist()
 
   useEffect(() => {
@@ -45,39 +49,61 @@ export function DashboardTab({
     return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`
   }
 
-  const handlePlayPause = (): void => {
-    if (isLoading) return
-    setIsLoading(true)
+  const handlePlayPause = async (): Promise<void> => {
+    if (loadingAction || !deviceId) return
+    setLoadingAction('playPause')
+    setError(null)
     try {
-      // Implementation
+      if (playbackInfo?.is_playing) {
+        await sendApiRequest({
+          path: `me/player/pause?device_id=${deviceId}`,
+          method: 'PUT'
+        })
+      } else {
+        await sendApiRequest({
+          path: `me/player/play?device_id=${deviceId}`,
+          method: 'PUT'
+        })
+      }
     } catch (error) {
       console.error('Play/Pause failed:', error)
+      setError('Failed to control playback')
     } finally {
-      setIsLoading(false)
+      setLoadingAction(null)
     }
   }
 
-  const handleSkipNext = (): void => {
-    if (isLoading) return
-    setIsLoading(true)
+  const handleSkipNext = async (): Promise<void> => {
+    if (loadingAction || !deviceId) return
+    setLoadingAction('next')
+    setError(null)
     try {
-      // Implementation
+      await sendApiRequest({
+        path: `me/player/next?device_id=${deviceId}`,
+        method: 'POST'
+      })
     } catch (error) {
       console.error('Skip next failed:', error)
+      setError('Failed to skip to next track')
     } finally {
-      setIsLoading(false)
+      setLoadingAction(null)
     }
   }
 
-  const handleSkipPrevious = (): void => {
-    if (isLoading) return
-    setIsLoading(true)
+  const handleSkipPrevious = async (): Promise<void> => {
+    if (loadingAction || !deviceId) return
+    setLoadingAction('previous')
+    setError(null)
     try {
-      // Implementation
+      await sendApiRequest({
+        path: `me/player/previous?device_id=${deviceId}`,
+        method: 'POST'
+      })
     } catch (error) {
       console.error('Skip previous failed:', error)
+      setError('Failed to skip to previous track')
     } finally {
-      setIsLoading(false)
+      setLoadingAction(null)
     }
   }
 
@@ -87,7 +113,7 @@ export function DashboardTab({
         <StatusGrid
           healthStatus={healthStatus}
           playbackState={playbackInfo}
-          isReady={isPlayerReady && !isLoading}
+          isReady={isPlayerReady && !loadingAction}
           fixedPlaylistIsInitialFetchComplete={isInitialFetchComplete}
         />
       </ErrorBoundary>
@@ -95,12 +121,12 @@ export function DashboardTab({
       <ErrorBoundary>
         <PlaybackControls
           playbackState={playbackInfo}
-          canControlPlayback={
-            isPlayerReady && !isLoading && playbackInfo !== null
-          }
-          onPlayPause={() => handlePlayPause()}
-          onSkipNext={() => handleSkipNext()}
-          onSkipPrevious={() => handleSkipPrevious()}
+          canControlPlayback={isPlayerReady && deviceId !== null}
+          isLoading={loadingAction !== null}
+          loadingAction={loadingAction}
+          onPlayPause={() => void handlePlayPause()}
+          onSkipNext={() => void handleSkipNext()}
+          onSkipPrevious={() => void handleSkipPrevious()}
         />
       </ErrorBoundary>
 
