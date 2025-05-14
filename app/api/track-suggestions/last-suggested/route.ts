@@ -1,8 +1,8 @@
 import { NextResponse } from 'next/server'
 import { PlaylistRefreshServiceImpl } from '@/services/playlistRefresh'
 
-// Server-side cache for the last suggested track
-let serverCache: {
+// Define the type that matches what the service returns
+interface LastSuggestedTrack {
   name: string
   artist: string
   album: string
@@ -11,52 +11,48 @@ let serverCache: {
   duration_ms: number
   preview_url: string | null
   genres: string[]
-} | null = null
-
-// Function to update the server cache
-export function updateServerCache(track: {
-  name: string
-  artist: string
-  album: string
-  uri: string
-  popularity: number
-  duration_ms: number
-  preview_url: string | null
-  genres: string[]
-}): void {
-  serverCache = track
 }
 
+// Server-side cache for the last suggested track
+let serverCache: LastSuggestedTrack | null = null
+
+// Next.js route handlers must be async to return a Promise
+// eslint-disable-next-line @typescript-eslint/require-await
 export async function GET(): Promise<NextResponse> {
   try {
     // If we have a cached track, return it immediately
     if (serverCache) {
       return NextResponse.json({
+        success: true,
         track: serverCache,
-        timestamp: new Date().toISOString()
+        hasServerCache: true,
+        timestamp: Date.now()
       })
     }
 
-    // Otherwise, try to get a new track from the service
+    // Otherwise, get the track from the service
     const service = PlaylistRefreshServiceImpl.getInstance()
     const track = service.getLastSuggestedTrack()
 
-    // Update our server-side cache if we got a new track
+    // Update server cache if we got a track
     if (track) {
       serverCache = track
     }
 
-    // Return either the new track or our cached track
-    const responseTrack = track || serverCache
-
     return NextResponse.json({
-      track: responseTrack,
-      timestamp: new Date().toISOString()
+      success: true,
+      track: track ?? null,
+      hasServerCache: !!serverCache,
+      timestamp: Date.now()
     })
   } catch (error) {
-    console.error('[API Last Suggested Track] Error:', error)
+    console.error('[Last Suggested Track] Error:', error)
     return NextResponse.json(
-      { error: 'Failed to get last suggested track' },
+      {
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error',
+        timestamp: Date.now()
+      },
       { status: 500 }
     )
   }
@@ -65,13 +61,23 @@ export async function GET(): Promise<NextResponse> {
 // POST endpoint to update the server cache
 export async function POST(request: Request): Promise<NextResponse> {
   try {
-    const track = await request.json()
-    updateServerCache(track)
-    return NextResponse.json({ success: true })
+    const track = (await request.json()) as LastSuggestedTrack
+    serverCache = track
+
+    return NextResponse.json({
+      success: true,
+      track,
+      hasServerCache: true,
+      timestamp: Date.now()
+    })
   } catch (error) {
-    console.error('[API Last Suggested Track] Error updating cache:', error)
+    console.error('[Last Suggested Track] Error updating cache:', error)
     return NextResponse.json(
-      { error: 'Failed to update cache' },
+      {
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error',
+        timestamp: Date.now()
+      },
       { status: 500 }
     )
   }

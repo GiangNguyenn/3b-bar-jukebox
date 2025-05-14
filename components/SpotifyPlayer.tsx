@@ -84,7 +84,7 @@ async function globalRateLimitedApiCall<T>(
   }
 }
 
-export function SpotifyPlayer(): React.ReactElement | null {
+export function SpotifyPlayer(): JSX.Element | null {
   const { fixedPlaylistId } = useFixedPlaylist()
   const {
     error,
