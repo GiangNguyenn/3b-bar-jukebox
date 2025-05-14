@@ -65,4 +65,4 @@ export interface RecoverySystemHook {
   recoveryAttempts: number
   attemptRecovery: () => Promise<void>
   setRecoveryState: (state: RecoveryState) => void
-} 
+}

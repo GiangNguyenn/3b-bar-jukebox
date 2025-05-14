@@ -24,5 +24,6 @@ export const ERROR_MESSAGES = {
   DEVICE_VERIFICATION_FAILED: 'Device verification failed after transfer',
   INVALID_PLAYBACK_STATE: 'Invalid playback state',
   RECOVERY_VERIFICATION_FAILED: 'Recovery verification failed',
-  ALL_RECOVERY_ATTEMPTS_FAILED: 'All recovery attempts failed. Reloading page...'
-} as const 
+  ALL_RECOVERY_ATTEMPTS_FAILED:
+    'All recovery attempts failed. Reloading page...'
+} as const
