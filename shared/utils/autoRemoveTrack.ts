@@ -23,12 +23,17 @@ export async function autoRemoveTrack({
 }: AutoRemoveTrackParams): Promise<boolean> {
   if (!currentTrackId || !playbackState || !playlistTracks.length) return false
 
-  const currentTrackIndex = playlistTracks.findIndex(
-    (track) => track.track.id === currentTrackId
-  )
-  if (currentTrackIndex === -1 || currentTrackIndex < songsBetweenRepeats)
+  // If playlist is not longer than songsBetweenRepeats, don't remove anything
+  if (playlistTracks.length <= songsBetweenRepeats) {
+    console.log('[Auto Remove] Playlist not long enough to remove tracks:', {
+      playlistLength: playlistTracks.length,
+      songsBetweenRepeats,
+      timestamp: new Date().toISOString()
+    })
     return false
+  }
 
+  // Always remove the first track if playlist is longer than songsBetweenRepeats
   const trackToRemove = playlistTracks[0]
   if (!trackToRemove) {
     console.error('[Auto Remove] No tracks to remove')
@@ -44,6 +49,13 @@ export async function autoRemoveTrack({
           body: {
             tracks: [{ uri: trackToRemove.track.uri }]
           }
+        })
+        console.log('[Auto Remove] Successfully removed first track:', {
+          trackName: trackToRemove.track.name,
+          trackId: trackToRemove.track.id,
+          playlistLength: playlistTracks.length,
+          songsBetweenRepeats,
+          timestamp: new Date().toISOString()
         })
         onSuccess?.()
       },

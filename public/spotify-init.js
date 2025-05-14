@@ -6,16 +6,44 @@ window.onSpotifyWebPlaybackSDKReady = () => {
   window.dispatchEvent(new CustomEvent('spotifySDKReady'))
 }
 
-// Load the SDK script
-const script = document.createElement('script')
-script.src = 'https://sdk.scdn.co/spotify-player.js'
-script.async = true
-script.onerror = () => {
-  console.error('[SpotifyPlayer] Failed to load Spotify Web Playback SDK')
+// Add error handling for SDK loading
+window.onSpotifyWebPlaybackSDKError = (error) => {
+  console.error('[SpotifyPlayer] SDK Error:', error)
   window.dispatchEvent(
     new CustomEvent('playerError', {
-      detail: { error: { message: 'Failed to load SDK' } }
+      detail: { error: { message: 'SDK Error: ' + error } }
     })
   )
 }
-document.body.appendChild(script)
+
+// Add loading state tracking
+window.spotifySDKLoading = true
+
+// Check if SDK is already loaded
+if (window.Spotify) {
+  console.log('[SpotifyPlayer] SDK already loaded')
+  window.spotifySDKLoading = false
+  window.dispatchEvent(new CustomEvent('spotifySDKReady'))
+} else {
+  console.log('[SpotifyPlayer] Loading SDK...')
+  // Load the SDK script
+  const script = document.createElement('script')
+  script.src = 'https://sdk.scdn.co/spotify-player.js'
+  script.async = true
+  script.onerror = () => {
+    console.error('[SpotifyPlayer] Failed to load Spotify Web Playback SDK')
+    window.spotifySDKLoading = false
+    window.dispatchEvent(
+      new CustomEvent('playerError', {
+        detail: { error: { message: 'Failed to load SDK' } }
+      })
+    )
+  }
+
+  script.onload = () => {
+    console.log('[SpotifyPlayer] SDK script loaded')
+    window.spotifySDKLoading = false
+  }
+
+  document.body.appendChild(script)
+}

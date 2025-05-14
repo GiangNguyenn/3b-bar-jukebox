@@ -1,6 +1,7 @@
 import { sendApiRequest } from '@/shared/api'
 import { RecoveryState, RecoveryStatus } from '@/shared/types/recovery'
 import { RECOVERY_STEPS } from '@/shared/constants/recovery'
+import { SpotifyPlaybackState } from '@/shared/types'
 
 export function createRecoveryState(): RecoveryState {
   return {
@@ -50,10 +51,18 @@ export function cleanupRecoveryResources(): void {
 
 export async function cleanupPlaybackState(): Promise<void> {
   try {
-    await sendApiRequest({
-      path: 'me/player/pause',
-      method: 'PUT'
+    // Only pause if we're actually playing
+    const state = await sendApiRequest<SpotifyPlaybackState>({
+      path: 'me/player',
+      method: 'GET'
     })
+
+    if (state?.is_playing) {
+      await sendApiRequest({
+        path: 'me/player/pause',
+        method: 'PUT'
+      })
+    }
   } catch (error) {
     console.error('[Cleanup] Failed to pause playback:', error)
   }

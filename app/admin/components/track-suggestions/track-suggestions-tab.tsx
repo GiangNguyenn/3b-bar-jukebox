@@ -42,13 +42,21 @@ export function TrackSuggestionsTab({
   const lastTrackUriRef = useRef<string | null>(null)
   const isInitialMount = useRef(true)
   const lastFetchTimeRef = useRef<number>(0)
+  const prevStateRef = useRef(state)
 
-  // Call onStateChange after initial mount
+  // Call onStateChange only when state actually changes
   useEffect(() => {
-    if (!isInitialMount.current) {
-      onStateChange(state)
+    if (isInitialMount.current) {
+      isInitialMount.current = false
+      prevStateRef.current = state
+      return
     }
-    isInitialMount.current = false
+
+    // Only call onStateChange if state has actually changed
+    if (JSON.stringify(prevStateRef.current) !== JSON.stringify(state)) {
+      onStateChange(state)
+      prevStateRef.current = state
+    }
   }, [state, onStateChange])
 
   const fetchLastSuggestedTrack = useCallback(async (): Promise<void> => {

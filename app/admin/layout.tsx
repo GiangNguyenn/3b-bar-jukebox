@@ -14,6 +14,10 @@ export default function AdminLayout({
   return (
     <div className='min-h-screen bg-black'>
       <Script src='/spotify-init.js' strategy='beforeInteractive' />
+      <Script
+        src='https://sdk.scdn.co/spotify-player.js'
+        strategy='beforeInteractive'
+      />
       <main className='container mx-auto px-4 py-8'>{children}</main>
     </div>
   )
