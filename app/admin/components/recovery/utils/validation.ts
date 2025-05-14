@@ -3,7 +3,8 @@ import { ValidationResult } from '@/shared/types/recovery'
 
 export function validateSpotifyUri(uri: string): boolean {
   if (!uri) return false
-  const spotifyUriPattern = /^spotify:(track|playlist|album|artist):[a-zA-Z0-9]+$/
+  const spotifyUriPattern =
+    /^spotify:(track|playlist|album|artist):[a-zA-Z0-9]+$/
   return spotifyUriPattern.test(uri)
 }
 
@@ -13,7 +14,9 @@ export function validatePlaylistId(playlistId: string | null): boolean {
   return playlistIdPattern.test(playlistId)
 }
 
-export function validatePlaybackState(state: SpotifyPlaybackState | null): ValidationResult {
+export function validatePlaybackState(
+  state: SpotifyPlaybackState | null
+): ValidationResult {
   const result: ValidationResult = {
     isValid: true,
     errors: [],
@@ -48,7 +51,10 @@ export function validatePlaybackState(state: SpotifyPlaybackState | null): Valid
   } else if (state.progress_ms < 0) {
     result.isValid = false
     result.errors.push('Negative progress value')
-  } else if (state.item?.duration_ms && state.progress_ms > state.item.duration_ms) {
+  } else if (
+    state.item?.duration_ms &&
+    state.progress_ms > state.item.duration_ms
+  ) {
     result.isValid = false
     result.errors.push('Progress exceeds track duration')
   }
@@ -68,7 +74,10 @@ export function validatePlaybackState(state: SpotifyPlaybackState | null): Valid
   return result
 }
 
-export function validateDeviceState(deviceId: string | null, state: SpotifyPlaybackState | null): ValidationResult {
+export function validateDeviceState(
+  deviceId: string | null,
+  state: SpotifyPlaybackState | null
+): ValidationResult {
   const result: ValidationResult = {
     isValid: true,
     errors: [],
@@ -130,4 +139,4 @@ export function validatePlaybackRequest(
   }
 
   return result
-} 
+}

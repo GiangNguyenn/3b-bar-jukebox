@@ -96,7 +96,7 @@ interface _TrackSuggestionsTabProps {
   onStateChange: (state: TrackSuggestionsState) => void
 }
 
-interface PlaybackVerificationResult {
+interface _PlaybackVerificationResult {
   isSuccessful: boolean
   reason?: string
   details?: {
@@ -198,17 +198,14 @@ export default function AdminPage(): JSX.Element {
   const isReady = useSpotifyPlayer((state) => state.isReady)
   const deviceId = useSpotifyPlayer((state) => state.deviceId)
   const { fixedPlaylistId } = useFixedPlaylist()
-  const {
-    recoveryStatus,
-    recoveryState,
-    recoveryAttempts,
-    attemptRecovery,
-    setRecoveryState
-  } = useRecoverySystem(deviceId, fixedPlaylistId, (status) =>
-    setHealthStatus((prev) => ({
-      ...prev,
-      device: status.device
-    }))
+  const { recoveryStatus, recoveryAttempts } = useRecoverySystem(
+    deviceId,
+    fixedPlaylistId,
+    (status) =>
+      setHealthStatus((prev) => ({
+        ...prev,
+        device: status.device
+      }))
   )
   const wakeLock = useRef<WakeLockSentinel | null>(null)
   const deviceCheckInterval = useRef<NodeJS.Timeout | null>(null)
@@ -506,13 +503,10 @@ export default function AdminPage(): JSX.Element {
       isInitializing,
       deviceId,
       fixedPlaylistId,
-      executeWithErrorBoundary,
-      sendApiRequest,
       setHealthStatus,
       setIsLoading,
       setError,
-      setIsManualPause,
-      isLoading
+      setIsManualPause
     ]
   )
 
@@ -584,19 +578,24 @@ export default function AdminPage(): JSX.Element {
     // Initial setup
     setMounted(true)
 
+    // Store ref values in variables
+    const currentRecoveryTimeout = recoveryTimeout.current
+    const currentInitializationCheckInterval =
+      initializationCheckInterval.current
+
     // Cleanup function
     return () => {
       if (deviceCheckInterval.current) {
         clearInterval(deviceCheckInterval.current)
       }
-      if (recoveryTimeout.current) {
-        clearTimeout(recoveryTimeout.current)
+      if (currentRecoveryTimeout) {
+        clearTimeout(currentRecoveryTimeout)
       }
       if (initializationTimeout.current) {
         clearTimeout(initializationTimeout.current)
       }
-      if (initializationCheckInterval.current) {
-        clearInterval(initializationCheckInterval.current)
+      if (currentInitializationCheckInterval) {
+        clearInterval(currentInitializationCheckInterval)
       }
     }
   }, [])

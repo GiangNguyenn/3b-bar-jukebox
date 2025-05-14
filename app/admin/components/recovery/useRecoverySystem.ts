@@ -1097,7 +1097,13 @@ export function useRecoverySystem(
         }, delay)
       }
     }
-  }, [recoveryAttempts, fixedPlaylistId, deviceId, recoveryState, onDeviceStatusChange])
+  }, [
+    recoveryAttempts,
+    fixedPlaylistId,
+    deviceId,
+    recoveryState,
+    onDeviceStatusChange
+  ])
 
   return {
     recoveryStatus,

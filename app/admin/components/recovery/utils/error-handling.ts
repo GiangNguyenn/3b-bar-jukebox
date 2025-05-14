@@ -1,7 +1,10 @@
 import { sendApiRequest } from '@/shared/api'
 import { ErrorRecoveryState, ErrorType } from '@/shared/types/recovery'
 import { RECOVERY_COOLDOWN, ERROR_MESSAGES } from '@/shared/constants/recovery'
-import { transferPlaybackToDevice, verifyDeviceTransfer } from './device-management'
+import {
+  transferPlaybackToDevice,
+  verifyDeviceTransfer
+} from './device-management'
 
 const errorRecoveryState: ErrorRecoveryState = {
   lastError: null,
@@ -13,13 +16,21 @@ const errorRecoveryState: ErrorRecoveryState = {
 export function determineErrorType(error: unknown): ErrorType {
   if (error instanceof Error) {
     const message = error.message.toLowerCase()
-    if (message.includes('token') || message.includes('auth') || message.includes('unauthorized')) {
+    if (
+      message.includes('token') ||
+      message.includes('auth') ||
+      message.includes('unauthorized')
+    ) {
       return 'auth'
     }
     if (message.includes('device') || message.includes('transfer')) {
       return 'device'
     }
-    if (message.includes('connection') || message.includes('network') || message.includes('timeout')) {
+    if (
+      message.includes('connection') ||
+      message.includes('network') ||
+      message.includes('timeout')
+    ) {
       return 'connection'
     }
   }
@@ -43,7 +54,8 @@ export async function handleErrorRecovery(
   }
 
   errorRecoveryState.recoveryInProgress = true
-  errorRecoveryState.lastError = error instanceof Error ? error : new Error(String(error))
+  errorRecoveryState.lastError =
+    error instanceof Error ? error : new Error(String(error))
   errorRecoveryState.errorCount++
   errorRecoveryState.lastRecoveryAttempt = now
 
@@ -104,4 +116,4 @@ export async function handleErrorRecovery(
   } finally {
     errorRecoveryState.recoveryInProgress = false
   }
-} 
+}
