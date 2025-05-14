@@ -8,8 +8,6 @@ import {
   DeviceVerificationState,
   ErrorRecoveryState,
   ValidationResult,
-  RecoveryStep,
-  ErrorType,
   RecoverySystemHook
 } from '@/shared/types/recovery'
 import {
@@ -33,7 +31,7 @@ const deviceVerificationState: DeviceVerificationState = {
   verificationLock: false
 }
 
-async function acquireVerificationLock(): Promise<boolean> {
+function acquireVerificationLock(): boolean {
   if (deviceVerificationState.verificationLock) {
     return false
   }
@@ -54,7 +52,9 @@ const errorRecoveryState: ErrorRecoveryState = {
 }
 
 // Add state validation helper functions
-const validatePlaybackState = (state: SpotifyPlaybackState | null): ValidationResult => {
+const validatePlaybackState = (
+  state: SpotifyPlaybackState | null
+): ValidationResult => {
   const result: ValidationResult = {
     isValid: true,
     errors: [],
@@ -89,7 +89,10 @@ const validatePlaybackState = (state: SpotifyPlaybackState | null): ValidationRe
   } else if (state.progress_ms < 0) {
     result.isValid = false
     result.errors.push('Negative progress value')
-  } else if (state.item?.duration_ms && state.progress_ms > state.item.duration_ms) {
+  } else if (
+    state.item?.duration_ms &&
+    state.progress_ms > state.item.duration_ms
+  ) {
     result.isValid = false
     result.errors.push('Progress exceeds track duration')
   }
@@ -109,7 +112,10 @@ const validatePlaybackState = (state: SpotifyPlaybackState | null): ValidationRe
   return result
 }
 
-const validateDeviceState = (deviceId: string | null, state: SpotifyPlaybackState | null): ValidationResult => {
+const validateDeviceState = (
+  deviceId: string | null,
+  state: SpotifyPlaybackState | null
+): ValidationResult => {
   const result: ValidationResult = {
     isValid: true,
     errors: [],
@@ -176,7 +182,8 @@ const validatePlaybackRequest = (
 // Add validation functions
 function validateSpotifyUri(uri: string): boolean {
   if (!uri) return false
-  const spotifyUriPattern = /^spotify:(track|playlist|album|artist):[a-zA-Z0-9]+$/
+  const spotifyUriPattern =
+    /^spotify:(track|playlist|album|artist):[a-zA-Z0-9]+$/
   return spotifyUriPattern.test(uri)
 }
 
@@ -200,13 +207,14 @@ async function verifyDeviceTransfer(
 
   // Check if we've verified recently
   const now = Date.now()
-  if (now - deviceVerificationState.lastVerification < VERIFICATION_TIMEOUT) { // 2 seconds
+  if (now - deviceVerificationState.lastVerification < VERIFICATION_TIMEOUT) {
+    // 2 seconds
     console.log('[Device Verification] Verified recently, skipping')
     return true
   }
 
   // Try to acquire lock
-  const hasLock = await acquireVerificationLock()
+  const hasLock = acquireVerificationLock()
   if (!hasLock) {
     console.log('[Device Verification] Could not acquire lock, skipping')
     return false
@@ -228,12 +236,19 @@ async function verifyDeviceTransfer(
         }
 
         if (attempt < maxAttempts - 1) {
-          await new Promise(resolve => setTimeout(resolve, delayBetweenAttempts))
+          await new Promise((resolve) =>
+            setTimeout(resolve, delayBetweenAttempts)
+          )
         }
       } catch (error) {
-        console.error(`[Device Verification] Attempt ${attempt + 1} failed:`, error)
+        console.error(
+          `[Device Verification] Attempt ${attempt + 1} failed:`,
+          error
+        )
         if (attempt < maxAttempts - 1) {
-          await new Promise(resolve => setTimeout(resolve, delayBetweenAttempts))
+          await new Promise((resolve) =>
+            setTimeout(resolve, delayBetweenAttempts)
+          )
         }
       }
     }
@@ -250,7 +265,7 @@ async function transferPlaybackToDevice(
   delayBetweenAttempts: number = 1000
 ): Promise<boolean> {
   // Try to acquire lock
-  const hasLock = await acquireVerificationLock()
+  const hasLock = acquireVerificationLock()
   if (!hasLock) {
     console.log('[Device Transfer] Could not acquire lock, skipping')
     return false
@@ -265,7 +280,10 @@ async function transferPlaybackToDevice(
           method: 'GET'
         })
 
-        if (currentState?.device?.id === deviceId && currentState.device.is_active) {
+        if (
+          currentState?.device?.id === deviceId &&
+          currentState.device.is_active
+        ) {
           console.log('[Device Transfer] Device already active')
           return true
         }
@@ -281,7 +299,9 @@ async function transferPlaybackToDevice(
         })
 
         // Wait for transfer to take effect
-        await new Promise(resolve => setTimeout(resolve, delayBetweenAttempts))
+        await new Promise((resolve) =>
+          setTimeout(resolve, delayBetweenAttempts)
+        )
 
         // Verify transfer
         const isSuccessful = await verifyDeviceTransfer(deviceId)
@@ -291,13 +311,19 @@ async function transferPlaybackToDevice(
         }
 
         if (attempt < maxAttempts - 1) {
-          console.log(`[Device Transfer] Attempt ${attempt + 1} failed, retrying...`)
-          await new Promise(resolve => setTimeout(resolve, delayBetweenAttempts))
+          console.log(
+            `[Device Transfer] Attempt ${attempt + 1} failed, retrying...`
+          )
+          await new Promise((resolve) =>
+            setTimeout(resolve, delayBetweenAttempts)
+          )
         }
       } catch (error) {
         console.error(`[Device Transfer] Attempt ${attempt + 1} failed:`, error)
         if (attempt < maxAttempts - 1) {
-          await new Promise(resolve => setTimeout(resolve, delayBetweenAttempts))
+          await new Promise((resolve) =>
+            setTimeout(resolve, delayBetweenAttempts)
+          )
         }
       }
     }
@@ -378,13 +404,15 @@ async function handleErrorRecovery(
   }
 
   const now = Date.now()
-  if (now - errorRecoveryState.lastRecoveryAttempt < RECOVERY_COOLDOWN) { // 5 seconds
+  if (now - errorRecoveryState.lastRecoveryAttempt < RECOVERY_COOLDOWN) {
+    // 5 seconds
     console.log('[Error Recovery] Recovery attempted recently, skipping')
     return false
   }
 
   errorRecoveryState.recoveryInProgress = true
-  errorRecoveryState.lastError = error instanceof Error ? error : new Error(String(error))
+  errorRecoveryState.lastError =
+    error instanceof Error ? error : new Error(String(error))
   errorRecoveryState.errorCount++
   errorRecoveryState.lastRecoveryAttempt = now
 
@@ -471,15 +499,25 @@ const verifyPlaybackResume = async (
   // Validate initial state
   const stateValidation = validatePlaybackState(initialState)
   if (!stateValidation.isValid) {
-    console.error('[Playback Verification] Invalid initial state:', stateValidation.errors)
-    throw new Error(`Invalid playback state: ${stateValidation.errors.join(', ')}`)
+    console.error(
+      '[Playback Verification] Invalid initial state:',
+      stateValidation.errors
+    )
+    throw new Error(
+      `Invalid playback state: ${stateValidation.errors.join(', ')}`
+    )
   }
 
   // Validate device state
   const deviceValidation = validateDeviceState(currentDeviceId, initialState)
   if (!deviceValidation.isValid) {
-    console.error('[Playback Verification] Invalid device state:', deviceValidation.errors)
-    throw new Error(`Invalid device state: ${deviceValidation.errors.join(', ')}`)
+    console.error(
+      '[Playback Verification] Invalid device state:',
+      deviceValidation.errors
+    )
+    throw new Error(
+      `Invalid device state: ${deviceValidation.errors.join(', ')}`
+    )
   }
 
   console.log('[Playback Verification] Initial state:', {
@@ -497,8 +535,8 @@ const verifyPlaybackResume = async (
   let progressStalled = false
 
   while (Date.now() - startTime < maxVerificationTime) {
-    await new Promise(resolve => setTimeout(resolve, checkInterval))
-    
+    await new Promise((resolve) => setTimeout(resolve, checkInterval))
+
     currentState = await sendApiRequest<SpotifyPlaybackState>({
       path: 'me/player',
       method: 'GET'
@@ -507,19 +545,25 @@ const verifyPlaybackResume = async (
     // Validate current state
     const currentStateValidation = validatePlaybackState(currentState)
     if (!currentStateValidation.isValid) {
-      console.error('[Playback Verification] Invalid current state:', currentStateValidation.errors)
-      throw new Error(`Invalid playback state: ${currentStateValidation.errors.join(', ')}`)
+      console.error(
+        '[Playback Verification] Invalid current state:',
+        currentStateValidation.errors
+      )
+      throw new Error(
+        `Invalid playback state: ${currentStateValidation.errors.join(', ')}`
+      )
     }
 
     const currentProgress = currentState.progress_ms ?? 0
-    
+
     if (currentProgress > lastProgress) {
       lastProgress = currentProgress
       progressStalled = false
     } else {
-      const isNearEnd = currentState.item?.duration_ms && 
-        (currentState.item.duration_ms - currentProgress) < 5000
-      
+      const isNearEnd =
+        currentState.item?.duration_ms &&
+        currentState.item.duration_ms - currentProgress < 5000
+
       if (!isNearEnd) {
         progressStalled = true
       }
@@ -542,10 +586,13 @@ const verifyPlaybackResume = async (
   }
 
   const verificationResult: PlaybackVerificationResult = {
-    isSuccessful: !progressStalled && currentState.device?.id === currentDeviceId,
-    reason: progressStalled ? 'Playback progress stalled' : 
-           currentState.device?.id !== currentDeviceId ? 'Device mismatch' :
-           'Playback resumed successfully',
+    isSuccessful:
+      !progressStalled && currentState.device?.id === currentDeviceId,
+    reason: progressStalled
+      ? 'Playback progress stalled'
+      : currentState.device?.id !== currentDeviceId
+        ? 'Device mismatch'
+        : 'Playback resumed successfully',
     details: {
       deviceMatch: currentState.device?.id === currentDeviceId,
       isPlaying: currentState.is_playing,
@@ -560,16 +607,26 @@ const verifyPlaybackResume = async (
   return verificationResult
 }
 
-function determineErrorType(error: unknown): 'auth' | 'playback' | 'connection' | 'device' {
+function determineErrorType(
+  error: unknown
+): 'auth' | 'playback' | 'connection' | 'device' {
   if (error instanceof Error) {
     const message = error.message.toLowerCase()
-    if (message.includes('token') || message.includes('auth') || message.includes('unauthorized')) {
+    if (
+      message.includes('token') ||
+      message.includes('auth') ||
+      message.includes('unauthorized')
+    ) {
       return 'auth'
     }
     if (message.includes('device') || message.includes('transfer')) {
       return 'device'
     }
-    if (message.includes('connection') || message.includes('network') || message.includes('timeout')) {
+    if (
+      message.includes('connection') ||
+      message.includes('network') ||
+      message.includes('timeout')
+    ) {
       return 'connection'
     }
   }
@@ -579,11 +636,15 @@ function determineErrorType(error: unknown): 'auth' | 'playback' | 'connection' 
 export function useRecoverySystem(
   deviceId: string | null,
   fixedPlaylistId: string | null,
-  onDeviceStatusChange: (status: HealthStatus) => void
+  onDeviceStatusChange: (status: Pick<HealthStatus, 'device'>) => void
 ): RecoverySystemHook {
   const [recoveryAttempts, setRecoveryAttempts] = useState(0)
-  const [recoveryStatus, setRecoveryStatus] = useState<RecoveryStatus>(createRecoveryStatus())
-  const [recoveryState, setRecoveryState] = useState<RecoveryState>(createRecoveryState())
+  const [recoveryStatus, setRecoveryStatus] = useState<RecoveryStatus>(
+    createRecoveryStatus()
+  )
+  const [recoveryState, setRecoveryState] = useState<RecoveryState>(
+    createRecoveryState()
+  )
   const recoveryTimeout = useRef<NodeJS.Timeout | null>(null)
   const isMounted = useRef(true)
   const lastStateUpdate = useRef<number>(Date.now())
@@ -591,7 +652,8 @@ export function useRecoverySystem(
   // Add state update effect
   useEffect(() => {
     const now = Date.now()
-    if (now - lastStateUpdate.current > STATE_UPDATE_TIMEOUT) { // 5 seconds
+    if (now - lastStateUpdate.current > STATE_UPDATE_TIMEOUT) {
+      // 5 seconds
       console.log('[Recovery] State update timeout, resetting state')
       setRecoveryStatus(createRecoveryStatus())
       setRecoveryState(createRecoveryState())
@@ -604,7 +666,7 @@ export function useRecoverySystem(
   useEffect(() => {
     const cleanup = async (): Promise<void> => {
       isMounted.current = false
-      
+
       // Clear all timeouts
       if (recoveryTimeout.current) {
         clearTimeout(recoveryTimeout.current)
@@ -623,7 +685,7 @@ export function useRecoverySystem(
       await cleanupPlaybackState()
     }
 
-    return () => {
+    return (): void => {
       void cleanup()
     }
   }, [])
@@ -632,7 +694,9 @@ export function useRecoverySystem(
     if (!isMounted.current) return
 
     if (recoveryAttempts >= MAX_RECOVERY_ATTEMPTS) {
-      console.error('[Recovery] Max attempts reached, attempting final recovery...')
+      console.error(
+        '[Recovery] Max attempts reached, attempting final recovery...'
+      )
       setRecoveryStatus({
         isRecovering: true,
         message: 'Attempting final recovery with stored state...',
@@ -643,9 +707,16 @@ export function useRecoverySystem(
 
       // Try one last recovery with stored state
       const lastState = recoveryState.lastSuccessfulPlayback
-      if (lastState && Date.now() - lastState.timestamp < STORED_STATE_MAX_AGE) { // 5 minutes
+      if (
+        lastState &&
+        Date.now() - lastState.timestamp < STORED_STATE_MAX_AGE
+      ) {
+        // 5 minutes
         try {
-          console.log('[Recovery] Attempting recovery with stored state:', lastState)
+          console.log(
+            '[Recovery] Attempting recovery with stored state:',
+            lastState
+          )
           await sendApiRequest({
             path: 'me/player/play',
             method: 'PUT',
@@ -655,12 +726,14 @@ export function useRecoverySystem(
               offset: { uri: lastState.trackUri }
             }
           })
-          
+
           // Update state atomically
-          setRecoveryState(prev => updateRecoveryState(prev, {
-            consecutiveFailures: 0,
-            lastErrorType: null
-          }))
+          setRecoveryState((prev) =>
+            updateRecoveryState(prev, {
+              consecutiveFailures: 0,
+              lastErrorType: null
+            })
+          )
           setRecoveryAttempts(0)
           setRecoveryStatus({
             isRecovering: false,
@@ -669,11 +742,18 @@ export function useRecoverySystem(
             currentStep: RECOVERY_STEPS.length,
             totalSteps: RECOVERY_STEPS.length
           })
+
+          // Update device status
+          onDeviceStatusChange({ device: 'healthy' })
           return
         } catch (error) {
           console.error('[Recovery] Final recovery attempt failed:', error)
           // Try error recovery before giving up
-          const recoverySuccessful = await handleErrorRecovery(error, deviceId, fixedPlaylistId)
+          const recoverySuccessful = await handleErrorRecovery(
+            error,
+            deviceId,
+            fixedPlaylistId
+          )
           if (!recoverySuccessful) {
             // If we get here, reload the page
             setRecoveryStatus({
@@ -683,6 +763,8 @@ export function useRecoverySystem(
               currentStep: 0,
               totalSteps: RECOVERY_STEPS.length
             })
+            // Update device status before reload
+            onDeviceStatusChange({ device: 'disconnected' })
             setTimeout(() => {
               window.location.reload()
             }, 2000)
@@ -709,11 +791,15 @@ export function useRecoverySystem(
       })
 
       let currentProgress = 0
-      const updateProgress = (step: number, success: boolean, error?: unknown): void => {
+      const updateProgress = (
+        step: number,
+        success: boolean,
+        error?: unknown
+      ): void => {
         if (!isMounted.current) return
 
         currentProgress += RECOVERY_STEPS[step].weight * 100
-        setRecoveryStatus(prev => ({
+        setRecoveryStatus((prev) => ({
           ...prev,
           message: `${RECOVERY_STEPS[step].message} ${success ? '✓' : '✗'}`,
           progress: Math.min(currentProgress, 100),
@@ -722,10 +808,12 @@ export function useRecoverySystem(
 
         if (!success && error) {
           const errorType = determineErrorType(error)
-          setRecoveryState(prev => updateRecoveryState(prev, {
-            consecutiveFailures: prev.consecutiveFailures + 1,
-            lastErrorType: errorType
-          }))
+          setRecoveryState((prev) =>
+            updateRecoveryState(prev, {
+              consecutiveFailures: prev.consecutiveFailures + 1,
+              lastErrorType: errorType
+            })
+          )
         }
       }
 
@@ -739,7 +827,7 @@ export function useRecoverySystem(
         try {
           cleanupRecoveryResources()
           await window.refreshSpotifyPlayer()
-          
+
           // Validate state after refresh
           const state = await sendApiRequest<SpotifyPlaybackState>({
             path: 'me/player',
@@ -747,9 +835,11 @@ export function useRecoverySystem(
           })
           const stateValidation = validatePlaybackState(state)
           if (!stateValidation.isValid) {
-            throw new Error(`Invalid state after refresh: ${stateValidation.errors.join(', ')}`)
+            throw new Error(
+              `Invalid state after refresh: ${stateValidation.errors.join(', ')}`
+            )
           }
-          
+
           updateProgress(0, true)
         } catch (error) {
           console.error('[Recovery] Failed to refresh player state:', error)
@@ -772,6 +862,8 @@ export function useRecoverySystem(
             const transferSuccessful = await transferPlaybackToDevice(deviceId)
             if (transferSuccessful) {
               updateProgress(1, true)
+              // Update device status
+              onDeviceStatusChange({ device: 'healthy' })
             } else {
               throw new Error(ERROR_MESSAGES.DEVICE_TRANSFER_FAILED)
             }
@@ -783,11 +875,15 @@ export function useRecoverySystem(
           const isActive = await verifyDeviceTransfer(deviceId)
           if (isActive) {
             updateProgress(1, true)
+            // Update device status
+            onDeviceStatusChange({ device: 'healthy' })
           } else {
             // Device ID matches but not active, try transfer
             const transferSuccessful = await transferPlaybackToDevice(deviceId)
             if (transferSuccessful) {
               updateProgress(1, true)
+              // Update device status
+              onDeviceStatusChange({ device: 'healthy' })
             } else {
               throw new Error(ERROR_MESSAGES.RECOVERY_VERIFICATION_FAILED)
             }
@@ -796,6 +892,8 @@ export function useRecoverySystem(
       } catch (error) {
         console.error('[Recovery] Failed to ensure active device:', error)
         updateProgress(1, false, error)
+        // Update device status
+        onDeviceStatusChange({ device: 'unresponsive' })
       }
 
       // Step 3: Reconnect player
@@ -840,7 +938,9 @@ export function useRecoverySystem(
             const playbackRequest = {
               context_uri: `spotify:playlist:${fixedPlaylistId}`,
               position_ms: Math.max(0, currentState.progress_ms ?? 0),
-              offset: currentState?.item?.uri ? { uri: currentState.item.uri } : undefined
+              offset: currentState?.item?.uri
+                ? { uri: currentState.item.uri }
+                : undefined
             }
 
             // Validate the request before sending
@@ -851,7 +951,9 @@ export function useRecoverySystem(
             )
 
             if (!requestValidation.isValid) {
-              throw new Error(`Invalid playback request: ${requestValidation.errors.join(', ')}`)
+              throw new Error(
+                `Invalid playback request: ${requestValidation.errors.join(', ')}`
+              )
             }
 
             await sendApiRequest({
@@ -902,7 +1004,9 @@ export function useRecoverySystem(
               } else {
                 throw new Error('Invalid playlist ID during retry')
               }
-            } else if (verificationResult.details?.progressAdvancing === false) {
+            } else if (
+              verificationResult.details?.progressAdvancing === false
+            ) {
               console.log('[Recovery] Retrying with next track')
               await sendApiRequest({
                 path: 'me/player/next',
@@ -935,10 +1039,12 @@ export function useRecoverySystem(
       }
 
       // Update state atomically on success
-      setRecoveryState(prev => updateRecoveryState(prev, {
-        consecutiveFailures: 0,
-        lastErrorType: null
-      }))
+      setRecoveryState((prev) =>
+        updateRecoveryState(prev, {
+          consecutiveFailures: 0,
+          lastErrorType: null
+        })
+      )
       setRecoveryAttempts(0)
       setRecoveryStatus({
         isRecovering: false,
@@ -958,26 +1064,32 @@ export function useRecoverySystem(
       if (!isMounted.current) return
 
       console.error('[Recovery] Failed:', error)
-      setRecoveryAttempts(prev => prev + 1)
+      setRecoveryAttempts((prev) => prev + 1)
       const errorType = determineErrorType(error)
-      setRecoveryState(prev => updateRecoveryState(prev, {
-        consecutiveFailures: prev.consecutiveFailures + 1,
-        lastErrorType: errorType
-      }))
+      setRecoveryState((prev) =>
+        updateRecoveryState(prev, {
+          consecutiveFailures: prev.consecutiveFailures + 1,
+          lastErrorType: errorType
+        })
+      )
 
       // Try error recovery before retrying
-      const recoverySuccessful = await handleErrorRecovery(error, deviceId, fixedPlaylistId)
+      const recoverySuccessful = await handleErrorRecovery(
+        error,
+        deviceId,
+        fixedPlaylistId
+      )
       if (!recoverySuccessful) {
         // Cleanup on error
         cleanupRecoveryResources()
         await cleanupPlaybackState()
 
         const delay = BASE_DELAY * Math.pow(2, recoveryAttempts)
-        
+
         if (recoveryTimeout.current) {
           clearTimeout(recoveryTimeout.current)
         }
-        
+
         recoveryTimeout.current = setTimeout(() => {
           if (isMounted.current) {
             void attemptRecovery()
@@ -985,22 +1097,16 @@ export function useRecoverySystem(
         }, delay)
       }
     }
-  }, [
-    recoveryAttempts,
-    fixedPlaylistId,
-    deviceId,
-    recoveryState,
-    onDeviceStatusChange
-  ])
+  }, [recoveryAttempts, fixedPlaylistId, deviceId, recoveryState, onDeviceStatusChange])
 
   return {
     recoveryStatus,
     recoveryState,
     recoveryAttempts,
     attemptRecovery,
-    setRecoveryState: (newState: RecoveryState) => {
+    setRecoveryState: (newState: RecoveryState): void => {
       if (isMounted.current) {
-        setRecoveryState(prev => updateRecoveryState(prev, newState))
+        setRecoveryState((prev) => updateRecoveryState(prev, newState))
       }
     }
   }
