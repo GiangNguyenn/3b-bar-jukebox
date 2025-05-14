@@ -21,6 +21,7 @@ import { useRecoverySystem } from './components/recovery/useRecoverySystem'
 import { RecoveryStatus } from '@/components/ui/recovery-status'
 import { HealthStatus } from '@/shared/types'
 import { executeWithErrorBoundary } from '@/shared/utils/errorBoundary'
+import { ApiError } from '@/shared/api'
 
 declare global {
   interface Window {
@@ -38,9 +39,12 @@ const _DEVICE_CHECK_INTERVAL = {
   unknown: 5000 // 5 seconds for initial checks
 }
 
-// Add initialization constants
-const INITIALIZATION_TIMEOUT = 15000 // 15 seconds max
-const INITIALIZATION_CHECK_INTERVAL = 500 // Check every 500ms
+// Update initialization constants
+const INITIALIZATION_TIMEOUT = 30000 // 30 seconds max
+const INITIALIZATION_CHECK_INTERVAL = 5000 // Check every 5 seconds
+const INITIALIZATION_MAX_ATTEMPTS = 6 // Maximum number of initialization attempts
+const INITIALIZATION_RATE_LIMIT_DELAY = 3000 // 3 seconds delay after rate limit
+const SDK_READY_DELAY = 2000 // 2 seconds delay after SDK ready
 
 interface _RecoveryState {
   lastSuccessfulPlayback: {
@@ -96,7 +100,7 @@ interface _TrackSuggestionsTabProps {
   onStateChange: (state: TrackSuggestionsState) => void
 }
 
-interface PlaybackVerificationResult {
+interface _PlaybackVerificationResult {
   isSuccessful: boolean
   reason?: string
   details?: {
@@ -160,15 +164,6 @@ async function verifyPlaybackProgress(
         newState.item.duration_ms - currentProgress < 5000) ||
       timeSinceLastCheck < maxStallTime
 
-    console.log('[Playback Verification] Progress check:', {
-      currentProgress,
-      newProgress,
-      progressChanged,
-      timeSinceLastCheck,
-      isActuallyPlaying,
-      timestamp: new Date().toISOString()
-    })
-
     return {
       isActuallyPlaying,
       progress: newProgress
@@ -198,17 +193,14 @@ export default function AdminPage(): JSX.Element {
   const isReady = useSpotifyPlayer((state) => state.isReady)
   const deviceId = useSpotifyPlayer((state) => state.deviceId)
   const { fixedPlaylistId } = useFixedPlaylist()
-  const {
-    recoveryStatus,
-    recoveryState,
-    recoveryAttempts,
-    attemptRecovery,
-    setRecoveryState
-  } = useRecoverySystem(deviceId, fixedPlaylistId, (status) =>
-    setHealthStatus((prev) => ({
-      ...prev,
-      device: status.device
-    }))
+  const { recoveryStatus, recoveryAttempts } = useRecoverySystem(
+    deviceId,
+    fixedPlaylistId,
+    (status) =>
+      setHealthStatus((prev) => ({
+        ...prev,
+        device: status.device
+      }))
   )
   const wakeLock = useRef<WakeLockSentinel | null>(null)
   const deviceCheckInterval = useRef<NodeJS.Timeout | null>(null)
@@ -506,13 +498,10 @@ export default function AdminPage(): JSX.Element {
       isInitializing,
       deviceId,
       fixedPlaylistId,
-      executeWithErrorBoundary,
-      sendApiRequest,
       setHealthStatus,
       setIsLoading,
       setError,
-      setIsManualPause,
-      isLoading
+      setIsManualPause
     ]
   )
 
@@ -584,19 +573,24 @@ export default function AdminPage(): JSX.Element {
     // Initial setup
     setMounted(true)
 
+    // Store ref values in variables
+    const currentRecoveryTimeout = recoveryTimeout.current
+    const currentInitializationCheckInterval =
+      initializationCheckInterval.current
+
     // Cleanup function
     return () => {
       if (deviceCheckInterval.current) {
         clearInterval(deviceCheckInterval.current)
       }
-      if (recoveryTimeout.current) {
-        clearTimeout(recoveryTimeout.current)
+      if (currentRecoveryTimeout) {
+        clearTimeout(currentRecoveryTimeout)
       }
       if (initializationTimeout.current) {
         clearTimeout(initializationTimeout.current)
       }
-      if (initializationCheckInterval.current) {
-        clearInterval(initializationCheckInterval.current)
+      if (currentInitializationCheckInterval) {
+        clearInterval(currentInitializationCheckInterval)
       }
     }
   }, [])
@@ -626,7 +620,260 @@ export default function AdminPage(): JSX.Element {
   // Add a new state for device check status
   const [isDeviceCheckComplete, setIsDeviceCheckComplete] = useState(false)
 
-  // Update device check to set completion status
+  // Add initialization state tracking
+  const initializationState = useRef({
+    isComplete: false,
+    lastAttempt: 0,
+    consecutiveRateLimits: 0,
+    maxConsecutiveRateLimits: 3,
+    sdkReadyCount: 0,
+    requiredSdkReadyCount: 1 // Reduced to 1 since we're getting ready events from the player
+  }).current
+
+  // Update initialization check
+  useEffect(() => {
+    if (!mounted || initializationState.isComplete) return
+
+    let initializationAttempts = 0
+
+    const checkInitialization = async (): Promise<void> => {
+      try {
+        // Check if we've hit too many consecutive rate limits
+        if (
+          initializationState.consecutiveRateLimits >=
+          initializationState.maxConsecutiveRateLimits
+        ) {
+          console.log(
+            '[Initialization] Too many consecutive rate limits, forcing completion'
+          )
+          setIsInitializing(false)
+          initializationState.isComplete = true
+          setIsDeviceCheckComplete(true)
+          return
+        }
+
+        // Add delay between attempts
+        const timeSinceLastAttempt =
+          Date.now() - initializationState.lastAttempt
+        if (timeSinceLastAttempt < INITIALIZATION_RATE_LIMIT_DELAY) {
+          await new Promise((resolve) =>
+            setTimeout(
+              resolve,
+              INITIALIZATION_RATE_LIMIT_DELAY - timeSinceLastAttempt
+            )
+          )
+        }
+
+        console.log('[Initialization] Checking player state:', {
+          isReady,
+          deviceId,
+          isInitializing,
+          attempt: initializationAttempts + 1,
+          sdkReadyCount: initializationState.sdkReadyCount,
+          timestamp: new Date().toISOString()
+        })
+
+        // First check if we have enough SDK ready events
+        if (
+          initializationState.sdkReadyCount <
+          initializationState.requiredSdkReadyCount
+        ) {
+          console.log('[Initialization] Waiting for SDK ready events...')
+          initializationAttempts++
+          if (initializationAttempts >= INITIALIZATION_MAX_ATTEMPTS) {
+            console.log(
+              '[Initialization] Max attempts reached, forcing initialization complete'
+            )
+            setIsInitializing(false)
+            initializationState.isComplete = true
+            setIsDeviceCheckComplete(true)
+            return
+          }
+          return
+        }
+
+        // Then check if we have a device ID
+        if (!deviceId) {
+          console.log('[Initialization] Waiting for device ID...')
+          initializationAttempts++
+          if (initializationAttempts >= INITIALIZATION_MAX_ATTEMPTS) {
+            console.log(
+              '[Initialization] Max attempts reached, forcing initialization complete'
+            )
+            setIsInitializing(false)
+            initializationState.isComplete = true
+            setIsDeviceCheckComplete(true)
+            return
+          }
+          return
+        }
+
+        // Then check if the player is ready
+        if (!isReady) {
+          console.log('[Initialization] Waiting for player to be ready...')
+          initializationAttempts++
+          if (initializationAttempts >= INITIALIZATION_MAX_ATTEMPTS) {
+            console.log(
+              '[Initialization] Max attempts reached, forcing initialization complete'
+            )
+            setIsInitializing(false)
+            initializationState.isComplete = true
+            setIsDeviceCheckComplete(true)
+            return
+          }
+          return
+        }
+
+        // Add a longer delay between API calls during initialization
+        await new Promise((resolve) =>
+          setTimeout(resolve, INITIALIZATION_RATE_LIMIT_DELAY)
+        )
+
+        try {
+          const response = await sendApiRequest<SpotifyPlaybackState>({
+            path: 'me/player',
+            method: 'GET',
+            debounceTime: 5000 // 5 second debounce
+          })
+
+          console.log('[Initialization] Player state response:', {
+            hasDevice: !!response?.device,
+            deviceId: response?.device?.id,
+            expectedDeviceId: deviceId,
+            timestamp: new Date().toISOString()
+          })
+
+          if (response?.device?.id === deviceId) {
+            console.log('[Initialization] Player initialized successfully')
+            setIsInitializing(false)
+            initializationState.isComplete = true
+            setIsDeviceCheckComplete(true)
+            if (initializationTimeout.current) {
+              clearTimeout(initializationTimeout.current)
+            }
+            setHealthStatus((prev) => ({
+              ...prev,
+              device: 'healthy',
+              playback: response.is_playing ? 'playing' : 'paused'
+            }))
+          } else {
+            console.log(
+              '[Initialization] Device mismatch, waiting for correct device...'
+            )
+            initializationAttempts++
+            if (initializationAttempts >= INITIALIZATION_MAX_ATTEMPTS) {
+              console.log(
+                '[Initialization] Max attempts reached, forcing initialization complete'
+              )
+              setIsInitializing(false)
+              initializationState.isComplete = true
+              setIsDeviceCheckComplete(true)
+            }
+          }
+        } catch (error: unknown) {
+          if (error instanceof ApiError && error.status === 429) {
+            console.log('[Initialization] Rate limited during initialization')
+            initializationState.consecutiveRateLimits++
+            initializationState.lastAttempt = Date.now()
+
+            // If we've hit too many consecutive rate limits, force completion
+            if (
+              initializationState.consecutiveRateLimits >=
+              initializationState.maxConsecutiveRateLimits
+            ) {
+              console.log(
+                '[Initialization] Too many consecutive rate limits, forcing completion'
+              )
+              setIsInitializing(false)
+              initializationState.isComplete = true
+              setIsDeviceCheckComplete(true)
+              return
+            }
+          } else {
+            console.error('[Initialization] Check failed:', error)
+            initializationAttempts++
+            if (initializationAttempts >= INITIALIZATION_MAX_ATTEMPTS) {
+              console.log(
+                '[Initialization] Max attempts reached, forcing initialization complete'
+              )
+              setIsInitializing(false)
+              initializationState.isComplete = true
+              setIsDeviceCheckComplete(true)
+            }
+          }
+        }
+      } catch (error) {
+        console.error('[Initialization] Check failed:', error)
+        initializationAttempts++
+        if (initializationAttempts >= INITIALIZATION_MAX_ATTEMPTS) {
+          console.log(
+            '[Initialization] Max attempts reached, forcing initialization complete'
+          )
+          setIsInitializing(false)
+          initializationState.isComplete = true
+          setIsDeviceCheckComplete(true)
+        }
+      }
+    }
+
+    // Set a timeout to force initialization complete after INITIALIZATION_TIMEOUT
+    initializationTimeout.current = setTimeout(() => {
+      console.log(
+        '[Initialization] Forcing initialization complete after timeout'
+      )
+      setIsInitializing(false)
+      initializationState.isComplete = true
+      setIsDeviceCheckComplete(true)
+    }, INITIALIZATION_TIMEOUT)
+
+    // Check immediately and then every INITIALIZATION_CHECK_INTERVAL
+    void checkInitialization()
+    const interval = setInterval(() => {
+      if (!initializationState.isComplete) {
+        void checkInitialization()
+      } else {
+        clearInterval(interval)
+      }
+    }, INITIALIZATION_CHECK_INTERVAL)
+
+    return () => {
+      if (initializationTimeout.current) {
+        clearTimeout(initializationTimeout.current)
+      }
+      clearInterval(interval)
+    }
+  }, [mounted, deviceId, isReady, isInitializing])
+
+  // Add SDK ready event handler
+  useEffect(() => {
+    const handleSdkReady = () => {
+      console.log('[SpotifyPlayer] SDK Ready event received')
+      initializationState.sdkReadyCount++
+
+      // Add a delay after SDK ready before proceeding
+      setTimeout(() => {
+        if (!initializationState.isComplete) {
+          console.log(
+            '[Initialization] SDK ready delay complete, continuing initialization'
+          )
+        }
+      }, SDK_READY_DELAY)
+    }
+
+    // Listen for both custom event and window property
+    window.addEventListener('spotify-sdk-ready', handleSdkReady)
+
+    // Also check if SDK is already ready
+    if (window.spotifyPlayerInstance?.connect) {
+      handleSdkReady()
+    }
+
+    return () => {
+      window.removeEventListener('spotify-sdk-ready', handleSdkReady)
+    }
+  }, [])
+
+  // Update device check to be more conservative with API calls
   useEffect(() => {
     if (!deviceId || !isReady || isInitializing) {
       console.log('[Device Check] Waiting for device initialization:', {
@@ -635,7 +882,6 @@ export default function AdminPage(): JSX.Element {
         isInitializing,
         timestamp: new Date().toISOString()
       })
-      setIsDeviceCheckComplete(false)
       return
     }
 
@@ -648,7 +894,7 @@ export default function AdminPage(): JSX.Element {
         timestamp: new Date().toISOString()
       })
       void checkDevice()
-    }, 5000) // Increased from 2000 to 5000 (5 seconds)
+    }, 15000) // Increased to 15 seconds
 
     const checkDevice = async (): Promise<void> => {
       try {
@@ -658,9 +904,13 @@ export default function AdminPage(): JSX.Element {
           timestamp: new Date().toISOString()
         })
 
+        // Add a longer delay between API calls
+        await new Promise((resolve) => setTimeout(resolve, 3000))
+
         const response = await sendApiRequest<SpotifyPlaybackState>({
           path: 'me/player',
-          method: 'GET'
+          method: 'GET',
+          debounceTime: 5000 // 5 second debounce
         })
 
         if (!response?.device?.id) {
@@ -671,11 +921,10 @@ export default function AdminPage(): JSX.Element {
               timestamp: new Date().toISOString()
             }
           )
-          // Wait a bit before attempting recovery
-          await new Promise((resolve) => setTimeout(resolve, 2000))
+          // Wait longer before attempting recovery
+          await new Promise((resolve) => setTimeout(resolve, 8000))
 
           setHealthStatus((prev) => ({ ...prev, device: 'disconnected' }))
-          // Reset playback state when device is disconnected
           setPlaybackInfo((prev) =>
             prev ? { ...prev, isPlaying: false, progressStalled: true } : null
           )
@@ -685,23 +934,28 @@ export default function AdminPage(): JSX.Element {
           // Attempt recovery if we have a deviceId
           if (deviceId) {
             try {
+              // Add a longer delay before recovery attempt
+              await new Promise((resolve) => setTimeout(resolve, 3000))
+
               await sendApiRequest({
                 path: 'me/player',
                 method: 'PUT',
                 body: {
                   device_ids: [deviceId],
                   play: false
-                }
+                },
+                debounceTime: 5000 // 5 second debounce
               })
               console.log('[Device Check] Device transfer initiated')
 
-              // Wait for transfer to take effect
-              await new Promise((resolve) => setTimeout(resolve, 2000))
+              // Wait longer for transfer to take effect
+              await new Promise((resolve) => setTimeout(resolve, 8000))
 
               // Verify transfer was successful
               const verifyState = await sendApiRequest<SpotifyPlaybackState>({
                 path: 'me/player',
-                method: 'GET'
+                method: 'GET',
+                debounceTime: 5000 // 5 second debounce
               })
 
               if (verifyState?.device?.id === deviceId) {
@@ -738,6 +992,9 @@ export default function AdminPage(): JSX.Element {
           setIsDeviceCheckComplete(false)
 
           try {
+            // Add a delay before transfer attempt
+            await new Promise((resolve) => setTimeout(resolve, 2000))
+
             await sendApiRequest({
               path: 'me/player',
               method: 'PUT',
@@ -749,7 +1006,7 @@ export default function AdminPage(): JSX.Element {
             console.log('[Device Check] Device transfer successful')
 
             // Wait for transfer to take effect
-            await new Promise((resolve) => setTimeout(resolve, 2000))
+            await new Promise((resolve) => setTimeout(resolve, 5000))
 
             // Verify transfer was successful
             const verifyState = await sendApiRequest<SpotifyPlaybackState>({
@@ -813,12 +1070,6 @@ export default function AdminPage(): JSX.Element {
             ...prev,
             playback: isActuallyPlaying ? 'playing' : 'paused'
           }))
-
-          console.log('[Device Check] Playback state verified:', {
-            isActuallyPlaying,
-            progress,
-            timestamp: new Date().toISOString()
-          })
         }
       } catch (error) {
         console.error('[Device Check] Failed:', error)
@@ -832,10 +1083,10 @@ export default function AdminPage(): JSX.Element {
       }
     }
 
-    // Instead of passing checkDevice directly, wrap it:
+    // Update device check interval to be less frequent
     deviceCheckInterval.current = setInterval(() => {
       void checkDevice()
-    }, 60000)
+    }, 120000) // Increased to 2 minutes
 
     return () => {
       clearTimeout(initialDelay)
@@ -1033,44 +1284,27 @@ export default function AdminPage(): JSX.Element {
     return `${seconds}s`
   }
 
-  // Update initialization check
+  // Add a new effect to handle Spotify player ready state
   useEffect(() => {
-    if (!mounted) return
-
-    const checkInitialization = async (): Promise<void> => {
-      try {
-        const response = await sendApiRequest<SpotifyPlaybackState>({
-          path: 'me/player',
-          method: 'GET'
-        })
-
-        if (response?.device?.id === deviceId) {
-          setIsInitializing(false)
-          if (initializationTimeout.current) {
-            clearTimeout(initializationTimeout.current)
-          }
-        }
-      } catch (error) {
-        console.error('[Initialization] Check failed:', error)
-      }
+    if (isReady) {
+      console.log('[Spotify Player] Ready state changed:', {
+        isReady,
+        deviceId,
+        timestamp: new Date().toISOString()
+      })
     }
+  }, [isReady, deviceId])
 
-    initializationTimeout.current = setTimeout(() => {
-      setIsInitializing(false)
-    }, INITIALIZATION_TIMEOUT)
-
-    // Only keep the wrapped setInterval version for checkInitialization
-    const interval = setInterval(() => {
-      void checkInitialization()
-    }, INITIALIZATION_CHECK_INTERVAL)
-
-    return () => {
-      if (initializationTimeout.current) {
-        clearTimeout(initializationTimeout.current)
-      }
-      clearInterval(interval)
+  // Add a new effect to handle device ID changes
+  useEffect(() => {
+    if (deviceId) {
+      console.log('[Spotify Player] Device ID changed:', {
+        deviceId,
+        isReady,
+        timestamp: new Date().toISOString()
+      })
     }
-  }, [mounted, deviceId])
+  }, [deviceId, isReady])
 
   const handleTrackSuggestionsRefresh = async (): Promise<void> => {
     if (!trackSuggestionsState) {
@@ -1266,12 +1500,6 @@ export default function AdminPage(): JSX.Element {
             playback: 'paused'
           }))
         }
-
-        console.log('[Playback] State verified:', {
-          isActuallyPlaying,
-          progress,
-          timestamp: new Date().toISOString()
-        })
       })()
     },
     [deviceId, trackSuggestionsState]

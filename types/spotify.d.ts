@@ -5,6 +5,7 @@ declare global {
     }
     spotifyPlayerInstance: SpotifyPlayerInstance | null
     refreshSpotifyPlayer: () => Promise<void>
+    spotifySDKLoading: boolean
   }
 }
 

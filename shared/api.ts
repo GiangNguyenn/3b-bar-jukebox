@@ -1,3 +1,23 @@
+export interface ApiErrorOptions {
+  status?: number
+  retryAfter?: number
+  headers?: Headers
+}
+
+export class ApiError extends Error {
+  public readonly status?: number
+  public readonly retryAfter?: number
+  public readonly headers?: Headers
+
+  constructor(message: string, options?: ApiErrorOptions) {
+    super(message)
+    this.name = 'ApiError'
+    this.status = options?.status
+    this.retryAfter = options?.retryAfter
+    this.headers = options?.headers
+  }
+}
+
 interface ApiProps {
   path: string
   method?: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH'
@@ -21,18 +41,6 @@ interface SpotifyErrorResponse {
   }
 }
 
-class ApiError extends Error {
-  constructor(
-    message: string,
-    public status?: number,
-    public retryAfter?: number,
-    public headers?: Headers
-  ) {
-    super(message)
-    this.name = 'ApiError'
-  }
-}
-
 const SPOTIFY_API_URL =
   process.env.NEXT_PUBLIC_SPOTIFY_BASE_URL || 'https://api.spotify.com/v1'
 
@@ -42,38 +50,140 @@ const DEFAULT_RETRY_CONFIG = {
   maxDelay: 10000
 }
 
-// Rate limiting state
-const rateLimitState = {
+interface RateLimitState {
+  requestCount: number
+  resetTime: number
+  windowSize: number
+  maxRequestsPerWindow: number
+  isRateLimited: boolean
+  retryAfter: number
+  lastRequestTime: number
+  minRequestInterval: number
+  isInitializing: boolean
+  initializationRequestCount: number
+  maxInitializationRequests: number
+  initializationTimeout: number
+}
+
+const rateLimitState: RateLimitState = {
   requestCount: 0,
   resetTime: Date.now(),
-  isRateLimited: false
+  windowSize: 60000, // 1 minute window
+  maxRequestsPerWindow: 50, // Conservative limit
+  isRateLimited: false,
+  retryAfter: 0,
+  lastRequestTime: 0,
+  minRequestInterval: 1000, // 1 second minimum between requests
+  isInitializing: true,
+  initializationRequestCount: 0,
+  maxInitializationRequests: 10, // Limit initialization requests
+  initializationTimeout: 15000 // 15 second initialization timeout
 }
 
 // Request queue for rate limiting
 const requestQueue: Array<() => Promise<any>> = []
 let isProcessingQueue = false
 
+// Initialize rate limit state
+setTimeout(() => {
+  rateLimitState.isInitializing = false
+  console.log('[Rate Limit] Initialization phase complete')
+}, rateLimitState.initializationTimeout)
+
 async function processRequestQueue() {
   if (isProcessingQueue) return
   isProcessingQueue = true
 
   while (requestQueue.length > 0) {
+    const now = Date.now()
+
+    // Check if we're rate limited
     if (rateLimitState.isRateLimited) {
-      const now = Date.now()
-      if (now < rateLimitState.resetTime) {
-        await new Promise((resolve) =>
-          setTimeout(resolve, rateLimitState.resetTime - now)
+      const waitTime = Math.max(0, rateLimitState.resetTime - now)
+      if (waitTime > 0) {
+        console.log(
+          `[Rate Limit] Waiting ${waitTime}ms before next request (Retry-After: ${rateLimitState.retryAfter}s)`
         )
+        await new Promise((resolve) => setTimeout(resolve, waitTime))
+        continue
       }
       rateLimitState.isRateLimited = false
+      rateLimitState.requestCount = 0
+    }
+
+    // During initialization, be extremely conservative with rate limits
+    if (rateLimitState.isInitializing) {
+      // Enforce minimum interval between requests
+      const timeSinceLastRequest = now - rateLimitState.lastRequestTime
+      if (timeSinceLastRequest < rateLimitState.minRequestInterval) {
+        const waitTime =
+          rateLimitState.minRequestInterval - timeSinceLastRequest
+        console.log(
+          `[Rate Limit] Waiting ${waitTime}ms between initialization requests`
+        )
+        await new Promise((resolve) => setTimeout(resolve, waitTime))
+        continue
+      }
+
+      // Limit number of requests during initialization
+      if (
+        rateLimitState.initializationRequestCount >=
+        rateLimitState.maxInitializationRequests
+      ) {
+        const waitTime = 2000 // 2 seconds between batches during initialization
+        console.log(
+          '[Rate Limit] Initialization request limit reached, waiting...'
+        )
+        await new Promise((resolve) => setTimeout(resolve, waitTime))
+        rateLimitState.initializationRequestCount = 0
+        continue
+      }
+
+      rateLimitState.lastRequestTime = now
+      rateLimitState.initializationRequestCount++
+    }
+
+    // Check if we're in a new rate limit window
+    if (now >= rateLimitState.resetTime) {
+      rateLimitState.requestCount = 0
+      rateLimitState.resetTime = now + rateLimitState.windowSize
+      rateLimitState.isRateLimited = false
+      console.log('[Rate Limit] Rate limit window reset')
+    }
+
+    // Check if we've hit the rate limit
+    if (rateLimitState.requestCount >= rateLimitState.maxRequestsPerWindow) {
+      const waitTime = Math.max(0, rateLimitState.resetTime - now)
+      if (waitTime > 0) {
+        console.log(`[Rate Limit] Rate limit reached. Waiting ${waitTime}ms`)
+        await new Promise((resolve) => setTimeout(resolve, waitTime))
+        continue
+      }
+      rateLimitState.requestCount = 0
+      rateLimitState.resetTime = now + rateLimitState.windowSize
     }
 
     const request = requestQueue.shift()
     if (request) {
       try {
+        rateLimitState.requestCount++
         await request()
       } catch (error) {
-        console.error('Error processing queued request:', error)
+        console.error('[Rate Limit] Error processing queued request:', error)
+        if (error instanceof ApiError && error.status === 429) {
+          // The error already has the retry-after value from the response
+          const retryAfter = error.retryAfter || 5 // Default to 5 seconds if no Retry-After header
+          rateLimitState.isRateLimited = true
+          rateLimitState.resetTime = now + retryAfter * 1000
+          rateLimitState.retryAfter = retryAfter
+          console.log(
+            `[Rate Limit] Rate limited by server. Retry after ${retryAfter}s`
+          )
+
+          // Add the request back to the front of the queue
+          requestQueue.unshift(request)
+          await new Promise((resolve) => setTimeout(resolve, retryAfter * 1000))
+        }
       }
     }
   }
@@ -81,7 +191,7 @@ async function processRequestQueue() {
   isProcessingQueue = false
 }
 
-const DEBOUNCE_TIME = 10000 // 10 seconds in milliseconds
+const DEFAULT_DEBOUNCE_TIME = 1000 // 1 second default debounce
 const requestCache = new Map<
   string,
   { promise: Promise<any>; timestamp: number }
@@ -95,7 +205,7 @@ export const sendApiRequest = async <T>({
   config = {},
   isLocalApi = false,
   retryConfig = DEFAULT_RETRY_CONFIG,
-  debounceTime = DEBOUNCE_TIME // Use custom debounce time if provided, otherwise use default
+  debounceTime = DEFAULT_DEBOUNCE_TIME
 }: ApiProps): Promise<T> => {
   const cacheKey = `${method}:${path}:${JSON.stringify(body)}`
   const now = Date.now()
@@ -141,9 +251,7 @@ export const sendApiRequest = async <T>({
         } catch {
           throw new ApiError(
             `API error: ${response.status} ${response.statusText}`,
-            response.status,
-            undefined,
-            response.headers
+            { status: response.status, headers: response.headers }
           )
         }
 
@@ -154,8 +262,20 @@ export const sendApiRequest = async <T>({
             10
           )
           rateLimitState.isRateLimited = true
-          rateLimitState.resetTime = Date.now() + retryAfter * 1000
+          rateLimitState.resetTime = now + retryAfter * 1000
+          rateLimitState.retryAfter = retryAfter
 
+          console.log(`[Rate Limit] Rate limited. Retry after ${retryAfter}s`)
+
+          // If we have a Retry-After header, use that value
+          if (retryAfter > 0) {
+            await new Promise((resolve) =>
+              setTimeout(resolve, retryAfter * 1000)
+            )
+            return makeRequest(retryCount + 1)
+          }
+
+          // Otherwise use exponential backoff
           const maxRetries =
             retryConfig?.maxRetries ?? DEFAULT_RETRY_CONFIG.maxRetries
           if (retryCount < maxRetries) {
@@ -168,7 +288,7 @@ export const sendApiRequest = async <T>({
               maxDelay
             )
             console.log(
-              `Rate limited. Retrying in ${delay}ms (attempt ${retryCount + 1}/${maxRetries})`
+              `[Rate Limit] Retrying in ${delay}ms (attempt ${retryCount + 1}/${maxRetries})`
             )
             await new Promise((resolve) => setTimeout(resolve, delay))
             return makeRequest(retryCount + 1)
@@ -177,9 +297,7 @@ export const sendApiRequest = async <T>({
 
         throw new ApiError(
           errorData.error.message || `API error: ${response.status}`,
-          response.status,
-          undefined,
-          response.headers
+          { status: response.status, headers: response.headers }
         )
       }
 
@@ -202,7 +320,7 @@ export const sendApiRequest = async <T>({
     }
   }
 
-  return new Promise((resolve, reject) => {
+  const promise = new Promise<T>((resolve, reject) => {
     requestQueue.push(async () => {
       try {
         const result = await makeRequest()
@@ -211,8 +329,15 @@ export const sendApiRequest = async <T>({
         reject(error)
       }
     })
-    void processRequestQueue()
   })
+
+  // Cache the promise
+  requestCache.set(cacheKey, { promise, timestamp: now })
+
+  // Start processing the queue if not already processing
+  void processRequestQueue()
+
+  return promise
 }
 
 const tokenCache: { token: string | null; expiry: number } = {

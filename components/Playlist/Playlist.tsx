@@ -9,6 +9,7 @@ import { filterUpcomingTracks } from '@/lib/utils'
 import { useAutoRemoveFinishedTrack } from '@/hooks/useAutoRemoveFinishedTrack'
 import { useGetPlaylist } from '@/hooks/useGetPlaylist'
 import { useFixedPlaylist } from '@/hooks/useFixedPlaylist'
+import { useTrackSuggestionsState } from '@/hooks/useTrackSuggestionsState'
 
 interface IPlaylistProps {
   tracks: TrackItem[]
@@ -20,6 +21,7 @@ const Playlist: React.FC<IPlaylistProps> = memo(({ tracks }): JSX.Element => {
   const previousTrackIdRef = useRef<string | null>(null)
   const { fixedPlaylistId } = useFixedPlaylist()
   const { refetchPlaylist } = useGetPlaylist(fixedPlaylistId ?? '')
+  const { songsBetweenRepeats } = useTrackSuggestionsState()
 
   // Listen for playlist refresh events
   useEffect(() => {
@@ -40,7 +42,8 @@ const Playlist: React.FC<IPlaylistProps> = memo(({ tracks }): JSX.Element => {
     currentTrackId,
     playlistTracks: tracks,
     playbackState: playbackState ?? null,
-    playlistId: fixedPlaylistId ?? ''
+    playlistId: fixedPlaylistId ?? '',
+    songsBetweenRepeats
   })
 
   const upcomingTracks = useMemo(
