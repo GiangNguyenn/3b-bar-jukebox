@@ -16,6 +16,8 @@ import { DEFAULT_MARKET } from '@/shared/constants/trackSuggestion'
 import { sendApiRequest } from '@/shared/api'
 import { type TrackSuggestionsState } from '@/shared/types/trackSuggestions'
 
+const LAST_SUGGESTED_TRACK_KEY = 'last-suggested-track'
+
 export interface PlaylistRefreshService {
   refreshPlaylist(force?: boolean): Promise<{
     success: boolean
@@ -107,11 +109,47 @@ export class PlaylistRefreshServiceImpl implements PlaylistRefreshService {
 
   private constructor() {
     this.spotifyApi = SpotifyApiService.getInstance()
+    this.loadLastSuggestedTrack()
+  }
+
+  private loadLastSuggestedTrack(): void {
+    try {
+      if (typeof window !== 'undefined') {
+        const savedTrack = localStorage.getItem(LAST_SUGGESTED_TRACK_KEY)
+        if (savedTrack) {
+          this.lastSuggestedTrack = JSON.parse(savedTrack)
+        }
+      }
+    } catch (error) {
+      console.error('[PlaylistRefresh] Error loading last suggested track:', error)
+    }
+  }
+
+  private saveLastSuggestedTrack(): void {
+    try {
+      if (typeof window !== 'undefined') {
+        localStorage.setItem(LAST_SUGGESTED_TRACK_KEY, JSON.stringify(this.lastSuggestedTrack))
+      }
+    } catch (error) {
+      console.error('[PlaylistRefresh] Error saving last suggested track:', error)
+    }
   }
 
   public static getInstance(): PlaylistRefreshServiceImpl {
     if (!PlaylistRefreshServiceImpl.instance) {
       PlaylistRefreshServiceImpl.instance = new PlaylistRefreshServiceImpl()
+    } else {
+      // Ensure the track is loaded from localStorage
+      if (typeof window !== 'undefined') {
+        try {
+          const savedTrack = localStorage.getItem(LAST_SUGGESTED_TRACK_KEY)
+          if (savedTrack) {
+            PlaylistRefreshServiceImpl.instance.lastSuggestedTrack = JSON.parse(savedTrack)
+          }
+        } catch (error) {
+          console.error('[PlaylistRefresh] Error loading from localStorage in getInstance:', error)
+        }
+      }
     }
     return PlaylistRefreshServiceImpl.instance
   }
@@ -303,10 +341,12 @@ export class PlaylistRefreshServiceImpl implements PlaylistRefreshService {
         }
 
         if (success) {
-          console.log(
-            '[PlaylistRefresh] Setting last suggested track:',
-            result.track
-          )
+          console.log('[PlaylistRefresh] Successfully added track, preparing to save:', {
+            name: result.track.name,
+            artist: result.track.artists[0].name,
+            timestamp: new Date().toISOString()
+          })
+          
           this.lastSuggestedTrack = {
             name: result.track.name,
             artist: result.track.artists[0].name,
@@ -320,6 +360,33 @@ export class PlaylistRefreshServiceImpl implements PlaylistRefreshService {
                 result.searchDetails.genresTried.length - 1
               ]
             ]
+          }
+
+          // Save to localStorage if in browser
+          if (typeof window !== 'undefined') {
+            console.log('[PlaylistRefresh] About to save track to localStorage:', {
+              name: this.lastSuggestedTrack.name,
+              artist: this.lastSuggestedTrack.artist,
+              timestamp: new Date().toISOString()
+            })
+            this.saveLastSuggestedTrack()
+          }
+
+          // Update server cache via POST request
+          try {
+            const response = await fetch('/api/track-suggestions/last-suggested', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json'
+              },
+              body: JSON.stringify(this.lastSuggestedTrack)
+            })
+            if (!response.ok) {
+              throw new Error('Failed to update server cache')
+            }
+            console.log('[PlaylistRefresh] Successfully updated server cache')
+          } catch (error) {
+            console.error('[PlaylistRefresh] Error updating server cache:', error)
           }
 
           // Get current playback state to resume at the same position
@@ -613,10 +680,18 @@ export class PlaylistRefreshServiceImpl implements PlaylistRefreshService {
     preview_url: string | null
     genres: string[]
   } | null {
-    console.log(
-      '[PlaylistRefresh] Getting last suggested track:',
-      this.lastSuggestedTrack
-    )
+    // If we don't have a track in memory, try to load from localStorage
+    if (!this.lastSuggestedTrack && typeof window !== 'undefined') {
+      try {
+        const savedTrack = localStorage.getItem(LAST_SUGGESTED_TRACK_KEY)
+        if (savedTrack) {
+          this.lastSuggestedTrack = JSON.parse(savedTrack)
+        }
+      } catch (error) {
+        console.error('[PlaylistRefresh] Error loading from localStorage in getLastSuggestedTrack:', error)
+      }
+    }
+
     return this.lastSuggestedTrack
   }
 
