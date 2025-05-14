@@ -34,6 +34,7 @@ export interface PlaylistRefreshService {
     currentTrackId: string | null
     playlistTracks: TrackItem[]
     playbackState: SpotifyPlaybackState | null
+    songsBetweenRepeats: number
   }): Promise<boolean>
   getLastSuggestedTrack(): {
     name: string
@@ -190,18 +191,53 @@ export class PlaylistRefreshServiceImpl implements PlaylistRefreshService {
       songsBetweenRepeats: number
     }
   ): Promise<{ success: boolean; error?: string; searchDetails?: unknown }> {
-    // Check if we've reached the maximum number of upcoming tracks
-    if (upcomingTracks.length >= MAX_PLAYLIST_LENGTH) {
-      console.log('[PlaylistRefresh] Playlist has reached maximum length:', {
-        currentLength: upcomingTracks.length,
-        maxLength: MAX_PLAYLIST_LENGTH,
-        timestamp: new Date().toISOString()
-      })
+    // Find the current track's position in the playlist
+    const currentTrackIndex = currentTrackId
+      ? allPlaylistTracks.findIndex(
+          (track) => track.track.id === currentTrackId
+        )
+      : -1
+
+    // Calculate how many tracks are left after the current track
+    const tracksRemaining =
+      currentTrackIndex >= 0
+        ? allPlaylistTracks.length - (currentTrackIndex + 1)
+        : allPlaylistTracks.length
+
+    // Check if we have 3 or fewer tracks remaining
+    if (tracksRemaining > 3) {
+      console.log(
+        '[PlaylistRefresh] Enough tracks remaining, skipping suggestion:',
+        {
+          tracksRemaining,
+          currentTrackIndex,
+          totalTracks: allPlaylistTracks.length,
+          currentTrackId,
+          timestamp: new Date().toISOString()
+        }
+      )
       return {
         success: false,
-        error: 'Playlist too long'
+        error: 'Enough tracks remaining'
       }
     }
+
+    // Log the upcoming tracks for debugging
+    console.log('[PlaylistRefresh] Upcoming tracks:', {
+      count: upcomingTracks.length,
+      tracksRemaining,
+      currentTrackIndex,
+      totalTracks: allPlaylistTracks.length,
+      tracks: upcomingTracks.map((track) => ({
+        id: track.track.id,
+        name: track.track.name,
+        position: allPlaylistTracks.findIndex(
+          (t) => t.track.id === track.track.id
+        )
+      })),
+      currentTrackId,
+      timestamp: new Date().toISOString()
+    })
 
     const existingTrackIds = Array.from(
       new Set(allPlaylistTracks.map((track) => track.track.id))
@@ -348,6 +384,7 @@ export class PlaylistRefreshServiceImpl implements PlaylistRefreshService {
     currentTrackId: string | null
     playlistTracks: TrackItem[]
     playbackState: SpotifyPlaybackState | null
+    songsBetweenRepeats: number
   }): Promise<boolean> {
     return handleOperationError(
       async () =>
@@ -465,7 +502,8 @@ export class PlaylistRefreshServiceImpl implements PlaylistRefreshService {
           playlistId: playlist.id,
           currentTrackId,
           playlistTracks: playlist.tracks.items,
-          playbackState
+          playbackState,
+          songsBetweenRepeats: params?.songsBetweenRepeats || 5
         }),
         this.TIMEOUT_MS
       )
@@ -643,7 +681,8 @@ export class PlaylistRefreshServiceImpl implements PlaylistRefreshService {
         playlistId: playlist.id,
         currentTrackId,
         playlistTracks: allPlaylistTracks,
-        playbackState
+        playbackState,
+        songsBetweenRepeats: params.songsBetweenRepeats
       })
 
       console.log('[PlaylistRefresh] Track removal result:', {
