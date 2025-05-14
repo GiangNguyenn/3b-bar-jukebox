@@ -31,7 +31,7 @@ export async function GET(): Promise<NextResponse> {
   try {
     // If we have a cached track, return it immediately
     if (serverCache) {
-      return NextResponse.json({ 
+      return NextResponse.json({
         track: serverCache,
         timestamp: new Date().toISOString()
       })
@@ -49,7 +49,7 @@ export async function GET(): Promise<NextResponse> {
     // Return either the new track or our cached track
     const responseTrack = track || serverCache
 
-    return NextResponse.json({ 
+    return NextResponse.json({
       track: responseTrack,
       timestamp: new Date().toISOString()
     })
