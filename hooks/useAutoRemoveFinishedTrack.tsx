@@ -8,13 +8,15 @@ interface UseAutoRemoveFinishedTrackProps {
   playlistTracks: TrackItem[]
   playbackState: SpotifyPlaybackState | null
   playlistId: string
+  songsBetweenRepeats: number
 }
 
 export const useAutoRemoveFinishedTrack = ({
   currentTrackId,
   playlistTracks,
   playbackState,
-  playlistId
+  playlistId,
+  songsBetweenRepeats
 }: UseAutoRemoveFinishedTrackProps) => {
   const { removeTrack, isLoading } = useRemoveTrackFromPlaylist()
   const lastRemovalTimeRef = useRef<number>(0)
@@ -33,7 +35,7 @@ export const useAutoRemoveFinishedTrack = ({
     const currentTrackIndex = playlistTracks.findIndex(
       (track) => track.track.id === currentTrackId
     )
-    if (currentTrackIndex === -1 || currentTrackIndex < 20) return
+    if (currentTrackIndex === -1 || currentTrackIndex < songsBetweenRepeats) return
 
     // Clear any pending removal
     if (removalTimeoutRef.current) {
@@ -50,6 +52,7 @@ export const useAutoRemoveFinishedTrack = ({
           currentTrackId,
           playlistTracks,
           playbackState,
+          songsBetweenRepeats,
           onSuccess: () => {
             lastRemovalTimeRef.current = now
           }
@@ -62,7 +65,8 @@ export const useAutoRemoveFinishedTrack = ({
     playbackState,
     removeTrack,
     isLoading,
-    playlistId
+    playlistId,
+    songsBetweenRepeats
   ])
 
   // Cleanup timeout on unmount

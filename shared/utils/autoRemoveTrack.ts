@@ -7,6 +7,7 @@ interface AutoRemoveTrackParams {
   currentTrackId: string | null
   playlistTracks: TrackItem[]
   playbackState: SpotifyPlaybackState | null
+  songsBetweenRepeats: number
   onSuccess?: () => void
   onError?: (error: Error) => void
 }
@@ -16,6 +17,7 @@ export async function autoRemoveTrack({
   currentTrackId,
   playlistTracks,
   playbackState,
+  songsBetweenRepeats,
   onSuccess,
   onError
 }: AutoRemoveTrackParams): Promise<boolean> {
@@ -24,7 +26,7 @@ export async function autoRemoveTrack({
   const currentTrackIndex = playlistTracks.findIndex(
     (track) => track.track.id === currentTrackId
   )
-  if (currentTrackIndex === -1 || currentTrackIndex < 20) return false
+  if (currentTrackIndex === -1 || currentTrackIndex < songsBetweenRepeats) return false
 
   const trackToRemove = playlistTracks[0]
   if (!trackToRemove) {
