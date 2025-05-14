@@ -57,4 +57,4 @@ export async function cleanupPlaybackState(): Promise<void> {
   } catch (error) {
     console.error('[Cleanup] Failed to pause playback:', error)
   }
-} 
+}

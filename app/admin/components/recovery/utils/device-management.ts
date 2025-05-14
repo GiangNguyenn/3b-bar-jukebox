@@ -157,4 +157,4 @@ export async function transferPlaybackToDevice(
   } finally {
     releaseVerificationLock()
   }
-} 
+}

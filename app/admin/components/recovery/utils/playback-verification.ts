@@ -1,7 +1,10 @@
 import { sendApiRequest } from '@/shared/api'
 import { SpotifyPlaybackState } from '@/shared/types'
 import { PlaybackVerificationResult } from '@/shared/types/recovery'
-import { PLAYBACK_VERIFICATION_TIMEOUT, PLAYBACK_CHECK_INTERVAL } from '@/shared/constants/recovery'
+import {
+  PLAYBACK_VERIFICATION_TIMEOUT,
+  PLAYBACK_CHECK_INTERVAL
+} from '@/shared/constants/recovery'
 import { validatePlaybackState, validateDeviceState } from './validation'
 
 export async function verifyPlaybackResume(
@@ -27,15 +30,25 @@ export async function verifyPlaybackResume(
   // Validate initial state
   const stateValidation = validatePlaybackState(initialState)
   if (!stateValidation.isValid) {
-    console.error('[Playback Verification] Invalid initial state:', stateValidation.errors)
-    throw new Error(`Invalid playback state: ${stateValidation.errors.join(', ')}`)
+    console.error(
+      '[Playback Verification] Invalid initial state:',
+      stateValidation.errors
+    )
+    throw new Error(
+      `Invalid playback state: ${stateValidation.errors.join(', ')}`
+    )
   }
 
   // Validate device state
   const deviceValidation = validateDeviceState(currentDeviceId, initialState)
   if (!deviceValidation.isValid) {
-    console.error('[Playback Verification] Invalid device state:', deviceValidation.errors)
-    throw new Error(`Invalid device state: ${deviceValidation.errors.join(', ')}`)
+    console.error(
+      '[Playback Verification] Invalid device state:',
+      deviceValidation.errors
+    )
+    throw new Error(
+      `Invalid device state: ${deviceValidation.errors.join(', ')}`
+    )
   }
 
   console.log('[Playback Verification] Initial state:', {
@@ -53,8 +66,8 @@ export async function verifyPlaybackResume(
   let progressStalled = false
 
   while (Date.now() - startTime < maxVerificationTime) {
-    await new Promise(resolve => setTimeout(resolve, checkInterval))
-    
+    await new Promise((resolve) => setTimeout(resolve, checkInterval))
+
     currentState = await sendApiRequest<SpotifyPlaybackState>({
       path: 'me/player',
       method: 'GET'
@@ -63,19 +76,25 @@ export async function verifyPlaybackResume(
     // Validate current state
     const currentStateValidation = validatePlaybackState(currentState)
     if (!currentStateValidation.isValid) {
-      console.error('[Playback Verification] Invalid current state:', currentStateValidation.errors)
-      throw new Error(`Invalid playback state: ${currentStateValidation.errors.join(', ')}`)
+      console.error(
+        '[Playback Verification] Invalid current state:',
+        currentStateValidation.errors
+      )
+      throw new Error(
+        `Invalid playback state: ${currentStateValidation.errors.join(', ')}`
+      )
     }
 
     const currentProgress = currentState.progress_ms ?? 0
-    
+
     if (currentProgress > lastProgress) {
       lastProgress = currentProgress
       progressStalled = false
     } else {
-      const isNearEnd = currentState.item?.duration_ms && 
-        (currentState.item.duration_ms - currentProgress) < 5000
-      
+      const isNearEnd =
+        currentState.item?.duration_ms &&
+        currentState.item.duration_ms - currentProgress < 5000
+
       if (!isNearEnd) {
         progressStalled = true
       }
@@ -98,10 +117,13 @@ export async function verifyPlaybackResume(
   }
 
   const verificationResult: PlaybackVerificationResult = {
-    isSuccessful: !progressStalled && currentState.device?.id === currentDeviceId,
-    reason: progressStalled ? 'Playback progress stalled' : 
-           currentState.device?.id !== currentDeviceId ? 'Device mismatch' :
-           'Playback resumed successfully',
+    isSuccessful:
+      !progressStalled && currentState.device?.id === currentDeviceId,
+    reason: progressStalled
+      ? 'Playback progress stalled'
+      : currentState.device?.id !== currentDeviceId
+        ? 'Device mismatch'
+        : 'Playback resumed successfully',
     details: {
       deviceMatch: currentState.device?.id === currentDeviceId,
       isPlaying: currentState.is_playing,
@@ -114,4 +136,4 @@ export async function verifyPlaybackResume(
   }
 
   return verificationResult
-} 
+}
