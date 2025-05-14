@@ -105,9 +105,7 @@ export function SpotifyPlayer(): React.ReactElement | null {
     'playing' | 'paused' | 'stopped'
   >('stopped')
   const [isInitialized, setIsInitialized] = useState(false)
-  const [intervalId, setIntervalId] = useState<ReturnType<
-    typeof setInterval
-  > | null>(null)
+  const playbackIntervalRef = useRef<NodeJS.Timeout | null>(null)
   const localPlaylistRefreshInterval = useRef<NodeJS.Timeout | null>(null)
 
   // Add rate limit state inside component
@@ -227,22 +225,24 @@ export function SpotifyPlayer(): React.ReactElement | null {
       void updatePlaybackState()
     }, INITIALIZATION_DELAY)
 
+    // Clear any existing interval
+    if (playbackIntervalRef.current) {
+      clearInterval(playbackIntervalRef.current)
+    }
+
     // Set up interval based on current playback state
-    const newInterval = setInterval(() => {
+    playbackIntervalRef.current = setInterval(() => {
       void updatePlaybackState()
     }, PLAYBACK_INTERVALS[localPlaybackStatus])
 
-    // Store interval ID in state
-    setIntervalId(newInterval)
-
     return () => {
       clearTimeout(initialUpdateTimeout)
-      if (intervalId) {
-        clearInterval(intervalId)
-        setIntervalId(null)
+      if (playbackIntervalRef.current) {
+        clearInterval(playbackIntervalRef.current)
+        playbackIntervalRef.current = null
       }
     }
-  }, [deviceId, localPlaybackStatus, isInitialized, intervalId])
+  }, [deviceId, localPlaybackStatus, isInitialized])
 
   // Update the interval logic to use the local ref
   useEffect(() => {
