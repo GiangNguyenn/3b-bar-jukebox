@@ -73,14 +73,14 @@ export function TrackSuggestionsTab({
         throw new Error('Failed to fetch last suggested track')
       }
       const data = (await response.json()) as LastSuggestedTrackResponse
-      
+
       console.log('[TrackSuggestionsTab] Received track data:', {
         hasTrack: !!data.track,
         name: data.track?.name,
         artist: data.track?.artist,
         timestamp: new Date().toISOString()
       })
-      
+
       if (data.track?.uri !== lastTrackUriRef.current) {
         console.log('[TrackSuggestionsTab] Track changed:', {
           oldTrack: lastTrackUriRef.current,
@@ -91,7 +91,10 @@ export function TrackSuggestionsTab({
         lastTrackUriRef.current = data.track?.uri ?? null
       }
     } catch (error) {
-      console.error('[TrackSuggestionsTab] Error fetching last suggested track:', error)
+      console.error(
+        '[TrackSuggestionsTab] Error fetching last suggested track:',
+        error
+      )
     }
   }, [updateState])
 
