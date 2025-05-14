@@ -26,7 +26,8 @@ export async function autoRemoveTrack({
   const currentTrackIndex = playlistTracks.findIndex(
     (track) => track.track.id === currentTrackId
   )
-  if (currentTrackIndex === -1 || currentTrackIndex < songsBetweenRepeats) return false
+  if (currentTrackIndex === -1 || currentTrackIndex < songsBetweenRepeats)
+    return false
 
   const trackToRemove = playlistTracks[0]
   if (!trackToRemove) {

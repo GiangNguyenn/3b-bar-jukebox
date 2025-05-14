@@ -35,7 +35,8 @@ export const useAutoRemoveFinishedTrack = ({
     const currentTrackIndex = playlistTracks.findIndex(
       (track) => track.track.id === currentTrackId
     )
-    if (currentTrackIndex === -1 || currentTrackIndex < songsBetweenRepeats) return
+    if (currentTrackIndex === -1 || currentTrackIndex < songsBetweenRepeats)
+      return
 
     // Clear any pending removal
     if (removalTimeoutRef.current) {
