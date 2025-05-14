@@ -22,7 +22,7 @@ interface LastSuggestedTrackResponse {
   track: LastSuggestedTrackInfo | null
 }
 
-const POLL_INTERVAL = 60000 // 1 minute
+const POLL_INTERVAL = 30000 // 30 seconds
 const DEBOUNCE_MS = 1000 // 1 second
 
 export function TrackSuggestionsTab({
@@ -42,13 +42,21 @@ export function TrackSuggestionsTab({
   const lastTrackUriRef = useRef<string | null>(null)
   const isInitialMount = useRef(true)
   const lastFetchTimeRef = useRef<number>(0)
+  const prevStateRef = useRef(state)
 
-  // Call onStateChange after initial mount
+  // Call onStateChange only when state actually changes
   useEffect(() => {
-    if (!isInitialMount.current) {
-      onStateChange(state)
+    if (isInitialMount.current) {
+      isInitialMount.current = false
+      prevStateRef.current = state
+      return
     }
-    isInitialMount.current = false
+
+    // Only call onStateChange if state has actually changed
+    if (JSON.stringify(prevStateRef.current) !== JSON.stringify(state)) {
+      onStateChange(state)
+      prevStateRef.current = state
+    }
   }, [state, onStateChange])
 
   const fetchLastSuggestedTrack = useCallback(async (): Promise<void> => {
@@ -59,15 +67,34 @@ export function TrackSuggestionsTab({
     lastFetchTimeRef.current = now
 
     try {
+      console.log('[TrackSuggestionsTab] Fetching last suggested track')
       const response = await fetch('/api/track-suggestions/last-suggested')
       if (!response.ok) {
         throw new Error('Failed to fetch last suggested track')
       }
       const data = (await response.json()) as LastSuggestedTrackResponse
-      updateState({ lastSuggestedTrack: data.track ?? undefined })
-      lastTrackUriRef.current = data.track?.uri ?? null
+
+      console.log('[TrackSuggestionsTab] Received track data:', {
+        hasTrack: !!data.track,
+        name: data.track?.name,
+        artist: data.track?.artist,
+        timestamp: new Date().toISOString()
+      })
+
+      if (data.track?.uri !== lastTrackUriRef.current) {
+        console.log('[TrackSuggestionsTab] Track changed:', {
+          oldTrack: lastTrackUriRef.current,
+          newTrack: data.track?.uri,
+          timestamp: new Date().toISOString()
+        })
+        updateState({ lastSuggestedTrack: data.track ?? undefined })
+        lastTrackUriRef.current = data.track?.uri ?? null
+      }
     } catch (error) {
-      console.error('Error fetching last suggested track:', error)
+      console.error(
+        '[TrackSuggestionsTab] Error fetching last suggested track:',
+        error
+      )
     }
   }, [updateState])
 

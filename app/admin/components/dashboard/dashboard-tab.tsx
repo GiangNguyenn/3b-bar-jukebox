@@ -40,7 +40,7 @@ export function DashboardTab({
 
     const interval = setInterval(updateTimeLeft, 1000)
 
-    return () => clearInterval(interval)
+    return (): void => clearInterval(interval)
   }, [])
 
   const formatTime = (seconds: number): string => {

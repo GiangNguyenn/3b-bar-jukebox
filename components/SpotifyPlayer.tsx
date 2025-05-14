@@ -12,103 +12,160 @@ const PLAYBACK_INTERVALS = {
   stopped: 60000 // 60 seconds when stopped
 }
 
-export function SpotifyPlayer(): React.ReactElement | null {
+// Update initialization constants
+const INITIALIZATION_DELAY = 5000 // 5 seconds before first initialization attempt
+const INITIALIZATION_RETRY_DELAY = 5000 // 5 seconds between retries
+const MIN_API_CALL_INTERVAL = 2000 // 2 seconds between API calls
+const INITIALIZATION_TIMEOUT = 30000 // 30 seconds max initialization time
+
+// Global rate limit tracker
+const globalRateLimitInfo = {
+  lastApiCall: 0,
+  nextAllowedCall: 0,
+  isRateLimited: false
+}
+
+// Add rate limit tracking interface
+interface RateLimitInfo {
+  lastRateLimitHit: number | null
+  retryAfter: number | null
+  nextAllowedCall: number | null
+}
+
+// Add a global rate-limited API call function
+async function globalRateLimitedApiCall<T>(
+  apiCall: () => Promise<T>
+): Promise<T> {
+  const now = Date.now()
+
+  // Check if we're rate limited
+  if (
+    globalRateLimitInfo.isRateLimited &&
+    now < globalRateLimitInfo.nextAllowedCall
+  ) {
+    const timeUntilAllowed = Math.ceil(
+      (globalRateLimitInfo.nextAllowedCall - now) / 1000
+    )
+    console.log(`[Global Rate Limit] Waiting ${timeUntilAllowed} seconds`)
+    await new Promise((resolve) => setTimeout(resolve, timeUntilAllowed * 1000))
+  }
+
+  // Ensure minimum interval between calls
+  const timeSinceLastCall = now - globalRateLimitInfo.lastApiCall
+  if (timeSinceLastCall < MIN_API_CALL_INTERVAL) {
+    await new Promise((resolve) =>
+      setTimeout(resolve, MIN_API_CALL_INTERVAL - timeSinceLastCall)
+    )
+  }
+
+  try {
+    globalRateLimitInfo.lastApiCall = Date.now()
+    return await apiCall()
+  } catch (error) {
+    if (error instanceof Error && error.message.includes('429')) {
+      const retryAfter = error.message.includes('Retry-After')
+        ? parseInt(error.message.split('Retry-After: ')[1]) * 1000
+        : INITIALIZATION_RETRY_DELAY
+
+      globalRateLimitInfo.isRateLimited = true
+      globalRateLimitInfo.nextAllowedCall = Date.now() + retryAfter
+
+      console.log('[Global Rate Limit] Rate limit hit:', {
+        retryAfter: `${retryAfter / 1000} seconds`,
+        nextAllowedCall: new Date(
+          globalRateLimitInfo.nextAllowedCall
+        ).toISOString()
+      })
+
+      await new Promise((resolve) => setTimeout(resolve, retryAfter))
+      return apiCall()
+    }
+    throw error
+  }
+}
+
+export function SpotifyPlayer(): JSX.Element | null {
   const { fixedPlaylistId } = useFixedPlaylist()
   const {
     error,
     deviceId,
+    isReady,
     reconnectAttempts,
     MAX_RECONNECT_ATTEMPTS,
     initializePlayer,
-    reconnectPlayer
+    reconnectPlayer,
+    refreshPlaylistState
   } = useSpotifyPlayerState(fixedPlaylistId ?? '')
-  const [playbackState, setPlaybackState] = useState<
-    'playing' | 'paused' | 'stopped'
-  >('stopped')
   const [currentTrack, setCurrentTrack] = useState<{
     name: string
     progress: number
     duration: number
   } | null>(null)
-  const hasInitialized = useRef(false)
-  const initAttempts = useRef(0)
-  const MAX_INIT_ATTEMPTS = 3
+  const [localPlaybackStatus, setLocalPlaybackStatus] = useState<
+    'playing' | 'paused' | 'stopped'
+  >('stopped')
+  const [isInitialized, setIsInitialized] = useState(false)
+  const playbackIntervalRef = useRef<NodeJS.Timeout | null>(null)
+  const localPlaylistRefreshInterval = useRef<NodeJS.Timeout | null>(null)
+
+  // Add rate limit state inside component
+  const [rateLimitInfo] = useState<RateLimitInfo>({
+    lastRateLimitHit: null,
+    retryAfter: null,
+    nextAllowedCall: null
+  })
 
   // Handle SDK initialization
   useEffect(() => {
-    if (hasInitialized.current) {
-      console.log('[SpotifyPlayer] Already initialized, skipping')
-      return
-    }
+    const initTimeout = setTimeout(() => {
+      console.log(
+        '[SpotifyPlayer] Forcing initialization complete after timeout'
+      )
+      setIsInitialized(true)
+    }, INITIALIZATION_TIMEOUT)
 
-    const handleSDKReady = async (): Promise<void> => {
-      if (hasInitialized.current) {
-        console.log('[SpotifyPlayer] Already initialized, skipping')
-        return
-      }
+    const initializeWithDelay = async (): Promise<void> => {
+      console.log('[SpotifyPlayer] Starting initialization with delay')
 
-      if (initAttempts.current >= MAX_INIT_ATTEMPTS) {
-        console.error('[SpotifyPlayer] Max initialization attempts reached')
-        return
-      }
+      // Add initial delay before any API calls
+      await new Promise((resolve) => setTimeout(resolve, INITIALIZATION_DELAY))
 
-      try {
-        console.log(
-          '[SpotifyPlayer] Starting initialization attempt',
-          initAttempts.current + 1
-        )
-        initAttempts.current++
-
-        // Ensure SDK is actually ready
-        if (!window.Spotify) {
-          console.error('[SpotifyPlayer] SDK not available despite ready event')
-          return
-        }
-
-        await initializePlayer()
-        hasInitialized.current = true
-        console.log('[SpotifyPlayer] Initialization successful')
-        window.dispatchEvent(new CustomEvent('playerReady'))
-      } catch (error) {
-        console.error('[SpotifyPlayer] Error during initialization:', error)
-        // Reset initialization state on error
-        hasInitialized.current = false
-
-        // Try again after a delay if we haven't hit max attempts
-        if (initAttempts.current < MAX_INIT_ATTEMPTS) {
-          const delay = Math.pow(2, initAttempts.current) * 1000 // Exponential backoff
-          console.log(`[SpotifyPlayer] Retrying initialization in ${delay}ms`)
-          setTimeout(() => {
-            void handleSDKReady()
-          }, delay)
+      const tryInitialize = async (): Promise<void> => {
+        try {
+          await globalRateLimitedApiCall(() => initializePlayer())
+          setIsInitialized(true)
+        } catch (error) {
+          console.error('[SpotifyPlayer] Initialization attempt failed:', error)
+          await new Promise((resolve) =>
+            setTimeout(resolve, INITIALIZATION_RETRY_DELAY)
+          )
         }
       }
+
+      void tryInitialize()
     }
 
-    // Check if SDK is already ready
-    if (window.Spotify) {
-      console.log('[SpotifyPlayer] SDK already ready, starting initialization')
-      void handleSDKReady()
-    } else {
-      console.log('[SpotifyPlayer] Waiting for SDK ready event')
-      window.addEventListener('spotifySDKReady', () => void handleSDKReady())
-    }
+    // Start initialization
+    void initializeWithDelay()
 
     return () => {
-      window.removeEventListener('spotifySDKReady', () => void handleSDKReady())
+      clearTimeout(initTimeout)
     }
   }, [initializePlayer])
 
-  // Handle playback state updates
+  // Update interval handling
   useEffect(() => {
-    if (!deviceId) return
+    if (!deviceId || !isInitialized) return
 
     const updatePlaybackState = async (): Promise<void> => {
       try {
-        const state = await sendApiRequest<SpotifyPlaybackState>({
-          path: 'me/player',
-          method: 'GET'
-        })
+        const state = await globalRateLimitedApiCall(() =>
+          sendApiRequest<SpotifyPlaybackState>({
+            path: 'me/player',
+            method: 'GET',
+            debounceTime: MIN_API_CALL_INTERVAL
+          })
+        )
 
         if (!state) {
           console.log('[SpotifyPlayer] No playback state available')
@@ -119,8 +176,8 @@ export function SpotifyPlayer(): React.ReactElement | null {
           const timeUntilEnd = state.item.duration_ms - (state.progress_ms ?? 0)
           const newPlaybackState = state.is_playing ? 'playing' : 'paused'
 
-          if (newPlaybackState !== playbackState) {
-            setPlaybackState(newPlaybackState)
+          if (newPlaybackState !== localPlaybackStatus) {
+            setLocalPlaybackStatus(newPlaybackState)
           }
 
           // Update current track info
@@ -142,8 +199,8 @@ export function SpotifyPlayer(): React.ReactElement | null {
             })
           )
         } else {
-          if (playbackState !== 'stopped') {
-            setPlaybackState('stopped')
+          if (localPlaybackStatus !== 'stopped') {
+            setLocalPlaybackStatus('stopped')
           }
           setCurrentTrack(null)
           window.dispatchEvent(
@@ -163,18 +220,63 @@ export function SpotifyPlayer(): React.ReactElement | null {
       }
     }
 
-    // Initial state update
-    void updatePlaybackState()
+    // Initial state update with delay
+    const initialUpdateTimeout = setTimeout(() => {
+      void updatePlaybackState()
+    }, INITIALIZATION_DELAY)
+
+    // Clear any existing interval
+    if (playbackIntervalRef.current) {
+      clearInterval(playbackIntervalRef.current)
+    }
 
     // Set up interval based on current playback state
-    const interval = setInterval(() => {
+    playbackIntervalRef.current = setInterval(() => {
       void updatePlaybackState()
-    }, PLAYBACK_INTERVALS[playbackState])
+    }, PLAYBACK_INTERVALS[localPlaybackStatus])
 
     return () => {
-      clearInterval(interval)
+      clearTimeout(initialUpdateTimeout)
+      if (playbackIntervalRef.current) {
+        clearInterval(playbackIntervalRef.current)
+        playbackIntervalRef.current = null
+      }
     }
-  }, [deviceId, playbackState])
+  }, [deviceId, localPlaybackStatus, isInitialized])
+
+  // Update the interval logic to use the local ref
+  useEffect(() => {
+    if (localPlaylistRefreshInterval.current) {
+      clearInterval(localPlaylistRefreshInterval.current)
+    }
+
+    const interval = setInterval(() => {
+      void refreshPlaylistState()
+    }, PLAYBACK_INTERVALS.stopped) // Default to stopped interval
+
+    localPlaylistRefreshInterval.current = interval
+
+    return () => {
+      if (localPlaylistRefreshInterval.current) {
+        clearInterval(localPlaylistRefreshInterval.current)
+      }
+    }
+  }, [refreshPlaylistState])
+
+  // Add a new effect to handle device ID changes
+  useEffect(() => {
+    const handleDeviceIdChange = (): void => {
+      if (deviceId) {
+        console.log('[SpotifyPlayer] Device ID set:', {
+          deviceId,
+          isReady,
+          timestamp: new Date().toISOString()
+        })
+      }
+    }
+
+    handleDeviceIdChange()
+  }, [deviceId, isReady])
 
   if (error) {
     const retryCount = reconnectAttempts?.current ?? 0
@@ -195,6 +297,26 @@ export function SpotifyPlayer(): React.ReactElement | null {
 
   if (!currentTrack) {
     return null
+  }
+
+  // Add rate limit status display
+  if (rateLimitInfo.lastRateLimitHit) {
+    const timeUntilAllowed = rateLimitInfo.nextAllowedCall
+      ? Math.ceil((rateLimitInfo.nextAllowedCall - Date.now()) / 1000)
+      : 0
+
+    if (timeUntilAllowed > 0) {
+      return (
+        <div className='p-4 text-yellow-500'>
+          <p>Rate limited by Spotify</p>
+          <p>Next allowed call in: {timeUntilAllowed} seconds</p>
+          <p>
+            Last rate limit hit:{' '}
+            {new Date(rateLimitInfo.lastRateLimitHit).toLocaleTimeString()}
+          </p>
+        </div>
+      )
+    }
   }
 
   return null

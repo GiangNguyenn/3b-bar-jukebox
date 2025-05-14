@@ -176,7 +176,8 @@ describe('PlaylistRefreshService', () => {
           name: `Track ${i + 1}`
         }
       })) as TrackItem[],
-      playbackState: { is_playing: true } as any
+      playbackState: { is_playing: true } as any,
+      songsBetweenRepeats: 5
     })
 
     expect(result).toBe(true)

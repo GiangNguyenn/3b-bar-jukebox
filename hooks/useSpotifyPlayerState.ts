@@ -28,6 +28,7 @@ interface UseSpotifyPlayerStateReturn {
   setIsReady: (isReady: boolean) => void
   setPlaybackState: (state: SpotifyPlaybackState | null) => void
   deviceId: string | null
+  isReady: boolean
   isMounted: React.RefObject<boolean>
   reconnectAttempts: React.RefObject<number>
   MAX_RECONNECT_ATTEMPTS: number
@@ -49,6 +50,7 @@ export function useSpotifyPlayerState(
   const setIsReady = useSpotifyPlayer((state) => state.setIsReady)
   const setPlaybackState = useSpotifyPlayer((state) => state.setPlaybackState)
   const deviceId = useSpotifyPlayer((state) => state.deviceId)
+  const isReady = useSpotifyPlayer((state) => state.isReady)
   const isMounted = useRef(true)
   const reconnectAttempts = useRef(0)
   const MAX_RECONNECT_ATTEMPTS = 3
@@ -74,11 +76,13 @@ export function useSpotifyPlayerState(
     }
 
     try {
-      await new Promise((resolve) => setTimeout(resolve, 1000))
+      // Add a longer delay during initialization to avoid rate limits
+      await new Promise((resolve) => setTimeout(resolve, 5000))
 
       const state = await sendApiRequest<SpotifyPlaybackState>({
         path: 'me/player',
-        method: 'GET'
+        method: 'GET',
+        debounceTime: 15000 // Increase debounce time to 15 seconds
       })
 
       if (!state?.device?.id) {
@@ -231,8 +235,8 @@ export function useSpotifyPlayerState(
             volume: 0.5
           })
 
-          // Add a delay before connecting to ensure SDK is fully loaded
-          await new Promise((resolve) => setTimeout(resolve, 1000))
+          // Add a longer delay before connecting to ensure SDK is fully loaded
+          await new Promise((resolve) => setTimeout(resolve, 5000))
 
           console.log('[SpotifyPlayer] Attempting to connect player')
           const connected = await player.connect()
@@ -562,9 +566,13 @@ export function useSpotifyPlayerState(
       }
 
       try {
+        // Add debounce to prevent rapid checks
+        await new Promise((resolve) => setTimeout(resolve, 10000))
+
         const state = await sendApiRequest<SpotifyPlaybackState>({
           path: 'me/player',
-          method: 'GET'
+          method: 'GET',
+          debounceTime: 15000 // Increase debounce time to 15 seconds
         })
 
         if (state?.device?.id === deviceId) {
@@ -578,7 +586,7 @@ export function useSpotifyPlayerState(
       }
     }
 
-    const interval = setInterval(checkDeviceStatus, 5000)
+    const interval = setInterval(checkDeviceStatus, 15000) // Increase interval to 15 seconds
     return () => clearInterval(interval)
   }, [deviceId, verifyPlayerReady, setDeviceId, setPlaybackState])
 
@@ -668,6 +676,7 @@ export function useSpotifyPlayerState(
     setIsReady,
     setPlaybackState,
     deviceId,
+    isReady,
     isMounted,
     reconnectAttempts,
     MAX_RECONNECT_ATTEMPTS,
