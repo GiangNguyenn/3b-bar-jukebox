@@ -871,7 +871,7 @@ export default function AdminPage(): JSX.Element {
     return () => {
       window.removeEventListener('spotify-sdk-ready', handleSdkReady)
     }
-  }, []) // Empty dependency array since we only want to set up listeners once
+  }, [])
 
   // Update device check to be more conservative with API calls
   useEffect(() => {
@@ -1094,7 +1094,7 @@ export default function AdminPage(): JSX.Element {
         clearInterval(deviceCheckInterval.current)
       }
     }
-  }, [deviceId, isReady, isInitializing]) // Add isInitializing to dependencies
+  }, [deviceId, isReady, isInitializing])
 
   // Request wake lock to prevent device sleep
   useEffect(() => {
