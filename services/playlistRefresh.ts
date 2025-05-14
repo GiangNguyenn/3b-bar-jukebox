@@ -637,6 +637,21 @@ export class PlaylistRefreshServiceImpl implements PlaylistRefreshService {
       const upcomingTracks = this.getUpcomingTracks(playlist, currentTrackId)
       const allPlaylistTracks = playlist.tracks.items
 
+      // Add track removal step
+      const playbackState = await this.spotifyApi.getPlaybackState()
+      const removedTrack = await this.autoRemoveFinishedTrack({
+        playlistId: playlist.id,
+        currentTrackId,
+        playlistTracks: allPlaylistTracks,
+        playbackState
+      })
+
+      console.log('[PlaylistRefresh] Track removal result:', {
+        removedTrack,
+        currentTrackId,
+        timestamp: new Date().toISOString()
+      })
+
       console.log(
         '[PARAM CHAIN] Passing genres to addSuggestedTrackToPlaylist (playlistRefresh.ts):',
         params.genres
