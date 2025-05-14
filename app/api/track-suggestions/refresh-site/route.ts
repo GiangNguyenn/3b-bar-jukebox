@@ -1,41 +1,15 @@
 import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import { songsBetweenRepeatsSchema } from '@/app/admin/components/track-suggestions/validations/trackSuggestions'
-import { findSuggestedTrack } from '@/services/trackSuggestion'
-import { DEFAULT_MARKET } from '@/shared/constants/trackSuggestion'
-import { sendApiRequest } from '@/shared/api'
+import { PlaylistRefreshServiceImpl } from '@/services/playlistRefresh'
 
 export const runtime = 'nodejs'
-export const dynamic = 'force-dynamic'
 
 // Configure timeout
 export const maxDuration = 60 // 60 seconds
 
-interface SpotifyPlaylist {
-  id: string
-  name: string
-}
-
-interface SpotifyPlaylistResponse {
-  items: SpotifyPlaylist[]
-}
-
-interface SpotifyTrack {
-  id: string
-  track: {
-    id: string
-  }
-}
-
-interface SpotifyPlaylistTracksResponse {
-  items: SpotifyTrack[]
-}
-
-interface SpotifyPlaybackState {
-  item: {
-    id: string
-  } | null
-}
+// Keep a reference to the service instance
+let serviceInstance: PlaylistRefreshServiceImpl | null = null
 
 const refreshRequestSchema = z.object({
   genres: z.array(z.string()).min(1).max(10),
@@ -80,77 +54,46 @@ export async function POST(
     const body = (await request.json()) as unknown
     const validatedData = refreshRequestSchema.parse(body)
 
-    // Get current playlist tracks to check for duplicates
-    const playlistResponse = await sendApiRequest<SpotifyPlaylistResponse>({
-      path: 'me/playlists',
-      method: 'GET'
+    // Use the cached instance if available, otherwise create a new one
+    if (!serviceInstance) {
+      console.log('[API Refresh Site] Creating new service instance')
+      serviceInstance = PlaylistRefreshServiceImpl.getInstance()
+    } else {
+      console.log('[API Refresh Site] Using cached service instance')
+    }
+
+    const result = await serviceInstance.refreshPlaylist(true, {
+      genres: validatedData.genres,
+      yearRange: validatedData.yearRange,
+      popularity: validatedData.popularity,
+      allowExplicit: validatedData.allowExplicit,
+      maxSongLength: validatedData.maxSongLength,
+      songsBetweenRepeats: validatedData.songsBetweenRepeats
     })
 
-    const fixedPlaylist = playlistResponse.items.find(
-      (playlist) => playlist.name === '3B Saigon'
-    )
+    console.log('[API Refresh Site] Result:', {
+      timestamp: new Date().toISOString(),
+      result,
+      serviceInstance: serviceInstance ? 'exists' : 'null'
+    })
 
-    if (!fixedPlaylist) {
+    if (!result.success) {
       return NextResponse.json(
         {
           success: false,
-          message: 'Fixed playlist not found'
+          message: result.message
         },
-        { status: 404 }
+        { status: 400 }
       )
     }
-
-    const playlistTracks = await sendApiRequest<SpotifyPlaylistTracksResponse>({
-      path: `playlists/${fixedPlaylist.id}/tracks`,
-      method: 'GET'
-    })
-
-    const existingTrackIds = new Set(
-      playlistTracks.items.map((item) => item.track.id)
-    )
-
-    // Get currently playing track to avoid immediate repeats
-    const playbackState = await sendApiRequest<SpotifyPlaybackState>({
-      path: 'me/player',
-      method: 'GET'
-    })
-    const currentTrackId = playbackState?.item?.id ?? null
-
-    // Find a suggested track
-    const result = await findSuggestedTrack(
-      Array.from(existingTrackIds),
-      currentTrackId,
-      DEFAULT_MARKET,
-      validatedData
-    )
-
-    if (!result.track) {
-      return NextResponse.json(
-        {
-          success: false,
-          message: 'No suitable track found',
-          searchDetails: result.searchDetails
-        },
-        { status: 404 }
-      )
-    }
-
-    // Add the track to the playlist
-    await sendApiRequest({
-      path: `playlists/${fixedPlaylist.id}/tracks`,
-      method: 'POST',
-      body: {
-        uris: [result.track.uri]
-      }
-    })
 
     return NextResponse.json({
       success: true,
-      message: 'Track added successfully',
-      searchDetails: result.searchDetails
+      message: result.message,
+      searchDetails: result.diagnosticInfo as RefreshResponse['searchDetails']
     })
   } catch (error) {
-    console.error('[Refresh Site] Error:', error)
+    console.error('[API Refresh Site] Error:', error)
 
     if (error instanceof z.ZodError) {
       return NextResponse.json(
