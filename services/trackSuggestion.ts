@@ -74,7 +74,8 @@ export function selectRandomTrack(
 export async function searchTracksByGenre(
   genre: string,
   yearRange: [number, number],
-  market: string = DEFAULT_MARKET
+  market: string = DEFAULT_MARKET,
+  minPopularity: number = MIN_TRACK_POPULARITY
 ): Promise<TrackDetails[]> {
   try {
     const [startYear, endYear] = yearRange
@@ -82,9 +83,14 @@ export async function searchTracksByGenre(
       `[TrackSuggestion] Searching tracks for genre ${genre} (${startYear}-${endYear})`
     )
 
-    // Add random offset between 0 and 900 (Spotify's max offset is 1000)
-    const randomOffset = Math.floor(Math.random() * 900)
-    console.log(`[TrackSuggestion] Using random offset: ${randomOffset}`)
+    // Calculate max offset based on minPopularity
+    // Higher popularity = lower max offset
+    // Lower popularity = higher max offset
+    const maxOffset = Math.max(0, Math.floor(1000 * (1 - minPopularity / 100)))
+    const randomOffset = Math.floor(Math.random() * maxOffset)
+    console.log(
+      `[TrackSuggestion] Using random offset: ${randomOffset} (max: ${maxOffset}, minPopularity: ${minPopularity})`
+    )
 
     const response = await sendApiRequest<{
       tracks: { items: TrackDetails[] }
@@ -202,7 +208,12 @@ export async function findSuggestedTrack(
     genresTried.push(genre)
 
     try {
-      const tracks = await searchTracksByGenre(genre, yearRange, market)
+      const tracks = await searchTracksByGenre(
+        genre,
+        yearRange,
+        market,
+        minPopularity
+      )
 
       // Log details about the tracks we found
       const trackDetails = tracks.map((t) => ({
