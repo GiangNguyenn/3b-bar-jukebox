@@ -608,16 +608,11 @@ export class PlaylistRefreshServiceImpl implements PlaylistRefreshService {
       ) {
         try {
           await this.withTimeout(
-            sendApiRequest({
-              path: `me/player/play?device_id=${playbackState.device.id}`,
-              method: 'PUT',
-              body: {
-                context_uri: playbackState.context.uri,
-                offset: { uri: playbackState.item.uri },
-                position_ms: playbackState.progress_ms ?? 0
-              },
-              retryConfig: this.retryConfig,
-              debounceTime: 60000 // 1 minute debounce
+            this.spotifyApi.resumePlaybackAtPosition({
+              deviceId: playbackState.device.id,
+              contextUri: playbackState.context.uri,
+              trackUri: playbackState.item.uri,
+              position: playbackState.progress_ms ?? 0
             }),
             this.TIMEOUT_MS
           )

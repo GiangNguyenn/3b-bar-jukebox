@@ -22,6 +22,7 @@ import { RecoveryStatus } from '@/components/ui/recovery-status'
 import { HealthStatus } from '@/shared/types'
 import { executeWithErrorBoundary } from '@/shared/utils/errorBoundary'
 import { ApiError } from '@/shared/api'
+import { SpotifyApiService } from '@/services/spotifyApi'
 
 declare global {
   interface Window {
@@ -411,15 +412,12 @@ export default function AdminPage(): JSX.Element {
             })
 
             try {
-              await sendApiRequest({
-                path: `me/player/play?device_id=${deviceId}`,
-                method: 'PUT',
-                body: {
-                  context_uri: `spotify:playlist:${fixedPlaylistId}`,
-                  position_ms: state?.progress_ms ?? 0,
-                  offset: state?.item?.uri ? { uri: state.item.uri } : undefined
-                },
-                debounceTime: 60000 // 1 minute debounce
+              const spotifyApi = SpotifyApiService.getInstance()
+              await spotifyApi.resumePlaybackAtPosition({
+                deviceId,
+                contextUri: `spotify:playlist:${fixedPlaylistId}`,
+                trackUri: state?.item?.uri,
+                position: state?.progress_ms ?? 0
               })
               setHealthStatus((prev: HealthStatus) => ({
                 ...prev,

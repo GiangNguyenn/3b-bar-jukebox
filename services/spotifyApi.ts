@@ -13,6 +13,18 @@ export interface SpotifyApiClient {
   addTrackToPlaylist(playlistId: string, trackUri: string): Promise<void>
   getPlaybackState(): Promise<SpotifyPlaybackState>
   getQueue(): Promise<{ queue: SpotifyPlaybackState[] }>
+  resumePlaybackAtPosition(params: {
+    deviceId: string
+    contextUri: string
+    trackUri?: string
+    position: number
+  }): Promise<{
+    success: boolean
+    resumedFrom?: {
+      trackUri: string
+      position: number
+    }
+  }>
 }
 
 export class SpotifyApiService implements SpotifyApiClient {
@@ -107,5 +119,48 @@ export class SpotifyApiService implements SpotifyApiClient {
         }),
       'SpotifyApi.getQueue'
     )
+  }
+
+  async resumePlaybackAtPosition(params: {
+    deviceId: string
+    contextUri: string
+    trackUri?: string
+    position: number
+  }): Promise<{
+    success: boolean
+    resumedFrom?: {
+      trackUri: string
+      position: number
+    }
+  }> {
+    return handleOperationError(async () => {
+      const { deviceId, contextUri, trackUri, position } = params
+
+      // Get current playback state to ensure we have the latest state
+      const currentState = await this.getPlaybackState()
+
+      // Start playback with the provided context and position
+      await this.apiClient({
+        path: `me/player/play?device_id=${deviceId}`,
+        method: 'PUT',
+        body: {
+          context_uri: contextUri,
+          position_ms: position,
+          ...(trackUri ? { offset: { uri: trackUri } } : {})
+        },
+        retryConfig: this.retryConfig,
+        debounceTime: 60000 // 1 minute debounce
+      })
+
+      return {
+        success: true,
+        resumedFrom: trackUri
+          ? {
+              trackUri,
+              position
+            }
+          : undefined
+      }
+    }, 'SpotifyApi.resumePlaybackAtPosition')
   }
 }
