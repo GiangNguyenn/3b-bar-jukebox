@@ -11,7 +11,8 @@ const refreshRequestSchema = z.object({
   popularity: z.number().min(0).max(100),
   allowExplicit: z.boolean(),
   maxSongLength: z.number().min(30).max(600),
-  songsBetweenRepeats: z.number().min(1).max(50)
+  songsBetweenRepeats: z.number().min(1).max(50),
+  maxOffset: z.number().min(1).max(10000)
 })
 
 export async function POST(request: Request): Promise<NextResponse> {
@@ -45,7 +46,8 @@ export async function POST(request: Request): Promise<NextResponse> {
       popularity,
       allowExplicit,
       maxSongLength,
-      songsBetweenRepeats
+      songsBetweenRepeats,
+      maxOffset
     } = validationResult.data
     console.log(
       '[PARAM CHAIN] Validated genres in API route (refresh/route.ts):',
@@ -59,7 +61,8 @@ export async function POST(request: Request): Promise<NextResponse> {
       popularity,
       allowExplicit,
       maxSongLength,
-      songsBetweenRepeats
+      songsBetweenRepeats,
+      maxOffset
     })
 
     console.log('[API Track Suggestions Refresh] Success:', {
@@ -70,6 +73,7 @@ export async function POST(request: Request): Promise<NextResponse> {
       allowExplicit,
       maxSongLength,
       songsBetweenRepeats,
+      maxOffset,
       result
     })
 

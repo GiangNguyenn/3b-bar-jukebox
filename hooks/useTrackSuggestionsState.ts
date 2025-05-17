@@ -4,15 +4,18 @@ import { type TrackSuggestionsState } from '@/shared/types/trackSuggestions'
 const STORAGE_KEY = 'track-suggestions-state'
 
 const getInitialState = (): TrackSuggestionsState => {
+  const defaultState: TrackSuggestionsState = {
+    genres: [],
+    yearRange: [1950, new Date().getFullYear()] as [number, number],
+    popularity: 50,
+    allowExplicit: false,
+    maxSongLength: 3,
+    songsBetweenRepeats: 5,
+    maxOffset: 1000
+  }
+
   if (typeof window === 'undefined') {
-    return {
-      genres: [],
-      yearRange: [1950, new Date().getFullYear()],
-      popularity: 50,
-      allowExplicit: false,
-      maxSongLength: 3,
-      songsBetweenRepeats: 5
-    }
+    return defaultState
   }
 
   const savedState = localStorage.getItem(STORAGE_KEY)
@@ -22,7 +25,8 @@ const getInitialState = (): TrackSuggestionsState => {
       const parsed = JSON.parse(savedState) as TrackSuggestionsState
       return {
         ...parsed,
-        maxSongLength: Math.max(3, parsed.maxSongLength ?? 3)
+        maxSongLength: Math.max(3, parsed.maxSongLength ?? 3),
+        maxOffset: parsed.maxOffset ?? 1000
       }
     } catch (error) {
       console.error(
@@ -32,14 +36,7 @@ const getInitialState = (): TrackSuggestionsState => {
     }
   }
 
-  return {
-    genres: [],
-    yearRange: [1950, new Date().getFullYear()],
-    popularity: 50,
-    allowExplicit: false,
-    maxSongLength: 3,
-    songsBetweenRepeats: 5
-  }
+  return defaultState
 }
 
 export function useTrackSuggestionsState() {
