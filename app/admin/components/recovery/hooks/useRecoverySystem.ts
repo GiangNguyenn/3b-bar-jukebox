@@ -1,5 +1,4 @@
 import { useState, useCallback, useEffect } from 'react'
-import { sendApiRequest } from '@/shared/api'
 import { RecoveryState, RecoveryStatus } from '@/shared/types/recovery'
 import { RECOVERY_STEPS, ERROR_MESSAGES } from '@/shared/constants/recovery'
 import {
@@ -15,6 +14,8 @@ import {
 import { verifyDeviceTransfer } from '../utils/device-management'
 import { verifyPlaybackResume } from '../utils/playback-verification'
 import { validatePlaybackRequest } from '../utils/validation'
+import { useSpotifyPlayerState } from '@/hooks/useSpotifyPlayerState'
+import { SpotifyApiService } from '@/services/spotifyApi'
 
 interface ExtendedRecoveryState extends RecoveryState {
   currentDeviceId: string | null
@@ -39,6 +40,15 @@ export function useRecoverySystem(): RecoverySystemHook {
     createRecoveryStatus()
   )
   const [error, setError] = useState<string | null>(null)
+
+  const {
+    refreshPlayerState,
+    refreshPlaylistState,
+    reconnectPlayer,
+    checkPlayerReady,
+    deviceId,
+    isReady
+  } = useSpotifyPlayerState(recoveryState.fixedPlaylistId ?? '')
 
   const updateStatus = useCallback(
     (message: string, progress: number, currentStep: number): void => {
@@ -70,9 +80,31 @@ export function useRecoverySystem(): RecoverySystemHook {
         setRecoveryStatus((prev) => ({ ...prev, isRecovering: true }))
         updateStatus('Starting recovery process...', 0, 0)
 
+        // First try to refresh player state
+        updateStatus('Refreshing player state...', 20, 1)
+        await refreshPlayerState()
+
+        // If that doesn't work, try reconnecting
+        if (!isReady) {
+          updateStatus('Reconnecting player...', 40, 2)
+          await reconnectPlayer()
+        }
+
+        // Check if player is ready
+        updateStatus('Checking player readiness...', 60, 3)
+        const isPlayerReady = await checkPlayerReady()
+        if (!isPlayerReady) {
+          throw new Error('Player failed to become ready')
+        }
+
+        // Refresh playlist state
+        updateStatus('Refreshing playlist state...', 80, 4)
+        await refreshPlaylistState()
+
+        // Verify the recovery was successful
         const recoveryResult = await handleErrorRecovery(
           error,
-          recoveryState.currentDeviceId,
+          deviceId,
           recoveryState.fixedPlaylistId
         )
 
@@ -101,7 +133,17 @@ export function useRecoverySystem(): RecoverySystemHook {
         setRecoveryStatus((prev) => ({ ...prev, isRecovering: false }))
       }
     },
-    [recoveryState, updateStatus, handleRecoveryError]
+    [
+      recoveryState,
+      updateStatus,
+      handleRecoveryError,
+      refreshPlayerState,
+      reconnectPlayer,
+      checkPlayerReady,
+      refreshPlaylistState,
+      deviceId,
+      isReady
+    ]
   )
 
   const resumePlayback = useCallback(
@@ -120,11 +162,16 @@ export function useRecoverySystem(): RecoverySystemHook {
         }
 
         updateStatus('Resuming playback...', 50, 3)
-        await sendApiRequest({
-          path: 'me/player/play',
-          method: 'PUT',
-          body: { context_uri: contextUri }
+        const spotifyApi = SpotifyApiService.getInstance()
+        const result = await spotifyApi.resumePlaybackAtPosition({
+          deviceId,
+          contextUri,
+          position: 0
         })
+
+        if (!result.success) {
+          throw new Error('Failed to resume playback')
+        }
 
         updateStatus('Verifying playback...', 70, 4)
         const verificationResult = await verifyPlaybackResume(

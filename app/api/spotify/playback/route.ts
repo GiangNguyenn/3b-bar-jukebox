@@ -1,21 +1,8 @@
 import { SpotifyPlaybackState } from '@/shared/types'
+import { SpotifyApiService } from '@/services/spotifyApi'
 
 const MAX_RETRIES = 3
 const RETRY_DELAY = 1000 // 1 second
-
-interface PlaybackResponse {
-  success: boolean
-  resumedFrom?: {
-    trackUri: string
-    position: number
-  }
-}
-
-interface PlaybackError {
-  error: {
-    message: string
-  }
-}
 
 interface PlaybackRequest {
   accessToken: string
@@ -102,42 +89,16 @@ export async function POST(request: Request): Promise<Response> {
     const currentTrackUri = state?.item?.uri
     const currentPosition = state?.progress_ms ?? 0
 
-    // Then start playback with retries
-    await retryWithBackoff(async () => {
-      const response = await fetch(
-        'https://api.spotify.com/v1/me/player/play?device_id=' + deviceId,
-        {
-          method: 'PUT',
-          headers: {
-            Authorization: `Bearer ${accessToken}`,
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({
-            ...(trackUri ? { uris: [trackUri] } : {}),
-            ...(contextUri ? { context_uri: contextUri } : {}),
-            position_ms: currentPosition,
-            offset: currentTrackUri ? { uri: currentTrackUri } : undefined
-          })
-        }
-      )
-
-      if (!response.ok) {
-        const errorData = (await response.json()) as PlaybackError
-        throw new Error(errorData.error?.message ?? 'Playback failed')
-      }
+    // Use SpotifyApiService to resume playback
+    const spotifyApi = SpotifyApiService.getInstance()
+    const result = await spotifyApi.resumePlaybackAtPosition({
+      deviceId,
+      contextUri: contextUri ?? '',
+      trackUri: trackUri ?? currentTrackUri,
+      position: currentPosition
     })
 
-    const response: PlaybackResponse = {
-      success: true,
-      resumedFrom: currentTrackUri
-        ? {
-            trackUri: currentTrackUri,
-            position: currentPosition
-          }
-        : undefined
-    }
-
-    return new Response(JSON.stringify(response), {
+    return new Response(JSON.stringify(result), {
       status: 200,
       headers: {
         'Content-Type': 'application/json'

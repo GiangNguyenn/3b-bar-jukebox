@@ -8,7 +8,8 @@ import {
   DeviceVerificationState,
   ErrorRecoveryState,
   ValidationResult,
-  RecoverySystemHook
+  RecoverySystemHook,
+  ErrorType
 } from '@/shared/types/recovery'
 import {
   MAX_RECOVERY_ATTEMPTS,
@@ -421,28 +422,28 @@ async function handleErrorRecovery(
     console.log('[Error Recovery] Starting recovery for error type:', errorType)
 
     switch (errorType) {
-      case 'auth':
+      case ErrorType.AUTH:
         // Handle auth errors
         if (typeof window.refreshSpotifyPlayer === 'function') {
           await window.refreshSpotifyPlayer()
         }
         break
 
-      case 'device':
+      case ErrorType.DEVICE:
         // Handle device errors
         if (deviceId) {
           await transferPlaybackToDevice(deviceId)
         }
         break
 
-      case 'connection':
+      case ErrorType.CONNECTION:
         // Handle connection errors
         if (typeof window.spotifyPlayerInstance?.connect === 'function') {
           await window.spotifyPlayerInstance.connect()
         }
         break
 
-      case 'playback':
+      case ErrorType.PLAYBACK:
         // Handle playback errors
         if (fixedPlaylistId) {
           await sendApiRequest({
@@ -607,9 +608,7 @@ const verifyPlaybackResume = async (
   return verificationResult
 }
 
-function determineErrorType(
-  error: unknown
-): 'auth' | 'playback' | 'connection' | 'device' {
+function determineErrorType(error: unknown): ErrorType {
   if (error instanceof Error) {
     const message = error.message.toLowerCase()
     if (
@@ -617,20 +616,20 @@ function determineErrorType(
       message.includes('auth') ||
       message.includes('unauthorized')
     ) {
-      return 'auth'
+      return ErrorType.AUTH
     }
     if (message.includes('device') || message.includes('transfer')) {
-      return 'device'
+      return ErrorType.DEVICE
     }
     if (
       message.includes('connection') ||
       message.includes('network') ||
       message.includes('timeout')
     ) {
-      return 'connection'
+      return ErrorType.CONNECTION
     }
   }
-  return 'playback'
+  return ErrorType.PLAYBACK
 }
 
 export function useRecoverySystem(
