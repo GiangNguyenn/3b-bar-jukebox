@@ -12,7 +12,8 @@ const getInitialState = (): TrackSuggestionsState => {
       popularity: 50,
       allowExplicit: false,
       maxSongLength: 3,
-      songsBetweenRepeats: 5
+      songsBetweenRepeats: 5,
+      maxOffset: 1000
     }
   }
 
@@ -27,7 +28,8 @@ const getInitialState = (): TrackSuggestionsState => {
           parsed.genres?.length > 0
             ? parsed.genres.slice(0, 10)
             : [...FALLBACK_GENRES.slice(0, 10)],
-        maxSongLength: Math.max(3, parsed.maxSongLength ?? 3)
+        maxSongLength: Math.max(3, parsed.maxSongLength ?? 3),
+        maxOffset: parsed.maxOffset ?? 1000
       }
     } catch (error) {
       console.error('[TrackSuggestions] Failed to parse localStorage:', error)
@@ -40,7 +42,8 @@ const getInitialState = (): TrackSuggestionsState => {
     popularity: 50,
     allowExplicit: false,
     maxSongLength: 3,
-    songsBetweenRepeats: 5
+    songsBetweenRepeats: 5,
+    maxOffset: 1000
   }
 }
 
@@ -53,6 +56,7 @@ interface UseTrackSuggestionsReturn {
   setAllowExplicit: (allowExplicit: boolean) => void
   setMaxSongLength: (maxSongLength: number) => void
   setSongsBetweenRepeats: (songsBetweenRepeats: number) => void
+  setMaxOffset: (maxOffset: number) => void
 }
 
 export function useTrackSuggestions(): UseTrackSuggestionsReturn {
@@ -85,6 +89,7 @@ export function useTrackSuggestions(): UseTrackSuggestionsReturn {
     setMaxSongLength: (maxSongLength: number): void =>
       updateState({ maxSongLength }),
     setSongsBetweenRepeats: (songsBetweenRepeats: number): void =>
-      updateState({ songsBetweenRepeats })
+      updateState({ songsBetweenRepeats }),
+    setMaxOffset: (maxOffset: number): void => updateState({ maxOffset })
   }
 }
