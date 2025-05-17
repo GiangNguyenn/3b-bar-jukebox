@@ -75,7 +75,8 @@ export async function searchTracksByGenre(
   genre: string,
   yearRange: [number, number],
   market: string = DEFAULT_MARKET,
-  minPopularity: number = MIN_TRACK_POPULARITY
+  minPopularity: number = MIN_TRACK_POPULARITY,
+  maxOffset: number = 1000
 ): Promise<TrackDetails[]> {
   try {
     const [startYear, endYear] = yearRange
@@ -83,13 +84,9 @@ export async function searchTracksByGenre(
       `[TrackSuggestion] Searching tracks for genre ${genre} (${startYear}-${endYear})`
     )
 
-    // Calculate max offset based on minPopularity
-    // Higher popularity = lower max offset
-    // Lower popularity = higher max offset
-    const maxOffset = Math.max(0, Math.floor(1000 * (1 - minPopularity / 100)))
     const randomOffset = Math.floor(Math.random() * maxOffset)
     console.log(
-      `[TrackSuggestion] Using random offset: ${randomOffset} (max: ${maxOffset}, minPopularity: ${minPopularity})`
+      `[TrackSuggestion] Using random offset: ${randomOffset} (max: ${maxOffset})`
     )
 
     const response = await sendApiRequest<{
@@ -153,6 +150,7 @@ export async function findSuggestedTrack(
     allowExplicit: boolean
     maxSongLength: number // maxSongLength is in minutes
     songsBetweenRepeats: number
+    maxOffset: number
   }
 ): Promise<TrackSearchResult> {
   console.log(
@@ -193,6 +191,7 @@ export async function findSuggestedTrack(
   const minPopularity = params?.popularity ?? MIN_TRACK_POPULARITY
   const allowExplicit = params?.allowExplicit ?? false
   const maxSongLength = params?.maxSongLength ?? 3 // Default to 3 minutes
+  const maxOffset = params?.maxOffset ?? 1000 // Default to 1000
 
   console.log('[TrackSuggestion] Starting track search with params:', {
     genres,
@@ -200,6 +199,7 @@ export async function findSuggestedTrack(
     minPopularity,
     allowExplicit,
     maxSongLength,
+    maxOffset,
     excludedIds: allExcludedIds.length
   })
 
@@ -212,7 +212,8 @@ export async function findSuggestedTrack(
         genre,
         yearRange,
         market,
-        minPopularity
+        minPopularity,
+        maxOffset
       )
 
       // Log details about the tracks we found
