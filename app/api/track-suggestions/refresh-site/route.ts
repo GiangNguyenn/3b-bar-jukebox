@@ -20,7 +20,8 @@ const refreshRequestSchema = z.object({
   popularity: z.number().min(0).max(100),
   allowExplicit: z.boolean(),
   maxSongLength: z.number().min(3).max(20), // In minutes
-  songsBetweenRepeats: songsBetweenRepeatsSchema
+  songsBetweenRepeats: songsBetweenRepeatsSchema,
+  maxOffset: z.number().min(1).max(10000)
 })
 
 interface RefreshResponse {
@@ -68,7 +69,8 @@ export async function POST(
       popularity: validatedData.popularity,
       allowExplicit: validatedData.allowExplicit,
       maxSongLength: validatedData.maxSongLength,
-      songsBetweenRepeats: validatedData.songsBetweenRepeats
+      songsBetweenRepeats: validatedData.songsBetweenRepeats,
+      maxOffset: validatedData.maxOffset
     })
 
     console.log('[API Refresh Site] Result:', {

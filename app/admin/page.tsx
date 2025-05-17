@@ -538,7 +538,8 @@ export default function AdminPage(): JSX.Element {
           popularity: trackSuggestionsState.popularity,
           allowExplicit: trackSuggestionsState.allowExplicit,
           maxSongLength: trackSuggestionsState.maxSongLength,
-          songsBetweenRepeats: trackSuggestionsState.songsBetweenRepeats
+          songsBetweenRepeats: trackSuggestionsState.songsBetweenRepeats,
+          maxOffset: trackSuggestionsState.maxOffset
         })
 
         if (!result.success) {
@@ -1371,7 +1372,8 @@ export default function AdminPage(): JSX.Element {
         popularity,
         allowExplicit,
         maxSongLength,
-        songsBetweenRepeats
+        songsBetweenRepeats,
+        maxOffset: trackSuggestionsState.maxOffset
       }
 
       const response = await fetch('/api/track-suggestions/refresh-site', {
@@ -1482,7 +1484,8 @@ export default function AdminPage(): JSX.Element {
               popularity: trackSuggestionsState.popularity,
               allowExplicit: trackSuggestionsState.allowExplicit,
               maxSongLength: trackSuggestionsState.maxSongLength,
-              songsBetweenRepeats: trackSuggestionsState.songsBetweenRepeats
+              songsBetweenRepeats: trackSuggestionsState.songsBetweenRepeats,
+              maxOffset: trackSuggestionsState.maxOffset
             })
           }
         } else {

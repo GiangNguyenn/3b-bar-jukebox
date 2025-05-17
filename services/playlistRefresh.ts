@@ -19,7 +19,18 @@ import { type TrackSuggestionsState } from '@/shared/types/trackSuggestions'
 const LAST_SUGGESTED_TRACK_KEY = 'last-suggested-track'
 
 export interface PlaylistRefreshService {
-  refreshPlaylist(force?: boolean): Promise<{
+  refreshPlaylist(
+    force?: boolean,
+    params?: {
+      genres: Genre[]
+      yearRange: [number, number]
+      popularity: number
+      allowExplicit: boolean
+      maxSongLength: number
+      songsBetweenRepeats: number
+      maxOffset: number
+    }
+  ): Promise<{
     success: boolean
     message: string
     timestamp: string
@@ -55,6 +66,7 @@ export interface PlaylistRefreshService {
     allowExplicit: boolean
     maxSongLength: number
     songsBetweenRepeats: number
+    maxOffset: number
   }): Promise<{
     success: boolean
     message: string
@@ -240,6 +252,7 @@ export class PlaylistRefreshServiceImpl implements PlaylistRefreshService {
       allowExplicit: boolean
       maxSongLength: number
       songsBetweenRepeats: number
+      maxOffset: number
     }
   ): Promise<{ success: boolean; error?: string; searchDetails?: unknown }> {
     // Find the current track's position in the playlist
@@ -299,29 +312,36 @@ export class PlaylistRefreshServiceImpl implements PlaylistRefreshService {
       let success = false
       let searchDetails: unknown
 
-      // Get parameters from localStorage or use defaults
-      const savedState =
+      // Get saved params from localStorage
+      const savedParams =
         typeof window !== 'undefined'
-          ? localStorage.getItem('track-suggestions-state')
+          ? (JSON.parse(
+              localStorage.getItem('track-suggestions-state') ?? '{}'
+            ) as {
+              genres: Genre[]
+              yearRange: [number, number]
+              popularity: number
+              allowExplicit: boolean
+              maxSongLength: number
+              songsBetweenRepeats: number
+              maxOffset: number
+            })
           : null
-      const savedParams = savedState
-        ? (JSON.parse(savedState) as TrackSuggestionsState)
-        : null
 
-      const defaultParams = {
-        genres: Array.from(FALLBACK_GENRES) as Genre[],
-        yearRange: [1950, new Date().getFullYear()] as [number, number],
-        popularity: 50,
-        allowExplicit: false,
-        maxSongLength: 300,
-        songsBetweenRepeats: 5
-      }
-
-      // Merge provided params with saved params or defaults
       const mergedParams = {
-        ...defaultParams,
-        ...(savedParams || {}),
-        ...params
+        genres:
+          params?.genres ??
+          savedParams?.genres ??
+          (Array.from(FALLBACK_GENRES) as Genre[]),
+        yearRange: params?.yearRange ??
+          savedParams?.yearRange ?? [1950, new Date().getFullYear()],
+        popularity: params?.popularity ?? savedParams?.popularity ?? 50,
+        allowExplicit:
+          params?.allowExplicit ?? savedParams?.allowExplicit ?? false,
+        maxSongLength: params?.maxSongLength ?? savedParams?.maxSongLength ?? 3,
+        songsBetweenRepeats:
+          params?.songsBetweenRepeats ?? savedParams?.songsBetweenRepeats ?? 5,
+        maxOffset: params?.maxOffset ?? savedParams?.maxOffset ?? 1000
       }
 
       console.log('[PlaylistRefresh] Using parameters:', {
@@ -518,6 +538,7 @@ export class PlaylistRefreshServiceImpl implements PlaylistRefreshService {
       allowExplicit: boolean
       maxSongLength: number
       songsBetweenRepeats: number
+      maxOffset: number
     }
   ): Promise<{
     success: boolean
@@ -640,7 +661,15 @@ export class PlaylistRefreshServiceImpl implements PlaylistRefreshService {
           playlist.id,
           currentTrackId,
           playlist.tracks.items,
-          params
+          {
+            genres: params?.genres ?? Array.from(FALLBACK_GENRES),
+            yearRange: params?.yearRange ?? [1950, new Date().getFullYear()],
+            popularity: params?.popularity ?? 50,
+            allowExplicit: params?.allowExplicit ?? false,
+            maxSongLength: params?.maxSongLength ?? 3,
+            songsBetweenRepeats: params?.songsBetweenRepeats ?? 5,
+            maxOffset: params?.maxOffset ?? 1000
+          }
         ),
         this.TIMEOUT_MS
       )
@@ -725,6 +754,7 @@ export class PlaylistRefreshServiceImpl implements PlaylistRefreshService {
     allowExplicit: boolean
     maxSongLength: number
     songsBetweenRepeats: number
+    maxOffset: number
   }): Promise<{
     success: boolean
     message: string
@@ -798,7 +828,15 @@ export class PlaylistRefreshServiceImpl implements PlaylistRefreshService {
         playlist.id,
         currentTrackId,
         allPlaylistTracks,
-        params
+        {
+          genres: params.genres,
+          yearRange: params.yearRange,
+          popularity: params.popularity,
+          allowExplicit: params.allowExplicit,
+          maxSongLength: params.maxSongLength,
+          songsBetweenRepeats: params.songsBetweenRepeats,
+          maxOffset: params.maxOffset
+        }
       )
 
       if (!result.success) {

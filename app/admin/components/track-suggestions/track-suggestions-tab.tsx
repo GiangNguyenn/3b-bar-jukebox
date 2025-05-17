@@ -7,6 +7,7 @@ import { PopularitySelector } from './components/popularity-selector'
 import { ExplicitContentToggle } from './components/explicit-content-toggle'
 import { MaxSongLengthSelector } from './components/max-song-length-selector'
 import { SongsBetweenRepeatsSelector } from './components/songs-between-repeats-selector'
+import { MaxOffsetSelector } from './components/max-offset-selector'
 import { LastSuggestedTrack } from './components/last-suggested-track'
 import {
   type TrackSuggestionsState,
@@ -36,6 +37,7 @@ export function TrackSuggestionsTab({
     setAllowExplicit,
     setMaxSongLength,
     setSongsBetweenRepeats,
+    setMaxOffset,
     updateState
   } = useTrackSuggestions()
 
@@ -147,6 +149,10 @@ export function TrackSuggestionsTab({
           <SongsBetweenRepeatsSelector
             count={state.songsBetweenRepeats}
             onCountChange={setSongsBetweenRepeats}
+          />
+          <MaxOffsetSelector
+            offset={state.maxOffset}
+            onOffsetChange={setMaxOffset}
           />
         </div>
       </div>
