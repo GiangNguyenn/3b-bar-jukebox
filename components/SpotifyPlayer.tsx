@@ -148,7 +148,7 @@ export function SpotifyPlayer(): JSX.Element | null {
     // Start initialization
     void initializeWithDelay()
 
-    return () => {
+    return (): void => {
       clearTimeout(initTimeout)
     }
   }, [initializePlayer])
@@ -167,10 +167,7 @@ export function SpotifyPlayer(): JSX.Element | null {
           })
         )
 
-        if (!state) {
-          console.log('[SpotifyPlayer] No playback state available')
-          return
-        }
+        if (!state) return
 
         if (state.item) {
           const timeUntilEnd = state.item.duration_ms - (state.progress_ms ?? 0)
@@ -187,15 +184,10 @@ export function SpotifyPlayer(): JSX.Element | null {
             duration: state.item.duration_ms
           })
 
+          // Dispatch the complete state object
           window.dispatchEvent(
             new CustomEvent('playbackUpdate', {
-              detail: {
-                isPlaying: state.is_playing,
-                currentTrack: state.item.name,
-                progress: state.progress_ms ?? 0,
-                duration_ms: state.item.duration_ms,
-                timeUntilEnd
-              }
+              detail: state
             })
           )
         } else {
@@ -203,14 +195,14 @@ export function SpotifyPlayer(): JSX.Element | null {
             setLocalPlaybackStatus('stopped')
           }
           setCurrentTrack(null)
+          // Dispatch empty state when no track is playing
           window.dispatchEvent(
             new CustomEvent('playbackUpdate', {
               detail: {
-                isPlaying: false,
-                currentTrack: '',
-                progress: 0,
-                duration_ms: 0,
-                timeUntilEnd: 0
+                is_playing: false,
+                item: null,
+                progress_ms: 0,
+                device: state.device
               }
             })
           )
@@ -235,7 +227,7 @@ export function SpotifyPlayer(): JSX.Element | null {
       void updatePlaybackState()
     }, PLAYBACK_INTERVALS[localPlaybackStatus])
 
-    return () => {
+    return (): void => {
       clearTimeout(initialUpdateTimeout)
       if (playbackIntervalRef.current) {
         clearInterval(playbackIntervalRef.current)
@@ -250,15 +242,14 @@ export function SpotifyPlayer(): JSX.Element | null {
       clearInterval(localPlaylistRefreshInterval.current)
     }
 
-    const interval = setInterval(() => {
+    localPlaylistRefreshInterval.current = setInterval(() => {
       void refreshPlaylistState()
-    }, PLAYBACK_INTERVALS.stopped) // Default to stopped interval
+    }, 60000) // Refresh every minute
 
-    localPlaylistRefreshInterval.current = interval
-
-    return () => {
+    return (): void => {
       if (localPlaylistRefreshInterval.current) {
         clearInterval(localPlaylistRefreshInterval.current)
+        localPlaylistRefreshInterval.current = null
       }
     }
   }, [refreshPlaylistState])

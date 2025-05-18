@@ -32,7 +32,7 @@ const Playlist: React.FC<IPlaylistProps> = memo(({ tracks }): JSX.Element => {
     }
 
     window.addEventListener('playlistRefresh', handlePlaylistRefresh)
-    return () => {
+    return (): void => {
       window.removeEventListener('playlistRefresh', handlePlaylistRefresh)
     }
   }, [refetchPlaylist])
