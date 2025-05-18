@@ -345,7 +345,7 @@ const tokenCache: { token: string | null; expiry: number } = {
   expiry: 0
 }
 
-async function getSpotifyToken() {
+export async function getSpotifyToken() {
   const now = Date.now()
 
   if (tokenCache.token && now < tokenCache.expiry) {

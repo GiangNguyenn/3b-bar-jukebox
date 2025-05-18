@@ -228,6 +228,14 @@ function cleanupRecoveryResources(): void {
 
 async function cleanupPlaybackState(): Promise<void> {
   try {
+    // Check if we're in initialization
+    const isInitializing =
+      document.body.getAttribute('data-spotify-sdk-ready') !== 'true'
+    if (isInitializing) {
+      console.log('[Cleanup] Skipping playback cleanup during initialization')
+      return
+    }
+
     await sendApiRequest({
       path: 'me/player/pause',
       method: 'PUT'
