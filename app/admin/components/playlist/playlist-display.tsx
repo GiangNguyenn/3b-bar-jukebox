@@ -43,34 +43,45 @@ export function PlaylistDisplay({
   const playbackState = useSpotifyPlayer((state) => state.playbackState)
   const deviceId = useSpotifyPlayer((state) => state.deviceId)
 
-  useEffect(() => {
-    const fetchPlaylistTracks = async (): Promise<void> => {
-      try {
-        setIsLoading(true)
-        setError(null)
+  const fetchPlaylistTracks = async (): Promise<void> => {
+    try {
+      setIsLoading(true)
+      setError(null)
 
-        const response = await sendApiRequest<{
-          items: SpotifyPlaylistTrack[]
-        }>({
-          path: `playlists/${playlistId}/tracks`,
-          method: 'GET'
-        })
+      const response = await sendApiRequest<{
+        items: SpotifyPlaylistTrack[]
+      }>({
+        path: `playlists/${playlistId}/tracks`,
+        method: 'GET'
+      })
 
-        if (response?.items) {
-          setTracks(response.items)
-        }
-      } catch (err) {
-        setError(
-          err instanceof Error ? err.message : 'Failed to fetch playlist tracks'
-        )
-      } finally {
-        setIsLoading(false)
+      if (response?.items) {
+        setTracks(response.items)
       }
+    } catch (err) {
+      setError(
+        err instanceof Error ? err.message : 'Failed to fetch playlist tracks'
+      )
+    } finally {
+      setIsLoading(false)
     }
+  }
 
+  useEffect(() => {
     if (playlistId) {
       void fetchPlaylistTracks()
     }
+  }, [playlistId])
+
+  // Add auto-refresh effect
+  useEffect(() => {
+    if (!playlistId) return
+
+    const refreshInterval = setInterval(() => {
+      void fetchPlaylistTracks()
+    }, 180000) // 3 minutes
+
+    return () => clearInterval(refreshInterval)
   }, [playlistId])
 
   const handlePlayTrack = async (trackUri: string): Promise<void> => {
@@ -148,37 +159,38 @@ export function PlaylistDisplay({
     <div className='space-y-4'>
       <div className='rounded-lg border border-gray-800 bg-gray-900/50'>
         <div className='overflow-x-auto'>
-          <table className='w-full'>
+          <table className='w-full table-fixed'>
             <thead>
               <tr className='border-b border-gray-800'>
-                <th className='px-4 py-3 text-left text-sm font-medium text-gray-400'>
+                <th className='w-16 px-4 py-3 text-left text-sm font-medium text-gray-400'>
                   #
                 </th>
-                <th className='px-4 py-3 text-left text-sm font-medium text-gray-400'>
+                <th className='w-1/3 px-4 py-3 text-left text-sm font-medium text-gray-400'>
                   Title
                 </th>
-                <th className='px-4 py-3 text-left text-sm font-medium text-gray-400'>
+                <th className='w-1/4 px-4 py-3 text-left text-sm font-medium text-gray-400'>
                   Artist
                 </th>
-                <th className='px-4 py-3 text-left text-sm font-medium text-gray-400'>
+                <th className='w-1/4 px-4 py-3 text-left text-sm font-medium text-gray-400'>
                   Album
                 </th>
-                <th className='px-4 py-3 text-left text-sm font-medium text-gray-400'>
+                <th className='w-24 px-4 py-3 text-left text-sm font-medium text-gray-400'>
                   Duration
                 </th>
-                <th className='px-4 py-3 text-left text-sm font-medium text-gray-400'>
+                <th className='w-24 px-4 py-3 text-left text-sm font-medium text-gray-400'>
                   Actions
                 </th>
               </tr>
             </thead>
             <tbody>
-              {tracks.map((track, index) => {
+              {[...tracks].reverse().map((track, index) => {
                 const isCurrentlyPlaying =
                   track.track?.id === playbackState?.item?.id
                 const isTrackLoading = loadingTrackId === track.track?.uri
                 const isTrackDeleting = deletingTrackId === track.track?.uri
                 const isNextTrack =
-                  currentTrackIndex !== -1 && index === currentTrackIndex + 1
+                  currentTrackIndex !== -1 &&
+                  index === tracks.length - currentTrackIndex - 2
 
                 return (
                   <tr
@@ -191,15 +203,15 @@ export function PlaylistDisplay({
                       {isCurrentlyPlaying ? (
                         <div className='flex items-center gap-2'>
                           <span className='h-2 w-2 animate-pulse rounded-full bg-green-500'></span>
-                          {index + 1}
+                          {tracks.length - index}
                         </div>
                       ) : isNextTrack ? (
                         <div className='flex items-center gap-2'>
                           <span className='h-2 w-2 rounded-full bg-blue-500'></span>
-                          {index + 1}
+                          {tracks.length - index}
                         </div>
                       ) : (
-                        index + 1
+                        tracks.length - index
                       )}
                     </td>
                     <td className='text-white px-4 py-3 text-sm'>
