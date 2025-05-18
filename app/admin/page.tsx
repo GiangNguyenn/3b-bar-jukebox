@@ -41,6 +41,7 @@ interface PlaybackInfo {
   timeUntilEnd?: number
   lastProgressCheck?: number
   progressStalled?: boolean
+  remainingTracks: number
 }
 
 interface TokenInfo {
@@ -146,31 +147,34 @@ async function verifyPlaybackProgress(
   }
 }
 
+// Add type for playback state with remaining tracks
+interface PlaybackStateWithRemainingTracks extends SpotifyPlaybackState {
+  remainingTracks: number
+}
+
 export default function AdminPage(): JSX.Element {
-  const [mounted, setIsMounted] = useState(false)
-  const [isLoading, setIsLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const [playbackInfo, setPlaybackInfo] = useState<PlaybackInfo | null>({
-    isPlaying: false,
-    currentTrack: '',
-    progress: 0,
-    duration_ms: 0,
-    timeUntilEnd: 0,
-    lastProgressCheck: Date.now(),
-    progressStalled: false
-  })
-  const [activeTab, setActiveTab] = useState<'playback' | 'settings'>(
-    'playback'
-  )
-  const [isManualPause, setIsManualPause] = useState(false)
+  // State declarations
+  const [playbackInfo, setPlaybackInfo] = useState<PlaybackInfo | null>(null)
   const [healthStatus, setHealthStatus] = useState<HealthStatus>({
     device: 'unknown',
-    playback: 'unknown',
-    token: 'unknown',
+    playback: 'paused',
+    token: 'valid',
     connection: 'unknown',
     tokenExpiringSoon: false,
     fixedPlaylist: 'unknown'
   })
+  const [isManualPause, setIsManualPause] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [mounted, setIsMounted] = useState(false)
+  const [isLoading, setIsLoading] = useState(false)
+  const [isStartingPlayback, setIsStartingPlayback] = useState(false)
+  const [activeTab, setActiveTab] = useState<'playback' | 'settings'>('playback')
+  const [uptime] = useState(0)
+  const [_currentYear, _setCurrentYear] = useState(new Date().getFullYear())
+  const [isDeviceCheckComplete, setIsDeviceCheckComplete] = useState(false)
+  const startingPlaybackTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+
+  // Hooks
   const isReady = useSpotifyPlayer((state) => state.isReady)
   const deviceId = useSpotifyPlayer((state) => state.deviceId)
   const {
@@ -187,14 +191,80 @@ export default function AdminPage(): JSX.Element {
         device: status.device
       }))
   )
-
-  // Remove initialization-related code
-  const isDeviceCheckComplete = true // Always true since we're not using initialization anymore
-
-  const isRefreshing = useRef<boolean>(false)
   const { logs: consoleLogs } = useConsoleLogs()
-  const [uptime] = useState(0)
-  const [_currentYear, _setCurrentYear] = useState(new Date().getFullYear())
+
+  // Refs
+  const isRefreshing = useRef<boolean>(false)
+  const handlePlaybackUpdateRef = useRef<(event: Event) => void>()
+
+  // Define the event handler
+  useEffect(() => {
+    handlePlaybackUpdateRef.current = (event: Event) => {
+      const state = (event as CustomEvent<PlaybackStateWithRemainingTracks>).detail
+      if (!state) return
+
+      console.log('[Playback Update] Received state:', {
+        isPlaying: state.is_playing,
+        trackName: state.item?.name,
+        timestamp: new Date().toISOString()
+      })
+
+      // Update playback info
+      setPlaybackInfo((prev) => ({
+        isPlaying: state.is_playing ?? false,
+        currentTrack: state.item?.name ?? '',
+        progress: state.progress_ms ?? 0,
+        duration_ms: state.item?.duration_ms ?? 0,
+        timeUntilEnd: state.item?.duration_ms
+          ? state.item.duration_ms - (state.progress_ms ?? 0)
+          : 0,
+        lastProgressCheck: Date.now(),
+        progressStalled: false,
+        remainingTracks: state.remainingTracks
+      }))
+
+      // Update health status based on actual playback state
+      setHealthStatus((prev) => ({
+        ...prev,
+        playback: state.is_playing ? 'playing' : 'paused'
+      }))
+
+      // Clear manual pause flag if playback is actually playing
+      if (state.is_playing) {
+        setIsManualPause(false)
+      }
+    }
+
+    // Set up event listener
+    window.addEventListener('playbackUpdate', handlePlaybackUpdateRef.current)
+    
+    return () => {
+      if (handlePlaybackUpdateRef.current) {
+        window.removeEventListener('playbackUpdate', handlePlaybackUpdateRef.current)
+      }
+    }
+  }, [])
+
+  // Add effect to force initial state to paused
+  useEffect(() => {
+    if (isReady && deviceId && !playbackInfo) {
+      setPlaybackInfo({
+        isPlaying: false,
+        currentTrack: '',
+        progress: 0,
+        duration_ms: 0,
+        timeUntilEnd: 0,
+        lastProgressCheck: Date.now(),
+        progressStalled: false,
+        remainingTracks: 0
+      })
+      setHealthStatus(prev => ({
+        ...prev,
+        playback: 'paused'
+      }))
+    }
+  }, [isReady, deviceId, playbackInfo])
+
   const {
     state: trackSuggestionsState,
     updateState: updateTrackSuggestionsState
@@ -204,7 +274,7 @@ export default function AdminPage(): JSX.Element {
   const [_timeUntilRefresh, setTimeUntilRefresh] = useState(REFRESH_INTERVAL)
   const lastRefreshTime = useRef<number>(Date.now())
 
-  const { refreshToken } = useSpotifyPlayerState(fixedPlaylistId ?? '')
+  const { refreshToken } = useSpotifyPlayerState(deviceId ?? '')
 
   // Remove initialization-related interfaces and constants
   const _MAX_RECOVERY_ATTEMPTS = 5
@@ -261,7 +331,6 @@ export default function AdminPage(): JSX.Element {
     sendApiRequestWithTokenRecoveryRef.current = sendApiRequestWithTokenRecovery
   }, [sendApiRequestWithTokenRecovery])
 
-  // Update handlePlayback dependencies
   const handlePlayback = useCallback(
     async (action: 'play' | 'skip'): Promise<void> => {
       if (!deviceId) {
@@ -308,19 +377,54 @@ export default function AdminPage(): JSX.Element {
             }
 
             try {
+              // Clear any existing timeout
+              if (startingPlaybackTimeoutRef.current) {
+                clearTimeout(startingPlaybackTimeoutRef.current)
+              }
+              
+              setIsStartingPlayback(true)
+              // Set a minimum 20 second timeout
+              startingPlaybackTimeoutRef.current = setTimeout(() => {
+                setIsStartingPlayback(false)
+                startingPlaybackTimeoutRef.current = null
+              }, 20000)
+
               await sendApiRequest({
                 path: `me/player/play?device_id=${deviceId}`,
                 method: 'PUT'
               })
-              setPlaybackInfo((prev) => ({
-                ...prev!,
-                isPlaying: true
-              }))
-              setIsManualPause(false)
-              setHealthStatus((prev) => ({
-                ...prev,
-                playback: 'playing'
-              }))
+              
+              // Add a small delay to ensure the state is updated
+              await new Promise(resolve => setTimeout(resolve, 500))
+              
+              // Fetch the latest state
+              const latestState = await spotifyApi.getPlaybackState()
+              if (latestState) {
+                setPlaybackInfo((prev) => ({
+                  ...prev!,
+                  isPlaying: true
+                }))
+                setIsManualPause(false)
+                setHealthStatus((prev) => ({
+                  ...prev,
+                  playback: 'playing'
+                }))
+                
+                // Dispatch the updated state
+                const completeState: PlaybackStateWithRemainingTracks = {
+                  ...latestState,
+                  is_playing: true,
+                  progress_ms: latestState.progress_ms ?? 0,
+                  item: latestState.item ?? null,
+                  device: latestState.device ?? null,
+                  remainingTracks: 0
+                }
+                
+                const event = new CustomEvent('playbackUpdate', { 
+                  detail: completeState 
+                })
+                handlePlaybackUpdateRef.current?.(event)
+              }
             } catch (playError) {
               if (
                 playError instanceof Error &&
@@ -345,6 +449,31 @@ export default function AdminPage(): JSX.Element {
                 throw playError
               }
             }
+          }
+        }
+
+        // Immediately fetch and update the playback state
+        const newState = await spotifyApi.getPlaybackState()
+        if (newState) {
+          // Add a small delay to ensure the state is updated
+          await new Promise(resolve => setTimeout(resolve, 500))
+          
+          // Fetch the state again to ensure we have the latest
+          const latestState = await spotifyApi.getPlaybackState()
+          if (latestState && handlePlaybackUpdateRef.current) {
+            const completeState: PlaybackStateWithRemainingTracks = {
+              ...latestState,
+              is_playing: latestState.is_playing ?? false,
+              progress_ms: latestState.progress_ms ?? 0,
+              item: latestState.item ?? null,
+              device: latestState.device ?? null,
+              remainingTracks: 0 // Will be updated by SpotifyPlayer component
+            }
+            
+            const event = new CustomEvent('playbackUpdate', { 
+              detail: completeState 
+            })
+            handlePlaybackUpdateRef.current(event)
           }
         }
       } catch (error) {
@@ -601,6 +730,61 @@ export default function AdminPage(): JSX.Element {
     }
   }, [deviceId, isReady])
 
+  // Add effect to handle device initialization
+  useEffect(() => {
+    if (isReady && deviceId) {
+      console.log('[Device] Player ready and device ID available:', {
+        deviceId,
+        isReady,
+        timestamp: new Date().toISOString()
+      })
+      setIsDeviceCheckComplete(true)
+    } else {
+      setIsDeviceCheckComplete(false)
+    }
+  }, [isReady, deviceId])
+
+  // Add effect to initialize playback state
+  useEffect(() => {
+    if (isReady && deviceId && !playbackInfo) {
+      const initializePlaybackState = async () => {
+        try {
+          const spotifyApi = SpotifyApiService.getInstance()
+          const state = await spotifyApi.getPlaybackState()
+          if (state) {
+            const isActuallyPlaying = state.is_playing ?? false
+            setPlaybackInfo({
+              isPlaying: isActuallyPlaying,
+              currentTrack: state.item?.name ?? '',
+              progress: state.progress_ms ?? 0,
+              duration_ms: state.item?.duration_ms ?? 0,
+              timeUntilEnd: state.item?.duration_ms
+                ? state.item.duration_ms - (state.progress_ms ?? 0)
+                : 0,
+              lastProgressCheck: Date.now(),
+              progressStalled: false,
+              remainingTracks: 0
+            })
+            
+            // Update health status based on actual playback state
+            setHealthStatus(prev => ({
+              ...prev,
+              playback: isActuallyPlaying ? 'playing' : 'paused'
+            }))
+          }
+        } catch (error) {
+          console.error('Error initializing playback state:', error)
+          // Set to paused state on error
+          setHealthStatus(prev => ({
+            ...prev,
+            playback: 'paused'
+          }))
+        }
+      }
+      void initializePlaybackState()
+    }
+  }, [isReady, deviceId, playbackInfo])
+
   const handleTrackSuggestionsRefresh = async (): Promise<void> => {
     if (!trackSuggestionsState) {
       return
@@ -729,171 +913,6 @@ export default function AdminPage(): JSX.Element {
     return () => clearInterval(timer)
   }, [handleRefresh])
 
-  // Update handlePlaybackUpdate to handle null states
-  const handlePlaybackUpdate = useCallback(
-    (event: Event) => {
-      const state = (event as CustomEvent<SpotifyPlaybackState>).detail
-      if (!state) return
-
-      // Update playback info
-      setPlaybackInfo((prev) => ({
-        isPlaying: state.is_playing ?? false,
-        currentTrack: state.item?.name ?? '',
-        progress: state.progress_ms ?? 0,
-        duration_ms: state.item?.duration_ms ?? 0,
-        timeUntilEnd: state.item?.duration_ms
-          ? state.item.duration_ms - (state.progress_ms ?? 0)
-          : 0,
-        lastProgressCheck: Date.now(),
-        progressStalled: false
-      }))
-
-      // Update health status based on actual playback state
-      setHealthStatus((prev) => ({
-        ...prev,
-        playback: state.is_playing ? 'playing' : 'paused'
-      }))
-
-      // Clear manual pause flag if playback is actually playing
-      if (state.is_playing) {
-        setIsManualPause(false)
-      }
-    },
-    []
-  )
-
-  // Update the event listener setup
-  useEffect(() => {
-    const handlePlaybackUpdateWrapper = (event: Event) => {
-      handlePlaybackUpdate(event)
-    }
-    
-    window.addEventListener('playbackUpdate', handlePlaybackUpdateWrapper)
-    
-    // Initial state check
-    const checkInitialState = async () => {
-      try {
-        const spotifyApi = SpotifyApiService.getInstance()
-        const state = await spotifyApi.getPlaybackState()
-        
-        if (state) {
-          const completeState: SpotifyPlaybackState = {
-            ...state,
-            is_playing: state.is_playing ?? false,
-            progress_ms: state.progress_ms ?? 0,
-            item: state.item ?? null,
-            device: state.device ?? null
-          }
-          
-          const event = new CustomEvent('playbackUpdate', { 
-            detail: completeState 
-          })
-          handlePlaybackUpdate(event)
-        }
-      } catch (error) {
-        console.error('[Playback] Failed to get initial state:', error)
-      }
-    }
-    
-    void checkInitialState()
-    
-    return () => {
-      window.removeEventListener('playbackUpdate', handlePlaybackUpdateWrapper)
-    }
-  }, [handlePlaybackUpdate])
-
-  // Add effect to monitor playback state changes
-  useEffect(() => {
-    if (playbackInfo) {
-      console.log('[Playback] State changed:', {
-        isPlaying: playbackInfo.isPlaying,
-        trackName: playbackInfo.currentTrack,
-        timestamp: new Date().toISOString()
-      })
-    }
-  }, [playbackInfo])
-
-  // Update initial playback state check
-  useEffect(() => {
-    if (!deviceId || !isReady) return
-
-    const checkInitialPlaybackState = async (): Promise<void> => {
-      try {
-        const spotifyApi = SpotifyApiService.getInstance()
-        const state = await spotifyApi.getPlaybackState()
-
-        console.log('[Initial Playback] State:', {
-          isPlaying: state?.is_playing,
-          trackName: state?.item?.name,
-          timestamp: new Date().toISOString()
-        })
-
-        if (state) {
-          setPlaybackInfo({
-            isPlaying: state.is_playing ?? false,
-            currentTrack: state.item?.name ?? '',
-            progress: state.progress_ms ?? 0,
-            duration_ms: state.item?.duration_ms ?? 0,
-            timeUntilEnd: state.item?.duration_ms
-              ? state.item.duration_ms - (state.progress_ms ?? 0)
-              : 0,
-            lastProgressCheck: Date.now(),
-            progressStalled: !state.is_playing
-          })
-          setHealthStatus((prev) => ({
-            ...prev,
-            playback: state.is_playing ? 'playing' : 'paused'
-          }))
-        }
-      } catch (error) {
-        console.error('[Playback] Failed to get initial state:', error)
-        setHealthStatus((prev) => ({
-          ...prev,
-          playback: 'paused'
-        }))
-      }
-    }
-
-    void checkInitialPlaybackState()
-  }, [deviceId, isReady])
-
-  // Monitor token status
-  useEffect(() => {
-    const handleTokenUpdate = (event: CustomEvent<TokenInfo>): void => {
-      const { expiryTime } = event.detail
-      const now = Date.now()
-      const timeUntilExpiry = expiryTime - now
-      const isExpiringSoon = timeUntilExpiry < 15 * 60 * 1000 // 15 minutes
-
-      console.log('[Token] Status update:', {
-        timeUntilExpiry,
-        isExpiringSoon,
-        timestamp: new Date().toISOString()
-      })
-
-      setHealthStatus((prev) => ({
-        ...prev,
-        token: 'valid',
-        tokenExpiringSoon: isExpiringSoon
-      }))
-    }
-
-    // Set initial token status
-    setHealthStatus((prev) => ({
-      ...prev,
-      token: 'valid',
-      tokenExpiringSoon: false
-    }))
-
-    window.addEventListener('tokenUpdate', handleTokenUpdate as EventListener)
-    return () => {
-      window.removeEventListener(
-        'tokenUpdate',
-        handleTokenUpdate as EventListener
-      )
-    }
-  }, [])
-
   // Move these hooks before any conditional returns
   const handlePlaybackClick = useCallback(() => {
     void handlePlayback('play')
@@ -926,6 +945,15 @@ export default function AdminPage(): JSX.Element {
     }
   }, [fixedPlaylistId, playlistError, isInitialFetchComplete])
 
+  // Cleanup timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (startingPlaybackTimeoutRef.current) {
+        clearTimeout(startingPlaybackTimeoutRef.current)
+      }
+    }
+  }, [])
+
   // Update the loading state check
   if (!mounted) {
     return (
@@ -939,6 +967,9 @@ export default function AdminPage(): JSX.Element {
       </div>
     )
   }
+
+  // Update the skip button's disabled state to use null check
+  const isSkipDisabled = !playbackInfo?.isPlaying || (playbackInfo?.remainingTracks ?? 0) <= 2
 
   return (
     <div className='text-white min-h-screen bg-black p-4'>
@@ -1143,27 +1174,31 @@ export default function AdminPage(): JSX.Element {
               <div className='flex gap-4'>
                 <button
                   onClick={handlePlaybackClick}
-                  disabled={isLoading || !isReady || !isDeviceCheckComplete}
+                  disabled={isLoading || !isReady || !isDeviceCheckComplete || isStartingPlayback}
                   className='text-white flex-1 rounded-lg bg-green-600 px-4 py-2 font-medium transition-colors hover:bg-green-700 disabled:cursor-not-allowed disabled:opacity-50'
                 >
                   {isLoading
                     ? 'Loading...'
                     : !isDeviceCheckComplete
                       ? 'Initializing...'
-                      : playbackInfo?.isPlaying
-                        ? 'Pause'
-                        : 'Play'}
+                      : isStartingPlayback
+                        ? 'Starting Playback...'
+                        : playbackInfo?.isPlaying === true
+                          ? 'Pause'
+                          : 'Play'}
                 </button>
                 <button
                   onClick={handleSkipClick}
-                  disabled={isLoading || !isReady || !isDeviceCheckComplete}
+                  disabled={isLoading || !isReady || !isDeviceCheckComplete || isSkipDisabled}
                   className='text-white flex-1 rounded-lg bg-blue-600 px-4 py-2 font-medium transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50'
                 >
                   {isLoading
                     ? 'Loading...'
                     : !isDeviceCheckComplete
                       ? 'Initializing...'
-                      : 'Skip'}
+                      : isSkipDisabled
+                        ? 'No Upcoming Tracks'
+                        : 'Skip'}
                 </button>
                 <button
                   onClick={handleRefreshClick}
