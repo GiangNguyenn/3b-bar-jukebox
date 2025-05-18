@@ -5,7 +5,7 @@ import { useSpotifyPlayerState } from '@/hooks/useSpotifyPlayerState'
 import { useFixedPlaylist } from '@/hooks/useFixedPlaylist'
 import { useGetPlaylist } from '@/hooks/useGetPlaylist'
 import { sendApiRequest } from '@/shared/api'
-import { SpotifyPlaybackState, SpotifyPlaylistItem } from '@/shared/types'
+import { SpotifyPlaybackState } from '@/shared/types'
 
 const PLAYBACK_INTERVALS = {
   playing: 10000, // 10 seconds when playing
@@ -110,7 +110,6 @@ export function SpotifyPlayer(): JSX.Element | null {
   const playbackIntervalRef = useRef<NodeJS.Timeout | null>(null)
   const localPlaylistRefreshInterval = useRef<NodeJS.Timeout | null>(null)
   const lastProgressRef = useRef<number | null>(null)
-  const progressCheckCountRef = useRef(0)
   const hasConfirmedPlayingRef = useRef(false)
 
   // Add rate limit state inside component
@@ -189,7 +188,7 @@ export function SpotifyPlayer(): JSX.Element | null {
         }
 
         const currentProgress = state.progress_ms ?? 0
-        
+
         // Check if progress is changing
         let isActuallyPlaying = false
         if (state.is_playing && hasConfirmedPlayingRef.current) {
@@ -215,7 +214,7 @@ export function SpotifyPlayer(): JSX.Element | null {
           isActuallyPlaying = false
           hasConfirmedPlayingRef.current = false
         }
-        
+
         lastProgressRef.current = currentProgress
 
         // Always update local playback status based on actual state
@@ -238,9 +237,10 @@ export function SpotifyPlayer(): JSX.Element | null {
             const currentTrackIndex = playlist.tracks.items.findIndex(
               (t) => t.track.id === state.item?.id
             )
-            remainingTracks = currentTrackIndex >= 0
-              ? playlist.tracks.items.length - (currentTrackIndex + 1)
-              : playlist.tracks.items.length
+            remainingTracks =
+              currentTrackIndex >= 0
+                ? playlist.tracks.items.length - (currentTrackIndex + 1)
+                : playlist.tracks.items.length
           }
 
           // Dispatch the complete state object with remaining tracks

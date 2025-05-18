@@ -22,6 +22,7 @@ import { RecoveryStatus } from '@/components/ui/recovery-status'
 import { HealthStatus } from '@/shared/types'
 import { transferPlaybackToDevice } from '@/services/deviceManagement'
 import { SpotifyApiService } from '@/services/spotifyApi'
+import { PlaylistDisplay } from './components/playlist/playlist-display'
 
 declare global {
   interface Window {
@@ -42,11 +43,6 @@ interface PlaybackInfo {
   lastProgressCheck?: number
   progressStalled?: boolean
   remainingTracks: number
-}
-
-interface TokenInfo {
-  expiryTime: number
-  accessToken: string
 }
 
 interface RefreshResponse {
@@ -168,7 +164,9 @@ export default function AdminPage(): JSX.Element {
   const [mounted, setIsMounted] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
   const [isStartingPlayback, setIsStartingPlayback] = useState(false)
-  const [activeTab, setActiveTab] = useState<'playback' | 'settings'>('playback')
+  const [activeTab, setActiveTab] = useState<
+    'playback' | 'settings' | 'playlist'
+  >('playback')
   const [uptime] = useState(0)
   const [_currentYear, _setCurrentYear] = useState(new Date().getFullYear())
   const [isDeviceCheckComplete, setIsDeviceCheckComplete] = useState(false)
@@ -200,7 +198,8 @@ export default function AdminPage(): JSX.Element {
   // Define the event handler
   useEffect(() => {
     handlePlaybackUpdateRef.current = (event: Event) => {
-      const state = (event as CustomEvent<PlaybackStateWithRemainingTracks>).detail
+      const state = (event as CustomEvent<PlaybackStateWithRemainingTracks>)
+        .detail
       if (!state) return
 
       console.log('[Playback Update] Received state:', {
@@ -226,7 +225,7 @@ export default function AdminPage(): JSX.Element {
       // Update health status based on actual playback state
       setHealthStatus((prev) => ({
         ...prev,
-        playback: state.is_playing ? 'playing' : 'paused'
+        playback: state.is_playing && !isManualPause ? 'playing' : 'paused'
       }))
 
       // Clear manual pause flag if playback is actually playing
@@ -237,10 +236,13 @@ export default function AdminPage(): JSX.Element {
 
     // Set up event listener
     window.addEventListener('playbackUpdate', handlePlaybackUpdateRef.current)
-    
+
     return () => {
       if (handlePlaybackUpdateRef.current) {
-        window.removeEventListener('playbackUpdate', handlePlaybackUpdateRef.current)
+        window.removeEventListener(
+          'playbackUpdate',
+          handlePlaybackUpdateRef.current
+        )
       }
     }
   }, [])
@@ -258,7 +260,7 @@ export default function AdminPage(): JSX.Element {
         progressStalled: false,
         remainingTracks: 0
       })
-      setHealthStatus(prev => ({
+      setHealthStatus((prev) => ({
         ...prev,
         playback: 'paused'
       }))
@@ -381,7 +383,7 @@ export default function AdminPage(): JSX.Element {
               if (startingPlaybackTimeoutRef.current) {
                 clearTimeout(startingPlaybackTimeoutRef.current)
               }
-              
+
               setIsStartingPlayback(true)
               // Set a minimum 20 second timeout
               startingPlaybackTimeoutRef.current = setTimeout(() => {
@@ -393,10 +395,17 @@ export default function AdminPage(): JSX.Element {
                 path: `me/player/play?device_id=${deviceId}`,
                 method: 'PUT'
               })
-              
+
+              // Verify playback started successfully
+              const { isActuallyPlaying } =
+                await verifyPlaybackProgress(deviceId)
+              if (!isActuallyPlaying) {
+                throw new Error('Playback failed to start')
+              }
+
               // Add a small delay to ensure the state is updated
-              await new Promise(resolve => setTimeout(resolve, 500))
-              
+              await new Promise((resolve) => setTimeout(resolve, 500))
+
               // Fetch the latest state
               const latestState = await spotifyApi.getPlaybackState()
               if (latestState) {
@@ -409,7 +418,7 @@ export default function AdminPage(): JSX.Element {
                   ...prev,
                   playback: 'playing'
                 }))
-                
+
                 // Dispatch the updated state
                 const completeState: PlaybackStateWithRemainingTracks = {
                   ...latestState,
@@ -419,9 +428,9 @@ export default function AdminPage(): JSX.Element {
                   device: latestState.device ?? null,
                   remainingTracks: 0
                 }
-                
-                const event = new CustomEvent('playbackUpdate', { 
-                  detail: completeState 
+
+                const event = new CustomEvent('playbackUpdate', {
+                  detail: completeState
                 })
                 handlePlaybackUpdateRef.current?.(event)
               }
@@ -430,7 +439,9 @@ export default function AdminPage(): JSX.Element {
                 playError instanceof Error &&
                 playError.message.includes('No active device found')
               ) {
-                console.error('No active device found, attempting to transfer playback')
+                console.error(
+                  'No active device found, attempting to transfer playback'
+                )
                 await transferPlaybackToDevice(deviceId)
                 await sendApiRequest({
                   path: `me/player/play?device_id=${deviceId}`,
@@ -456,8 +467,8 @@ export default function AdminPage(): JSX.Element {
         const newState = await spotifyApi.getPlaybackState()
         if (newState) {
           // Add a small delay to ensure the state is updated
-          await new Promise(resolve => setTimeout(resolve, 500))
-          
+          await new Promise((resolve) => setTimeout(resolve, 500))
+
           // Fetch the state again to ensure we have the latest
           const latestState = await spotifyApi.getPlaybackState()
           if (latestState && handlePlaybackUpdateRef.current) {
@@ -469,9 +480,9 @@ export default function AdminPage(): JSX.Element {
               device: latestState.device ?? null,
               remainingTracks: 0 // Will be updated by SpotifyPlayer component
             }
-            
-            const event = new CustomEvent('playbackUpdate', { 
-              detail: completeState 
+
+            const event = new CustomEvent('playbackUpdate', {
+              detail: completeState
             })
             handlePlaybackUpdateRef.current(event)
           }
@@ -765,9 +776,9 @@ export default function AdminPage(): JSX.Element {
               progressStalled: false,
               remainingTracks: 0
             })
-            
+
             // Update health status based on actual playback state
-            setHealthStatus(prev => ({
+            setHealthStatus((prev) => ({
               ...prev,
               playback: isActuallyPlaying ? 'playing' : 'paused'
             }))
@@ -775,7 +786,7 @@ export default function AdminPage(): JSX.Element {
         } catch (error) {
           console.error('Error initializing playback state:', error)
           // Set to paused state on error
-          setHealthStatus(prev => ({
+          setHealthStatus((prev) => ({
             ...prev,
             playback: 'paused'
           }))
@@ -969,7 +980,8 @@ export default function AdminPage(): JSX.Element {
   }
 
   // Update the skip button's disabled state to use null check
-  const isSkipDisabled = !playbackInfo?.isPlaying || (playbackInfo?.remainingTracks ?? 0) <= 2
+  const isSkipDisabled =
+    !playbackInfo?.isPlaying || (playbackInfo?.remainingTracks ?? 0) <= 2
 
   return (
     <div className='text-white min-h-screen bg-black p-4'>
@@ -982,13 +994,17 @@ export default function AdminPage(): JSX.Element {
         <Tabs
           value={activeTab}
           onValueChange={(value) => {
-            if (value === 'playback' || value === 'settings') {
+            if (
+              value === 'playback' ||
+              value === 'settings' ||
+              value === 'playlist'
+            ) {
               setActiveTab(value)
             }
           }}
           className='space-y-4'
         >
-          <TabsList className='grid w-full grid-cols-2 bg-gray-800/50'>
+          <TabsList className='grid w-full grid-cols-3 bg-gray-800/50'>
             <TabsTrigger
               value='playback'
               className='data-[state=active]:text-white data-[state=active]:bg-gray-700 data-[state=active]:font-semibold'
@@ -1000,6 +1016,12 @@ export default function AdminPage(): JSX.Element {
               className='data-[state=active]:text-white data-[state=active]:bg-gray-700 data-[state=active]:font-semibold'
             >
               Track Suggestions
+            </TabsTrigger>
+            <TabsTrigger
+              value='playlist'
+              className='data-[state=active]:text-white data-[state=active]:bg-gray-700 data-[state=active]:font-semibold'
+            >
+              Playlist
             </TabsTrigger>
           </TabsList>
 
@@ -1174,7 +1196,12 @@ export default function AdminPage(): JSX.Element {
               <div className='flex gap-4'>
                 <button
                   onClick={handlePlaybackClick}
-                  disabled={isLoading || !isReady || !isDeviceCheckComplete || isStartingPlayback}
+                  disabled={
+                    isLoading ||
+                    !isReady ||
+                    !isDeviceCheckComplete ||
+                    isStartingPlayback
+                  }
                   className='text-white flex-1 rounded-lg bg-green-600 px-4 py-2 font-medium transition-colors hover:bg-green-700 disabled:cursor-not-allowed disabled:opacity-50'
                 >
                   {isLoading
@@ -1189,7 +1216,12 @@ export default function AdminPage(): JSX.Element {
                 </button>
                 <button
                   onClick={handleSkipClick}
-                  disabled={isLoading || !isReady || !isDeviceCheckComplete || isSkipDisabled}
+                  disabled={
+                    isLoading ||
+                    !isReady ||
+                    !isDeviceCheckComplete ||
+                    isSkipDisabled
+                  }
                   className='text-white flex-1 rounded-lg bg-blue-600 px-4 py-2 font-medium transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50'
                 >
                   {isLoading
@@ -1274,6 +1306,19 @@ export default function AdminPage(): JSX.Element {
                   {isRefreshingSuggestions ? 'Refreshing...' : 'Refresh Now'}
                 </button>
               </div>
+            </div>
+          </TabsContent>
+
+          <TabsContent value='playlist'>
+            <div className='space-y-6'>
+              <h2 className='text-xl font-semibold'>Playlist Management</h2>
+              {fixedPlaylistId ? (
+                <PlaylistDisplay playlistId={fixedPlaylistId} />
+              ) : (
+                <div className='rounded-lg border border-gray-800 bg-gray-900/50 p-4'>
+                  <p className='text-gray-400'>No playlist selected</p>
+                </div>
+              )}
             </div>
           </TabsContent>
         </Tabs>
