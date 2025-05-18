@@ -182,6 +182,10 @@ export interface SpotifyPlaybackState {
     toggling_repeat_track: boolean
     transferring_playback: boolean
   }
+  error?: {
+    status: number
+    message: string
+  }
 }
 
 export type UserQueue = {

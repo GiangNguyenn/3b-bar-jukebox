@@ -23,6 +23,10 @@ import { HealthStatus } from '@/shared/types'
 import { executeWithErrorBoundary } from '@/shared/utils/errorBoundary'
 import { ApiError } from '@/shared/api'
 import { SpotifyApiService } from '@/services/spotifyApi'
+import {
+  ensureDeviceHealth,
+  transferPlaybackToDevice
+} from '@/services/deviceManagement'
 
 declare global {
   interface Window {
@@ -323,36 +327,15 @@ export default function AdminPage(): JSX.Element {
           timestamp: Date.now()
         })
 
-        // Ensure our device is active before proceeding
+        // Ensure our device is active before proceeding using our new service
         if (!state?.device?.id || state.device.id !== deviceId) {
           console.log('[Spotify] Ensuring device is active')
           try {
-            await sendApiRequest({
-              path: 'me/player',
-              method: 'PUT',
-              body: {
-                device_ids: [deviceId],
-                play: false
-              }
-            })
-            console.log('[Spotify] Device transfer successful')
-
-            // Wait for device transfer to take effect
-            await new Promise((resolve) => setTimeout(resolve, 1000))
-
-            // Verify device is active
-            const verifyState = await sendApiRequest<SpotifyPlaybackState>({
-              path: 'me/player',
-              method: 'GET'
-            })
-
-            if (verifyState?.device?.id !== deviceId) {
-              console.error('[Spotify] Device verification failed:', {
-                expected: deviceId,
-                actual: verifyState?.device?.id
-              })
-              throw new Error('Device verification failed')
+            const transferred = await transferPlaybackToDevice(deviceId)
+            if (!transferred) {
+              throw new Error('Device transfer failed')
             }
+            console.log('[Spotify] Device transfer successful')
           } catch (error) {
             console.error('[Spotify] Device transfer failed:', error)
             // If device transfer fails, try to refresh the player
@@ -362,15 +345,11 @@ export default function AdminPage(): JSX.Element {
               // Wait a bit for the refresh to take effect
               await new Promise((resolve) => setTimeout(resolve, 1000))
 
-              // Try device transfer again
-              await sendApiRequest({
-                path: 'me/player',
-                method: 'PUT',
-                body: {
-                  device_ids: [deviceId],
-                  play: false
-                }
-              })
+              // Try device transfer again using our new service
+              const retryTransfer = await transferPlaybackToDevice(deviceId)
+              if (!retryTransfer) {
+                throw new Error('Device transfer failed after refresh')
+              }
             }
           }
         }
@@ -841,7 +820,7 @@ export default function AdminPage(): JSX.Element {
       }
       clearInterval(interval)
     }
-  }, [mounted, deviceId, isReady, isInitializing])
+  }, [mounted, deviceId, isReady, isInitializing, initializationState])
 
   // Add SDK ready event handler
   useEffect(() => {
@@ -870,221 +849,60 @@ export default function AdminPage(): JSX.Element {
     return () => {
       window.removeEventListener('spotify-sdk-ready', handleSdkReady)
     }
-  }, [])
+  }, [initializationState.isComplete, initializationState.sdkReadyCount])
 
   // Update device check to be more conservative with API calls
   useEffect(() => {
-    if (!deviceId || !isReady || isInitializing) {
-      console.log('[Device Check] Waiting for device initialization:', {
-        deviceId,
-        isReady,
-        isInitializing,
-        timestamp: new Date().toISOString()
-      })
-      return
-    }
+    if (!deviceId || !isReady || isInitializing) return
 
-    // Add longer initial delay to allow player to fully initialize
     const initialDelay = setTimeout(() => {
-      console.log('[Device Check] Starting initial device check:', {
-        deviceId,
-        isReady,
-        isInitializing,
-        timestamp: new Date().toISOString()
-      })
-      void checkDevice()
-    }, 15000) // Increased to 15 seconds
+      void checkDevice(deviceId)
+    }, 5000) // 5 second initial delay
 
-    const checkDevice = async (): Promise<void> => {
+    async function checkDevice(deviceId: string | null): Promise<void> {
+      if (!deviceId) {
+        console.error('[Device Check] No device ID available')
+        return
+      }
+
       try {
-        console.log('[Device Check] Checking device status:', {
-          deviceId,
-          isReady,
-          timestamp: new Date().toISOString()
+        const health = await ensureDeviceHealth(deviceId, {
+          maxAttempts: 3,
+          delayBetweenAttempts: 1000,
+          requireActive: true
         })
 
-        // Add a longer delay between API calls
-        await new Promise((resolve) => setTimeout(resolve, 3000))
-
-        const response = await sendApiRequest<SpotifyPlaybackState>({
-          path: 'me/player',
-          method: 'GET',
-          debounceTime: 5000 // 5 second debounce
-        })
-
-        if (!response?.device?.id) {
-          console.log(
-            '[Device Check] No active device found, waiting before recovery...',
-            {
-              deviceId,
-              timestamp: new Date().toISOString()
-            }
-          )
-          // Wait longer before attempting recovery
-          await new Promise((resolve) => setTimeout(resolve, 8000))
-
-          setHealthStatus((prev) => ({ ...prev, device: 'disconnected' }))
-          setPlaybackInfo((prev) =>
-            prev ? { ...prev, isPlaying: false, progressStalled: true } : null
-          )
-          setHealthStatus((prev) => ({ ...prev, playback: 'paused' }))
-          setIsDeviceCheckComplete(false)
-
-          // Attempt recovery if we have a deviceId
-          if (deviceId) {
-            try {
-              // Add a longer delay before recovery attempt
-              await new Promise((resolve) => setTimeout(resolve, 3000))
-
-              await sendApiRequest({
-                path: 'me/player',
-                method: 'PUT',
-                body: {
-                  device_ids: [deviceId],
-                  play: false
-                },
-                debounceTime: 5000 // 5 second debounce
-              })
-              console.log('[Device Check] Device transfer initiated')
-
-              // Wait longer for transfer to take effect
-              await new Promise((resolve) => setTimeout(resolve, 8000))
-
-              // Verify transfer was successful
-              const verifyState = await sendApiRequest<SpotifyPlaybackState>({
-                path: 'me/player',
-                method: 'GET',
-                debounceTime: 5000 // 5 second debounce
-              })
-
-              if (verifyState?.device?.id === deviceId) {
-                console.log('[Device Check] Device transfer successful')
-                setHealthStatus((prev) => ({ ...prev, device: 'healthy' }))
-                setIsDeviceCheckComplete(true)
-              } else {
-                console.error('[Device Check] Device transfer failed:', {
-                  expected: deviceId,
-                  actual: verifyState?.device?.id
-                })
-                throw new Error('Device transfer failed')
-              }
-            } catch (error) {
-              console.error('[Device Check] Device transfer failed:', error)
-              setIsDeviceCheckComplete(false)
-            }
-          }
-          return
-        }
-
-        if (response.device.id !== deviceId) {
-          console.log('[Device Check] Device mismatch, attempting transfer:', {
-            expected: deviceId,
-            actual: response.device.id,
-            timestamp: new Date().toISOString()
-          })
+        if (!health.isHealthy) {
+          console.error('[Device Check] Device is unhealthy:', health.errors)
           setHealthStatus((prev) => ({ ...prev, device: 'unresponsive' }))
-          // Reset playback state when device is mismatched
-          setPlaybackInfo((prev) =>
-            prev ? { ...prev, isPlaying: false, progressStalled: true } : null
-          )
-          setHealthStatus((prev) => ({ ...prev, playback: 'paused' }))
-          setIsDeviceCheckComplete(false)
-
-          try {
-            // Add a delay before transfer attempt
-            await new Promise((resolve) => setTimeout(resolve, 2000))
-
-            await sendApiRequest({
-              path: 'me/player',
-              method: 'PUT',
-              body: {
-                device_ids: [deviceId],
-                play: false
-              }
-            })
-            console.log('[Device Check] Device transfer successful')
-
-            // Wait for transfer to take effect
-            await new Promise((resolve) => setTimeout(resolve, 5000))
-
-            // Verify transfer was successful
-            const verifyState = await sendApiRequest<SpotifyPlaybackState>({
-              path: 'me/player',
-              method: 'GET'
-            })
-
-            if (verifyState?.device?.id === deviceId) {
-              console.log('[Device Check] Device transfer verified')
-              setHealthStatus((prev) => ({ ...prev, device: 'healthy' }))
-              setIsDeviceCheckComplete(true)
-            } else {
-              console.error(
-                '[Device Check] Device transfer verification failed:',
-                {
-                  expected: deviceId,
-                  actual: verifyState?.device?.id
-                }
-              )
-              throw new Error('Device transfer verification failed')
-            }
-          } catch (error) {
-            console.error('[Device Check] Device transfer failed:', error)
-            setIsDeviceCheckComplete(false)
-          }
           return
         }
 
-        // Device is active and matches our deviceId
-        console.log('[Device Check] Device healthy:', {
-          deviceId: response.device.id,
-          isActive: response.device.is_active,
-          timestamp: new Date().toISOString()
-        })
-        setHealthStatus((prev) => ({ ...prev, device: 'healthy' }))
-        setIsDeviceCheckComplete(true)
-
-        // Verify actual playback state
-        if (response.item) {
-          const { isActuallyPlaying, progress } =
-            await verifyPlaybackProgress(deviceId)
-          const currentTime = Date.now()
-
-          setPlaybackInfo((prev) => {
-            const lastCheck = prev?.lastProgressCheck ?? 0
-            const progressStalled =
-              !isActuallyPlaying && currentTime - lastCheck > 5000
-
-            return {
-              isPlaying: isActuallyPlaying,
-              currentTrack: response.item.name,
-              progress,
-              duration_ms: response.item.duration_ms,
-              timeUntilEnd: response.item.duration_ms - progress,
-              lastProgressCheck: currentTime,
-              progressStalled
-            }
-          })
-
-          setHealthStatus((prev) => ({
-            ...prev,
-            playback: isActuallyPlaying ? 'playing' : 'paused'
-          }))
+        if (!health.isActive) {
+          console.log(
+            '[Device Check] Device is not active, attempting transfer'
+          )
+          const transferred = await transferPlaybackToDevice(deviceId)
+          if (!transferred) {
+            console.error(
+              '[Device Check] Failed to transfer playback to device'
+            )
+            setHealthStatus((prev) => ({ ...prev, device: 'unresponsive' }))
+            return
+          }
         }
+
+        console.log('[Device Check] Device is healthy and active')
+        setHealthStatus((prev) => ({ ...prev, device: 'healthy' }))
       } catch (error) {
-        console.error('[Device Check] Failed:', error)
+        console.error('[Device Check] Error checking device:', error)
         setHealthStatus((prev) => ({ ...prev, device: 'unresponsive' }))
-        // Reset playback state on error
-        setPlaybackInfo((prev) =>
-          prev ? { ...prev, isPlaying: false, progressStalled: true } : null
-        )
-        setHealthStatus((prev) => ({ ...prev, playback: 'paused' }))
-        setIsDeviceCheckComplete(false)
       }
     }
 
     // Update device check interval to be less frequent
     deviceCheckInterval.current = setInterval(() => {
-      void checkDevice()
+      void checkDevice(deviceId)
     }, 120000) // Increased to 2 minutes
 
     return () => {

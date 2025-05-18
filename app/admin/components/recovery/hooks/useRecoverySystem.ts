@@ -11,7 +11,7 @@ import {
   determineErrorType,
   handleErrorRecovery
 } from '../utils/error-handling'
-import { verifyDeviceTransfer } from '../utils/device-management'
+import { verifyDeviceTransfer } from '@/services/deviceManagement'
 import { verifyPlaybackResume } from '../utils/playback-verification'
 import { validatePlaybackRequest } from '../utils/validation'
 import { useSpotifyPlayerState } from '@/hooks/useSpotifyPlayerState'
