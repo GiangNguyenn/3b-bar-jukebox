@@ -140,6 +140,29 @@ export class PlaylistRefreshServiceImpl implements PlaylistRefreshService {
     }
   }
 
+  private async updateServerCache(track: {
+    name: string
+    artist: string
+    album: string
+    uri: string
+    popularity: number
+    duration_ms: number
+    preview_url: string | null
+    genres: string[]
+  }): Promise<void> {
+    try {
+      await fetch('/api/track-suggestions/last-suggested', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(track)
+      })
+    } catch (error) {
+      console.error('[PlaylistRefresh] Error updating server cache:', error)
+    }
+  }
+
   private saveLastSuggestedTrack(): void {
     try {
       if (typeof window !== 'undefined') {
@@ -147,6 +170,10 @@ export class PlaylistRefreshServiceImpl implements PlaylistRefreshService {
           LAST_SUGGESTED_TRACK_KEY,
           JSON.stringify(this.lastSuggestedTrack)
         )
+        // Also update the server cache
+        if (this.lastSuggestedTrack) {
+          void this.updateServerCache(this.lastSuggestedTrack)
+        }
       }
     } catch (error) {
       console.error(
@@ -409,29 +436,6 @@ export class PlaylistRefreshServiceImpl implements PlaylistRefreshService {
               }
             )
             this.saveLastSuggestedTrack()
-          }
-
-          // Update server cache via POST request
-          try {
-            const response = await fetch(
-              '/api/track-suggestions/last-suggested',
-              {
-                method: 'POST',
-                headers: {
-                  'Content-Type': 'application/json'
-                },
-                body: JSON.stringify(this.lastSuggestedTrack)
-              }
-            )
-            if (!response.ok) {
-              throw new Error('Failed to update server cache')
-            }
-            console.log('[PlaylistRefresh] Successfully updated server cache')
-          } catch (error) {
-            console.error(
-              '[PlaylistRefresh] Error updating server cache:',
-              error
-            )
           }
 
           // Get current playback state to resume at the same position
