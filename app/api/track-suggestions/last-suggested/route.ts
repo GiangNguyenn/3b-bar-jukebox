@@ -16,9 +16,7 @@ interface LastSuggestedTrack {
 // Server-side cache for the last suggested track
 let serverCache: LastSuggestedTrack | null = null
 
-// Next.js route handlers must be async to return a Promise
-// eslint-disable-next-line @typescript-eslint/require-await
-export async function GET(): Promise<NextResponse> {
+export function GET(): NextResponse {
   try {
     // If we have a cached track, return it immediately
     if (serverCache) {

@@ -3,11 +3,12 @@
 import { useEffect, useRef, useState } from 'react'
 import { useSpotifyPlayerState } from '@/hooks/useSpotifyPlayerState'
 import { useFixedPlaylist } from '@/hooks/useFixedPlaylist'
+import { useGetPlaylist } from '@/hooks/useGetPlaylist'
 import { sendApiRequest } from '@/shared/api'
 import { SpotifyPlaybackState } from '@/shared/types'
 
 const PLAYBACK_INTERVALS = {
-  playing: 10000, // 10 seconds when playing (changed from 5)
+  playing: 10000, // 10 seconds when playing
   paused: 30000, // 30 seconds when paused
   stopped: 60000 // 60 seconds when stopped
 }
@@ -86,6 +87,7 @@ async function globalRateLimitedApiCall<T>(
 
 export function SpotifyPlayer(): JSX.Element | null {
   const { fixedPlaylistId } = useFixedPlaylist()
+  const { data: playlist } = useGetPlaylist(fixedPlaylistId ?? '')
   const {
     error,
     deviceId,
@@ -103,10 +105,12 @@ export function SpotifyPlayer(): JSX.Element | null {
   } | null>(null)
   const [localPlaybackStatus, setLocalPlaybackStatus] = useState<
     'playing' | 'paused' | 'stopped'
-  >('stopped')
+  >('paused')
   const [isInitialized, setIsInitialized] = useState(false)
   const playbackIntervalRef = useRef<NodeJS.Timeout | null>(null)
   const localPlaylistRefreshInterval = useRef<NodeJS.Timeout | null>(null)
+  const lastProgressRef = useRef<number | null>(null)
+  const hasConfirmedPlayingRef = useRef(false)
 
   // Add rate limit state inside component
   const [rateLimitInfo] = useState<RateLimitInfo>({
@@ -148,7 +152,7 @@ export function SpotifyPlayer(): JSX.Element | null {
     // Start initialization
     void initializeWithDelay()
 
-    return () => {
+    return (): void => {
       clearTimeout(initTimeout)
     }
   }, [initializePlayer])
@@ -168,55 +172,116 @@ export function SpotifyPlayer(): JSX.Element | null {
         )
 
         if (!state) {
-          console.log('[SpotifyPlayer] No playback state available')
-          return
-        }
-
-        if (state.item) {
-          const timeUntilEnd = state.item.duration_ms - (state.progress_ms ?? 0)
-          const newPlaybackState = state.is_playing ? 'playing' : 'paused'
-
-          if (newPlaybackState !== localPlaybackStatus) {
-            setLocalPlaybackStatus(newPlaybackState)
-          }
-
-          // Update current track info
-          setCurrentTrack({
-            name: state.item.name,
-            progress: state.progress_ms ?? 0,
-            duration: state.item.duration_ms
-          })
-
+          // If no state, dispatch stopped state
           window.dispatchEvent(
             new CustomEvent('playbackUpdate', {
               detail: {
-                isPlaying: state.is_playing,
-                currentTrack: state.item.name,
-                progress: state.progress_ms ?? 0,
-                duration_ms: state.item.duration_ms,
-                timeUntilEnd
+                is_playing: false,
+                item: null,
+                progress_ms: 0,
+                device: null,
+                remainingTracks: 0
+              }
+            })
+          )
+          return
+        }
+
+        const currentProgress = state.progress_ms ?? 0
+
+        // Check if progress is changing
+        let isActuallyPlaying = false
+        if (state.is_playing && hasConfirmedPlayingRef.current) {
+          if (currentProgress > lastProgressRef.current!) {
+            // Progress has increased, definitely playing
+            isActuallyPlaying = true
+          } else {
+            // Progress hasn't changed, not playing
+            isActuallyPlaying = false
+            hasConfirmedPlayingRef.current = false
+          }
+        } else if (state.is_playing && !hasConfirmedPlayingRef.current) {
+          if (lastProgressRef.current === null) {
+            // First check, store progress and wait for next check
+            lastProgressRef.current = currentProgress
+          } else if (currentProgress > lastProgressRef.current) {
+            // Progress has increased, confirm playing
+            isActuallyPlaying = true
+            hasConfirmedPlayingRef.current = true
+          }
+        } else {
+          // Not playing according to API
+          isActuallyPlaying = false
+          hasConfirmedPlayingRef.current = false
+        }
+
+        lastProgressRef.current = currentProgress
+
+        // Always update local playback status based on actual state
+        const newPlaybackState = isActuallyPlaying ? 'playing' : 'paused'
+        if (newPlaybackState !== localPlaybackStatus) {
+          setLocalPlaybackStatus(newPlaybackState)
+        }
+
+        if (state.item) {
+          // Update current track info
+          setCurrentTrack({
+            name: state.item.name,
+            progress: currentProgress,
+            duration: state.item.duration_ms
+          })
+
+          // Calculate remaining tracks using playlist data
+          let remainingTracks = 0
+          if (playlist?.tracks?.items) {
+            const currentTrackIndex = playlist.tracks.items.findIndex(
+              (t) => t.track.id === state.item?.id
+            )
+            remainingTracks =
+              currentTrackIndex >= 0
+                ? playlist.tracks.items.length - (currentTrackIndex + 1)
+                : playlist.tracks.items.length
+          }
+
+          // Dispatch the complete state object with remaining tracks
+          window.dispatchEvent(
+            new CustomEvent('playbackUpdate', {
+              detail: {
+                ...state,
+                is_playing: isActuallyPlaying,
+                remainingTracks
               }
             })
           )
         } else {
-          if (localPlaybackStatus !== 'stopped') {
-            setLocalPlaybackStatus('stopped')
-          }
           setCurrentTrack(null)
+          // Dispatch empty state when no track is playing
           window.dispatchEvent(
             new CustomEvent('playbackUpdate', {
               detail: {
-                isPlaying: false,
-                currentTrack: '',
-                progress: 0,
-                duration_ms: 0,
-                timeUntilEnd: 0
+                is_playing: false,
+                item: null,
+                progress_ms: 0,
+                device: state.device,
+                remainingTracks: 0
               }
             })
           )
         }
       } catch (error) {
         console.error('[SpotifyPlayer] Error updating playback state:', error)
+        // On error, dispatch stopped state
+        window.dispatchEvent(
+          new CustomEvent('playbackUpdate', {
+            detail: {
+              is_playing: false,
+              item: null,
+              progress_ms: 0,
+              device: null,
+              remainingTracks: 0
+            }
+          })
+        )
       }
     }
 
@@ -235,14 +300,14 @@ export function SpotifyPlayer(): JSX.Element | null {
       void updatePlaybackState()
     }, PLAYBACK_INTERVALS[localPlaybackStatus])
 
-    return () => {
+    return (): void => {
       clearTimeout(initialUpdateTimeout)
       if (playbackIntervalRef.current) {
         clearInterval(playbackIntervalRef.current)
         playbackIntervalRef.current = null
       }
     }
-  }, [deviceId, localPlaybackStatus, isInitialized])
+  }, [deviceId, localPlaybackStatus, isInitialized, playlist])
 
   // Update the interval logic to use the local ref
   useEffect(() => {
@@ -250,15 +315,14 @@ export function SpotifyPlayer(): JSX.Element | null {
       clearInterval(localPlaylistRefreshInterval.current)
     }
 
-    const interval = setInterval(() => {
+    localPlaylistRefreshInterval.current = setInterval(() => {
       void refreshPlaylistState()
-    }, PLAYBACK_INTERVALS.stopped) // Default to stopped interval
+    }, 60000) // Refresh every minute
 
-    localPlaylistRefreshInterval.current = interval
-
-    return () => {
+    return (): void => {
       if (localPlaylistRefreshInterval.current) {
         clearInterval(localPlaylistRefreshInterval.current)
+        localPlaylistRefreshInterval.current = null
       }
     }
   }, [refreshPlaylistState])

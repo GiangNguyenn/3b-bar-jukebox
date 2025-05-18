@@ -4,7 +4,7 @@ import { RECOVERY_COOLDOWN, ERROR_MESSAGES } from '@/shared/constants/recovery'
 import {
   transferPlaybackToDevice,
   verifyDeviceTransfer
-} from './device-management'
+} from '@/services/deviceManagement'
 
 const errorRecoveryState: ErrorRecoveryState = {
   lastError: null,
