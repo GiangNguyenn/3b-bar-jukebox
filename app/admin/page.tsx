@@ -106,8 +106,8 @@ async function verifyPlaybackProgress(
       return { isActuallyPlaying: false, progress: currentProgress }
     }
 
-    // Wait a bit longer to ensure we can detect progress
-    await new Promise((resolve) => setTimeout(resolve, 2000))
+    // Wait longer for initial playback to start
+    await new Promise((resolve) => setTimeout(resolve, 3000))
 
     const newState = await sendApiRequest<SpotifyPlaybackState>({
       path: 'me/player',
@@ -124,14 +124,16 @@ async function verifyPlaybackProgress(
 
     // Consider it playing if:
     // 1. Progress has changed OR
-    // 2. We're within the first 5 seconds of the track (might not see progress yet) OR
-    // 3. We're near the end of the track (progress might be stalled)
+    // 2. We're within the first 10 seconds of the track (might not see progress yet) OR
+    // 3. We're near the end of the track (progress might be stalled) OR
+    // 4. The API reports it as playing
     const isActuallyPlaying =
       progressChanged ||
-      currentProgress < 5000 ||
+      currentProgress < 10000 ||
       (newState.item?.duration_ms &&
         newState.item.duration_ms - currentProgress < 5000) ||
-      timeSinceLastCheck < maxStallTime
+      timeSinceLastCheck < maxStallTime ||
+      newState.is_playing
 
     return {
       isActuallyPlaying,
