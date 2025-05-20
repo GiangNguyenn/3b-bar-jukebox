@@ -16,7 +16,6 @@ import {
 } from '@/services/deviceManagement'
 import {
   MAX_RECOVERY_ATTEMPTS,
-  BASE_DELAY,
   RECOVERY_COOLDOWN,
   STATE_UPDATE_TIMEOUT,
   PLAYBACK_VERIFICATION_TIMEOUT,
@@ -548,7 +547,12 @@ export function useRecoverySystem(
 
     if (recoveryAttempts >= MAX_RECOVERY_ATTEMPTS) {
       console.error(
-        '[Recovery] Max attempts reached, attempting final recovery...'
+        '[Recovery] Max attempts reached, attempting final recovery...',
+        {
+          attempts: recoveryAttempts,
+          maxAttempts: MAX_RECOVERY_ATTEMPTS,
+          timestamp: new Date().toISOString()
+        }
       )
       setRecoveryStatus({
         isRecovering: true,
@@ -564,12 +568,14 @@ export function useRecoverySystem(
         lastState &&
         Date.now() - lastState.timestamp < STORED_STATE_MAX_AGE
       ) {
-        // 5 minutes
         try {
-          console.log(
-            '[Recovery] Attempting recovery with stored state:',
-            lastState
-          )
+          console.log('[Recovery] Attempting recovery with stored state:', {
+            trackUri: lastState.trackUri,
+            position: lastState.position,
+            age: Date.now() - lastState.timestamp,
+            maxAge: STORED_STATE_MAX_AGE,
+            timestamp: new Date().toISOString()
+          })
           await sendApiRequest({
             path: 'me/player/play',
             method: 'PUT',
@@ -598,224 +604,188 @@ export function useRecoverySystem(
 
           // Update device status
           onDeviceStatusChange({ device: 'healthy' })
+          console.log('[Recovery] Final recovery attempt successful', {
+            timestamp: new Date().toISOString()
+          })
           return
         } catch (error) {
-          console.error('[Recovery] Final recovery attempt failed:', error)
-          // Try error recovery before giving up
-          const recoverySuccessful = await handleErrorRecovery(
-            error,
-            deviceId,
-            fixedPlaylistId
-          )
-          if (!recoverySuccessful) {
-            // If we get here, reload the page
-            setRecoveryStatus({
-              isRecovering: true,
-              message: ERROR_MESSAGES.ALL_RECOVERY_ATTEMPTS_FAILED,
-              progress: 100,
-              currentStep: 0,
-              totalSteps: RECOVERY_STEPS.length
-            })
-            // Update device status before reload
-            onDeviceStatusChange({ device: 'disconnected' })
-            setTimeout(() => {
-              window.location.reload()
-            }, 2000)
-          }
-          return
+          console.error('[Recovery] Final recovery attempt failed:', {
+            error: error instanceof Error ? error.message : 'Unknown error',
+            errorType: error instanceof Error ? error.name : 'Unknown',
+            stack: error instanceof Error ? error.stack : undefined,
+            timestamp: new Date().toISOString()
+          })
         }
       }
     }
 
-    try {
-      // Clear existing timeouts
-      if (recoveryTimeout.current) {
-        clearTimeout(recoveryTimeout.current)
-        recoveryTimeout.current = null
+    console.log('[Recovery] Starting recovery attempt', {
+      attempt: recoveryAttempts + 1,
+      maxAttempts: MAX_RECOVERY_ATTEMPTS,
+      deviceId,
+      fixedPlaylistId,
+      timestamp: new Date().toISOString()
+    })
+
+    // Reset state at start of recovery
+    setRecoveryStatus({
+      isRecovering: true,
+      message: 'Starting recovery process...',
+      progress: 0,
+      currentStep: 0,
+      totalSteps: RECOVERY_STEPS.length
+    })
+
+    let currentProgress = 0
+    const updateProgress = (
+      step: number,
+      success: boolean,
+      error?: unknown
+    ): void => {
+      if (!isMounted.current) return
+
+      currentProgress += RECOVERY_STEPS[step].weight * 100
+      setRecoveryStatus((prev) => ({
+        ...prev,
+        message: `${RECOVERY_STEPS[step].message} ${success ? '✓' : '✗'}`,
+        progress: Math.min(currentProgress, 100),
+        currentStep: step + 1
+      }))
+
+      if (!success && error) {
+        const errorType = determineErrorType(error)
+        setRecoveryState((prev) =>
+          updateRecoveryState(prev, {
+            consecutiveFailures: prev.consecutiveFailures + 1,
+            lastErrorType: errorType
+          })
+        )
       }
+    }
 
-      // Reset state at start of recovery
-      setRecoveryStatus({
-        isRecovering: true,
-        message: 'Starting recovery process...',
-        progress: 0,
-        currentStep: 0,
-        totalSteps: RECOVERY_STEPS.length
-      })
+    // Step 1: Refresh player state
+    if (typeof window.refreshSpotifyPlayer === 'function') {
+      try {
+        console.log('[Recovery] Step 1: Refreshing player state')
+        cleanupRecoveryResources()
+        await window.refreshSpotifyPlayer()
 
-      let currentProgress = 0
-      const updateProgress = (
-        step: number,
-        success: boolean,
-        error?: unknown
-      ): void => {
-        if (!isMounted.current) return
-
-        currentProgress += RECOVERY_STEPS[step].weight * 100
-        setRecoveryStatus((prev) => ({
-          ...prev,
-          message: `${RECOVERY_STEPS[step].message} ${success ? '✓' : '✗'}`,
-          progress: Math.min(currentProgress, 100),
-          currentStep: step + 1
-        }))
-
-        if (!success && error) {
-          const errorType = determineErrorType(error)
-          setRecoveryState((prev) =>
-            updateRecoveryState(prev, {
-              consecutiveFailures: prev.consecutiveFailures + 1,
-              lastErrorType: errorType
-            })
+        // Validate state after refresh
+        const state = await sendApiRequest<SpotifyPlaybackState>({
+          path: 'me/player',
+          method: 'GET'
+        })
+        const stateValidation = validatePlaybackState(state)
+        if (!stateValidation.isValid) {
+          throw new Error(
+            `Invalid state after refresh: ${stateValidation.errors.join(', ')}`
           )
         }
+
+        console.log('[Recovery] Player state refresh successful', {
+          isPlaying: state.is_playing,
+          deviceId: state.device?.id,
+          trackName: state.item?.name,
+          timestamp: new Date().toISOString()
+        })
+        updateProgress(0, true)
+      } catch (error) {
+        console.error('[Recovery] Failed to refresh player state:', {
+          error: error instanceof Error ? error.message : 'Unknown error',
+          errorType: error instanceof Error ? error.name : 'Unknown',
+          stack: error instanceof Error ? error.stack : undefined,
+          timestamp: new Date().toISOString()
+        })
+        updateProgress(0, false, error)
+        await handleErrorRecovery(error, deviceId, fixedPlaylistId)
       }
+    }
 
-      // Validate playlist ID
-      if (!validatePlaylistId(fixedPlaylistId)) {
-        throw new Error(ERROR_MESSAGES.INVALID_PLAYLIST_ID)
-      }
-
-      // Step 1: Refresh player state
-      if (typeof window.refreshSpotifyPlayer === 'function') {
-        try {
-          cleanupRecoveryResources()
-          await window.refreshSpotifyPlayer()
-
-          // Validate state after refresh
-          const state = await sendApiRequest<SpotifyPlaybackState>({
-            path: 'me/player',
-            method: 'GET'
-          })
-          const stateValidation = validatePlaybackState(state)
-          if (!stateValidation.isValid) {
-            throw new Error(
-              `Invalid state after refresh: ${stateValidation.errors.join(', ')}`
-            )
-          }
-
-          updateProgress(0, true)
-        } catch (error) {
-          console.error('[Recovery] Failed to refresh player state:', error)
-          updateProgress(0, false, error)
-          await handleErrorRecovery(error, deviceId, fixedPlaylistId)
-        }
-      }
-
-      // Step 2: Ensure active device
+    // Step 2: Reconnect player
+    if (typeof window.spotifyPlayerInstance?.connect === 'function') {
       try {
-        // Get current playback state
+        console.log('[Recovery] Step 2: Reconnecting player')
+        // Cleanup before reconnect
+        cleanupRecoveryResources()
+        await window.spotifyPlayerInstance.connect()
+        console.log('[Recovery] Player reconnection successful', {
+          timestamp: new Date().toISOString()
+        })
+        updateProgress(2, true)
+      } catch (error) {
+        console.error('[Recovery] Failed to reconnect player:', {
+          error: error instanceof Error ? error.message : 'Unknown error',
+          errorType: error instanceof Error ? error.name : 'Unknown',
+          stack: error instanceof Error ? error.stack : undefined,
+          timestamp: new Date().toISOString()
+        })
+        updateProgress(2, false, error)
+      }
+    }
+
+    // Step 3: Reinitialize player and resume playback
+    if (typeof window.initializeSpotifyPlayer === 'function') {
+      try {
+        console.log('[Recovery] Step 3: Reinitializing player')
+        // Get current playback state before reinitializing
         const currentState = await sendApiRequest<SpotifyPlaybackState>({
           path: 'me/player',
           method: 'GET'
         })
 
-        if (!currentState?.device?.id || currentState.device.id !== deviceId) {
-          // No active device or wrong device, try to transfer playback
-          if (deviceId) {
-            const transferSuccessful = await transferPlaybackToDevice(deviceId)
-            if (transferSuccessful) {
-              updateProgress(1, true)
-              // Update device status
-              onDeviceStatusChange({ device: 'healthy' })
-            } else {
-              throw new Error(ERROR_MESSAGES.DEVICE_TRANSFER_FAILED)
-            }
-          } else {
-            throw new Error(ERROR_MESSAGES.NO_DEVICE_ID)
-          }
-        } else {
-          // Verify device is actually active
-          const isActive = await verifyDeviceTransfer(deviceId)
-          if (isActive) {
-            updateProgress(1, true)
-            // Update device status
-            onDeviceStatusChange({ device: 'healthy' })
-          } else {
-            // Device ID matches but not active, try transfer
-            const transferSuccessful = await transferPlaybackToDevice(deviceId)
-            if (transferSuccessful) {
-              updateProgress(1, true)
-              // Update device status
-              onDeviceStatusChange({ device: 'healthy' })
-            } else {
-              throw new Error(ERROR_MESSAGES.RECOVERY_VERIFICATION_FAILED)
-            }
-          }
+        // Validate current state
+        if (!validatePlaybackState(currentState)) {
+          throw new Error(ERROR_MESSAGES.INVALID_PLAYBACK_STATE)
         }
-      } catch (error) {
-        console.error('[Recovery] Failed to ensure active device:', error)
-        updateProgress(1, false, error)
-        // Update device status
-        onDeviceStatusChange({ device: 'unresponsive' })
-      }
 
-      // Step 3: Reconnect player
-      if (typeof window.spotifyPlayerInstance?.connect === 'function') {
-        try {
-          // Cleanup before reconnect
-          cleanupRecoveryResources()
-          await window.spotifyPlayerInstance.connect()
-          updateProgress(2, true)
-        } catch (error) {
-          console.error('[Recovery] Failed to reconnect player:', error)
-          updateProgress(2, false, error)
+        // Validate playlist ID
+        if (!validatePlaylistId(fixedPlaylistId)) {
+          throw new Error(ERROR_MESSAGES.INVALID_PLAYLIST_ID)
         }
-      }
 
-      // Step 4: Reinitialize player and resume playback
-      if (typeof window.initializeSpotifyPlayer === 'function') {
-        try {
-          // Get current playback state before reinitializing
-          const currentState = await sendApiRequest<SpotifyPlaybackState>({
-            path: 'me/player',
-            method: 'GET'
+        // Cleanup before initialization
+        cleanupRecoveryResources()
+        await window.initializeSpotifyPlayer()
+        console.log('[Recovery] Player reinitialization successful', {
+          timestamp: new Date().toISOString()
+        })
+        updateProgress(3, true)
+
+        // Resume playback from last position with validation
+        if (currentState.item?.uri) {
+          console.log('[Recovery] Attempting to resume playback', {
+            trackUri: currentState.item.uri,
+            position: currentState.progress_ms,
+            timestamp: new Date().toISOString()
           })
 
-          // Validate current state
-          if (!validatePlaybackState(currentState)) {
-            throw new Error(ERROR_MESSAGES.INVALID_PLAYBACK_STATE)
+          const playbackRequest = {
+            context_uri: `spotify:playlist:${fixedPlaylistId}`,
+            position_ms: Math.max(0, currentState.progress_ms ?? 0),
+            offset: currentState?.item?.uri
+              ? { uri: currentState.item.uri }
+              : undefined
           }
 
-          // Validate playlist ID
-          if (!validatePlaylistId(fixedPlaylistId)) {
-            throw new Error(ERROR_MESSAGES.INVALID_PLAYLIST_ID)
-          }
+          // Validate the request before sending
+          const requestValidation = validatePlaybackRequest(
+            playbackRequest.context_uri,
+            playbackRequest.position_ms,
+            playbackRequest.offset?.uri
+          )
 
-          // Cleanup before initialization
-          cleanupRecoveryResources()
-          await window.initializeSpotifyPlayer()
-          updateProgress(3, true)
-
-          // Resume playback from last position with validation
-          if (currentState.item?.uri) {
-            const playbackRequest = {
-              context_uri: `spotify:playlist:${fixedPlaylistId}`,
-              position_ms: Math.max(0, currentState.progress_ms ?? 0),
-              offset: currentState?.item?.uri
-                ? { uri: currentState.item.uri }
-                : undefined
-            }
-
-            // Validate the request before sending
-            const requestValidation = validatePlaybackRequest(
-              playbackRequest.context_uri,
-              playbackRequest.position_ms,
-              playbackRequest.offset?.uri
+          if (!requestValidation.isValid) {
+            throw new Error(
+              `Invalid playback request: ${requestValidation.errors.join(', ')}`
             )
-
-            if (!requestValidation.isValid) {
-              throw new Error(
-                `Invalid playback request: ${requestValidation.errors.join(', ')}`
-              )
-            }
-
-            await sendApiRequest({
-              path: 'me/player/play',
-              method: 'PUT',
-              body: playbackRequest,
-              debounceTime: 60000 // 1 minute debounce
-            })
           }
+
+          await sendApiRequest({
+            path: 'me/player/play',
+            method: 'PUT',
+            body: playbackRequest,
+            debounceTime: 60000 // 1 minute debounce
+          })
 
           // Verify playback resumed correctly with additional validation
           console.log('[Recovery] Starting playback verification')
@@ -885,71 +855,48 @@ export function useRecoverySystem(
               )
             }
           }
-        } catch (error) {
-          console.error('[Recovery] Failed to reinitialize player:', error)
-          updateProgress(3, false, error)
-        }
-      }
 
-      // Update state atomically on success
-      setRecoveryState((prev) =>
-        updateRecoveryState(prev, {
-          consecutiveFailures: 0,
-          lastErrorType: null
+          console.log('[Recovery] Playback verification successful', {
+            timestamp: new Date().toISOString()
+          })
+        }
+      } catch (error) {
+        console.error('[Recovery] Failed to reinitialize player:', {
+          error: error instanceof Error ? error.message : 'Unknown error',
+          errorType: error instanceof Error ? error.name : 'Unknown',
+          stack: error instanceof Error ? error.stack : undefined,
+          timestamp: new Date().toISOString()
         })
-      )
-      setRecoveryAttempts(0)
-      setRecoveryStatus({
-        isRecovering: false,
-        message: 'Recovery successful!',
-        progress: 100,
-        currentStep: RECOVERY_STEPS.length,
-        totalSteps: RECOVERY_STEPS.length
-      })
-
-      // Clear recovery status after 3 seconds
-      setTimeout(() => {
-        if (isMounted.current) {
-          setRecoveryStatus(createRecoveryStatus())
-        }
-      }, RECOVERY_STATUS_CLEAR_DELAY)
-    } catch (error) {
-      if (!isMounted.current) return
-
-      console.error('[Recovery] Failed:', error)
-      setRecoveryAttempts((prev) => prev + 1)
-      const errorType = determineErrorType(error)
-      setRecoveryState((prev) =>
-        updateRecoveryState(prev, {
-          consecutiveFailures: prev.consecutiveFailures + 1,
-          lastErrorType: errorType
-        })
-      )
-
-      // Try error recovery before retrying
-      const recoverySuccessful = await handleErrorRecovery(
-        error,
-        deviceId,
-        fixedPlaylistId
-      )
-      if (!recoverySuccessful) {
-        // Cleanup on error
-        cleanupRecoveryResources()
-        await cleanupPlaybackState()
-
-        const delay = BASE_DELAY * Math.pow(2, recoveryAttempts)
-
-        if (recoveryTimeout.current) {
-          clearTimeout(recoveryTimeout.current)
-        }
-
-        recoveryTimeout.current = setTimeout(() => {
-          if (isMounted.current) {
-            void attemptRecovery()
-          }
-        }, delay)
+        updateProgress(3, false, error)
       }
     }
+
+    // Update state atomically on success
+    setRecoveryState((prev) =>
+      updateRecoveryState(prev, {
+        consecutiveFailures: 0,
+        lastErrorType: null
+      })
+    )
+    setRecoveryAttempts(0)
+    setRecoveryStatus({
+      isRecovering: false,
+      message: 'Recovery successful!',
+      progress: 100,
+      currentStep: RECOVERY_STEPS.length,
+      totalSteps: RECOVERY_STEPS.length
+    })
+
+    console.log('[Recovery] Recovery process completed successfully', {
+      timestamp: new Date().toISOString()
+    })
+
+    // Clear recovery status after 3 seconds
+    setTimeout(() => {
+      if (isMounted.current) {
+        setRecoveryStatus(createRecoveryStatus())
+      }
+    }, RECOVERY_STATUS_CLEAR_DELAY)
   }, [
     recoveryAttempts,
     fixedPlaylistId,
