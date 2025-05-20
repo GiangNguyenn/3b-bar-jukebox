@@ -16,6 +16,7 @@ export interface SpotifyTrack {
   name: string
   artists: SpotifyArtist[]
   album: SpotifyAlbum
+  uri: string
 }
 
 export interface SpotifyPlaybackState {
