@@ -27,6 +27,7 @@ const RECOVERY_TIMEOUT = 30000 // 30 seconds
 const CIRCUIT_BREAKER_THRESHOLD = 3
 const CIRCUIT_BREAKER_TIMEOUT = 30000 // 30 seconds
 const VERIFICATION_LOCK_TIMEOUT = 5000 // 5 seconds
+const TARGET_VOLUME = 80 // Target volume percentage
 
 // Circuit breaker state
 let consecutiveFailures = 0
@@ -122,6 +123,17 @@ async function verifyPlaybackResume(
     timestamp: new Date().toISOString()
   })
 
+  // Ensure volume is set to target level
+  try {
+    await sendApiRequest({
+      path: `me/player/volume?volume_percent=${TARGET_VOLUME}`,
+      method: 'PUT'
+    })
+    console.log('[Playback Verification] Volume set to target level:', TARGET_VOLUME)
+  } catch (error) {
+    console.error('[Playback Verification] Failed to set volume:', error)
+  }
+
   const initialState = await sendApiRequest<SpotifyPlaybackState>({
     path: 'me/player',
     method: 'GET'
@@ -133,6 +145,7 @@ async function verifyPlaybackResume(
     progress: initialState?.progress_ms,
     context: initialState?.context?.uri,
     currentTrack: initialState?.item?.name,
+    volume: initialState?.device?.volume_percent,
     timestamp: new Date().toISOString()
   })
 
@@ -152,6 +165,19 @@ async function verifyPlaybackResume(
     throw new Error('Failed to get playback state')
   }
 
+  // Verify volume is at target level
+  if (currentState.device?.volume_percent !== TARGET_VOLUME) {
+    try {
+      await sendApiRequest({
+        path: `me/player/volume?volume_percent=${TARGET_VOLUME}`,
+        method: 'PUT'
+      })
+      console.log('[Playback Verification] Volume corrected to target level:', TARGET_VOLUME)
+    } catch (error) {
+      console.error('[Playback Verification] Failed to correct volume:', error)
+    }
+  }
+
   const verificationResult: PlaybackVerificationResult = {
     isSuccessful: true,
     reason: 'Playback resumed successfully',
@@ -162,7 +188,8 @@ async function verifyPlaybackResume(
       contextMatch: currentState.context?.uri === expectedContextUri,
       currentTrack: currentState.item?.name,
       timestamp: Date.now(),
-      verificationDuration: Date.now() - startTime
+      verificationDuration: Date.now() - startTime,
+      volumeLevel: currentState.device?.volume_percent
     }
   }
 
@@ -210,6 +237,17 @@ async function ensurePlaybackState(
       if (!transferSuccessful) {
         throw new Error('Failed to transfer playback to device')
       }
+    }
+
+    // Set volume to target level
+    try {
+      await sendApiRequest({
+        path: `me/player/volume?volume_percent=${TARGET_VOLUME}`,
+        method: 'PUT'
+      })
+      console.log('[Playback] Volume set to target level:', TARGET_VOLUME)
+    } catch (error) {
+      console.error('[Playback] Failed to set volume:', error)
     }
 
     // Validate playlist and track
