@@ -20,7 +20,7 @@ interface ConsoleLogsState {
   clearLogs: () => void
 }
 
-const MAX_LOGS = 10
+const MAX_LOGS = 50
 
 export function useConsoleLogs(): ConsoleLogsState {
   const [logs, setLogs] = useState<LogEntry[]>([])

@@ -11,10 +11,9 @@ export const RECOVERY_STATUS_CLEAR_DELAY = 3000 // 3 seconds
 export const STORED_STATE_MAX_AGE = 300000 // 5 minutes
 
 export const RECOVERY_STEPS: RecoveryStep[] = [
-  { message: 'Refreshing player state...', weight: 0.2 },
-  { message: 'Ensuring active device...', weight: 0.2 },
-  { message: 'Attempting to reconnect...', weight: 0.3 },
-  { message: 'Reinitializing player...', weight: 0.3 }
+  { message: 'Verifying device state...', weight: 0.3 },
+  { message: 'Ensuring active device...', weight: 0.3 },
+  { message: 'Restoring playback...', weight: 0.4 }
 ]
 
 export const ERROR_MESSAGES = {
