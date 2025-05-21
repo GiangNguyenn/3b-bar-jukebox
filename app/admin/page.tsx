@@ -17,7 +17,7 @@ import { type TrackSuggestionsState } from '@/shared/types/trackSuggestions'
 import type { SpotifyPlayerInstance } from '@/types/spotify'
 import { useTrackSuggestions } from './components/track-suggestions/hooks/useTrackSuggestions'
 import { PlaylistRefreshServiceImpl } from '@/services/playlistRefresh'
-import { useRecoverySystem } from './components/recovery/useRecoverySystem'
+import { useRecoverySystem } from '@/hooks/useRecoverySystem'
 import { RecoveryStatus } from '@/components/ui/recovery-status'
 import { HealthStatus } from '@/shared/types'
 import { SpotifyApiService } from '@/services/spotifyApi'
@@ -202,7 +202,7 @@ export default function AdminPage(): JSX.Element {
     error: playlistError,
     isInitialFetchComplete
   } = useFixedPlaylist()
-  const { recoveryStatus, recoveryAttempts, attemptRecovery } =
+  const { state: recoveryState, attemptRecovery, resumePlayback } =
     useRecoverySystem(deviceId, fixedPlaylistId, (status) =>
       setHealthStatus((_prev) => ({
         ..._prev,
@@ -1199,7 +1199,13 @@ export default function AdminPage(): JSX.Element {
   return (
     <div className='text-white min-h-screen bg-black p-4'>
       <SpotifyPlayer />
-      <RecoveryStatus {...recoveryStatus} />
+      <RecoveryStatus
+        isRecovering={recoveryState.isRecovering}
+        message={recoveryState.status.message}
+        progress={recoveryState.status.progress}
+        currentStep={recoveryState.currentStep}
+        totalSteps={recoveryState.totalSteps}
+      />
 
       <div className='mx-auto max-w-xl space-y-4'>
         <h1 className='mb-8 text-2xl font-bold'>Admin Controls</h1>
@@ -1275,7 +1281,7 @@ export default function AdminPage(): JSX.Element {
                       : healthStatus.device === 'disconnected'
                         ? 'Device Disconnected'
                         : 'Device Status Unknown'}
-                  {recoveryAttempts > 0 && ` (Recovery ${recoveryAttempts}/5)`}
+                  {recoveryState.attempts > 0 && ` (Recovery ${recoveryState.attempts}/5)`}
                 </span>
               </div>
 

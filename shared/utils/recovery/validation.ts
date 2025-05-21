@@ -1,5 +1,6 @@
 import { SpotifyPlaybackState } from '@/shared/types'
 import { ValidationResult } from '@/shared/types/recovery'
+import { sendApiRequest } from '@/shared/api'
 
 export function validateSpotifyUri(uri: string): boolean {
   if (!uri) return false
@@ -139,4 +140,140 @@ export function validatePlaybackRequest(
   }
 
   return result
+}
+
+interface PlaylistResponse {
+  name: string
+  tracks: {
+    items: Array<{
+      track: {
+        uri: string
+        name: string
+      }
+    }>
+  }
+}
+
+interface TrackResponse {
+  name: string
+}
+
+export async function validatePlaybackStateWithDetails(
+  playlistId: string,
+  trackUri: string | null,
+  position: number
+): Promise<{
+  isValid: boolean
+  error?: string
+  details?: {
+    playlistValid: boolean
+    trackValid: boolean
+    positionValid: boolean
+    playlistName?: string
+    trackName?: string
+  }
+}> {
+  console.log('[Playback Validation] Starting validation:', {
+    playlistId,
+    trackUri,
+    position,
+    timestamp: new Date().toISOString()
+  })
+
+  try {
+    // Validate playlist exists and is accessible
+    const playlistResponse = await sendApiRequest<PlaylistResponse>({
+      path: `playlists/${playlistId}`,
+      method: 'GET'
+    })
+
+    if (!playlistResponse) {
+      console.error('[Playback Validation] Playlist not found:', {
+        playlistId,
+        timestamp: new Date().toISOString()
+      })
+      return {
+        isValid: false,
+        error: 'Playlist not found',
+        details: {
+          playlistValid: false,
+          trackValid: false,
+          positionValid: false
+        }
+      }
+    }
+
+    // If we have a track URI, validate the track
+    let trackValid = true
+    let trackName: string | undefined
+    if (trackUri) {
+      try {
+        const trackId = trackUri.split(':').pop()
+        const trackResponse = await sendApiRequest<TrackResponse>({
+          path: `tracks/${trackId}`,
+          method: 'GET'
+        })
+
+        if (!trackResponse) {
+          console.error('[Playback Validation] Track not found:', {
+            trackUri,
+            timestamp: new Date().toISOString()
+          })
+          trackValid = false
+        } else {
+          trackName = trackResponse.name
+        }
+      } catch (error) {
+        console.error('[Playback Validation] Track validation failed:', {
+          error: error instanceof Error ? error.message : 'Unknown error',
+          trackUri,
+          timestamp: new Date().toISOString()
+        })
+        trackValid = false
+      }
+    }
+
+    // Validate position is reasonable
+    const positionValid = position >= 0 && position < 3600000 // Max 1 hour
+
+    const isValid = trackValid && positionValid
+
+    console.log('[Playback Validation] Validation complete:', {
+      isValid,
+      playlistValid: true,
+      trackValid,
+      positionValid,
+      playlistName: playlistResponse.name,
+      trackName,
+      timestamp: new Date().toISOString()
+    })
+
+    return {
+      isValid,
+      error: !isValid ? 'Invalid playback state' : undefined,
+      details: {
+        playlistValid: true,
+        trackValid,
+        positionValid,
+        playlistName: playlistResponse.name,
+        trackName
+      }
+    }
+  } catch (error) {
+    console.error('[Playback Validation] Validation failed:', {
+      error: error instanceof Error ? error.message : 'Unknown error',
+      playlistId,
+      trackUri,
+      timestamp: new Date().toISOString()
+    })
+    return {
+      isValid: false,
+      error: error instanceof Error ? error.message : 'Unknown error',
+      details: {
+        playlistValid: false,
+        trackValid: false,
+        positionValid: false
+      }
+    }
+  }
 }

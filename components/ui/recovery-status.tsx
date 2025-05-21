@@ -20,7 +20,7 @@ export function RecoveryStatus({
   }
 
   return (
-    <div className='fixed left-0 right-0 top-0 z-50 bg-black/90 p-4'>
+    <div className='fixed left-0 right-0 bottom-0 z-50 bg-black/90 p-4'>
       <div className='mx-auto max-w-xl'>
         <div className='mb-2 flex items-center justify-between'>
           <span className='text-white text-sm font-medium'>{message}</span>
