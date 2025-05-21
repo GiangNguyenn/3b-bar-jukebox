@@ -43,6 +43,8 @@ export interface RecoveryState {
   consecutiveFailures: number
   /** Type of the last error encountered */
   lastErrorType: ErrorType | null
+  /** Timestamp of the last recovery attempt */
+  lastRecoveryAttempt: number
 }
 
 /** Represents the current status of a recovery operation */
@@ -83,6 +85,8 @@ export interface PlaybackVerificationResult {
     timestamp: number
     /** Duration of the verification process in milliseconds */
     verificationDuration: number
+    /** Current volume level of the device */
+    volumeLevel?: number
   }
 }
 

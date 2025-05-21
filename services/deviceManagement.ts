@@ -38,6 +38,70 @@ export async function verifyDeviceTransfer(deviceId: string): Promise<boolean> {
 
   while (retries < maxRetries) {
     try {
+      // Get all available devices first
+      const devicesResponse = await sendApiRequest<{
+        devices: Array<{
+          id: string
+          is_active: boolean
+          is_restricted: boolean
+          type: string
+          name: string
+        }>
+      }>({
+        path: 'me/player/devices',
+        method: 'GET'
+      })
+
+      if (!devicesResponse?.devices) {
+        console.error('[Device Management] Failed to get devices list')
+        retries++
+        await new Promise((resolve) => setTimeout(resolve, retryDelay))
+        continue
+      }
+
+      // Find our target device
+      const targetDevice = devicesResponse.devices.find(
+        (d) => d.id === deviceId
+      )
+      if (!targetDevice) {
+        console.error('[Device Management] Target device not found:', {
+          deviceId,
+          availableDevices: devicesResponse.devices.map((d) => ({
+            id: d.id,
+            name: d.name
+          }))
+        })
+        retries++
+        await new Promise((resolve) => setTimeout(resolve, retryDelay))
+        continue
+      }
+
+      // Check device state
+      const deviceState = {
+        isActive: targetDevice.is_active,
+        isRestricted: targetDevice.is_restricted,
+        type: targetDevice.type,
+        name: targetDevice.name
+      }
+
+      console.log('[Device Management] Device state:', {
+        deviceId,
+        ...deviceState,
+        timestamp: new Date().toISOString()
+      })
+
+      // If device is restricted, it's not ready for playback
+      if (deviceState.isRestricted) {
+        console.error('[Device Management] Device is restricted:', {
+          deviceId,
+          deviceState
+        })
+        retries++
+        await new Promise((resolve) => setTimeout(resolve, retryDelay))
+        continue
+      }
+
+      // Get current playback state
       const state = await sendApiRequest<SpotifyPlaybackState>({
         path: 'me/player',
         method: 'GET'
@@ -60,12 +124,40 @@ export async function verifyDeviceTransfer(deviceId: string): Promise<boolean> {
         continue
       }
 
-      if (!state.device.is_active) {
-        console.error('[Device Management] Device is not active')
+      // Verify device is ready for playback
+      const deviceReady = {
+        isActive: state.device.is_active,
+        isRestricted: state.device.is_restricted,
+        volumeSupported: typeof state.device.volume_percent === 'number',
+        name: state.device.name
+      }
+
+      console.log('[Device Management] Device ready state:', {
+        deviceId,
+        ...deviceReady,
+        timestamp: new Date().toISOString()
+      })
+
+      // Check if device is fully ready
+      if (
+        !deviceReady.isActive ||
+        deviceReady.isRestricted ||
+        !deviceReady.volumeSupported
+      ) {
+        console.error('[Device Management] Device not ready for playback:', {
+          deviceId,
+          deviceReady
+        })
         retries++
         await new Promise((resolve) => setTimeout(resolve, retryDelay))
         continue
       }
+
+      console.log('[Device Management] Device verification successful:', {
+        deviceId,
+        deviceName: deviceReady.name,
+        timestamp: new Date().toISOString()
+      })
 
       return true
     } catch (error) {
@@ -148,6 +240,38 @@ export async function transferPlaybackToDevice(
         ) {
           console.log('[Device Transfer] Device already active')
           return true
+        }
+
+        // Get device details before transfer
+        const devicesResponse = await sendApiRequest<{
+          devices: Array<{
+            id: string
+            is_active: boolean
+            is_restricted: boolean
+            type: string
+            name: string
+          }>
+        }>({
+          path: 'me/player/devices',
+          method: 'GET'
+        })
+
+        const targetDevice = devicesResponse?.devices.find(
+          (d) => d.id === deviceId
+        )
+        if (!targetDevice) {
+          console.error(
+            '[Device Transfer] Target device not found in available devices'
+          )
+          continue
+        }
+
+        if (targetDevice.is_restricted) {
+          console.error('[Device Transfer] Device is restricted:', {
+            deviceId,
+            deviceName: targetDevice.name
+          })
+          continue
         }
 
         // Attempt transfer
