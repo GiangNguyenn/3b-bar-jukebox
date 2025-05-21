@@ -21,7 +21,10 @@ import { BASE_DELAY, RECOVERY_STEPS } from '@/shared/constants/recovery'
 import { verifyPlaybackResume } from '@/shared/utils/recovery/playback-verification'
 import { validatePlaybackStateWithDetails } from '@/shared/utils/recovery/validation'
 import { handleErrorRecovery } from '@/shared/utils/recovery/error-handling'
-import { cleanupRecoveryResources, cleanupPlaybackState } from '@/shared/utils/recovery/state-management'
+import {
+  cleanupRecoveryResources,
+  cleanupPlaybackState
+} from '@/shared/utils/recovery/state-management'
 
 // Recovery system constants
 const MAX_VERIFICATION_RETRIES = 3
@@ -239,7 +242,11 @@ function resetCircuitBreaker(): void {
   lastFailureTime = 0
 }
 
-type DeviceHealthStatus = 'healthy' | 'unresponsive' | 'disconnected' | 'unknown'
+type DeviceHealthStatus =
+  | 'healthy'
+  | 'unresponsive'
+  | 'disconnected'
+  | 'unknown'
 
 export function useRecoverySystem(
   deviceId: string | null,
@@ -393,7 +400,8 @@ export function useRecoverySystem(
           progress,
           error
         },
-        isRecovering: phase !== 'idle' && phase !== 'success' && phase !== 'error',
+        isRecovering:
+          phase !== 'idle' && phase !== 'success' && phase !== 'error',
         currentStep: stepIndex >= 0 ? stepIndex + 1 : 0
       })
     },
@@ -568,7 +576,9 @@ export function useRecoverySystem(
                         await spotifyApi.resumePlaybackAtPosition({
                           deviceId,
                           contextUri: `spotify:playlist:${fixedPlaylistId}`,
-                          trackUri: currentState?.item?.uri ?? playlist.tracks.items[0].track.uri,
+                          trackUri:
+                            currentState?.item?.uri ??
+                            playlist.tracks.items[0].track.uri,
                           position: currentState?.progress_ms ?? 0
                         })
                       } else {

@@ -202,13 +202,16 @@ export default function AdminPage(): JSX.Element {
     error: playlistError,
     isInitialFetchComplete
   } = useFixedPlaylist()
-  const { state: recoveryState, attemptRecovery, resumePlayback } =
-    useRecoverySystem(deviceId, fixedPlaylistId, (status) =>
-      setHealthStatus((_prev) => ({
-        ..._prev,
-        device: status.device
-      }))
-    )
+  const {
+    state: recoveryState,
+    attemptRecovery,
+    resumePlayback
+  } = useRecoverySystem(deviceId, fixedPlaylistId, (status) =>
+    setHealthStatus((_prev) => ({
+      ..._prev,
+      device: status.device
+    }))
+  )
   const { logs: consoleLogs } = useConsoleLogs()
 
   // Refs
@@ -1281,7 +1284,8 @@ export default function AdminPage(): JSX.Element {
                       : healthStatus.device === 'disconnected'
                         ? 'Device Disconnected'
                         : 'Device Status Unknown'}
-                  {recoveryState.attempts > 0 && ` (Recovery ${recoveryState.attempts}/5)`}
+                  {recoveryState.attempts > 0 &&
+                    ` (Recovery ${recoveryState.attempts}/5)`}
                 </span>
               </div>
 
