@@ -17,10 +17,9 @@ import { type TrackSuggestionsState } from '@/shared/types/trackSuggestions'
 import type { SpotifyPlayerInstance } from '@/types/spotify'
 import { useTrackSuggestions } from './components/track-suggestions/hooks/useTrackSuggestions'
 import { PlaylistRefreshServiceImpl } from '@/services/playlistRefresh'
-import { useRecoverySystem } from './components/recovery/useRecoverySystem'
+import { useRecoverySystem } from '@/hooks/useRecoverySystem'
 import { RecoveryStatus } from '@/components/ui/recovery-status'
 import { HealthStatus } from '@/shared/types'
-import { transferPlaybackToDevice } from '@/services/deviceManagement'
 import { SpotifyApiService } from '@/services/spotifyApi'
 import { PlaylistDisplay } from './components/playlist/playlist-display'
 
@@ -203,14 +202,15 @@ export default function AdminPage(): JSX.Element {
     error: playlistError,
     isInitialFetchComplete
   } = useFixedPlaylist()
-  const { recoveryStatus, recoveryAttempts } = useRecoverySystem(
-    deviceId,
-    fixedPlaylistId,
-    (status) =>
-      setHealthStatus((_prev) => ({
-        ..._prev,
-        device: status.device
-      }))
+  const {
+    state: recoveryState,
+    attemptRecovery,
+    resumePlayback
+  } = useRecoverySystem(deviceId, fixedPlaylistId, (status) =>
+    setHealthStatus((_prev) => ({
+      ..._prev,
+      device: status.device
+    }))
   )
   const { logs: consoleLogs } = useConsoleLogs()
 
@@ -477,22 +477,13 @@ export default function AdminPage(): JSX.Element {
                 playError.message.includes('No active device found')
               ) {
                 console.error(
-                  'No active device found, attempting to transfer playback'
+                  '[Playback Action] Device not found, triggering full recovery',
+                  {
+                    error: playError.message,
+                    timestamp: new Date().toISOString()
+                  }
                 )
-                await transferPlaybackToDevice(deviceId)
-                await sendApiRequest({
-                  path: `me/player/play?device_id=${deviceId}`,
-                  method: 'PUT'
-                })
-                setPlaybackInfo((prev) => ({
-                  ...prev!,
-                  isPlaying: true
-                }))
-                setIsManualPause(false)
-                setHealthStatus((prev) => ({
-                  ...prev,
-                  playback: 'playing'
-                }))
+                void attemptRecovery() // Trigger full recovery instead of just transferring playback
               } else {
                 throw playError
               }
@@ -1014,18 +1005,18 @@ export default function AdminPage(): JSX.Element {
                 timestamp: new Date().toISOString()
               }
             )
-            setPlaybackInfo((prev) =>
-              prev ? { ...prev, progressStalled: true } : null
+            setPlaybackInfo((_prev) =>
+              _prev ? { ..._prev, progressStalled: true } : null
             )
 
-            // Set a timeout to trigger recovery if stall persists
+            // Set a timeout to trigger full recovery if stall persists
             if (playbackStallTimeoutRef.current) {
               clearTimeout(playbackStallTimeoutRef.current)
             }
             playbackStallTimeoutRef.current = setTimeout(() => {
               if (playbackInfo.progressStalled && !isManualPause) {
                 console.error(
-                  '[Playback Monitor] Playback stall persisted, triggering recovery',
+                  '[Playback Monitor] Playback stall persisted, triggering full recovery',
                   {
                     stallDuration: 10000,
                     currentProgress: currentState.progress_ms,
@@ -1035,14 +1026,15 @@ export default function AdminPage(): JSX.Element {
                     timestamp: new Date().toISOString()
                   }
                 )
-                void handlePlayback('play') // Try to resume playback first
+                // Trigger full recovery system instead of just resuming playback
+                void attemptRecovery()
               }
             }, 10000) // Wait 10 seconds before triggering recovery
           }
         } else if (playbackInfo.progressStalled) {
           // Reset stall state if progress has resumed or if manually paused
-          setPlaybackInfo((prev) =>
-            prev ? { ...prev, progressStalled: false } : null
+          setPlaybackInfo((_prev) =>
+            _prev ? { ..._prev, progressStalled: false } : null
           )
           if (playbackStallTimeoutRef.current) {
             clearTimeout(playbackStallTimeoutRef.current)
@@ -1058,7 +1050,7 @@ export default function AdminPage(): JSX.Element {
             isManualPause,
             timestamp: new Date().toISOString()
           })
-          void handlePlayback('play') // Try to resume playback first
+          void attemptRecovery() // Trigger full recovery for device mismatch
           return
         }
 
@@ -1073,7 +1065,7 @@ export default function AdminPage(): JSX.Element {
             isManualPause,
             timestamp: new Date().toISOString()
           })
-          void handlePlayback('play') // Try to resume playback first
+          void attemptRecovery() // Trigger full recovery for state mismatch
           return
         }
 
@@ -1104,7 +1096,22 @@ export default function AdminPage(): JSX.Element {
           timestamp: new Date().toISOString()
         })
         if (!isManualPause) {
-          void handlePlayback('play') // Try to resume playback first
+          // Check if it's a device-related error
+          if (
+            error instanceof Error &&
+            error.message.toLowerCase().includes('device')
+          ) {
+            console.error(
+              '[Playback Monitor] Device error detected, triggering full recovery',
+              {
+                error: error.message,
+                timestamp: new Date().toISOString()
+              }
+            )
+            void attemptRecovery()
+          } else {
+            void handlePlayback('play') // Try to resume playback first for non-device errors
+          }
         }
       }
     }
@@ -1127,7 +1134,8 @@ export default function AdminPage(): JSX.Element {
     playbackInfo?.progress,
     playbackInfo?.progressStalled,
     isManualPause,
-    handlePlayback
+    handlePlayback,
+    attemptRecovery
   ])
 
   // Add effect to update uptime
@@ -1138,6 +1146,40 @@ export default function AdminPage(): JSX.Element {
 
     return () => clearInterval(timer)
   }, [])
+
+  const handleForceRecovery = useCallback(async () => {
+    try {
+      console.log('[Force Recovery] Starting manual recovery', {
+        deviceId,
+        fixedPlaylistId,
+        timestamp: new Date().toISOString()
+      })
+
+      // Set loading state
+      setIsLoading(true)
+
+      // Attempt recovery
+      await attemptRecovery()
+
+      console.log('[Force Recovery] Recovery completed successfully', {
+        deviceId,
+        fixedPlaylistId,
+        timestamp: new Date().toISOString()
+      })
+    } catch (error) {
+      console.error('[Force Recovery] Error during recovery:', {
+        error: error instanceof Error ? error.message : 'Unknown error',
+        errorType: error instanceof Error ? error.name : 'Unknown',
+        stack: error instanceof Error ? error.stack : undefined,
+        deviceId,
+        fixedPlaylistId,
+        timestamp: new Date().toISOString()
+      })
+      setError(error instanceof Error ? error.message : 'Recovery failed')
+    } finally {
+      setIsLoading(false)
+    }
+  }, [attemptRecovery, deviceId, fixedPlaylistId])
 
   // Update the loading state check
   if (!mounted) {
@@ -1160,7 +1202,13 @@ export default function AdminPage(): JSX.Element {
   return (
     <div className='text-white min-h-screen bg-black p-4'>
       <SpotifyPlayer />
-      <RecoveryStatus {...recoveryStatus} />
+      <RecoveryStatus
+        isRecovering={recoveryState.isRecovering}
+        message={recoveryState.status.message}
+        progress={recoveryState.status.progress}
+        currentStep={recoveryState.currentStep}
+        totalSteps={recoveryState.totalSteps}
+      />
 
       <div className='mx-auto max-w-xl space-y-4'>
         <h1 className='mb-8 text-2xl font-bold'>Admin Controls</h1>
@@ -1236,7 +1284,8 @@ export default function AdminPage(): JSX.Element {
                       : healthStatus.device === 'disconnected'
                         ? 'Device Disconnected'
                         : 'Device Status Unknown'}
-                  {recoveryAttempts > 0 && ` (Recovery ${recoveryAttempts}/5)`}
+                  {recoveryState.attempts > 0 &&
+                    ` (Recovery ${recoveryState.attempts}/5)`}
                 </span>
               </div>
 
@@ -1418,15 +1467,11 @@ export default function AdminPage(): JSX.Element {
                       : 'Refresh Playlist'}
                 </button>
                 <button
-                  onClick={() => void refreshToken()}
-                  disabled={isLoading || !isReady || !isDeviceCheckComplete}
-                  className='text-white flex-1 rounded-lg bg-orange-600 px-4 py-2 font-medium transition-colors hover:bg-orange-700 disabled:cursor-not-allowed disabled:opacity-50'
+                  onClick={() => void handleForceRecovery()}
+                  disabled={isLoading}
+                  className='text-white flex-1 rounded-lg bg-red-600 px-4 py-2 font-medium transition-colors hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50'
                 >
-                  {isLoading
-                    ? 'Loading...'
-                    : !isDeviceCheckComplete
-                      ? 'Initializing...'
-                      : 'Refresh Token'}
+                  {isLoading ? 'Loading...' : 'Force Recovery'}
                 </button>
               </div>
               <div className='text-center text-sm text-gray-400'>

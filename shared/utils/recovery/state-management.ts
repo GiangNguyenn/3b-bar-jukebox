@@ -11,7 +11,8 @@ export function createRecoveryState(): RecoveryState {
       timestamp: 0
     },
     consecutiveFailures: 0,
-    lastErrorType: null
+    lastErrorType: null,
+    lastRecoveryAttempt: 0
   }
 }
 
