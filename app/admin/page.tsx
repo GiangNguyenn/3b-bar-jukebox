@@ -202,10 +202,7 @@ export default function AdminPage(): JSX.Element {
     error: playlistError,
     isInitialFetchComplete
   } = useFixedPlaylist()
-  const {
-    state: recoveryState,
-    attemptRecovery
-  } = useRecoverySystem(
+  const { state: recoveryState, attemptRecovery } = useRecoverySystem(
     deviceId,
     fixedPlaylistId,
     useCallback((status) => {
@@ -232,24 +229,46 @@ export default function AdminPage(): JSX.Element {
 
   // Update health status when device ID or fixed playlist changes
   useEffect(() => {
-    if (!deviceId || !fixedPlaylistId) {
+    if (!deviceId) {
       setHealthStatus((prev) => ({
         ...prev,
-        device: 'disconnected',
-        fixedPlaylist: 'not_found'
+        device: 'disconnected'
       }))
       return
     }
 
-    if (!hasUpdatedHealthStatus.current) {
+    if (!isReady) {
       setHealthStatus((prev) => ({
         ...prev,
-        device: 'healthy',
-        fixedPlaylist: 'found'
+        device: 'unresponsive'
       }))
-      hasUpdatedHealthStatus.current = true
+      return
     }
-  }, [deviceId, fixedPlaylistId])
+
+    // If we have both deviceId and isReady, the device is healthy
+    setHealthStatus((prev) => ({
+      ...prev,
+      device: 'healthy'
+    }))
+  }, [deviceId, isReady])
+
+  // Update fixed playlist status separately
+  useEffect(() => {
+    if (!isInitialFetchComplete) {
+      setHealthStatus((prev) => ({ ...prev, fixedPlaylist: 'unknown' }))
+      return
+    }
+
+    if (playlistError) {
+      setHealthStatus((prev) => ({ ...prev, fixedPlaylist: 'error' }))
+      return
+    }
+
+    setHealthStatus((prev) => ({
+      ...prev,
+      fixedPlaylist: fixedPlaylistId ? 'found' : 'not_found'
+    }))
+  }, [fixedPlaylistId, playlistError, isInitialFetchComplete])
 
   // Reset the ref when component unmounts
   useEffect(() => {
@@ -642,20 +661,6 @@ export default function AdminPage(): JSX.Element {
       }
     }
   }, [])
-
-  // Update the device status effect
-  useEffect(() => {
-    if (isReady && deviceId) {
-      // Only set to healthy if we have both isReady and deviceId
-      if (isDeviceCheckComplete) {
-        setHealthStatus((_prev) => ({ ..._prev, device: 'healthy' }))
-        setIsLoading(false)
-      }
-    } else if (!isReady || !deviceId) {
-      // Set to disconnected if we don't have both isReady and deviceId
-      setHealthStatus((_prev) => ({ ..._prev, device: 'disconnected' }))
-    }
-  }, [isReady, deviceId, isDeviceCheckComplete, isManualPause])
 
   // Monitor connection quality
   useEffect(() => {
@@ -1438,7 +1443,7 @@ export default function AdminPage(): JSX.Element {
                 />
                 <span className='font-medium'>
                   {healthStatus.fixedPlaylist === 'found'
-                    ? 'Fixed Playlist Found'
+                    ? 'Playlist found'
                     : healthStatus.fixedPlaylist === 'not_found'
                       ? 'Fixed Playlist Not Found'
                       : healthStatus.fixedPlaylist === 'error'
@@ -1486,7 +1491,7 @@ export default function AdminPage(): JSX.Element {
                     : !isDeviceCheckComplete
                       ? 'Initializing...'
                       : isSkipDisabled
-                        ? 'No Upcoming Tracks'
+                        ? 'Not enough Tracks'
                         : 'Skip'}
                 </button>
                 <button

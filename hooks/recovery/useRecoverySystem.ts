@@ -204,7 +204,7 @@ export function useRecoverySystem(
   useEffect(() => {
     return () => {
       updateHealth('unknown')
-      reset()  // Reset state on unmount
+      reset() // Reset state on unmount
     }
   }, [updateHealth, reset])
 
@@ -213,6 +213,6 @@ export function useRecoverySystem(
     attemptRecovery,
     deviceState,
     playbackState,
-    reset  // Export reset function
+    reset // Export reset function
   }
 }
