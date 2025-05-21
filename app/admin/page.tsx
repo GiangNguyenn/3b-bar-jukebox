@@ -17,7 +17,7 @@ import { type TrackSuggestionsState } from '@/shared/types/trackSuggestions'
 import type { SpotifyPlayerInstance } from '@/types/spotify'
 import { useTrackSuggestions } from './components/track-suggestions/hooks/useTrackSuggestions'
 import { PlaylistRefreshServiceImpl } from '@/services/playlistRefresh'
-import { useRecoverySystem } from '@/hooks/useRecoverySystem'
+import { useRecoverySystem } from '@/hooks/recovery'
 import { RecoveryStatus } from '@/components/ui/recovery-status'
 import { HealthStatus } from '@/shared/types'
 import { SpotifyApiService } from '@/services/spotifyApi'
@@ -204,13 +204,16 @@ export default function AdminPage(): JSX.Element {
   } = useFixedPlaylist()
   const {
     state: recoveryState,
-    attemptRecovery,
-    resumePlayback
-  } = useRecoverySystem(deviceId, fixedPlaylistId, (status) =>
-    setHealthStatus((_prev) => ({
-      ..._prev,
-      device: status.device
-    }))
+    attemptRecovery
+  } = useRecoverySystem(
+    deviceId,
+    fixedPlaylistId,
+    useCallback((status) => {
+      setHealthStatus((prev) => ({
+        ...prev,
+        device: status.device
+      }))
+    }, [])
   )
   const { logs: consoleLogs } = useConsoleLogs()
 
@@ -223,6 +226,37 @@ export default function AdminPage(): JSX.Element {
   const sendApiRequestWithTokenRecoveryRef = useRef<
     typeof sendApiRequestWithTokenRecovery | null
   >(null)
+
+  // Add a ref to track if we've already updated the health status
+  const hasUpdatedHealthStatus = useRef(false)
+
+  // Update health status when device ID or fixed playlist changes
+  useEffect(() => {
+    if (!deviceId || !fixedPlaylistId) {
+      setHealthStatus((prev) => ({
+        ...prev,
+        device: 'disconnected',
+        fixedPlaylist: 'not_found'
+      }))
+      return
+    }
+
+    if (!hasUpdatedHealthStatus.current) {
+      setHealthStatus((prev) => ({
+        ...prev,
+        device: 'healthy',
+        fixedPlaylist: 'found'
+      }))
+      hasUpdatedHealthStatus.current = true
+    }
+  }, [deviceId, fixedPlaylistId])
+
+  // Reset the ref when component unmounts
+  useEffect(() => {
+    return () => {
+      hasUpdatedHealthStatus.current = false
+    }
+  }, [])
 
   // Define the event handler
   useEffect(() => {
