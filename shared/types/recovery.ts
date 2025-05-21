@@ -83,6 +83,8 @@ export interface PlaybackVerificationResult {
     timestamp: number
     /** Duration of the verification process in milliseconds */
     verificationDuration: number
+    /** Current volume level of the device */
+    volumeLevel?: number
   }
 }
 
