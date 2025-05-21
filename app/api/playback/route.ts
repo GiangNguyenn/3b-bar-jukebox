@@ -5,7 +5,7 @@ import {
   transferPlaybackToDevice,
   ensureDeviceHealth
 } from '@/services/deviceManagement'
-import { verifyDevicePlaybackState } from '@/app/admin/components/recovery/utils/playback-verification'
+import { verifyPlaybackResume } from '@/shared/utils/recovery/playback-verification'
 
 interface PlaybackRequest {
   action: 'play' | 'skip'
@@ -62,7 +62,7 @@ export async function POST(request: Request): Promise<NextResponse> {
     })
 
     // Verify device playback state
-    await verifyDevicePlaybackState(deviceId, state)
+    await verifyPlaybackResume(state.context?.uri ?? '', deviceId)
 
     return NextResponse.json({ success: true })
   } catch (error) {

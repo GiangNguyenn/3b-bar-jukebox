@@ -18,7 +18,10 @@ import {
   checkDeviceExists
 } from '@/services/deviceManagement'
 import { BASE_DELAY, RECOVERY_STEPS } from '@/shared/constants/recovery'
-import { verifyDevicePlaybackState } from '@/app/admin/components/recovery/utils/playback-verification'
+import { verifyPlaybackResume } from '@/shared/utils/recovery/playback-verification'
+import { validatePlaybackStateWithDetails } from '@/shared/utils/recovery/validation'
+import { handleErrorRecovery } from '@/shared/utils/recovery/error-handling'
+import { cleanupRecoveryResources, cleanupPlaybackState } from '@/shared/utils/recovery/state-management'
 
 // Recovery system constants
 const MAX_VERIFICATION_RETRIES = 3
@@ -74,6 +77,11 @@ interface ExtendedRecoveryState extends RecoveryState {
     error: string | null
   }
   verification: DeviceVerificationState
+  currentDeviceId: string | null
+  fixedPlaylistId: string | null
+  isRecovering: boolean
+  currentStep: number
+  totalSteps: number
 }
 
 interface DeviceTransferResult {
@@ -104,105 +112,6 @@ interface PlaylistResponse {
 
 interface TrackResponse {
   name: string
-}
-
-async function verifyPlaybackResume(
-  expectedContextUri: string,
-  currentDeviceId: string | null,
-  maxVerificationTime: number = 10000, // 10 seconds
-  checkInterval: number = 1000 // 1 second
-): Promise<PlaybackVerificationResult> {
-  const startTime = Date.now()
-  console.log('[Playback Verification] Starting verification process', {
-    expectedContextUri,
-    currentDeviceId,
-    maxVerificationTime,
-    checkInterval,
-    timestamp: new Date().toISOString()
-  })
-
-  const initialState = await sendApiRequest<SpotifyPlaybackState>({
-    path: 'me/player',
-    method: 'GET'
-  })
-
-  console.log('[Playback Verification] Initial state:', {
-    deviceId: initialState?.device?.id,
-    isPlaying: initialState?.is_playing,
-    progress: initialState?.progress_ms,
-    context: initialState?.context?.uri,
-    currentTrack: initialState?.item?.name,
-    timestamp: new Date().toISOString()
-  })
-
-  const initialProgress = initialState?.progress_ms ?? 0
-  let lastProgress = initialProgress
-  let progressStalled = false
-  let currentState: SpotifyPlaybackState | null = null
-
-  while (Date.now() - startTime < maxVerificationTime) {
-    await new Promise((resolve) => setTimeout(resolve, checkInterval))
-
-    currentState = await sendApiRequest<SpotifyPlaybackState>({
-      path: 'me/player',
-      method: 'GET'
-    })
-
-    if (!currentState) {
-      throw new Error('Failed to get playback state')
-    }
-
-    const currentProgress = currentState.progress_ms ?? 0
-
-    if (currentProgress > lastProgress) {
-      lastProgress = currentProgress
-      progressStalled = false
-    } else {
-      const isNearEnd =
-        currentState.item?.duration_ms &&
-        currentState.item.duration_ms - currentProgress < 5000
-
-      if (!isNearEnd) {
-        progressStalled = true
-      }
-    }
-
-    console.log('[Playback Verification] Progress check:', {
-      currentProgress,
-      lastProgress,
-      progressStalled,
-      timestamp: new Date().toISOString()
-    })
-
-    if (!progressStalled && currentState.device?.id === currentDeviceId) {
-      break
-    }
-  }
-
-  if (!currentState) {
-    throw new Error('Failed to get playback state')
-  }
-
-  const verificationResult: PlaybackVerificationResult = {
-    isSuccessful:
-      !progressStalled && currentState.device?.id === currentDeviceId,
-    reason: progressStalled
-      ? 'Playback progress stalled'
-      : currentState.device?.id !== currentDeviceId
-        ? 'Device mismatch'
-        : 'Playback resumed successfully',
-    details: {
-      deviceMatch: currentState.device?.id === currentDeviceId,
-      isPlaying: currentState.is_playing,
-      progressAdvancing: !progressStalled,
-      contextMatch: currentState.context?.uri === expectedContextUri,
-      currentTrack: currentState.item?.name,
-      timestamp: Date.now(),
-      verificationDuration: Date.now() - startTime
-    }
-  }
-
-  return verificationResult
 }
 
 async function validatePlaylist(playlistId: string): Promise<boolean> {
@@ -274,126 +183,6 @@ async function ensurePlaybackState(
   }
 }
 
-async function validatePlaybackStateWithDetails(
-  playlistId: string,
-  trackUri: string | null,
-  position: number
-): Promise<{
-  isValid: boolean
-  error?: string
-  details?: {
-    playlistValid: boolean
-    trackValid: boolean
-    positionValid: boolean
-    playlistName?: string
-    trackName?: string
-  }
-}> {
-  console.log('[Playback Validation] Starting validation:', {
-    playlistId,
-    trackUri,
-    position,
-    timestamp: new Date().toISOString()
-  })
-
-  try {
-    // Validate playlist exists and is accessible
-    const playlistResponse = await sendApiRequest<PlaylistResponse>({
-      path: `playlists/${playlistId}`,
-      method: 'GET'
-    })
-
-    if (!playlistResponse) {
-      console.error('[Playback Validation] Playlist not found:', {
-        playlistId,
-        timestamp: new Date().toISOString()
-      })
-      return {
-        isValid: false,
-        error: 'Playlist not found',
-        details: {
-          playlistValid: false,
-          trackValid: false,
-          positionValid: false
-        }
-      }
-    }
-
-    // If we have a track URI, validate the track
-    let trackValid = true
-    let trackName: string | undefined
-    if (trackUri) {
-      try {
-        const trackId = trackUri.split(':').pop()
-        const trackResponse = await sendApiRequest<TrackResponse>({
-          path: `tracks/${trackId}`,
-          method: 'GET'
-        })
-
-        if (!trackResponse) {
-          console.error('[Playback Validation] Track not found:', {
-            trackUri,
-            timestamp: new Date().toISOString()
-          })
-          trackValid = false
-        } else {
-          trackName = trackResponse.name
-        }
-      } catch (error) {
-        console.error('[Playback Validation] Track validation failed:', {
-          error: error instanceof Error ? error.message : 'Unknown error',
-          trackUri,
-          timestamp: new Date().toISOString()
-        })
-        trackValid = false
-      }
-    }
-
-    // Validate position is reasonable
-    const positionValid = position >= 0 && position < 3600000 // Max 1 hour
-
-    const isValid = trackValid && positionValid
-
-    console.log('[Playback Validation] Validation complete:', {
-      isValid,
-      playlistValid: true,
-      trackValid,
-      positionValid,
-      playlistName: playlistResponse.name,
-      trackName,
-      timestamp: new Date().toISOString()
-    })
-
-    return {
-      isValid,
-      error: !isValid ? 'Invalid playback state' : undefined,
-      details: {
-        playlistValid: true,
-        trackValid,
-        positionValid,
-        playlistName: playlistResponse.name,
-        trackName
-      }
-    }
-  } catch (error) {
-    console.error('[Playback Validation] Validation failed:', {
-      error: error instanceof Error ? error.message : 'Unknown error',
-      playlistId,
-      trackUri,
-      timestamp: new Date().toISOString()
-    })
-    return {
-      isValid: false,
-      error: error instanceof Error ? error.message : 'Unknown error',
-      details: {
-        playlistValid: false,
-        trackValid: false,
-        positionValid: false
-      }
-    }
-  }
-}
-
 // Add error recovery helper functions
 const errorRecoveryState: ErrorRecoveryState = {
   lastError: null,
@@ -450,10 +239,12 @@ function resetCircuitBreaker(): void {
   lastFailureTime = 0
 }
 
+type DeviceHealthStatus = 'healthy' | 'unresponsive' | 'disconnected' | 'unknown'
+
 export function useRecoverySystem(
   deviceId: string | null,
   fixedPlaylistId: string | null,
-  onHealthStatusUpdate: (status: { device: string }) => void
+  onHealthStatusUpdate: (status: { device: DeviceHealthStatus }) => void
 ) {
   const [state, setState] = useState<ExtendedRecoveryState>({
     phase: 'idle',
@@ -475,7 +266,12 @@ export function useRecoverySystem(
       isVerifying: false,
       lastVerification: 0,
       verificationLock: false
-    }
+    },
+    currentDeviceId: deviceId,
+    fixedPlaylistId,
+    isRecovering: false,
+    currentStep: 0,
+    totalSteps: Object.keys(RECOVERY_STEPS).length
   })
 
   const recoveryTimeout = useRef<NodeJS.Timeout | null>(null)
@@ -515,8 +311,9 @@ export function useRecoverySystem(
     // Reset recovery flags
     isRecoveryInProgress.current = false
 
-    // Reset verification lock
+    // Reset verification lock and set isRecovering to false
     updateState({
+      isRecovering: false,
       verification: {
         isVerifying: false,
         lastVerification: 0,
@@ -554,6 +351,7 @@ export function useRecoverySystem(
     updateState({
       phase: 'idle',
       attempts: 0,
+      isRecovering: false,
       status: {
         message: '',
         progress: 0,
@@ -585,13 +383,18 @@ export function useRecoverySystem(
       progress: number,
       error: string | null = null
     ) => {
+      const stepIndex = RECOVERY_STEPS.findIndex(
+        (step) => step.message === message
+      )
       updateState({
         phase,
         status: {
           message,
           progress,
           error
-        }
+        },
+        isRecovering: phase !== 'idle' && phase !== 'success' && phase !== 'error',
+        currentStep: stepIndex >= 0 ? stepIndex + 1 : 0
       })
     },
     [updateState]
@@ -765,8 +568,8 @@ export function useRecoverySystem(
                         await spotifyApi.resumePlaybackAtPosition({
                           deviceId,
                           contextUri: `spotify:playlist:${fixedPlaylistId}`,
-                          trackUri: playlist.tracks.items[0].track.uri,
-                          position: 0
+                          trackUri: currentState?.item?.uri ?? playlist.tracks.items[0].track.uri,
+                          position: currentState?.progress_ms ?? 0
                         })
                       } else {
                         throw new Error('No tracks found in playlist')
@@ -793,8 +596,8 @@ export function useRecoverySystem(
                   await spotifyApi.resumePlaybackAtPosition({
                     deviceId,
                     contextUri: `spotify:playlist:${fixedPlaylistId}`,
-                    trackUri: currentState.item.uri,
-                    position: currentState.progress_ms ?? 0
+                    trackUri: currentState?.item?.uri,
+                    position: currentState?.progress_ms ?? 0
                   })
                 }
               }
@@ -824,6 +627,9 @@ export function useRecoverySystem(
                 // Attempt retry with different strategy based on failure reason
                 if (verificationResult.details?.deviceMatch === false) {
                   console.log('[Recovery] Retrying device transfer')
+                  if (!deviceId) {
+                    throw new Error('No device ID available for transfer')
+                  }
                   await sendApiRequest({
                     path: 'me/player',
                     method: 'PUT',
@@ -834,20 +640,24 @@ export function useRecoverySystem(
                   })
                 } else if (verificationResult.details?.isPlaying === false) {
                   console.log('[Recovery] Retrying playback start')
-                  await sendApiRequest({
-                    path: 'me/player/play',
-                    method: 'PUT',
-                    body: {
-                      context_uri: `spotify:playlist:${fixedPlaylistId}`,
-                      position_ms: currentState?.progress_ms ?? 0
-                    }
+                  if (!deviceId) {
+                    throw new Error('No device ID available for playback')
+                  }
+                  const spotifyApi = SpotifyApiService.getInstance()
+                  await spotifyApi.resumePlaybackAtPosition({
+                    deviceId,
+                    contextUri: `spotify:playlist:${fixedPlaylistId}`,
+                    position: currentState?.progress_ms ?? 0
                   })
                 } else if (
                   verificationResult.details?.progressAdvancing === false
                 ) {
                   console.log('[Recovery] Retrying with next track')
+                  if (!deviceId) {
+                    throw new Error('No device ID available for skipping')
+                  }
                   await sendApiRequest({
-                    path: 'me/player/next',
+                    path: `me/player/next?device_id=${deviceId}`,
                     method: 'POST'
                   })
                 }
@@ -926,6 +736,7 @@ export function useRecoverySystem(
         error instanceof Error &&
         error.message.includes('Device not found')
       ) {
+        onHealthStatusUpdate({ device: 'disconnected' })
         // Try to refresh the player
         if (typeof window.refreshSpotifyPlayer === 'function') {
           try {
@@ -948,16 +759,21 @@ export function useRecoverySystem(
       let recoveryErrorType: ErrorType = ErrorType.PLAYBACK
       if (errorType.includes('auth') || errorType.includes('token')) {
         recoveryErrorType = ErrorType.AUTH
+        onHealthStatusUpdate({ device: 'unresponsive' })
       } else if (
         errorType.includes('device') ||
         errorType.includes('transfer')
       ) {
         recoveryErrorType = ErrorType.DEVICE
+        onHealthStatusUpdate({ device: 'disconnected' })
       } else if (
         errorType.includes('network') ||
         errorType.includes('connection')
       ) {
         recoveryErrorType = ErrorType.CONNECTION
+        onHealthStatusUpdate({ device: 'unresponsive' })
+      } else {
+        onHealthStatusUpdate({ device: 'unknown' })
       }
 
       updateState({
@@ -1004,10 +820,115 @@ export function useRecoverySystem(
     cleanupRecoveryState
   ])
 
+  const resumePlayback = useCallback(
+    async (contextUri: string, targetDeviceId: string): Promise<void> => {
+      try {
+        updateState({
+          status: {
+            message: 'Validating playback request...',
+            progress: 10,
+            error: null
+          }
+        })
+
+        // Validate the request
+        const validationResult = await validatePlaybackStateWithDetails(
+          fixedPlaylistId!,
+          contextUri,
+          0
+        )
+        if (!validationResult.isValid) {
+          throw new Error(validationResult.error || 'Invalid playback request')
+        }
+
+        updateState({
+          status: {
+            message: 'Transferring playback to device...',
+            progress: 30,
+            error: null
+          }
+        })
+
+        // Verify device transfer
+        const transferResult = await verifyDeviceTransfer(targetDeviceId)
+        if (!transferResult) {
+          throw new Error('Failed to transfer playback to device')
+        }
+
+        updateState({
+          status: {
+            message: 'Resuming playback...',
+            progress: 50,
+            error: null
+          }
+        })
+
+        // Resume playback
+        const spotifyApi = SpotifyApiService.getInstance()
+        const result = await spotifyApi.resumePlaybackAtPosition({
+          deviceId: targetDeviceId,
+          contextUri,
+          trackUri: state.lastSuccessfulPlayback.trackUri ?? undefined,
+          position: state.lastSuccessfulPlayback.position
+        })
+
+        if (!result.success) {
+          throw new Error('Failed to resume playback')
+        }
+
+        updateState({
+          status: {
+            message: 'Verifying playback...',
+            progress: 70,
+            error: null
+          }
+        })
+
+        // Verify playback resumed correctly
+        const verificationResult = await verifyPlaybackResume(
+          contextUri,
+          targetDeviceId
+        )
+        if (!verificationResult.isSuccessful) {
+          throw new Error(verificationResult.reason)
+        }
+
+        updateState({
+          lastSuccessfulPlayback: {
+            trackUri: contextUri,
+            position: 0,
+            timestamp: Date.now()
+          },
+          consecutiveFailures: 0,
+          lastErrorType: null,
+          status: {
+            message: 'Playback resumed successfully',
+            progress: 100,
+            error: null
+          }
+        })
+
+        onHealthStatusUpdate({ device: 'healthy' })
+      } catch (error) {
+        console.error('[Recovery] Failed to resume playback:', error)
+        updateState({
+          status: {
+            message: 'Failed to resume playback',
+            progress: 100,
+            error: error instanceof Error ? error.message : 'Unknown error'
+          }
+        })
+        throw error
+      }
+    },
+    [fixedPlaylistId, onHealthStatusUpdate, updateState]
+  )
+
   return {
     state,
     attemptRecovery,
     updateState,
-    resetCircuitBreaker
+    resetCircuitBreaker,
+    resumePlayback
   }
 }
