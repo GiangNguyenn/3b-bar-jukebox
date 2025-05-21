@@ -17,7 +17,7 @@ import { type TrackSuggestionsState } from '@/shared/types/trackSuggestions'
 import type { SpotifyPlayerInstance } from '@/types/spotify'
 import { useTrackSuggestions } from './components/track-suggestions/hooks/useTrackSuggestions'
 import { PlaylistRefreshServiceImpl } from '@/services/playlistRefresh'
-import { useRecoverySystem } from '@/hooks/useRecoverySystem'
+import { useRecoverySystem } from '@/hooks/recovery'
 import { RecoveryStatus } from '@/components/ui/recovery-status'
 import { HealthStatus } from '@/shared/types'
 import { SpotifyApiService } from '@/services/spotifyApi'
@@ -202,15 +202,15 @@ export default function AdminPage(): JSX.Element {
     error: playlistError,
     isInitialFetchComplete
   } = useFixedPlaylist()
-  const {
-    state: recoveryState,
-    attemptRecovery,
-    resumePlayback
-  } = useRecoverySystem(deviceId, fixedPlaylistId, (status) =>
-    setHealthStatus((_prev) => ({
-      ..._prev,
-      device: status.device
-    }))
+  const { state: recoveryState, attemptRecovery } = useRecoverySystem(
+    deviceId,
+    fixedPlaylistId,
+    useCallback((status) => {
+      setHealthStatus((prev) => ({
+        ...prev,
+        device: status.device
+      }))
+    }, [])
   )
   const { logs: consoleLogs } = useConsoleLogs()
 
@@ -223,6 +223,59 @@ export default function AdminPage(): JSX.Element {
   const sendApiRequestWithTokenRecoveryRef = useRef<
     typeof sendApiRequestWithTokenRecovery | null
   >(null)
+
+  // Add a ref to track if we've already updated the health status
+  const hasUpdatedHealthStatus = useRef(false)
+
+  // Update health status when device ID or fixed playlist changes
+  useEffect(() => {
+    if (!deviceId) {
+      setHealthStatus((prev) => ({
+        ...prev,
+        device: 'disconnected'
+      }))
+      return
+    }
+
+    if (!isReady) {
+      setHealthStatus((prev) => ({
+        ...prev,
+        device: 'unresponsive'
+      }))
+      return
+    }
+
+    // If we have both deviceId and isReady, the device is healthy
+    setHealthStatus((prev) => ({
+      ...prev,
+      device: 'healthy'
+    }))
+  }, [deviceId, isReady])
+
+  // Update fixed playlist status separately
+  useEffect(() => {
+    if (!isInitialFetchComplete) {
+      setHealthStatus((prev) => ({ ...prev, fixedPlaylist: 'unknown' }))
+      return
+    }
+
+    if (playlistError) {
+      setHealthStatus((prev) => ({ ...prev, fixedPlaylist: 'error' }))
+      return
+    }
+
+    setHealthStatus((prev) => ({
+      ...prev,
+      fixedPlaylist: fixedPlaylistId ? 'found' : 'not_found'
+    }))
+  }, [fixedPlaylistId, playlistError, isInitialFetchComplete])
+
+  // Reset the ref when component unmounts
+  useEffect(() => {
+    return () => {
+      hasUpdatedHealthStatus.current = false
+    }
+  }, [])
 
   // Define the event handler
   useEffect(() => {
@@ -608,20 +661,6 @@ export default function AdminPage(): JSX.Element {
       }
     }
   }, [])
-
-  // Update the device status effect
-  useEffect(() => {
-    if (isReady && deviceId) {
-      // Only set to healthy if we have both isReady and deviceId
-      if (isDeviceCheckComplete) {
-        setHealthStatus((_prev) => ({ ..._prev, device: 'healthy' }))
-        setIsLoading(false)
-      }
-    } else if (!isReady || !deviceId) {
-      // Set to disconnected if we don't have both isReady and deviceId
-      setHealthStatus((_prev) => ({ ..._prev, device: 'disconnected' }))
-    }
-  }, [isReady, deviceId, isDeviceCheckComplete, isManualPause])
 
   // Monitor connection quality
   useEffect(() => {
@@ -1404,7 +1443,7 @@ export default function AdminPage(): JSX.Element {
                 />
                 <span className='font-medium'>
                   {healthStatus.fixedPlaylist === 'found'
-                    ? 'Fixed Playlist Found'
+                    ? 'Playlist found'
                     : healthStatus.fixedPlaylist === 'not_found'
                       ? 'Fixed Playlist Not Found'
                       : healthStatus.fixedPlaylist === 'error'
@@ -1452,7 +1491,7 @@ export default function AdminPage(): JSX.Element {
                     : !isDeviceCheckComplete
                       ? 'Initializing...'
                       : isSkipDisabled
-                        ? 'No Upcoming Tracks'
+                        ? 'Not enough Tracks'
                         : 'Skip'}
                 </button>
                 <button
