@@ -1,6 +1,6 @@
 import { useState, useCallback, useRef, useEffect } from 'react'
 import { sendApiRequest } from '@/shared/api'
-import { SpotifyPlaybackState, HealthStatus } from '@/shared/types'
+import { SpotifyPlaybackState } from '@/shared/types'
 import { executeWithErrorBoundary } from '@/shared/utils/errorBoundary'
 import { SpotifyApiService } from '@/services/spotifyApi'
 import {
@@ -27,7 +27,6 @@ const RECOVERY_TIMEOUT = 30000 // 30 seconds
 const CIRCUIT_BREAKER_THRESHOLD = 3
 const CIRCUIT_BREAKER_TIMEOUT = 30000 // 30 seconds
 const VERIFICATION_LOCK_TIMEOUT = 5000 // 5 seconds
-const TARGET_VOLUME = 80 // Target volume percentage
 
 // Circuit breaker state
 let consecutiveFailures = 0
@@ -88,7 +87,6 @@ interface PlaybackState {
   deviceId: string | null
   trackUri: string | null
   position: number
-  volume: number
   playlistId: string | null
 }
 
@@ -123,17 +121,6 @@ async function verifyPlaybackResume(
     timestamp: new Date().toISOString()
   })
 
-  // Ensure volume is set to target level
-  try {
-    await sendApiRequest({
-      path: `me/player/volume?volume_percent=${TARGET_VOLUME}`,
-      method: 'PUT'
-    })
-    console.log('[Playback Verification] Volume set to target level:', TARGET_VOLUME)
-  } catch (error) {
-    console.error('[Playback Verification] Failed to set volume:', error)
-  }
-
   const initialState = await sendApiRequest<SpotifyPlaybackState>({
     path: 'me/player',
     method: 'GET'
@@ -145,51 +132,73 @@ async function verifyPlaybackResume(
     progress: initialState?.progress_ms,
     context: initialState?.context?.uri,
     currentTrack: initialState?.item?.name,
-    volume: initialState?.device?.volume_percent,
     timestamp: new Date().toISOString()
   })
 
   const initialProgress = initialState?.progress_ms ?? 0
-  const lastProgress = initialProgress
-  const _progressStalled = false
+  let lastProgress = initialProgress
+  let progressStalled = false
   let currentState: SpotifyPlaybackState | null = null
 
   while (Date.now() - startTime < maxVerificationTime) {
+    await new Promise((resolve) => setTimeout(resolve, checkInterval))
+
     currentState = await sendApiRequest<SpotifyPlaybackState>({
       path: 'me/player',
       method: 'GET'
     })
+
+    if (!currentState) {
+      throw new Error('Failed to get playback state')
+    }
+
+    const currentProgress = currentState.progress_ms ?? 0
+
+    if (currentProgress > lastProgress) {
+      lastProgress = currentProgress
+      progressStalled = false
+    } else {
+      const isNearEnd =
+        currentState.item?.duration_ms &&
+        currentState.item.duration_ms - currentProgress < 5000
+
+      if (!isNearEnd) {
+        progressStalled = true
+      }
+    }
+
+    console.log('[Playback Verification] Progress check:', {
+      currentProgress,
+      lastProgress,
+      progressStalled,
+      timestamp: new Date().toISOString()
+    })
+
+    if (!progressStalled && currentState.device?.id === currentDeviceId) {
+      break
+    }
   }
 
   if (!currentState) {
     throw new Error('Failed to get playback state')
   }
 
-  // Verify volume is at target level
-  if (currentState.device?.volume_percent !== TARGET_VOLUME) {
-    try {
-      await sendApiRequest({
-        path: `me/player/volume?volume_percent=${TARGET_VOLUME}`,
-        method: 'PUT'
-      })
-      console.log('[Playback Verification] Volume corrected to target level:', TARGET_VOLUME)
-    } catch (error) {
-      console.error('[Playback Verification] Failed to correct volume:', error)
-    }
-  }
-
   const verificationResult: PlaybackVerificationResult = {
-    isSuccessful: true,
-    reason: 'Playback resumed successfully',
+    isSuccessful:
+      !progressStalled && currentState.device?.id === currentDeviceId,
+    reason: progressStalled
+      ? 'Playback progress stalled'
+      : currentState.device?.id !== currentDeviceId
+        ? 'Device mismatch'
+        : 'Playback resumed successfully',
     details: {
       deviceMatch: currentState.device?.id === currentDeviceId,
       isPlaying: currentState.is_playing,
-      progressAdvancing: currentState.progress_ms > lastProgress,
+      progressAdvancing: !progressStalled,
       contextMatch: currentState.context?.uri === expectedContextUri,
       currentTrack: currentState.item?.name,
       timestamp: Date.now(),
-      verificationDuration: Date.now() - startTime,
-      volumeLevel: currentState.device?.volume_percent
+      verificationDuration: Date.now() - startTime
     }
   }
 
@@ -237,17 +246,6 @@ async function ensurePlaybackState(
       if (!transferSuccessful) {
         throw new Error('Failed to transfer playback to device')
       }
-    }
-
-    // Set volume to target level
-    try {
-      await sendApiRequest({
-        path: `me/player/volume?volume_percent=${TARGET_VOLUME}`,
-        method: 'PUT'
-      })
-      console.log('[Playback] Volume set to target level:', TARGET_VOLUME)
-    } catch (error) {
-      console.error('[Playback] Failed to set volume:', error)
     }
 
     // Validate playlist and track
@@ -467,6 +465,7 @@ export function useRecoverySystem(
     },
     consecutiveFailures: 0,
     lastErrorType: null,
+    lastRecoveryAttempt: 0,
     status: {
       message: '',
       progress: 0,

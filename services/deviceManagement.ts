@@ -39,7 +39,15 @@ export async function verifyDeviceTransfer(deviceId: string): Promise<boolean> {
   while (retries < maxRetries) {
     try {
       // Get all available devices first
-      const devicesResponse = await sendApiRequest<{ devices: Array<{ id: string; is_active: boolean; is_restricted: boolean; type: string; name: string }> }>({
+      const devicesResponse = await sendApiRequest<{
+        devices: Array<{
+          id: string
+          is_active: boolean
+          is_restricted: boolean
+          type: string
+          name: string
+        }>
+      }>({
         path: 'me/player/devices',
         method: 'GET'
       })
@@ -47,19 +55,24 @@ export async function verifyDeviceTransfer(deviceId: string): Promise<boolean> {
       if (!devicesResponse?.devices) {
         console.error('[Device Management] Failed to get devices list')
         retries++
-        await new Promise(resolve => setTimeout(resolve, retryDelay))
+        await new Promise((resolve) => setTimeout(resolve, retryDelay))
         continue
       }
 
       // Find our target device
-      const targetDevice = devicesResponse.devices.find(d => d.id === deviceId)
+      const targetDevice = devicesResponse.devices.find(
+        (d) => d.id === deviceId
+      )
       if (!targetDevice) {
         console.error('[Device Management] Target device not found:', {
           deviceId,
-          availableDevices: devicesResponse.devices.map(d => ({ id: d.id, name: d.name }))
+          availableDevices: devicesResponse.devices.map((d) => ({
+            id: d.id,
+            name: d.name
+          }))
         })
         retries++
-        await new Promise(resolve => setTimeout(resolve, retryDelay))
+        await new Promise((resolve) => setTimeout(resolve, retryDelay))
         continue
       }
 
@@ -84,7 +97,7 @@ export async function verifyDeviceTransfer(deviceId: string): Promise<boolean> {
           deviceState
         })
         retries++
-        await new Promise(resolve => setTimeout(resolve, retryDelay))
+        await new Promise((resolve) => setTimeout(resolve, retryDelay))
         continue
       }
 
@@ -97,7 +110,7 @@ export async function verifyDeviceTransfer(deviceId: string): Promise<boolean> {
       if (!state?.device) {
         console.error('[Device Management] No device in playback state')
         retries++
-        await new Promise(resolve => setTimeout(resolve, retryDelay))
+        await new Promise((resolve) => setTimeout(resolve, retryDelay))
         continue
       }
 
@@ -107,7 +120,7 @@ export async function verifyDeviceTransfer(deviceId: string): Promise<boolean> {
           actual: state.device.id
         })
         retries++
-        await new Promise(resolve => setTimeout(resolve, retryDelay))
+        await new Promise((resolve) => setTimeout(resolve, retryDelay))
         continue
       }
 
@@ -126,13 +139,17 @@ export async function verifyDeviceTransfer(deviceId: string): Promise<boolean> {
       })
 
       // Check if device is fully ready
-      if (!deviceReady.isActive || deviceReady.isRestricted || !deviceReady.volumeSupported) {
+      if (
+        !deviceReady.isActive ||
+        deviceReady.isRestricted ||
+        !deviceReady.volumeSupported
+      ) {
         console.error('[Device Management] Device not ready for playback:', {
           deviceId,
           deviceReady
         })
         retries++
-        await new Promise(resolve => setTimeout(resolve, retryDelay))
+        await new Promise((resolve) => setTimeout(resolve, retryDelay))
         continue
       }
 
@@ -147,7 +164,7 @@ export async function verifyDeviceTransfer(deviceId: string): Promise<boolean> {
       console.error('[Device Management] Verification error:', error)
       retries++
       if (retries < maxRetries) {
-        await new Promise(resolve => setTimeout(resolve, retryDelay))
+        await new Promise((resolve) => setTimeout(resolve, retryDelay))
       }
     }
   }
@@ -217,20 +234,35 @@ export async function transferPlaybackToDevice(
           method: 'GET'
         })
 
-        if (currentState?.device?.id === deviceId && currentState.device.is_active) {
+        if (
+          currentState?.device?.id === deviceId &&
+          currentState.device.is_active
+        ) {
           console.log('[Device Transfer] Device already active')
           return true
         }
 
         // Get device details before transfer
-        const devicesResponse = await sendApiRequest<{ devices: Array<{ id: string; is_active: boolean; is_restricted: boolean; type: string; name: string }> }>({
+        const devicesResponse = await sendApiRequest<{
+          devices: Array<{
+            id: string
+            is_active: boolean
+            is_restricted: boolean
+            type: string
+            name: string
+          }>
+        }>({
           path: 'me/player/devices',
           method: 'GET'
         })
 
-        const targetDevice = devicesResponse?.devices.find(d => d.id === deviceId)
+        const targetDevice = devicesResponse?.devices.find(
+          (d) => d.id === deviceId
+        )
         if (!targetDevice) {
-          console.error('[Device Transfer] Target device not found in available devices')
+          console.error(
+            '[Device Transfer] Target device not found in available devices'
+          )
           continue
         }
 
@@ -253,7 +285,9 @@ export async function transferPlaybackToDevice(
         })
 
         // Wait for transfer to take effect
-        await new Promise(resolve => setTimeout(resolve, delayBetweenAttempts))
+        await new Promise((resolve) =>
+          setTimeout(resolve, delayBetweenAttempts)
+        )
 
         // Verify transfer
         const isSuccessful = await verifyDeviceTransfer(deviceId)
@@ -263,13 +297,19 @@ export async function transferPlaybackToDevice(
         }
 
         if (attempt < maxAttempts - 1) {
-          console.log(`[Device Transfer] Attempt ${attempt + 1} failed, retrying...`)
-          await new Promise(resolve => setTimeout(resolve, delayBetweenAttempts))
+          console.log(
+            `[Device Transfer] Attempt ${attempt + 1} failed, retrying...`
+          )
+          await new Promise((resolve) =>
+            setTimeout(resolve, delayBetweenAttempts)
+          )
         }
       } catch (error) {
         console.error(`[Device Transfer] Attempt ${attempt + 1} failed:`, error)
         if (attempt < maxAttempts - 1) {
-          await new Promise(resolve => setTimeout(resolve, delayBetweenAttempts))
+          await new Promise((resolve) =>
+            setTimeout(resolve, delayBetweenAttempts)
+          )
         }
       }
     }

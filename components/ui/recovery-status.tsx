@@ -4,12 +4,16 @@ interface RecoveryStatusProps {
   isRecovering: boolean
   message: string
   progress: number
+  currentStep: number
+  totalSteps: number
 }
 
 export function RecoveryStatus({
   isRecovering,
   message,
-  progress
+  progress,
+  currentStep,
+  totalSteps
 }: RecoveryStatusProps): JSX.Element | null {
   if (!isRecovering) {
     return null
@@ -23,6 +27,11 @@ export function RecoveryStatus({
           <span className='text-white/60 text-sm'>{progress}%</span>
         </div>
         <Progress value={progress} className='h-2' />
+        <div className='mt-1 text-right'>
+          <span className='text-white/60 text-xs'>
+            Step {currentStep} of {totalSteps}
+          </span>
+        </div>
       </div>
     </div>
   )
