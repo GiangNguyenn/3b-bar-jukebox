@@ -285,7 +285,7 @@ export default function AdminPage(): JSX.Element {
       if (!state) return
 
       // Update playback info
-      setPlaybackInfo((prev) => ({
+      setPlaybackInfo((_prev) => ({
         isPlaying: state.is_playing ?? false,
         currentTrack: state.item?.name ?? '',
         progress: state.progress_ms ?? 0,
@@ -353,7 +353,8 @@ export default function AdminPage(): JSX.Element {
   const [_timeUntilRefresh, setTimeUntilRefresh] = useState(REFRESH_INTERVAL)
   const lastRefreshTime = useRef<number>(Date.now())
 
-  const { refreshToken } = useSpotifyPlayerState(deviceId ?? '')
+  // Remove unused refreshToken
+  useSpotifyPlayerState(deviceId ?? '')
 
   // Remove initialization-related interfaces and constants
   const _MAX_RECOVERY_ATTEMPTS = 5
@@ -573,7 +574,7 @@ export default function AdminPage(): JSX.Element {
         setError(error instanceof Error ? error.message : 'Unknown error')
       }
     },
-    [deviceId, setPlaybackInfo, setError, setIsManualPause]
+    [deviceId, setPlaybackInfo, setError, setIsManualPause, attemptRecovery]
   )
 
   // Update the ref when handlePlayback changes
