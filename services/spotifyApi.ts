@@ -13,12 +13,7 @@ export interface SpotifyApiClient {
   addTrackToPlaylist(playlistId: string, trackUri: string): Promise<void>
   getPlaybackState(): Promise<SpotifyPlaybackState>
   getQueue(): Promise<{ queue: SpotifyPlaybackState[] }>
-  resumePlaybackAtPosition(params: {
-    deviceId: string
-    contextUri: string
-    trackUri?: string
-    position: number
-  }): Promise<{
+  resumePlayback(): Promise<{
     success: boolean
     resumedFrom?: {
       trackUri: string
@@ -121,7 +116,7 @@ export class SpotifyApiService implements SpotifyApiClient {
     )
   }
 
-  async resumePlaybackAtPosition(params: {
+  private async resumePlaybackAtPosition(params: {
     deviceId: string
     contextUri: string
     trackUri?: string
@@ -162,5 +157,32 @@ export class SpotifyApiService implements SpotifyApiClient {
           : undefined
       }
     }, 'SpotifyApi.resumePlaybackAtPosition')
+  }
+
+  async resumePlayback(): Promise<{
+    success: boolean
+    resumedFrom?: {
+      trackUri: string
+      position: number
+    }
+  }> {
+    return handleOperationError(async () => {
+      const currentState = await this.getPlaybackState()
+
+      if (!currentState?.context?.uri || !currentState?.item?.uri) {
+        throw new Error('No active playback context found')
+      }
+
+      if (!currentState.device?.id) {
+        throw new Error('No active device found')
+      }
+
+      return this.resumePlaybackAtPosition({
+        deviceId: currentState.device.id,
+        contextUri: currentState.context.uri,
+        trackUri: currentState.item.uri,
+        position: currentState.progress_ms || 0
+      })
+    }, 'SpotifyApi.resumePlayback')
   }
 }
