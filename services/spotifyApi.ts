@@ -5,6 +5,7 @@ import {
 } from '@/shared/types'
 import { sendApiRequest } from '@/shared/api'
 import { handleOperationError } from '@/shared/utils/errorHandling'
+import { useFixedPlaylist } from '@/hooks/useFixedPlaylist'
 
 export interface SpotifyApiClient {
   getPlaylists(): Promise<{ items: SpotifyPlaylistItem[] }>
@@ -29,8 +30,45 @@ export class SpotifyApiService implements SpotifyApiClient {
     baseDelay: 1000,
     maxDelay: 10000
   }
+  private fixedPlaylistCache: {
+    id: string
+    timestamp: number
+  } | null = null
+  private readonly CACHE_TTL = 24 * 60 * 60 * 1000 // 24 hours in milliseconds
+  private lastKnownPlayback: {
+    trackUri: string
+    position: number
+    timestamp: number
+  } | null = null
+  private readonly PLAYBACK_CACHE_KEY = 'spotify_last_playback'
 
-  private constructor(private readonly apiClient = sendApiRequest) {}
+  private constructor(private readonly apiClient = sendApiRequest) {
+    // Load last known playback from localStorage on initialization
+    try {
+      const cached = localStorage.getItem(this.PLAYBACK_CACHE_KEY)
+      if (cached) {
+        this.lastKnownPlayback = JSON.parse(cached)
+      }
+    } catch (error) {
+      console.error('[SpotifyApi] Error loading cached playback state:', error)
+    }
+  }
+
+  private saveLastKnownPlayback(trackUri: string, position: number): void {
+    this.lastKnownPlayback = {
+      trackUri,
+      position,
+      timestamp: Date.now()
+    }
+    try {
+      localStorage.setItem(
+        this.PLAYBACK_CACHE_KEY,
+        JSON.stringify(this.lastKnownPlayback)
+      )
+    } catch (error) {
+      console.error('[SpotifyApi] Error saving playback state:', error)
+    }
+  }
 
   public static getInstance(): SpotifyApiService {
     if (!SpotifyApiService.instance) {
@@ -159,6 +197,72 @@ export class SpotifyApiService implements SpotifyApiClient {
     }, 'SpotifyApi.resumePlaybackAtPosition')
   }
 
+  private async getFixedPlaylistId(): Promise<string> {
+    // Check if we have a valid cached playlist ID
+    if (
+      this.fixedPlaylistCache &&
+      Date.now() - this.fixedPlaylistCache.timestamp < this.CACHE_TTL
+    ) {
+      return this.fixedPlaylistCache.id
+    }
+
+    // If no valid cache, fetch from API
+    const playlists = await this.getPlaylists()
+    const fixedPlaylist = playlists.items.find(
+      (playlist) => playlist.name === '3B Saigon'
+    )
+
+    if (!fixedPlaylist) {
+      throw new Error('No fixed playlist available')
+    }
+
+    // Update cache
+    this.fixedPlaylistCache = {
+      id: fixedPlaylist.id,
+      timestamp: Date.now()
+    }
+
+    return fixedPlaylist.id
+  }
+
+  private async ensureActiveDevice(): Promise<string> {
+    const currentState = await this.getPlaybackState()
+
+    // If we already have an active device, return its ID
+    if (currentState?.device?.id) {
+      return currentState.device.id
+    }
+
+    // Get available devices
+    const devices = await this.apiClient<{
+      devices: Array<{ id: string; is_active: boolean }>
+    }>({
+      path: 'me/player/devices',
+      retryConfig: this.retryConfig
+    })
+
+    // Find an active device or use the first available one
+    const activeDevice =
+      devices.devices.find((device) => device.is_active) || devices.devices[0]
+
+    if (!activeDevice) {
+      throw new Error('No available devices found')
+    }
+
+    // Transfer playback to the selected device
+    await this.apiClient({
+      path: 'me/player',
+      method: 'PUT',
+      body: {
+        device_ids: [activeDevice.id],
+        play: false
+      },
+      retryConfig: this.retryConfig
+    })
+
+    return activeDevice.id
+  }
+
   async resumePlayback(): Promise<{
     success: boolean
     resumedFrom?: {
@@ -169,16 +273,65 @@ export class SpotifyApiService implements SpotifyApiClient {
     return handleOperationError(async () => {
       const currentState = await this.getPlaybackState()
 
+      // Ensure we have an active device
+      const deviceId = await this.ensureActiveDevice()
+
+      // If there's no active context, try to use last known playback or start with fixed playlist
       if (!currentState?.context?.uri || !currentState?.item?.uri) {
-        throw new Error('No active playback context found')
+        const fixedPlaylistId = await this.getFixedPlaylistId()
+
+        // If we have last known playback, try to resume from there
+        if (this.lastKnownPlayback) {
+          try {
+            await this.apiClient({
+              path: `me/player/play?device_id=${deviceId}`,
+              method: 'PUT',
+              body: {
+                context_uri: `spotify:playlist:${fixedPlaylistId}`,
+                offset: { uri: this.lastKnownPlayback.trackUri },
+                position_ms: this.lastKnownPlayback.position
+              },
+              retryConfig: this.retryConfig
+            })
+
+            return {
+              success: true,
+              resumedFrom: {
+                trackUri: this.lastKnownPlayback.trackUri,
+                position: this.lastKnownPlayback.position
+              }
+            }
+          } catch (error) {
+            console.warn('[SpotifyApi] Failed to resume from last known position:', error)
+            // Fall through to starting fresh
+          }
+        }
+
+        // Start playback with the fixed playlist
+        await this.apiClient({
+          path: `me/player/play?device_id=${deviceId}`,
+          method: 'PUT',
+          body: {
+            context_uri: `spotify:playlist:${fixedPlaylistId}`
+          },
+          retryConfig: this.retryConfig
+        })
+
+        return {
+          success: true
+        }
       }
 
-      if (!currentState.device?.id) {
-        throw new Error('No active device found')
+      // Save current playback state before resuming
+      if (currentState.item?.uri) {
+        this.saveLastKnownPlayback(
+          currentState.item.uri,
+          currentState.progress_ms || 0
+        )
       }
 
       return this.resumePlaybackAtPosition({
-        deviceId: currentState.device.id,
+        deviceId,
         contextUri: currentState.context.uri,
         trackUri: currentState.item.uri,
         position: currentState.progress_ms || 0

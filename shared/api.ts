@@ -87,7 +87,6 @@ let isProcessingQueue = false
 // Initialize rate limit state
 setTimeout(() => {
   rateLimitState.isInitializing = false
-  console.log('[Rate Limit] Initialization phase complete')
 }, rateLimitState.initializationTimeout)
 
 async function processRequestQueue() {
@@ -101,9 +100,6 @@ async function processRequestQueue() {
     if (rateLimitState.isRateLimited) {
       const waitTime = Math.max(0, rateLimitState.resetTime - now)
       if (waitTime > 0) {
-        console.log(
-          `[Rate Limit] Waiting ${waitTime}ms before next request (Retry-After: ${rateLimitState.retryAfter}s)`
-        )
         await new Promise((resolve) => setTimeout(resolve, waitTime))
         continue
       }
@@ -118,9 +114,6 @@ async function processRequestQueue() {
       if (timeSinceLastRequest < rateLimitState.minRequestInterval) {
         const waitTime =
           rateLimitState.minRequestInterval - timeSinceLastRequest
-        console.log(
-          `[Rate Limit] Waiting ${waitTime}ms between initialization requests`
-        )
         await new Promise((resolve) => setTimeout(resolve, waitTime))
         continue
       }
@@ -131,9 +124,6 @@ async function processRequestQueue() {
         rateLimitState.maxInitializationRequests
       ) {
         const waitTime = 2000 // 2 seconds between batches during initialization
-        console.log(
-          '[Rate Limit] Initialization request limit reached, waiting...'
-        )
         await new Promise((resolve) => setTimeout(resolve, waitTime))
         rateLimitState.initializationRequestCount = 0
         continue
@@ -148,14 +138,12 @@ async function processRequestQueue() {
       rateLimitState.requestCount = 0
       rateLimitState.resetTime = now + rateLimitState.windowSize
       rateLimitState.isRateLimited = false
-      console.log('[Rate Limit] Rate limit window reset')
     }
 
     // Check if we've hit the rate limit
     if (rateLimitState.requestCount >= rateLimitState.maxRequestsPerWindow) {
       const waitTime = Math.max(0, rateLimitState.resetTime - now)
       if (waitTime > 0) {
-        console.log(`[Rate Limit] Rate limit reached. Waiting ${waitTime}ms`)
         await new Promise((resolve) => setTimeout(resolve, waitTime))
         continue
       }
@@ -176,7 +164,7 @@ async function processRequestQueue() {
           rateLimitState.isRateLimited = true
           rateLimitState.resetTime = now + retryAfter * 1000
           rateLimitState.retryAfter = retryAfter
-          console.log(
+          console.error(
             `[Rate Limit] Rate limited by server. Retry after ${retryAfter}s`
           )
 
@@ -265,7 +253,9 @@ export const sendApiRequest = async <T>({
           rateLimitState.resetTime = now + retryAfter * 1000
           rateLimitState.retryAfter = retryAfter
 
-          console.log(`[Rate Limit] Rate limited. Retry after ${retryAfter}s`)
+          console.error(
+            `[Rate Limit] Rate limited by server. Retry after ${retryAfter}s`
+          )
 
           // If we have a Retry-After header, use that value
           if (retryAfter > 0) {
