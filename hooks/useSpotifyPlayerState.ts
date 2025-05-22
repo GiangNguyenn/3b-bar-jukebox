@@ -89,12 +89,11 @@ export function useSpotifyPlayerState(
         return false
       }
 
-      // Only update device ID if it's different and we don't already have a valid one
-      if (state.device.id !== currentDeviceId && !isInitialized) {
-        console.log('[SpotifyPlayer] Updating device ID during ready check:', {
-          oldId: currentDeviceId,
-          newId: state.device.id,
-          isInitialized
+      // Only update device ID if we don't have one yet
+      if (!currentDeviceId) {
+        console.log('[SpotifyPlayer] Setting initial device ID:', {
+          deviceId: state.device.id,
+          timestamp: Date.now()
         })
         setDeviceId(state.device.id)
       }
@@ -277,7 +276,34 @@ export function useSpotifyPlayerState(
             })
           })
 
+          // Add a timeout to force initialization if ready event doesn't fire
+          const initializationTimeout = setTimeout(() => {
+            if (!isInitialized) {
+              console.log(
+                '[SpotifyPlayer] Forcing initialization after timeout'
+              )
+              const currentState = useSpotifyPlayer.getState()
+              if (currentState.deviceId) {
+                setIsReady(true)
+                isInitialized = true
+                console.log('[SpotifyPlayer] Forced initialization complete:', {
+                  deviceId: currentState.deviceId,
+                  isReady: true,
+                  isInitialized: true,
+                  timestamp: Date.now()
+                })
+              }
+            }
+          }, 15000) // 15 second timeout
+
+          // Clean up timeout on successful initialization
+          const cleanup = () => {
+            clearTimeout(initializationTimeout)
+          }
+
+          // Set up error listeners
           player.addListener('initialization_error', ({ message }) => {
+            cleanup()
             console.error('[SpotifyPlayer] Initialization error:', message)
             setError(message)
             setIsReady(false)
@@ -286,6 +312,7 @@ export function useSpotifyPlayerState(
           })
 
           player.addListener('authentication_error', ({ message }) => {
+            cleanup()
             console.error('[SpotifyPlayer] Authentication error:', message)
             setError(message)
             setIsReady(false)
@@ -294,6 +321,7 @@ export function useSpotifyPlayerState(
           })
 
           player.addListener('account_error', ({ message }) => {
+            cleanup()
             console.error('[SpotifyPlayer] Account error:', message)
             setError(message)
             setIsReady(false)
@@ -434,9 +462,18 @@ export function useSpotifyPlayerState(
         return
       }
 
+      // Don't update device ID here, let the player events handle it
       if (state.device.id !== currentDeviceId) {
-        console.log('[SpotifyPlayer] Device ID changed, updating state')
-        setDeviceId(state.device.id)
+        console.log(
+          '[SpotifyPlayer] Device ID mismatch, attempting recovery:',
+          {
+            expected: currentDeviceId,
+            actual: state.device.id,
+            timestamp: Date.now()
+          }
+        )
+        await reconnectPlayer()
+        return
       }
 
       if (state.is_playing && state.context?.uri) {

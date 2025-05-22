@@ -113,7 +113,6 @@ export default function AdminPage(): JSX.Element {
   >('playback')
   const [uptime, setUptime] = useState(0)
   const [_currentYear, _setCurrentYear] = useState(new Date().getFullYear())
-  const [isDeviceCheckComplete, setIsDeviceCheckComplete] = useState(false)
   const startingPlaybackTimeoutRef = useRef<NodeJS.Timeout | null>(null)
   const lastPlaybackCheckRef = useRef<number>(Date.now())
   const playbackStallTimeoutRef = useRef<NodeJS.Timeout | null>(null)
@@ -126,6 +125,9 @@ export default function AdminPage(): JSX.Element {
     timestamp: 0,
     count: 0
   })
+
+  // Add initialization state
+  const [isInitializing, setIsInitializing] = useState(true)
 
   // Hooks
   const isReady = useSpotifyPlayer((state) => state.isReady)
@@ -434,61 +436,31 @@ export default function AdminPage(): JSX.Element {
 
           // Clear manual pause flag when user explicitly clicks play
           setIsManualPause(false)
-          try {
-            const result = await spotifyApi.resumePlayback()
-            if (result.success) {
-              // Update playback info immediately to reflect the play state
-              setPlaybackInfo((prev) => ({
-                ...prev!,
-                isPlaying: true,
-                lastProgressCheck: Date.now(),
-                progressStalled: false
-              }))
-              setHealthStatus((prev) => ({
-                ...prev,
-                playback: 'playing'
-              }))
-            } else {
-              throw new Error('Failed to resume playback')
-            }
-          } catch (playbackError) {
-            console.error('[Playback] Error resuming playback:', {
-              error:
-                playbackError instanceof Error
-                  ? playbackError.message
-                  : 'Unknown error',
-              deviceId,
-              timestamp: new Date().toISOString()
-            })
 
-            // Clear starting playback state on error
-            setIsStartingPlayback(false)
-            if (startingPlaybackTimeoutRef.current) {
-              clearTimeout(startingPlaybackTimeoutRef.current)
-            }
+          // Use the improved resumePlayback method
+          const result = await spotifyApi.resumePlayback()
 
-            // Attempt recovery if it's a server error
-            if (
-              playbackError instanceof Error &&
-              (playbackError.message.includes('Server error') ||
-                playbackError.message.includes('500'))
-            ) {
-              console.log(
-                '[Playback] Server error detected, attempting recovery...'
-              )
-              void attemptRecovery()
-            }
-
-            // Update UI state to reflect the error
+          if (result.success) {
+            // Update playback info immediately to reflect the play state
             setPlaybackInfo((prev) => ({
               ...prev!,
-              isPlaying: false
+              isPlaying: true,
+              lastProgressCheck: Date.now(),
+              progressStalled: false
             }))
             setHealthStatus((prev) => ({
               ...prev,
-              playback: 'error'
+              playback: 'playing'
             }))
-            setError('Failed to resume playback. Attempting recovery...')
+
+            // Log the resume result
+            console.log('[Playback] Resumed successfully:', {
+              resumedFrom: result.resumedFrom,
+              deviceId,
+              timestamp: new Date().toISOString()
+            })
+          } else {
+            throw new Error('Failed to resume playback')
           }
         }
       } catch (error) {
@@ -503,11 +475,29 @@ export default function AdminPage(): JSX.Element {
           deviceId,
           timestamp: new Date().toISOString()
         })
-        setError('Failed to control playback')
+
+        // Update UI state to reflect the error
+        setPlaybackInfo((prev) => ({
+          ...prev!,
+          isPlaying: false
+        }))
         setHealthStatus((prev) => ({
           ...prev,
           playback: 'error'
         }))
+        setError('Failed to control playback')
+
+        // Attempt recovery if it's a server error
+        if (
+          error instanceof Error &&
+          (error.message.includes('Server error') ||
+            error.message.includes('500'))
+        ) {
+          console.log(
+            '[Playback] Server error detected, attempting recovery...'
+          )
+          void attemptRecovery()
+        }
       }
     },
     [deviceId, playbackInfo, attemptRecovery]
@@ -934,9 +924,21 @@ export default function AdminPage(): JSX.Element {
     }
   }, [])
 
-  // Add playback monitoring effect
+  // Update the initialization effect
   useEffect(() => {
-    if (!mounted || !deviceId || !playbackInfo) return
+    if (isReady && deviceId) {
+      console.log('[Spotify Player] Initialization complete:', {
+        isReady,
+        deviceId,
+        timestamp: new Date().toISOString()
+      })
+      setIsInitializing(false)
+    }
+  }, [isReady, deviceId])
+
+  // Update the playback monitoring effect to respect initialization state
+  useEffect(() => {
+    if (!mounted || !deviceId || !playbackInfo || isInitializing) return
 
     const checkPlaybackHealth = async () => {
       try {
@@ -997,13 +999,14 @@ export default function AdminPage(): JSX.Element {
           lastStallCheckRef.current = { timestamp: 0, count: 0 }
         }
 
-        // Check if device is still active
-        if (currentState.device?.id !== deviceId) {
+        // Check if device is still active, but only if we're not in the initial loading phase
+        if (currentState.device?.id !== deviceId && !isInitializing) {
           console.error('[Playback Monitor] Device mismatch detected', {
             expectedDevice: deviceId,
             currentDevice: currentState.device?.id,
             isPlaying: currentState.is_playing,
             isManualPause,
+            isInitializing,
             timestamp: new Date().toISOString()
           })
           void attemptRecovery() // Trigger full recovery for device mismatch
@@ -1015,7 +1018,8 @@ export default function AdminPage(): JSX.Element {
           currentState.is_playing !== playbackInfo.isPlaying &&
           !isManualPause &&
           timeSinceLastCheck > 2000 &&
-          !_setIsStartingPlayback
+          !_setIsStartingPlayback &&
+          !isInitializing // Only check for state mismatch after initialization is complete
 
         if (isStateMismatch) {
           const lastMismatchCheck = lastStateMismatchRef.current
@@ -1040,6 +1044,7 @@ export default function AdminPage(): JSX.Element {
                   isManualPause,
                   timeSinceLastCheck,
                   isStartingPlayback: _setIsStartingPlayback,
+                  isInitializing,
                   timestamp: new Date().toISOString()
                 }
               )
@@ -1077,9 +1082,10 @@ export default function AdminPage(): JSX.Element {
           errorType: error instanceof Error ? error.name : 'Unknown',
           stack: error instanceof Error ? error.stack : undefined,
           isManualPause,
+          isInitializing,
           timestamp: new Date().toISOString()
         })
-        if (!isManualPause) {
+        if (!isManualPause && !isInitializing) {
           // Check if it's a device-related error
           if (
             error instanceof Error &&
@@ -1089,6 +1095,7 @@ export default function AdminPage(): JSX.Element {
               '[Playback Monitor] Device error detected, triggering full recovery',
               {
                 error: error.message,
+                isInitializing,
                 timestamp: new Date().toISOString()
               }
             )
@@ -1121,7 +1128,8 @@ export default function AdminPage(): JSX.Element {
     isManualPause,
     handlePlayback,
     attemptRecovery,
-    _setIsStartingPlayback
+    _setIsStartingPlayback,
+    isInitializing
   ])
 
   // Add effect to update uptime
@@ -1197,8 +1205,7 @@ export default function AdminPage(): JSX.Element {
   }
 
   // Update the playback button's disabled state to use null check
-  const canControlPlayback =
-    isReady && isDeviceCheckComplete && !_setIsStartingPlayback
+  const canControlPlayback = isReady && deviceId && !_setIsStartingPlayback
 
   const _isPlaying = playbackInfo?.isPlaying ?? false
 
@@ -1435,7 +1442,7 @@ export default function AdminPage(): JSX.Element {
                 >
                   {isLoading
                     ? 'Loading...'
-                    : !isDeviceCheckComplete
+                    : !isReady
                       ? 'Initializing...'
                       : _setIsStartingPlayback
                         ? 'Starting Playback...'
@@ -1448,6 +1455,7 @@ export default function AdminPage(): JSX.Element {
                 <button
                   onClick={handleRefreshClick}
                   disabled={
+                    !canControlPlayback ||
                     isLoading ||
                     isRefreshingSuggestions ||
                     recoveryState.isRecovering
@@ -1456,7 +1464,7 @@ export default function AdminPage(): JSX.Element {
                 >
                   {isLoading
                     ? 'Loading...'
-                    : !isDeviceCheckComplete
+                    : !isReady
                       ? 'Initializing...'
                       : recoveryState.isRecovering
                         ? 'Recovering...'
