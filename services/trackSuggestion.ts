@@ -26,28 +26,6 @@ export function selectRandomTrack(
     const meetsLength = track.duration_ms <= maxDurationMs
     const meetsExplicit = allowExplicit || !track.explicit
 
-    if (!isPlayable) {
-      console.log(`[TrackSuggestion] Track ${track.name} is not playable`)
-    }
-    if (isExcluded) {
-      console.log(`[TrackSuggestion] Track ${track.name} is excluded`)
-    }
-    if (!meetsPopularity) {
-      console.log(
-        `[TrackSuggestion] Track ${track.name} popularity ${track.popularity} < ${minPopularity}`
-      )
-    }
-    if (!meetsLength) {
-      console.log(
-        `[TrackSuggestion] Track ${track.name} duration ${Math.floor(track.duration_ms / 1000 / 60)}m ${Math.floor((track.duration_ms / 1000) % 60)}s > ${maxSongLength} minutes`
-      )
-    }
-    if (!meetsExplicit) {
-      console.log(
-        `[TrackSuggestion] Track ${track.name} is explicit but not allowed`
-      )
-    }
-
     return (
       !isExcluded &&
       meetsPopularity &&
@@ -58,17 +36,11 @@ export function selectRandomTrack(
   })
 
   if (candidates.length === 0) {
-    console.log('[TrackSuggestion] No candidates found after filtering')
     return null
   }
 
   const randomIndex = Math.floor(Math.random() * candidates.length)
-  const selectedTrack = candidates[randomIndex]
-  console.log(
-    `[TrackSuggestion] Selected track: ${selectedTrack.name} (${selectedTrack.artists[0].name})`
-  )
-
-  return selectedTrack
+  return candidates[randomIndex]
 }
 
 export async function searchTracksByGenre(
@@ -80,14 +52,7 @@ export async function searchTracksByGenre(
 ): Promise<TrackDetails[]> {
   try {
     const [startYear, endYear] = yearRange
-    console.log(
-      `[TrackSuggestion] Searching tracks for genre ${genre} (${startYear}-${endYear})`
-    )
-
     const randomOffset = Math.floor(Math.random() * maxOffset)
-    console.log(
-      `[TrackSuggestion] Using random offset: ${randomOffset} (max: ${maxOffset})`
-    )
 
     const response = await sendApiRequest<{
       tracks: { items: TrackDetails[] }
@@ -101,9 +66,6 @@ export async function searchTracksByGenre(
       throw new Error('Unexpected API response format')
     }
 
-    console.log(
-      `[TrackSuggestion] Found ${tracks.length} tracks for genre ${genre} starting at offset ${randomOffset}`
-    )
     return tracks
   } catch (error) {
     console.error(
@@ -115,9 +77,7 @@ export async function searchTracksByGenre(
 }
 
 export function getRandomGenre(genres: Genre[]): Genre {
-  const genre = genres[Math.floor(Math.random() * genres.length)]
-  console.log(`[TrackSuggestion] Selected random genre: ${genre}`)
-  return genre
+  return genres[Math.floor(Math.random() * genres.length)]
 }
 
 export interface TrackSearchResult {
@@ -153,10 +113,6 @@ export async function findSuggestedTrack(
     maxOffset: number
   }
 ): Promise<TrackSearchResult> {
-  console.log(
-    '[PARAM CHAIN] Genres received in findSuggestedTrack (trackSuggestion.ts):',
-    params?.genres
-  )
   const MAX_GENRE_ATTEMPTS = 20
   let attempts = 0
   const genresTried: string[] = []
@@ -178,30 +134,12 @@ export async function findSuggestedTrack(
   const genres = params?.genres?.length
     ? params.genres
     : Array.from(FALLBACK_GENRES)
-  console.log(
-    '[PARAM CHAIN] FALLBACK_GENRES value:',
-    Array.from(FALLBACK_GENRES)
-  )
-  console.log('[PARAM CHAIN] Using fallback genres:', !params?.genres?.length)
-  console.log(
-    '[PARAM CHAIN] Final genres being used in findSuggestedTrack (trackSuggestion.ts):',
-    genres
-  )
+
   const yearRange = params?.yearRange ?? [1950, new Date().getFullYear()]
   const minPopularity = params?.popularity ?? MIN_TRACK_POPULARITY
   const allowExplicit = params?.allowExplicit ?? false
   const maxSongLength = params?.maxSongLength ?? 3 // Default to 3 minutes
   const maxOffset = params?.maxOffset ?? 1000 // Default to 1000
-
-  console.log('[TrackSuggestion] Starting track search with params:', {
-    genres,
-    yearRange,
-    minPopularity,
-    allowExplicit,
-    maxSongLength,
-    maxOffset,
-    excludedIds: allExcludedIds.length
-  })
 
   while (attempts < MAX_GENRE_ATTEMPTS) {
     const genre = getRandomGenre(genres)
@@ -236,12 +174,6 @@ export async function findSuggestedTrack(
       )
 
       if (selectedTrack) {
-        console.log('[TrackSuggestion] Successfully found track:', {
-          name: selectedTrack.name,
-          artist: selectedTrack.artists[0].name,
-          genre,
-          attempts: attempts + 1
-        })
         return {
           track: selectedTrack,
           searchDetails: {
@@ -256,10 +188,6 @@ export async function findSuggestedTrack(
       }
 
       attempts++
-      console.log(
-        `[TrackSuggestion] Attempt ${attempts} failed to find suitable track`
-      )
-
       if (attempts < MAX_GENRE_ATTEMPTS) {
         // Add a small delay between attempts
         await new Promise((resolve) => setTimeout(resolve, 1000))
@@ -276,7 +204,6 @@ export async function findSuggestedTrack(
     }
   }
 
-  console.log('[TrackSuggestion] Failed to find track after all attempts')
   return {
     track: null,
     searchDetails: {

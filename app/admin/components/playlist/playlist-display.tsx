@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { sendApiRequest } from '@/shared/api'
 import { useSpotifyPlayer } from '@/hooks/useSpotifyPlayer'
 import { PlayIcon, TrashIcon } from '@heroicons/react/24/solid'
@@ -43,7 +43,7 @@ export function PlaylistDisplay({
   const playbackState = useSpotifyPlayer((state) => state.playbackState)
   const deviceId = useSpotifyPlayer((state) => state.deviceId)
 
-  const fetchPlaylistTracks = async (): Promise<void> => {
+  const fetchPlaylistTracks = useCallback(async (): Promise<void> => {
     try {
       setIsLoading(true)
       setError(null)
@@ -65,24 +65,24 @@ export function PlaylistDisplay({
     } finally {
       setIsLoading(false)
     }
-  }
+  }, [playlistId])
 
-  useEffect(() => {
+  useEffect((): void => {
     if (playlistId) {
       void fetchPlaylistTracks()
     }
-  }, [playlistId])
+  }, [playlistId, fetchPlaylistTracks])
 
   // Add auto-refresh effect
-  useEffect(() => {
-    if (!playlistId) return
+  useEffect((): (() => void) => {
+    if (!playlistId) return () => undefined
 
     const refreshInterval = setInterval(() => {
       void fetchPlaylistTracks()
     }, 180000) // 3 minutes
 
     return () => clearInterval(refreshInterval)
-  }, [playlistId])
+  }, [playlistId, fetchPlaylistTracks])
 
   const handlePlayTrack = async (trackUri: string): Promise<void> => {
     if (!deviceId) {

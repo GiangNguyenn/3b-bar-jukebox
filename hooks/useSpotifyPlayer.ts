@@ -46,6 +46,19 @@ export const useSpotifyPlayer = create<SpotifyPlayerState>((set) => ({
         return state
       }
 
+      // Don't update if we're getting a null device ID and we already have one
+      if (deviceId === null && state.deviceId) {
+        console.log(
+          '[SpotifyPlayer] Ignoring null device ID when we already have one:',
+          {
+            currentId: state.deviceId,
+            isReady: state.isReady,
+            timestamp: Date.now()
+          }
+        )
+        return state
+      }
+
       console.log('[SpotifyPlayer] Setting device ID:', {
         deviceId,
         currentDeviceId: state.deviceId,
@@ -55,7 +68,7 @@ export const useSpotifyPlayer = create<SpotifyPlayerState>((set) => ({
 
       return {
         deviceId,
-        isReady: false,
+        isReady: false, // Reset ready state when device ID changes
         debug: {
           ...state.debug,
           lastDeviceIdUpdate: Date.now()
