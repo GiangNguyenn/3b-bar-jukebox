@@ -225,44 +225,6 @@ export class SpotifyApiService implements SpotifyApiClient {
     return fixedPlaylist.id
   }
 
-  private async ensureActiveDevice(): Promise<string> {
-    const currentState = await this.getPlaybackState()
-
-    // If we already have an active device, return its ID
-    if (currentState?.device?.id) {
-      return currentState.device.id
-    }
-
-    // Get available devices
-    const devices = await this.apiClient<{
-      devices: Array<{ id: string; is_active: boolean }>
-    }>({
-      path: 'me/player/devices',
-      retryConfig: this.retryConfig
-    })
-
-    // Find an active device or use the first available one
-    const activeDevice =
-      devices.devices.find((device) => device.is_active) || devices.devices[0]
-
-    if (!activeDevice) {
-      throw new Error('No available devices found')
-    }
-
-    // Transfer playback to the selected device
-    await this.apiClient({
-      path: 'me/player',
-      method: 'PUT',
-      body: {
-        device_ids: [activeDevice.id],
-        play: false
-      },
-      retryConfig: this.retryConfig
-    })
-
-    return activeDevice.id
-  }
-
   async resumePlayback(): Promise<{
     success: boolean
     resumedFrom?: {
@@ -271,23 +233,65 @@ export class SpotifyApiService implements SpotifyApiClient {
     }
   }> {
     return handleOperationError(async () => {
-      const currentState = await this.getPlaybackState()
+      try {
+        // First ensure we have an active device
+        const deviceId = await this.ensureActiveDevice()
 
-      // Ensure we have an active device
-      const deviceId = await this.ensureActiveDevice()
+        // Get current state after ensuring device
+        const currentState = await this.getPlaybackState()
 
-      // If there's no active context, try to use last known playback or start with fixed playlist
-      if (!currentState?.context?.uri || !currentState?.item?.uri) {
+        // Get the fixed playlist ID - we'll need this in all cases
         const fixedPlaylistId = await this.getFixedPlaylistId()
+        const fixedPlaylistUri = `spotify:playlist:${fixedPlaylistId}`
 
-        // If we have last known playback, try to resume from there
-        if (this.lastKnownPlayback) {
+        // If we have a current state with context and item, try to resume from there
+        if (currentState?.context?.uri && currentState?.item?.uri) {
+          try {
+            // Save current state before attempting to resume
+            this.saveLastKnownPlayback(
+              currentState.item.uri,
+              currentState.progress_ms || 0
+            )
+
+            // Try to resume from current position
+            await this.apiClient({
+              path: `me/player/play?device_id=${deviceId}`,
+              method: 'PUT',
+              body: {
+                context_uri: currentState.context.uri,
+                position_ms: currentState.progress_ms || 0,
+                offset: { uri: currentState.item.uri }
+              },
+              retryConfig: this.retryConfig
+            })
+
+            return {
+              success: true,
+              resumedFrom: {
+                trackUri: currentState.item.uri,
+                position: currentState.progress_ms || 0
+              }
+            }
+          } catch (error) {
+            console.warn(
+              '[SpotifyApi] Failed to resume from current state:',
+              error
+            )
+            // Fall through to starting with fixed playlist
+          }
+        }
+
+        // If we have last known playback and it's recent (within last hour), try to resume from there
+        if (
+          this.lastKnownPlayback &&
+          Date.now() - this.lastKnownPlayback.timestamp < 3600000
+        ) {
           try {
             await this.apiClient({
               path: `me/player/play?device_id=${deviceId}`,
               method: 'PUT',
               body: {
-                context_uri: `spotify:playlist:${fixedPlaylistId}`,
+                context_uri: fixedPlaylistUri,
                 offset: { uri: this.lastKnownPlayback.trackUri },
                 position_ms: this.lastKnownPlayback.position
               },
@@ -310,12 +314,12 @@ export class SpotifyApiService implements SpotifyApiClient {
           }
         }
 
-        // Start playback with the fixed playlist
+        // If all else fails, start fresh with the fixed playlist
         await this.apiClient({
           path: `me/player/play?device_id=${deviceId}`,
           method: 'PUT',
           body: {
-            context_uri: `spotify:playlist:${fixedPlaylistId}`
+            context_uri: fixedPlaylistUri
           },
           retryConfig: this.retryConfig
         })
@@ -323,22 +327,62 @@ export class SpotifyApiService implements SpotifyApiClient {
         return {
           success: true
         }
+      } catch (error) {
+        console.error('[SpotifyApi] Error in resumePlayback:', error)
+        throw error
       }
-
-      // Save current playback state before resuming
-      if (currentState.item?.uri) {
-        this.saveLastKnownPlayback(
-          currentState.item.uri,
-          currentState.progress_ms || 0
-        )
-      }
-
-      return this.resumePlaybackAtPosition({
-        deviceId,
-        contextUri: currentState.context.uri,
-        trackUri: currentState.item.uri,
-        position: currentState.progress_ms || 0
-      })
     }, 'SpotifyApi.resumePlayback')
+  }
+
+  private async ensureActiveDevice(): Promise<string> {
+    try {
+      const currentState = await this.getPlaybackState()
+
+      // If we already have an active device, return its ID
+      if (currentState?.device?.id) {
+        return currentState.device.id
+      }
+
+      // Get available devices
+      const devices = await this.apiClient<{
+        devices: Array<{ id: string; is_active: boolean }>
+      }>({
+        path: 'me/player/devices',
+        retryConfig: this.retryConfig
+      })
+
+      // Find an active device or use the first available one
+      const activeDevice =
+        devices.devices.find((device) => device.is_active) || devices.devices[0]
+
+      if (!activeDevice) {
+        throw new Error('No available devices found')
+      }
+
+      // Transfer playback to the selected device
+      await this.apiClient({
+        path: 'me/player',
+        method: 'PUT',
+        body: {
+          device_ids: [activeDevice.id],
+          play: false
+        },
+        retryConfig: this.retryConfig
+      })
+
+      // Wait a moment for the device to become active
+      await new Promise((resolve) => setTimeout(resolve, 1000))
+
+      // Verify the device is now active
+      const newState = await this.getPlaybackState()
+      if (newState?.device?.id !== activeDevice.id) {
+        throw new Error('Failed to activate device')
+      }
+
+      return activeDevice.id
+    } catch (error) {
+      console.error('[SpotifyApi] Error ensuring active device:', error)
+      throw error
+    }
   }
 }
