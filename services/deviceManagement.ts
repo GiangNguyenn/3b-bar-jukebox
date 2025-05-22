@@ -512,3 +512,131 @@ export async function ensureDeviceHealth(
     }
   }
 }
+
+/**
+ * Cleans up other devices and ensures only our target device remains active
+ */
+export async function cleanupOtherDevices(
+  targetDeviceId: string
+): Promise<boolean> {
+  try {
+    // Get all available devices
+    const devicesResponse = await sendApiRequest<{
+      devices: Array<{
+        id: string
+        is_active: boolean
+        is_restricted: boolean
+        type: string
+        name: string
+      }>
+    }>({
+      path: 'me/player/devices',
+      method: 'GET'
+    })
+
+    if (!devicesResponse?.devices) {
+      console.error('[Device Cleanup] Failed to get devices list')
+      return false
+    }
+
+    // Find our target device
+    const targetDevice = devicesResponse.devices.find(
+      (d) => d.id === targetDeviceId
+    )
+    if (!targetDevice) {
+      console.error('[Device Cleanup] Target device not found:', {
+        targetDeviceId,
+        availableDevices: devicesResponse.devices.map((d) => ({
+          id: d.id,
+          name: d.name
+        }))
+      })
+      return false
+    }
+
+    // Get all other devices (both active and inactive)
+    const otherDevices = devicesResponse.devices.filter(
+      (d) => d.id !== targetDeviceId
+    )
+
+    if (otherDevices.length === 0) {
+      console.log('[Device Cleanup] No other devices found')
+      return true
+    }
+
+    console.log('[Device Cleanup] Found other devices:', {
+      otherDevices: otherDevices.map((d) => ({
+        id: d.id,
+        name: d.name,
+        isActive: d.is_active
+      }))
+    })
+
+    // First, ensure our target device is active
+    const transferSuccessful = await transferPlaybackToDevice(targetDeviceId)
+    if (!transferSuccessful) {
+      console.error(
+        '[Device Cleanup] Failed to transfer playback to target device'
+      )
+      return false
+    }
+
+    // Verify transfer was successful
+    const isActive = await verifyDeviceTransfer(targetDeviceId)
+    if (!isActive) {
+      console.error('[Device Cleanup] Failed to verify device transfer')
+      return false
+    }
+
+    // For each other device, attempt to deactivate it
+    for (const device of otherDevices) {
+      try {
+        // Skip restricted devices as they can't be controlled
+        if (device.is_restricted) {
+          console.log('[Device Cleanup] Skipping restricted device:', {
+            id: device.id,
+            name: device.name
+          })
+          continue
+        }
+
+        // If the device is active, try to transfer playback away from it
+        if (device.is_active) {
+          await sendApiRequest({
+            path: 'me/player',
+            method: 'PUT',
+            body: {
+              device_ids: [targetDeviceId],
+              play: false
+            }
+          })
+        }
+
+        // Wait a moment for the transfer to take effect
+        await new Promise((resolve) => setTimeout(resolve, 1000))
+
+        // Verify our target device is still active
+        const verification = await verifyDeviceTransfer(targetDeviceId)
+        if (!verification) {
+          console.error(
+            '[Device Cleanup] Lost control of target device during cleanup'
+          )
+          return false
+        }
+      } catch (error) {
+        console.warn('[Device Cleanup] Error handling device:', {
+          deviceId: device.id,
+          deviceName: device.name,
+          error: error instanceof Error ? error.message : 'Unknown error'
+        })
+        // Continue with other devices even if one fails
+      }
+    }
+
+    console.log('[Device Cleanup] Successfully cleaned up other devices')
+    return true
+  } catch (error) {
+    console.error('[Device Cleanup] Error:', error)
+    return false
+  }
+}
