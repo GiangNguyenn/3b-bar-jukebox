@@ -115,23 +115,13 @@ export function usePlaybackManager(playlistId: string | null) {
             }
 
             const spotifyApi = SpotifyApiService.getInstance()
-            await spotifyApi.resumePlaybackAtPosition({
-              deviceId,
-              contextUri: `spotify:playlist:${playlistId}`,
-              trackUri: playlist.tracks.items[0].track.uri,
-              position: currentPosition
-            })
+            await spotifyApi.resumePlayback()
           } else {
             throw new Error(validationResult.error || 'Invalid playback state')
           }
         } else {
           const spotifyApi = SpotifyApiService.getInstance()
-          await spotifyApi.resumePlaybackAtPosition({
-            deviceId,
-            contextUri: `spotify:playlist:${playlistId}`,
-            trackUri: currentState?.item?.uri,
-            position: currentPosition
-          })
+          await spotifyApi.resumePlayback()
         }
 
         // Verify playback resumed correctly

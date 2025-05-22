@@ -633,12 +633,7 @@ export class PlaylistRefreshServiceImpl implements PlaylistRefreshService {
       ) {
         try {
           await this.withTimeout(
-            this.spotifyApi.resumePlaybackAtPosition({
-              deviceId: playbackState.device.id,
-              contextUri: playbackState.context.uri,
-              trackUri: playbackState.item.uri,
-              position: playbackState.progress_ms ?? 0
-            }),
+            this.spotifyApi.resumePlayback(),
             this.TIMEOUT_MS
           )
         } catch (error) {

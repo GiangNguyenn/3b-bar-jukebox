@@ -20,9 +20,7 @@ export function DashboardTab({
   playbackInfo
 }: DashboardTabProps): JSX.Element {
   const [error, setError] = useState<string | null>(null)
-  const [loadingAction, setLoadingAction] = useState<
-    'playPause' | 'next' | 'previous' | null
-  >(null)
+  const [loadingAction, setLoadingAction] = useState<'playPause' | null>(null)
   const [timeLeft, setTimeLeft] = useState<number>(120) // 2 minutes in seconds
   const isPlayerReady = useSpotifyPlayer((state) => state.isReady)
   const deviceId = useSpotifyPlayer((state) => state.deviceId)
@@ -73,40 +71,6 @@ export function DashboardTab({
     }
   }
 
-  const handleSkipNext = async (): Promise<void> => {
-    if (loadingAction || !deviceId) return
-    setLoadingAction('next')
-    setError(null)
-    try {
-      await sendApiRequest({
-        path: `me/player/next?device_id=${deviceId}`,
-        method: 'POST'
-      })
-    } catch (error) {
-      console.error('Skip next failed:', error)
-      setError('Failed to skip to next track')
-    } finally {
-      setLoadingAction(null)
-    }
-  }
-
-  const handleSkipPrevious = async (): Promise<void> => {
-    if (loadingAction || !deviceId) return
-    setLoadingAction('previous')
-    setError(null)
-    try {
-      await sendApiRequest({
-        path: `me/player/previous?device_id=${deviceId}`,
-        method: 'POST'
-      })
-    } catch (error) {
-      console.error('Skip previous failed:', error)
-      setError('Failed to skip to previous track')
-    } finally {
-      setLoadingAction(null)
-    }
-  }
-
   return (
     <div className='space-y-6'>
       <ErrorBoundary>
@@ -125,8 +89,6 @@ export function DashboardTab({
           isLoading={loadingAction !== null}
           loadingAction={loadingAction}
           onPlayPause={() => void handlePlayPause()}
-          onSkipNext={() => void handleSkipNext()}
-          onSkipPrevious={() => void handleSkipPrevious()}
         />
       </ErrorBoundary>
 

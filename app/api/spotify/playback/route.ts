@@ -1,4 +1,3 @@
-import { SpotifyPlaybackState } from '@/shared/types'
 import { SpotifyApiService } from '@/services/spotifyApi'
 
 const MAX_RETRIES = 3
@@ -41,7 +40,7 @@ async function retryWithBackoff<T>(
 export async function POST(request: Request): Promise<Response> {
   try {
     const body = (await request.json()) as PlaybackRequest
-    const { accessToken, deviceId, trackUri, contextUri } = body
+    const { accessToken, deviceId } = body
 
     if (!accessToken || !deviceId) {
       return new Response(
@@ -85,18 +84,9 @@ export async function POST(request: Request): Promise<Response> {
       throw new Error('Failed to get playback state')
     }
 
-    const state = (await stateResponse.json()) as SpotifyPlaybackState
-    const currentTrackUri = state?.item?.uri
-    const currentPosition = state?.progress_ms ?? 0
-
     // Use SpotifyApiService to resume playback
     const spotifyApi = SpotifyApiService.getInstance()
-    const result = await spotifyApi.resumePlaybackAtPosition({
-      deviceId,
-      contextUri: contextUri ?? '',
-      trackUri: trackUri ?? currentTrackUri,
-      position: currentPosition
-    })
+    const result = await spotifyApi.resumePlayback()
 
     return new Response(JSON.stringify(result), {
       status: 200,
