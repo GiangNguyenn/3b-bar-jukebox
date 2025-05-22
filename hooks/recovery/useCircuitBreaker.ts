@@ -22,8 +22,11 @@ export function useCircuitBreaker(threshold: number, timeout: number) {
         return true
       }
       // Reset if timeout has passed
-      state.current.consecutiveFailures = 0
-      state.current.isOpen = false
+      state.current = {
+        consecutiveFailures: 0,
+        lastFailureTime: 0,
+        isOpen: false
+      }
     }
     return false
   }, [threshold, timeout])
@@ -35,8 +38,11 @@ export function useCircuitBreaker(threshold: number, timeout: number) {
   }, [])
 
   const recordSuccess = useCallback(() => {
-    state.current.consecutiveFailures = 0
-    state.current.isOpen = false
+    state.current = {
+      consecutiveFailures: 0,
+      lastFailureTime: 0,
+      isOpen: false
+    }
   }, [])
 
   const reset = useCallback(() => {
