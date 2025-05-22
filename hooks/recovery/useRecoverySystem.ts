@@ -4,6 +4,7 @@ import { usePlaybackManager } from './usePlaybackManager'
 import { useCircuitBreaker } from './useCircuitBreaker'
 import { useHealthStatus, DeviceHealthStatus } from './useHealthStatus'
 import { ErrorType } from '@/shared/types/recovery'
+import { cleanupOtherDevices } from '@/services/deviceManagement'
 
 // Recovery system constants
 const MAX_RECOVERY_RETRIES = 5
@@ -87,7 +88,7 @@ export function useRecoverySystem(
           progress: 25
         },
         currentStep: 1,
-        totalSteps: 2
+        totalSteps: 3
       })
       const deviceOk = await checkDevice()
       if (!deviceOk) {
@@ -96,7 +97,28 @@ export function useRecoverySystem(
         throw new Error(deviceState.error || 'Device check failed')
       }
 
-      // Step 2: Resume playback
+      // Step 2: Clean up other devices
+      updateState({
+        phase: 'checking_device',
+        progress: 50,
+        isRecovering: true,
+        status: {
+          message: 'Cleaning up other devices...',
+          progress: 50
+        },
+        currentStep: 2,
+        totalSteps: 3
+      })
+      if (deviceId) {
+        const cleanupOk = await cleanupOtherDevices(deviceId)
+        if (!cleanupOk) {
+          console.warn(
+            '[Recovery] Device cleanup failed, but continuing recovery'
+          )
+        }
+      }
+
+      // Step 3: Resume playback
       updateState({
         phase: 'resuming',
         progress: 75,
@@ -105,8 +127,8 @@ export function useRecoverySystem(
           message: 'Resuming playback...',
           progress: 75
         },
-        currentStep: 2,
-        totalSteps: 2
+        currentStep: 3,
+        totalSteps: 3
       })
       const playbackOk = await resumePlayback(
         deviceId!,

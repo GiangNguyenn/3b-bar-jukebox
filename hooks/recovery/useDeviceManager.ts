@@ -2,7 +2,8 @@ import { useState, useCallback } from 'react'
 import {
   checkDeviceExists,
   verifyDeviceTransfer,
-  transferPlaybackToDevice
+  transferPlaybackToDevice,
+  cleanupOtherDevices
 } from '@/services/deviceManagement'
 import { sendApiRequest } from '@/shared/api'
 import { SpotifyPlaybackState } from '@/shared/types'
@@ -43,6 +44,12 @@ export function useDeviceManager(deviceId: string | null) {
         } else {
           throw new Error('Device not found')
         }
+      }
+
+      // Clean up other devices
+      const cleanupOk = await cleanupOtherDevices(deviceId)
+      if (!cleanupOk) {
+        console.warn('[Device Manager] Device cleanup failed, but continuing')
       }
 
       // Verify device transfer
