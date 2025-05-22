@@ -118,8 +118,14 @@ export default function AdminPage(): JSX.Element {
   const lastPlaybackCheckRef = useRef<number>(Date.now())
   const playbackStallTimeoutRef = useRef<NodeJS.Timeout | null>(null)
   const startTimeRef = useRef<number>(Date.now())
-  const lastStallCheckRef = useRef<{ timestamp: number; count: number }>({ timestamp: 0, count: 0 })
-  const lastStateMismatchRef = useRef<{ timestamp: number; count: number }>({ timestamp: 0, count: 0 })
+  const lastStallCheckRef = useRef<{ timestamp: number; count: number }>({
+    timestamp: 0,
+    count: 0
+  })
+  const lastStateMismatchRef = useRef<{ timestamp: number; count: number }>({
+    timestamp: 0,
+    count: 0
+  })
 
   // Hooks
   const isReady = useSpotifyPlayer((state) => state.isReady)
@@ -161,7 +167,7 @@ export default function AdminPage(): JSX.Element {
 
   // Update health status when device ID or fixed playlist changes
   useEffect(() => {
-    if (!mounted) return;
+    if (!mounted) return
 
     if (!deviceId) {
       setHealthStatus((prev: HealthStatus) => ({
@@ -196,7 +202,7 @@ export default function AdminPage(): JSX.Element {
 
   // Add effect to handle device initialization
   useEffect(() => {
-    if (!mounted) return;
+    if (!mounted) return
 
     if (isReady && deviceId) {
       console.log('[Device] Player ready and device ID available:', {
@@ -230,7 +236,14 @@ export default function AdminPage(): JSX.Element {
       })
       void attemptRecovery()
     }
-  }, [healthStatus.device, recoveryState.isRecovering, recoveryState.phase, recoveryState.attempts, deviceId, attemptRecovery])
+  }, [
+    healthStatus.device,
+    recoveryState.isRecovering,
+    recoveryState.phase,
+    recoveryState.attempts,
+    deviceId,
+    attemptRecovery
+  ])
 
   // Add effect to handle device state changes during recovery
   useEffect(() => {
@@ -474,25 +487,32 @@ export default function AdminPage(): JSX.Element {
             }
           } catch (playbackError) {
             console.error('[Playback] Error resuming playback:', {
-              error: playbackError instanceof Error ? playbackError.message : 'Unknown error',
+              error:
+                playbackError instanceof Error
+                  ? playbackError.message
+                  : 'Unknown error',
               deviceId,
               timestamp: new Date().toISOString()
             })
-            
+
             // Clear starting playback state on error
             setIsStartingPlayback(false)
             if (startingPlaybackTimeoutRef.current) {
               clearTimeout(startingPlaybackTimeoutRef.current)
             }
-            
+
             // Attempt recovery if it's a server error
-            if (playbackError instanceof Error && 
-                (playbackError.message.includes('Server error') || 
-                 playbackError.message.includes('500'))) {
-              console.log('[Playback] Server error detected, attempting recovery...')
+            if (
+              playbackError instanceof Error &&
+              (playbackError.message.includes('Server error') ||
+                playbackError.message.includes('500'))
+            ) {
+              console.log(
+                '[Playback] Server error detected, attempting recovery...'
+              )
               void attemptRecovery()
             }
-            
+
             // Update UI state to reflect the error
             setPlaybackInfo((prev) => ({
               ...prev!,
@@ -569,7 +589,9 @@ export default function AdminPage(): JSX.Element {
         if (!result.success) {
           // Check if this is the "enough tracks" message
           if (result.message === 'Enough tracks remaining') {
-            console.log(`[Refresh] ${source} refresh skipped - enough tracks remaining`)
+            console.log(
+              `[Refresh] ${source} refresh skipped - enough tracks remaining`
+            )
           } else {
             throw new Error(result.message)
           }
@@ -1023,11 +1045,11 @@ export default function AdminPage(): JSX.Element {
         }
 
         // More conservative state mismatch detection
-        const isStateMismatch = 
-          currentState.is_playing !== playbackInfo.isPlaying && 
+        const isStateMismatch =
+          currentState.is_playing !== playbackInfo.isPlaying &&
           !isManualPause &&
           timeSinceLastCheck > 2000 &&
-          !_setIsStartingPlayback;
+          !_setIsStartingPlayback
 
         if (isStateMismatch) {
           const lastMismatchCheck = lastStateMismatchRef.current
@@ -1042,16 +1064,19 @@ export default function AdminPage(): JSX.Element {
 
             // Only trigger recovery if we've seen 3 mismatches, each more than 10 seconds apart
             if (lastMismatchCheck.count >= 2) {
-              console.error('[Playback Monitor] Playback state mismatch confirmed after multiple checks', {
-                mismatchChecks: lastMismatchCheck.count + 1,
-                timeBetweenChecks: timeSinceLastMismatchCheck,
-                expectedState: playbackInfo.isPlaying,
-                currentState: currentState.is_playing,
-                isManualPause,
-                timeSinceLastCheck,
-                isStartingPlayback: _setIsStartingPlayback,
-                timestamp: new Date().toISOString()
-              })
+              console.error(
+                '[Playback Monitor] Playback state mismatch confirmed after multiple checks',
+                {
+                  mismatchChecks: lastMismatchCheck.count + 1,
+                  timeBetweenChecks: timeSinceLastMismatchCheck,
+                  expectedState: playbackInfo.isPlaying,
+                  currentState: currentState.is_playing,
+                  isManualPause,
+                  timeSinceLastCheck,
+                  isStartingPlayback: _setIsStartingPlayback,
+                  timestamp: new Date().toISOString()
+                }
+              )
               void attemptRecovery()
               // Reset the mismatch check counter after triggering recovery
               lastStateMismatchRef.current = { timestamp: 0, count: 0 }
@@ -1431,7 +1456,11 @@ export default function AdminPage(): JSX.Element {
               <div className='flex gap-4'>
                 <button
                   onClick={_handlePlaybackClick}
-                  disabled={!canControlPlayback || isLoading || recoveryState.isRecovering}
+                  disabled={
+                    !canControlPlayback ||
+                    isLoading ||
+                    recoveryState.isRecovering
+                  }
                   className={`text-white flex-1 rounded-lg px-4 py-2 font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
                     _isPlaying === true
                       ? 'bg-blue-600 hover:bg-blue-700'
@@ -1452,7 +1481,11 @@ export default function AdminPage(): JSX.Element {
                 </button>
                 <button
                   onClick={handleRefreshClick}
-                  disabled={isLoading || isRefreshingSuggestions || recoveryState.isRecovering}
+                  disabled={
+                    isLoading ||
+                    isRefreshingSuggestions ||
+                    recoveryState.isRecovering
+                  }
                   className='text-white flex-1 rounded-lg bg-purple-600 px-4 py-2 font-medium transition-colors hover:bg-purple-700 disabled:cursor-not-allowed disabled:opacity-50'
                 >
                   {isLoading
@@ -1468,10 +1501,10 @@ export default function AdminPage(): JSX.Element {
                   disabled={isLoading || recoveryState.isRecovering}
                   className='text-white flex-1 rounded-lg bg-red-600 px-4 py-2 font-medium transition-colors hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50'
                 >
-                  {isLoading 
-                    ? 'Loading...' 
-                    : recoveryState.isRecovering 
-                      ? 'Recovering...' 
+                  {isLoading
+                    ? 'Loading...'
+                    : recoveryState.isRecovering
+                      ? 'Recovering...'
                       : 'Force Recovery'}
                 </button>
               </div>

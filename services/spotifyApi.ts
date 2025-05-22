@@ -302,7 +302,10 @@ export class SpotifyApiService implements SpotifyApiClient {
               }
             }
           } catch (error) {
-            console.warn('[SpotifyApi] Failed to resume from last known position:', error)
+            console.warn(
+              '[SpotifyApi] Failed to resume from last known position:',
+              error
+            )
             // Fall through to starting fresh
           }
         }
