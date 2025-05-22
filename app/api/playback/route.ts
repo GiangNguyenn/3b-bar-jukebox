@@ -8,7 +8,7 @@ import {
 import { verifyPlaybackResume } from '@/shared/utils/recovery/playback-verification'
 
 interface PlaybackRequest {
-  action: 'play' | 'skip'
+  action: 'play'
   contextUri?: string
   deviceId?: string
   position_ms?: number

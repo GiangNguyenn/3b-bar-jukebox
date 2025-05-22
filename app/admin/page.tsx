@@ -170,10 +170,10 @@ export default function AdminPage(): JSX.Element {
     if (!mounted) return
 
     // Update device status based on deviceId and isReady
-    const newDeviceStatus = !deviceId 
-      ? 'disconnected' 
-      : !isReady 
-        ? 'unresponsive' 
+    const newDeviceStatus = !deviceId
+      ? 'disconnected'
+      : !isReady
+        ? 'unresponsive'
         : 'healthy'
 
     setHealthStatus((prev: HealthStatus) => ({
