@@ -169,60 +169,26 @@ export default function AdminPage(): JSX.Element {
   useEffect(() => {
     if (!mounted) return
 
-    if (!deviceId) {
-      setHealthStatus((prev: HealthStatus) => ({
-        ...prev,
-        device: 'disconnected'
-      }))
-      return
-    }
+    // Update device status based on deviceId and isReady
+    const newDeviceStatus = !deviceId 
+      ? 'disconnected' 
+      : !isReady 
+        ? 'unresponsive' 
+        : 'healthy'
 
-    if (!isReady) {
-      setHealthStatus((prev: HealthStatus) => ({
-        ...prev,
-        device: 'unresponsive'
-      }))
-      return
-    }
-
-    // If we have both deviceId and isReady, the device is healthy
     setHealthStatus((prev: HealthStatus) => ({
       ...prev,
-      device: 'healthy'
+      device: newDeviceStatus
     }))
 
     // Log the device status update
     console.log('[Device Status] Updated:', {
       deviceId,
       isReady,
-      status: 'healthy',
+      status: newDeviceStatus,
       timestamp: new Date().toISOString()
     })
   }, [deviceId, isReady, mounted])
-
-  // Add effect to handle device initialization
-  useEffect(() => {
-    if (!mounted) return
-
-    if (isReady && deviceId) {
-      console.log('[Device] Player ready and device ID available:', {
-        deviceId,
-        isReady,
-        timestamp: new Date().toISOString()
-      })
-      setIsDeviceCheckComplete(true)
-      setHealthStatus((prev: HealthStatus) => ({
-        ...prev,
-        device: 'healthy'
-      }))
-    } else {
-      setIsDeviceCheckComplete(false)
-      setHealthStatus((prev: HealthStatus) => ({
-        ...prev,
-        device: isReady ? 'unresponsive' : 'disconnected'
-      }))
-    }
-  }, [isReady, deviceId, mounted])
 
   // Add effect to trigger recovery when device is disconnected
   useEffect(() => {
