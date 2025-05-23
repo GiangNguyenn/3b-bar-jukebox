@@ -8,8 +8,12 @@ import {
 } from '@/services/deviceManagement'
 
 // Recovery system constants
-const MAX_RECOVERY_RETRIES = 5
-const BASE_DELAY = 1000 // 1 second
+export const MAX_RECOVERY_RETRIES = 5
+export const BASE_DELAY = 1000 // 1 second
+export const STALL_THRESHOLD = 5000 // 5 seconds
+export const STALL_CHECK_INTERVAL = 2000 // Check every 2 seconds
+export const MIN_STALLS_BEFORE_RECOVERY = 2 // Require only 2 stalls
+export const PROGRESS_TOLERANCE = 100 // Allow 100ms difference in progress
 
 type RecoveryPhase = 'idle' | 'recovering' | 'success' | 'error'
 
@@ -19,6 +23,10 @@ interface RecoveryState {
   error: string | null
   isRecovering: boolean
   message: string
+  lastStallCheck?: {
+    timestamp: number
+    count: number
+  }
 }
 
 export function useRecoverySystem(
@@ -39,12 +47,59 @@ export function useRecoverySystem(
     attempts: 0,
     error: null,
     isRecovering: false,
-    message: ''
+    message: '',
+    lastStallCheck: { timestamp: 0, count: 0 }
   })
 
   const updateState = useCallback((updates: Partial<RecoveryState>) => {
     setState((prev) => ({ ...prev, ...updates }))
   }, [])
+
+  const forceRecovery = useCallback(async (): Promise<void> => {
+    console.log('[Force Recovery] Starting forced recovery')
+
+    updateState({
+      phase: 'recovering',
+      isRecovering: true,
+      message: 'Forcing recovery...',
+      attempts: 0,
+      error: null
+    })
+
+    try {
+      // Disconnect and reconnect
+      if (typeof window.spotifyPlayerInstance?.disconnect === 'function') {
+        await window.spotifyPlayerInstance.disconnect()
+      }
+
+      // Wait a moment
+      await new Promise((resolve) => setTimeout(resolve, 1000))
+
+      // Reconnect
+      if (typeof window.spotifyPlayerInstance?.connect === 'function') {
+        await window.spotifyPlayerInstance.connect()
+      }
+
+      // Reinitialize
+      if (typeof window.initializeSpotifyPlayer === 'function') {
+        await window.initializeSpotifyPlayer()
+      }
+
+      updateState({
+        phase: 'success',
+        isRecovering: false,
+        message: 'Forced recovery successful'
+      })
+    } catch (error) {
+      console.error('[Recovery] Forced recovery failed:', error)
+      updateState({
+        phase: 'error',
+        isRecovering: false,
+        message: 'Forced recovery failed',
+        error: error instanceof Error ? error.message : 'Unknown error'
+      })
+    }
+  }, [updateState])
 
   const attemptRecovery = useCallback(async (): Promise<void> => {
     // Skip if initializing or already recovering
@@ -92,7 +147,8 @@ export function useRecoverySystem(
         attempts: 0,
         error: null,
         isRecovering: false,
-        message: 'Recovery successful'
+        message: 'Recovery successful',
+        lastStallCheck: { timestamp: 0, count: 0 }
       })
 
       // Reset to idle after delay
@@ -151,7 +207,8 @@ export function useRecoverySystem(
       attempts: 0,
       error: null,
       isRecovering: false,
-      message: ''
+      message: '',
+      lastStallCheck: { timestamp: 0, count: 0 }
     })
   }, [])
 
@@ -166,6 +223,7 @@ export function useRecoverySystem(
   return {
     state,
     attemptRecovery,
+    forceRecovery,
     deviceState,
     playbackState,
     reset
