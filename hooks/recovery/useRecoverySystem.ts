@@ -1,50 +1,36 @@
 import { useState, useCallback, useEffect } from 'react'
 import { useDeviceManager } from './useDeviceManager'
 import { usePlaybackManager } from './usePlaybackManager'
-import { useCircuitBreaker } from './useCircuitBreaker'
 import { useHealthStatus, DeviceHealthStatus } from './useHealthStatus'
-import { ErrorType } from '@/shared/types/recovery'
-import { cleanupOtherDevices } from '@/services/deviceManagement'
+import {
+  cleanupOtherDevices,
+  verifyDeviceTransfer
+} from '@/services/deviceManagement'
 
 // Recovery system constants
 const MAX_RECOVERY_RETRIES = 5
 const BASE_DELAY = 1000 // 1 second
 
-type RecoveryPhase =
-  | 'idle'
-  | 'checking_device'
-  | 'checking_playback'
-  | 'resuming'
-  | 'success'
-  | 'error'
+type RecoveryPhase = 'idle' | 'recovering' | 'success' | 'error'
 
 interface RecoveryState {
   phase: RecoveryPhase
   attempts: number
   error: string | null
-  progress: number
   isRecovering: boolean
-  status: {
-    message: string
-    progress: number
-  }
-  currentStep: number
-  totalSteps: number
+  message: string
 }
 
 export function useRecoverySystem(
   deviceId: string | null,
   fixedPlaylistId: string | null,
-  onHealthStatusUpdate: (status: { device: DeviceHealthStatus }) => void
+  onHealthStatusUpdate: (status: { device: DeviceHealthStatus }) => void,
+  isInitializing: boolean = false
 ) {
   // Initialize sub-hooks
   const { state: deviceState, checkDevice } = useDeviceManager(deviceId)
   const { state: playbackState, resumePlayback } =
     usePlaybackManager(fixedPlaylistId)
-  const { isCircuitOpen, recordFailure, recordSuccess } = useCircuitBreaker(
-    3,
-    30000
-  )
   const { updateHealth } = useHealthStatus(onHealthStatusUpdate)
 
   // Main recovery state
@@ -52,14 +38,8 @@ export function useRecoverySystem(
     phase: 'idle',
     attempts: 0,
     error: null,
-    progress: 0,
     isRecovering: false,
-    status: {
-      message: '',
-      progress: 0
-    },
-    currentStep: 0,
-    totalSteps: 0
+    message: ''
   })
 
   const updateState = useCallback((updates: Partial<RecoveryState>) => {
@@ -67,48 +47,26 @@ export function useRecoverySystem(
   }, [])
 
   const attemptRecovery = useCallback(async (): Promise<void> => {
-    if (isCircuitOpen()) {
-      console.log('[Recovery] Circuit breaker active, skipping recovery')
+    // Skip if initializing or already recovering
+    if (isInitializing || state.isRecovering) {
+      console.log('[Recovery] Skipping recovery - initializing or in progress')
       return
     }
 
-    if (state.phase !== 'idle') {
-      console.log('[Recovery] Recovery already in progress')
-      return
-    }
+    updateState({
+      phase: 'recovering',
+      isRecovering: true,
+      message: 'Starting recovery...'
+    })
 
     try {
-      // Step 1: Check device
-      updateState({
-        phase: 'checking_device',
-        progress: 25,
-        isRecovering: true,
-        status: {
-          message: 'Checking device...',
-          progress: 25
-        },
-        currentStep: 1,
-        totalSteps: 3
-      })
+      // Single device check with cleanup
       const deviceOk = await checkDevice()
       if (!deviceOk) {
-        recordFailure()
-        updateHealth('disconnected')
         throw new Error(deviceState.error || 'Device check failed')
       }
 
-      // Step 2: Clean up other devices
-      updateState({
-        phase: 'checking_device',
-        progress: 50,
-        isRecovering: true,
-        status: {
-          message: 'Cleaning up other devices...',
-          progress: 50
-        },
-        currentStep: 2,
-        totalSteps: 3
-      })
+      // Clean up other devices if needed
       if (deviceId) {
         const cleanupOk = await cleanupOtherDevices(deviceId)
         if (!cleanupOk) {
@@ -118,91 +76,72 @@ export function useRecoverySystem(
         }
       }
 
-      // Step 3: Resume playback
-      updateState({
-        phase: 'resuming',
-        progress: 75,
-        isRecovering: true,
-        status: {
-          message: 'Resuming playback...',
-          progress: 75
-        },
-        currentStep: 3,
-        totalSteps: 3
-      })
+      // Resume playback
       const playbackOk = await resumePlayback(
         deviceId!,
         `spotify:playlist:${fixedPlaylistId}`
       )
-
       if (!playbackOk) {
-        recordFailure()
-        updateHealth('unresponsive')
         throw new Error(playbackState.error || 'Playback resume failed')
       }
 
       // Success
-      recordSuccess()
       updateHealth('healthy')
       updateState({
-        phase: 'idle',
+        phase: 'success',
         attempts: 0,
         error: null,
-        progress: 0,
         isRecovering: false,
-        status: {
-          message: 'Recovery successful',
-          progress: 0
-        },
-        currentStep: 0,
-        totalSteps: 0
+        message: 'Recovery successful'
       })
+
+      // Reset to idle after delay
+      setTimeout(() => {
+        updateState({
+          phase: 'idle',
+          message: ''
+        })
+      }, 2000)
     } catch (error) {
       const errorMessage =
         error instanceof Error ? error.message : 'Unknown error'
+      const newAttempts = state.attempts + 1
+
       updateState({
         phase: 'error',
-        attempts: state.attempts + 1,
+        attempts: newAttempts,
         error: errorMessage,
-        progress: 100,
         isRecovering: false,
-        status: {
-          message: errorMessage,
-          progress: 100
-        },
-        currentStep: state.currentStep,
-        totalSteps: state.totalSteps
+        message: errorMessage
       })
 
-      // If max attempts reached, reload page
-      if (state.attempts >= MAX_RECOVERY_RETRIES) {
+      // Handle max attempts
+      if (newAttempts >= MAX_RECOVERY_RETRIES) {
         console.error('[Recovery] Max attempts reached, reloading page')
-        setTimeout(() => {
-          window.location.reload()
-        }, 2000)
+        window.location.reload()
         return
       }
 
       // Schedule next attempt with exponential backoff
-      const delay = BASE_DELAY * Math.pow(2, state.attempts)
-      setTimeout(() => {
-        void attemptRecovery()
-      }, delay)
+      setTimeout(
+        () => {
+          void attemptRecovery()
+        },
+        BASE_DELAY * Math.pow(2, newAttempts)
+      )
     }
   }, [
     deviceId,
     fixedPlaylistId,
-    state.phase,
+    state.isRecovering,
     state.attempts,
     deviceState.error,
     playbackState.error,
-    isCircuitOpen,
-    recordFailure,
-    recordSuccess,
     updateHealth,
     updateState,
     checkDevice,
-    resumePlayback
+    resumePlayback,
+    isInitializing
   ])
 
   // Add a reset function to manually reset the state
@@ -211,14 +150,8 @@ export function useRecoverySystem(
       phase: 'idle',
       attempts: 0,
       error: null,
-      progress: 0,
       isRecovering: false,
-      status: {
-        message: '',
-        progress: 0
-      },
-      currentStep: 0,
-      totalSteps: 0
+      message: ''
     })
   }, [])
 
@@ -226,7 +159,7 @@ export function useRecoverySystem(
   useEffect(() => {
     return () => {
       updateHealth('unknown')
-      reset() // Reset state on unmount
+      reset()
     }
   }, [updateHealth, reset])
 
@@ -235,6 +168,6 @@ export function useRecoverySystem(
     attemptRecovery,
     deviceState,
     playbackState,
-    reset // Export reset function
+    reset
   }
 }

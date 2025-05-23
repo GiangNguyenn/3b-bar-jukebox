@@ -171,6 +171,15 @@ export default function AdminPage(): JSX.Element {
   useEffect(() => {
     if (!mounted) return
 
+    // During initialization, don't mark as disconnected
+    if (isInitializing) {
+      setHealthStatus((prev: HealthStatus) => ({
+        ...prev,
+        device: 'unknown'
+      }))
+      return
+    }
+
     // Update device status based on deviceId and isReady
     const newDeviceStatus = !deviceId
       ? 'disconnected'
@@ -190,10 +199,16 @@ export default function AdminPage(): JSX.Element {
       status: newDeviceStatus,
       timestamp: new Date().toISOString()
     })
-  }, [deviceId, isReady, mounted])
+  }, [deviceId, isReady, mounted, isInitializing])
 
   // Add effect to trigger recovery when device is disconnected
   useEffect(() => {
+    // Skip recovery during initialization
+    if (isInitializing) {
+      console.log('[Device] Skipping recovery during initialization')
+      return
+    }
+
     if (healthStatus.device === 'disconnected' && !recoveryState.isRecovering) {
       console.log('[Device] Device disconnected, triggering recovery', {
         deviceId,
@@ -210,12 +225,13 @@ export default function AdminPage(): JSX.Element {
     recoveryState.phase,
     recoveryState.attempts,
     deviceId,
-    attemptRecovery
+    attemptRecovery,
+    isInitializing
   ])
 
   // Add effect to handle device state changes during recovery
   useEffect(() => {
-    if (recoveryState.phase === 'checking_device') {
+    if (recoveryState.phase === 'recovering') {
       setHealthStatus((prev: HealthStatus) => ({
         ...prev,
         device: 'unresponsive'
@@ -1214,10 +1230,8 @@ export default function AdminPage(): JSX.Element {
       <SpotifyPlayer />
       <RecoveryStatus
         isRecovering={recoveryState.isRecovering}
-        message={recoveryState.status.message}
-        progress={recoveryState.status.progress}
-        currentStep={recoveryState.currentStep}
-        totalSteps={recoveryState.totalSteps}
+        message={recoveryState.message}
+        phase={recoveryState.phase}
       />
 
       <div className='mx-auto max-w-xl space-y-4'>
