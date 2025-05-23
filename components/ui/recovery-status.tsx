@@ -3,21 +3,20 @@ import { Progress } from '@/components/ui/progress'
 interface RecoveryStatusProps {
   isRecovering: boolean
   message: string
-  progress: number
-  currentStep: number
-  totalSteps: number
+  phase: 'idle' | 'recovering' | 'success' | 'error'
 }
 
 export function RecoveryStatus({
   isRecovering,
   message,
-  progress,
-  currentStep,
-  totalSteps
+  phase
 }: RecoveryStatusProps): JSX.Element | null {
   if (!isRecovering) {
     return null
   }
+
+  // Calculate progress based on phase
+  const progress = phase === 'recovering' ? 50 : phase === 'success' ? 100 : 0
 
   return (
     <div className='fixed bottom-0 left-0 right-0 z-50 bg-black/90 p-4'>
@@ -29,7 +28,11 @@ export function RecoveryStatus({
         <Progress value={progress} className='h-2' />
         <div className='mt-1 text-right'>
           <span className='text-white/60 text-xs'>
-            Step {currentStep} of {totalSteps}
+            {phase === 'recovering'
+              ? 'Recovering...'
+              : phase === 'success'
+                ? 'Success'
+                : 'Error'}
           </span>
         </div>
       </div>
