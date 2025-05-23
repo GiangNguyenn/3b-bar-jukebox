@@ -170,9 +170,6 @@ export default function AdminPage(): JSX.Element {
 
   // Update health status when device ID or fixed playlist changes
   useEffect(() => {
-    if (!mounted) return
-
-    // During initialization, don't mark as disconnected
     if (isInitializing) {
       setHealthStatus((prev: HealthStatus) => ({
         ...prev,
@@ -181,23 +178,25 @@ export default function AdminPage(): JSX.Element {
       return
     }
 
-    // Update device status based on deviceId and isReady
-    const newDeviceStatus = !deviceId
-      ? 'disconnected'
-      : !isReady
-        ? 'unresponsive'
-        : 'healthy'
+    // Only update status after initialization
+    if (mounted && !isInitializing) {
+      const newDeviceStatus = !deviceId
+        ? 'disconnected'
+        : !isReady
+          ? 'unresponsive'
+          : 'healthy'
 
-    setHealthStatus((prev: HealthStatus) => ({
-      ...prev,
-      device: newDeviceStatus
-    }))
+      setHealthStatus((prev: HealthStatus) => ({
+        ...prev,
+        device: newDeviceStatus
+      }))
+    }
 
     // Log the device status update
     console.log('[Device Status] Updated:', {
       deviceId,
       isReady,
-      status: newDeviceStatus,
+      status: healthStatus.device,
       timestamp: new Date().toISOString()
     })
   }, [deviceId, isReady, mounted, isInitializing])
@@ -232,6 +231,11 @@ export default function AdminPage(): JSX.Element {
 
   // Add effect to handle device state changes during recovery
   useEffect(() => {
+    // Skip if still initializing
+    if (isInitializing) {
+      return
+    }
+
     if (recoveryState.phase === 'recovering') {
       setHealthStatus((prev: HealthStatus) => ({
         ...prev,
@@ -248,7 +252,7 @@ export default function AdminPage(): JSX.Element {
         device: deviceState.error ? 'disconnected' : 'unresponsive'
       }))
     }
-  }, [recoveryState.phase, deviceState.error])
+  }, [recoveryState.phase, deviceState.error, isInitializing])
 
   // Add effect to handle device state changes
   useEffect(() => {
@@ -1000,7 +1004,10 @@ export default function AdminPage(): JSX.Element {
             })
 
             // Trigger recovery after fewer stalls
-            if (lastStallCheck.count >= MIN_STALLS_BEFORE_RECOVERY - 1) {
+            if (
+              lastStallCheck.count >= MIN_STALLS_BEFORE_RECOVERY - 1 &&
+              !isManualPause
+            ) {
               console.warn(
                 '[Playback Monitor] Playback stall confirmed, triggering recovery'
               )
@@ -1017,7 +1024,11 @@ export default function AdminPage(): JSX.Element {
         }
 
         // Check if device is still active
-        if (currentState.device?.id !== deviceId && !isInitializing) {
+        if (
+          currentState.device?.id !== deviceId &&
+          !isInitializing &&
+          !isManualPause
+        ) {
           console.error('[Playback Monitor] Device mismatch detected', {
             expectedDevice: deviceId,
             currentDevice: currentState.device?.id,
