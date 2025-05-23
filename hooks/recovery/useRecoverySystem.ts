@@ -115,39 +115,75 @@ export function useRecoverySystem(
     })
 
     try {
-      // Single device check with cleanup
+      // Step 1: Device Check with detailed error handling
+      console.log('[Recovery] Checking device status...')
       const deviceOk = await checkDevice()
       if (!deviceOk) {
-        throw new Error(deviceState.error || 'Device check failed')
+        throw new Error(
+          `Device check failed: ${deviceState.error || 'Unknown error'}`
+        )
       }
 
-      // Clean up other devices if needed
+      // Step 2: Clean up other devices with retry
       if (deviceId) {
-        const cleanupOk = await cleanupOtherDevices(deviceId)
+        console.log('[Recovery] Cleaning up other devices...')
+        let cleanupAttempts = 0
+        let cleanupOk = false
+
+        while (!cleanupOk && cleanupAttempts < 3) {
+          cleanupOk = await cleanupOtherDevices(deviceId)
+          if (!cleanupOk) {
+            cleanupAttempts++
+            if (cleanupAttempts < 3) {
+              console.warn(
+                `[Recovery] Device cleanup attempt ${cleanupAttempts} failed, retrying...`
+              )
+              await new Promise((resolve) => setTimeout(resolve, 1000))
+            }
+          }
+        }
+
         if (!cleanupOk) {
-          console.warn(
-            '[Recovery] Device cleanup failed, but continuing recovery'
+          throw new Error(
+            'Failed to clean up other devices after multiple attempts'
           )
         }
       }
 
-      // Resume playback
+      // Step 3: Verify device transfer
+      console.log('[Recovery] Verifying device transfer...')
+      const transferOk = await verifyDeviceTransfer(deviceId!)
+      if (!transferOk) {
+        throw new Error('Device transfer verification failed')
+      }
+
+      // Step 4: Resume playback with verification
+      console.log('[Recovery] Resuming playback...')
       const playbackOk = await resumePlayback(
         deviceId!,
         `spotify:playlist:${fixedPlaylistId}`
       )
       if (!playbackOk) {
-        throw new Error(playbackState.error || 'Playback resume failed')
+        throw new Error(
+          `Playback resume failed: ${playbackState.error || 'Unknown error'}`
+        )
       }
 
-      // Success
+      // Step 5: Verify recovery success
+      console.log('[Recovery] Verifying recovery success...')
+      const finalDeviceCheck = await checkDevice()
+      if (!finalDeviceCheck) {
+        throw new Error('Final device check failed after recovery')
+      }
+
+      // Success with verification
       updateHealth('healthy')
       updateState({
         phase: 'success',
         attempts: 0,
         error: null,
         isRecovering: false,
-        message: 'Recovery successful',
+        message: 'Recovery successful and verified',
         lastStallCheck: { timestamp: 0, count: 0 }
       })
 
@@ -163,12 +199,18 @@ export function useRecoverySystem(
         error instanceof Error ? error.message : 'Unknown error'
       const newAttempts = state.attempts + 1
 
+      console.error('[Recovery] Recovery attempt failed:', {
+        error: errorMessage,
+        attempt: newAttempts,
+        maxAttempts: MAX_RECOVERY_RETRIES
+      })
+
       updateState({
         phase: 'error',
         attempts: newAttempts,
         error: errorMessage,
         isRecovering: false,
-        message: errorMessage
+        message: `Recovery failed: ${errorMessage}`
       })
 
       // Handle max attempts
@@ -179,12 +221,11 @@ export function useRecoverySystem(
       }
 
       // Schedule next attempt with exponential backoff
-      setTimeout(
-        () => {
-          void attemptRecovery()
-        },
-        BASE_DELAY * Math.pow(2, newAttempts)
-      )
+      const delay = BASE_DELAY * Math.pow(2, newAttempts)
+      console.log(`[Recovery] Scheduling next attempt in ${delay}ms`)
+      setTimeout(() => {
+        void attemptRecovery()
+      }, delay)
     }
   }, [
     deviceId,
