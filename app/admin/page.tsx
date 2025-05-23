@@ -1004,7 +1004,10 @@ export default function AdminPage(): JSX.Element {
             })
 
             // Trigger recovery after fewer stalls
-            if (lastStallCheck.count >= MIN_STALLS_BEFORE_RECOVERY - 1) {
+            if (
+              lastStallCheck.count >= MIN_STALLS_BEFORE_RECOVERY - 1 &&
+              !isManualPause
+            ) {
               console.warn(
                 '[Playback Monitor] Playback stall confirmed, triggering recovery'
               )
@@ -1021,7 +1024,11 @@ export default function AdminPage(): JSX.Element {
         }
 
         // Check if device is still active
-        if (currentState.device?.id !== deviceId && !isInitializing) {
+        if (
+          currentState.device?.id !== deviceId &&
+          !isInitializing &&
+          !isManualPause
+        ) {
           console.error('[Playback Monitor] Device mismatch detected', {
             expectedDevice: deviceId,
             currentDevice: currentState.device?.id,
