@@ -17,11 +17,17 @@ import { type TrackSuggestionsState } from '@/shared/types/trackSuggestions'
 import type { SpotifyPlayerInstance } from '@/types/spotify'
 import { useTrackSuggestions } from './components/track-suggestions/hooks/useTrackSuggestions'
 import { PlaylistRefreshServiceImpl } from '@/services/playlistRefresh'
-import { useRecoverySystem } from '@/hooks/recovery'
+import { useRecoverySystem } from '@/hooks/recovery/useRecoverySystem'
 import { RecoveryStatus } from '@/components/ui/recovery-status'
 import { HealthStatus } from '@/shared/types'
 import { SpotifyApiService } from '@/services/spotifyApi'
 import { PlaylistDisplay } from './components/playlist/playlist-display'
+import {
+  STALL_THRESHOLD,
+  STALL_CHECK_INTERVAL,
+  MIN_STALLS_BEFORE_RECOVERY,
+  PROGRESS_TOLERANCE
+} from '@/hooks/recovery/useRecoverySystem'
 
 declare global {
   interface Window {
@@ -103,7 +109,7 @@ export default function AdminPage(): JSX.Element {
     tokenExpiringSoon: false,
     fixedPlaylist: 'unknown'
   })
-  const [isManualPause, setIsManualPause] = useState(false)
+  const [isManualPause, setIsManualPause] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [mounted, setIsMounted] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
@@ -115,16 +121,11 @@ export default function AdminPage(): JSX.Element {
   const [_currentYear, _setCurrentYear] = useState(new Date().getFullYear())
   const startingPlaybackTimeoutRef = useRef<NodeJS.Timeout | null>(null)
   const lastPlaybackCheckRef = useRef<number>(Date.now())
-  const playbackStallTimeoutRef = useRef<NodeJS.Timeout | null>(null)
-  const startTimeRef = useRef<number>(Date.now())
   const lastStallCheckRef = useRef<{ timestamp: number; count: number }>({
     timestamp: 0,
     count: 0
   })
-  const lastStateMismatchRef = useRef<{ timestamp: number; count: number }>({
-    timestamp: 0,
-    count: 0
-  })
+  const startTimeRef = useRef<number>(Date.now())
 
   // Add initialization state
   const [isInitializing, setIsInitializing] = useState(true)
@@ -970,52 +971,52 @@ export default function AdminPage(): JSX.Element {
         const timeSinceLastCheck = now - lastPlaybackCheckRef.current
         lastPlaybackCheckRef.current = now
 
-        // More conservative stall detection
+        // More sensitive stall detection
         if (
           currentState.is_playing &&
           !isManualPause &&
-          currentState.progress_ms === playbackInfo.progress &&
-          timeSinceLastCheck > 5000
+          Math.abs(currentState.progress_ms - playbackInfo.progress) <
+            PROGRESS_TOLERANCE &&
+          timeSinceLastCheck > STALL_CHECK_INTERVAL
         ) {
           const lastStallCheck = lastStallCheckRef.current
           const timeSinceLastStallCheck = now - lastStallCheck.timestamp
 
-          // Only increment count if more than 10 seconds have passed since last check
-          if (timeSinceLastStallCheck > 10000) {
+          // Reduce the time between stall checks
+          if (timeSinceLastStallCheck > STALL_THRESHOLD) {
             lastStallCheckRef.current = {
               timestamp: now,
               count: lastStallCheck.count + 1
             }
 
-            // Only trigger recovery if we've seen 3 stalls, each more than 10 seconds apart
-            if (lastStallCheck.count >= 2) {
+            console.log('[Playback Monitor] Stall detected:', {
+              count: lastStallCheck.count + 1,
+              timeSinceLastStall: timeSinceLastStallCheck,
+              currentProgress: currentState.progress_ms,
+              lastProgress: playbackInfo.progress,
+              isPlaying: currentState.is_playing,
+              isManualPause,
+              timestamp: new Date().toISOString()
+            })
+
+            // Trigger recovery after fewer stalls
+            if (lastStallCheck.count >= MIN_STALLS_BEFORE_RECOVERY - 1) {
               console.warn(
-                '[Playback Monitor] Playback stall confirmed after multiple checks',
-                {
-                  stallChecks: lastStallCheck.count + 1,
-                  timeBetweenChecks: timeSinceLastStallCheck,
-                  currentProgress: currentState.progress_ms,
-                  lastProgress: playbackInfo.progress,
-                  isPlaying: currentState.is_playing,
-                  isManualPause,
-                  timestamp: new Date().toISOString()
-                }
+                '[Playback Monitor] Playback stall confirmed, triggering recovery'
               )
               void attemptRecovery()
-              // Reset the stall check counter after triggering recovery
               lastStallCheckRef.current = { timestamp: 0, count: 0 }
             }
           }
-        } else if (playbackInfo.progressStalled) {
-          // Reset stall state if progress has resumed or if manually paused
-          setPlaybackInfo((_prev) =>
-            _prev ? { ..._prev, progressStalled: false } : null
+        } else if (playbackInfo.progressStalled && !isManualPause) {
+          // Reset stall state if progress has resumed
+          setPlaybackInfo((prev) =>
+            prev ? { ...prev, progressStalled: false } : null
           )
-          // Reset the stall check counter
           lastStallCheckRef.current = { timestamp: 0, count: 0 }
         }
 
-        // Check if device is still active, but only if we're not in the initial loading phase
+        // Check if device is still active
         if (currentState.device?.id !== deviceId && !isInitializing) {
           console.error('[Playback Monitor] Device mismatch detected', {
             expectedDevice: deviceId,
@@ -1025,56 +1026,11 @@ export default function AdminPage(): JSX.Element {
             isInitializing,
             timestamp: new Date().toISOString()
           })
-          void attemptRecovery() // Trigger full recovery for device mismatch
+          void attemptRecovery()
           return
         }
 
-        // More conservative state mismatch detection
-        const isStateMismatch =
-          currentState.is_playing !== playbackInfo.isPlaying &&
-          !isManualPause &&
-          timeSinceLastCheck > 2000 &&
-          !_setIsStartingPlayback &&
-          !isInitializing // Only check for state mismatch after initialization is complete
-
-        if (isStateMismatch) {
-          const lastMismatchCheck = lastStateMismatchRef.current
-          const timeSinceLastMismatchCheck = now - lastMismatchCheck.timestamp
-
-          // Only increment count if more than 10 seconds have passed since last check
-          if (timeSinceLastMismatchCheck > 10000) {
-            lastStateMismatchRef.current = {
-              timestamp: now,
-              count: lastMismatchCheck.count + 1
-            }
-
-            // Only trigger recovery if we've seen 3 mismatches, each more than 10 seconds apart
-            if (lastMismatchCheck.count >= 2) {
-              console.error(
-                '[Playback Monitor] Playback state mismatch confirmed after multiple checks',
-                {
-                  mismatchChecks: lastMismatchCheck.count + 1,
-                  timeBetweenChecks: timeSinceLastMismatchCheck,
-                  expectedState: playbackInfo.isPlaying,
-                  currentState: currentState.is_playing,
-                  isManualPause,
-                  timeSinceLastCheck,
-                  isStartingPlayback: _setIsStartingPlayback,
-                  isInitializing,
-                  timestamp: new Date().toISOString()
-                }
-              )
-              void attemptRecovery()
-              // Reset the mismatch check counter after triggering recovery
-              lastStateMismatchRef.current = { timestamp: 0, count: 0 }
-            }
-          }
-        } else {
-          // Reset the mismatch check counter if states match
-          lastStateMismatchRef.current = { timestamp: 0, count: 0 }
-        }
-
-        // Update playback info with new state
+        // Update playback info
         setPlaybackInfo((prev) =>
           prev
             ? {
@@ -1088,7 +1044,7 @@ export default function AdminPage(): JSX.Element {
                     (currentState.progress_ms ?? 0)
                   : 0,
                 lastProgressCheck: now,
-                remainingTracks: 0 // Will be updated by SpotifyPlayer component
+                progressStalled: false
               }
             : null
         )
@@ -1102,49 +1058,23 @@ export default function AdminPage(): JSX.Element {
           timestamp: new Date().toISOString()
         })
         if (!isManualPause && !isInitializing) {
-          // Check if it's a device-related error
-          if (
-            error instanceof Error &&
-            error.message.toLowerCase().includes('device')
-          ) {
-            console.error(
-              '[Playback Monitor] Device error detected, triggering full recovery',
-              {
-                error: error.message,
-                isInitializing,
-                timestamp: new Date().toISOString()
-              }
-            )
-            void attemptRecovery()
-          } else {
-            void handlePlayback('play') // Try to resume playback first for non-device errors
-          }
+          void attemptRecovery()
         }
       }
     }
 
-    // Check playback health every 5 seconds
+    // Check more frequently
     const intervalId = setInterval(() => {
       void checkPlaybackHealth()
-    }, 5000)
+    }, STALL_CHECK_INTERVAL)
 
-    // Store the current timeout ref value
-    const currentTimeoutRef = playbackStallTimeoutRef.current
-
-    return () => {
-      clearInterval(intervalId)
-      if (currentTimeoutRef) {
-        clearTimeout(currentTimeoutRef)
-      }
-    }
+    return () => clearInterval(intervalId)
   }, [
     mounted,
     deviceId,
     playbackInfo,
     isManualPause,
-    handlePlayback,
     attemptRecovery,
-    _setIsStartingPlayback,
     isInitializing
   ])
 
