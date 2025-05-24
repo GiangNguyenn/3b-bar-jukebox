@@ -378,10 +378,6 @@ export class PlaylistRefreshServiceImpl implements PlaylistRefreshService {
       })
 
       while (!success && retryCount < this.retryConfig.maxRetries) {
-        console.log(
-          '[PARAM CHAIN] Passing genres to findSuggestedTrack (playlistRefresh.ts):',
-          mergedParams.genres
-        )
         const result = await findSuggestedTrack(
           existingTrackIds,
           currentTrackId,
@@ -818,10 +814,6 @@ export class PlaylistRefreshServiceImpl implements PlaylistRefreshService {
         timestamp: new Date().toISOString()
       })
 
-      console.log(
-        '[PARAM CHAIN] Passing genres to addSuggestedTrackToPlaylist (playlistRefresh.ts):',
-        params.genres
-      )
       const result = await this.addSuggestedTrackToPlaylist(
         upcomingTracks,
         playlist.id,

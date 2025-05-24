@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react'
+import { useState, useCallback, useEffect, useRef } from 'react'
 import { useDeviceManager } from './useDeviceManager'
 import { usePlaybackManager } from './usePlaybackManager'
 import { useHealthStatus, DeviceHealthStatus } from './useHealthStatus'
@@ -6,6 +6,7 @@ import {
   cleanupOtherDevices,
   verifyDeviceTransfer
 } from '@/services/deviceManagement'
+import { sendApiRequest } from '@/shared/api'
 
 // Recovery system constants
 export const MAX_RECOVERY_RETRIES = 5
@@ -23,10 +24,52 @@ interface RecoveryState {
   error: string | null
   isRecovering: boolean
   message: string
+  progress: number // 0 to 1
+  currentStep: string
   lastStallCheck?: {
     timestamp: number
     count: number
   }
+}
+
+// Add helper to poll for device registration
+async function waitForDevice(
+  deviceId: string,
+  timeoutMs = 10000
+): Promise<boolean> {
+  const start = Date.now()
+  while (Date.now() - start < timeoutMs) {
+    const devices = await sendApiRequest<{ devices: { id: string }[] }>({
+      path: 'me/player/devices',
+      method: 'GET'
+    })
+    if (devices.devices.some((d: { id: string }) => d.id === deviceId)) {
+      return true
+    }
+    await new Promise((resolve) => setTimeout(resolve, 500))
+  }
+  return false
+}
+
+// Add helper to poll for device active
+async function waitForDeviceActive(
+  deviceId: string,
+  timeoutMs = 10000
+): Promise<boolean> {
+  const start = Date.now()
+  while (Date.now() - start < timeoutMs) {
+    const devices = await sendApiRequest<{
+      devices: { id: string; is_active: boolean }[]
+    }>({
+      path: 'me/player/devices',
+      method: 'GET'
+    })
+    if (devices.devices.some((d) => d.id === deviceId && d.is_active)) {
+      return true
+    }
+    await new Promise((resolve) => setTimeout(resolve, 500))
+  }
+  return false
 }
 
 export function useRecoverySystem(
@@ -48,197 +91,205 @@ export function useRecoverySystem(
     error: null,
     isRecovering: false,
     message: '',
+    progress: 0,
+    currentStep: '',
     lastStallCheck: { timestamp: 0, count: 0 }
   })
+
+  const isRecoveringRef = useRef(false)
 
   const updateState = useCallback((updates: Partial<RecoveryState>) => {
     setState((prev) => ({ ...prev, ...updates }))
   }, [])
 
-  const forceRecovery = useCallback(async (): Promise<void> => {
-    console.log('[Force Recovery] Starting forced recovery')
-
+  const recover = useCallback(async (): Promise<void> => {
+    if (state.isRecovering || isRecoveringRef.current) {
+      // Already recovering, do not start another
+      return
+    }
+    isRecoveringRef.current = true
     updateState({
       phase: 'recovering',
       isRecovering: true,
-      message: 'Forcing recovery...',
+      message: 'Starting full recovery...',
+      progress: 0,
+      currentStep: 'Starting',
       attempts: 0,
       error: null
     })
-
     try {
-      // Disconnect and reconnect
+      // Step 1: Disconnect
+      updateState({
+        progress: 0.1,
+        currentStep: 'Disconnecting player',
+        message: 'Disconnecting player...'
+      })
       if (typeof window.spotifyPlayerInstance?.disconnect === 'function') {
         await window.spotifyPlayerInstance.disconnect()
       }
-
-      // Wait a moment
       await new Promise((resolve) => setTimeout(resolve, 1000))
-
-      // Reconnect
+      // Step 2: Reconnect
+      updateState({
+        progress: 0.2,
+        currentStep: 'Reconnecting player',
+        message: 'Reconnecting player...'
+      })
       if (typeof window.spotifyPlayerInstance?.connect === 'function') {
         await window.spotifyPlayerInstance.connect()
       }
-
-      // Reinitialize
+      // Step 3: Reinitialize
+      updateState({
+        progress: 0.35,
+        currentStep: 'Reinitializing player',
+        message: 'Reinitializing player...'
+      })
       if (typeof window.initializeSpotifyPlayer === 'function') {
         await window.initializeSpotifyPlayer()
       }
-
+      // Step 3.5: Wait for device registration
       updateState({
-        phase: 'success',
-        isRecovering: false,
-        message: 'Forced recovery successful'
+        progress: 0.5,
+        currentStep: 'Waiting for device registration',
+        message: 'Waiting for device registration...'
       })
-    } catch (error) {
-      console.error('[Recovery] Forced recovery failed:', error)
-      updateState({
-        phase: 'error',
-        isRecovering: false,
-        message: 'Forced recovery failed',
-        error: error instanceof Error ? error.message : 'Unknown error'
-      })
-    }
-  }, [updateState])
-
-  const attemptRecovery = useCallback(async (): Promise<void> => {
-    // Skip if initializing or already recovering
-    if (isInitializing || state.isRecovering) {
-      console.log('[Recovery] Skipping recovery - initializing or in progress')
-      return
-    }
-
-    updateState({
-      phase: 'recovering',
-      isRecovering: true,
-      message: 'Starting recovery...'
-    })
-
-    try {
-      // Step 1: Device Check with detailed error handling
-      console.log('[Recovery] Checking device status...')
-      const deviceOk = await checkDevice()
-      if (!deviceOk) {
-        throw new Error(
-          `Device check failed: ${deviceState.error || 'Unknown error'}`
-        )
-      }
-
-      // Step 2: Clean up other devices with retry
       if (deviceId) {
-        console.log('[Recovery] Cleaning up other devices...')
+        const found = await waitForDevice(deviceId, 10000)
+        if (!found) {
+          throw new Error('Device did not register in time')
+        }
+        // Step 3.6: Transfer playback to device (activate)
+        updateState({
+          progress: 0.55,
+          currentStep: 'Activating device',
+          message: 'Transferring playback to device...'
+        })
+        await sendApiRequest({
+          path: 'me/player',
+          method: 'PUT',
+          body: {
+            device_ids: [deviceId],
+            play: false
+          }
+        })
+        // Step 3.7: Wait for device to become active
+        updateState({
+          progress: 0.6,
+          currentStep: 'Waiting for device to become active',
+          message: 'Waiting for device to become active...'
+        })
+        const active = await waitForDeviceActive(deviceId, 10000)
+        if (!active) {
+          throw new Error('Device did not become active in time')
+        }
+      }
+      // Step 4: Clean up other devices
+      updateState({
+        progress: 0.65,
+        currentStep: 'Cleaning up other devices',
+        message: 'Cleaning up other devices...'
+      })
+      if (deviceId) {
         let cleanupAttempts = 0
         let cleanupOk = false
-
         while (!cleanupOk && cleanupAttempts < 3) {
           cleanupOk = await cleanupOtherDevices(deviceId)
           if (!cleanupOk) {
             cleanupAttempts++
             if (cleanupAttempts < 3) {
-              console.warn(
-                `[Recovery] Device cleanup attempt ${cleanupAttempts} failed, retrying...`
-              )
               await new Promise((resolve) => setTimeout(resolve, 1000))
             }
           }
         }
-
         if (!cleanupOk) {
           throw new Error(
             'Failed to clean up other devices after multiple attempts'
           )
         }
       }
-
-      // Step 3: Verify device transfer
-      console.log('[Recovery] Verifying device transfer...')
-      const transferOk = await verifyDeviceTransfer(deviceId!)
+      // Step 5: Verify device transfer
+      updateState({
+        progress: 0.8,
+        currentStep: 'Verifying device transfer',
+        message: 'Verifying device transfer...'
+      })
+      const transferOk = deviceId ? await verifyDeviceTransfer(deviceId) : false
       if (!transferOk) {
         throw new Error('Device transfer verification failed')
       }
-
-      // Step 4: Resume playback with verification
-      console.log('[Recovery] Resuming playback...')
-      const playbackOk = await resumePlayback(
-        deviceId!,
-        `spotify:playlist:${fixedPlaylistId}`
-      )
+      // Step 6: Resume playback
+      updateState({
+        progress: 0.9,
+        currentStep: 'Resuming playback',
+        message: 'Resuming playback...'
+      })
+      const playbackOk =
+        deviceId && fixedPlaylistId
+          ? await resumePlayback(
+              deviceId,
+              `spotify:playlist:${fixedPlaylistId}`
+            )
+          : false
       if (!playbackOk) {
-        throw new Error(
-          `Playback resume failed: ${playbackState.error || 'Unknown error'}`
-        )
+        throw new Error('Playback resume failed')
       }
-
-      // Step 5: Verify recovery success
-      console.log('[Recovery] Verifying recovery success...')
+      // Step 7: Verify recovery success
+      updateState({
+        progress: 0.95,
+        currentStep: 'Verifying recovery',
+        message: 'Verifying recovery...'
+      })
       const finalDeviceCheck = await checkDevice()
       if (!finalDeviceCheck) {
         throw new Error('Final device check failed after recovery')
       }
-
-      // Success with verification
+      // Step 8: Update health and state
       updateHealth('healthy')
       updateState({
         phase: 'success',
         attempts: 0,
         error: null,
         isRecovering: false,
-        message: 'Recovery successful and verified',
+        message: 'Full recovery successful',
+        progress: 1,
+        currentStep: 'Success',
         lastStallCheck: { timestamp: 0, count: 0 }
       })
-
-      // Reset to idle after delay
       setTimeout(() => {
         updateState({
           phase: 'idle',
-          message: ''
+          message: '',
+          progress: 0,
+          currentStep: ''
         })
       }, 2000)
     } catch (error) {
       const errorMessage =
         error instanceof Error ? error.message : 'Unknown error'
-      const newAttempts = state.attempts + 1
-
-      console.error('[Recovery] Recovery attempt failed:', {
-        error: errorMessage,
-        attempt: newAttempts,
-        maxAttempts: MAX_RECOVERY_RETRIES
-      })
-
       updateState({
         phase: 'error',
-        attempts: newAttempts,
+        attempts: state.attempts + 1,
         error: errorMessage,
         isRecovering: false,
-        message: `Recovery failed: ${errorMessage}`
+        message: `Full recovery failed: ${errorMessage}`,
+        progress: 1,
+        currentStep: 'Error'
       })
-
-      // Handle max attempts
-      if (newAttempts >= MAX_RECOVERY_RETRIES) {
-        console.error('[Recovery] Max attempts reached, reloading page')
+      // Optionally retry or reload page if needed
+      if (state.attempts + 1 >= MAX_RECOVERY_RETRIES) {
         window.location.reload()
-        return
       }
-
-      // Schedule next attempt with exponential backoff
-      const delay = BASE_DELAY * Math.pow(2, newAttempts)
-      console.log(`[Recovery] Scheduling next attempt in ${delay}ms`)
-      setTimeout(() => {
-        void attemptRecovery()
-      }, delay)
+    } finally {
+      isRecoveringRef.current = false
     }
   }, [
+    state.isRecovering,
     deviceId,
     fixedPlaylistId,
-    state.isRecovering,
     state.attempts,
-    deviceState.error,
-    playbackState.error,
     updateHealth,
     updateState,
     checkDevice,
-    resumePlayback,
-    isInitializing
+    resumePlayback
   ])
 
   // Add a reset function to manually reset the state
@@ -249,6 +300,8 @@ export function useRecoverySystem(
       error: null,
       isRecovering: false,
       message: '',
+      progress: 0,
+      currentStep: '',
       lastStallCheck: { timestamp: 0, count: 0 }
     })
   }, [])
@@ -263,8 +316,7 @@ export function useRecoverySystem(
 
   return {
     state,
-    attemptRecovery,
-    forceRecovery,
+    recover,
     deviceState,
     playbackState,
     reset

@@ -19,17 +19,14 @@ export async function POST(request: Request): Promise<NextResponse> {
   try {
     const body = (await request.json()) as unknown
     console.log(
-      '[PARAM CHAIN] Raw request body received in API route (refresh/route.ts):',
+      'Raw request body received in API route (refresh/route.ts):',
       body
     )
 
     const validationResult = refreshRequestSchema.safeParse(body)
 
     if (!validationResult.success) {
-      console.error(
-        '[API Track Suggestions Refresh] Invalid request:',
-        validationResult.error
-      )
+      console.error('Invalid request:', validationResult.error)
       return NextResponse.json(
         {
           success: false,
@@ -49,10 +46,7 @@ export async function POST(request: Request): Promise<NextResponse> {
       songsBetweenRepeats,
       maxOffset
     } = validationResult.data
-    console.log(
-      '[PARAM CHAIN] Validated genres in API route (refresh/route.ts):',
-      genres
-    )
+    console.log('Validated genres in API route (refresh/route.ts):', genres)
 
     const service = PlaylistRefreshServiceImpl.getInstance()
     const result = await service.refreshTrackSuggestions({
@@ -65,7 +59,7 @@ export async function POST(request: Request): Promise<NextResponse> {
       maxOffset
     })
 
-    console.log('[API Track Suggestions Refresh] Success:', {
+    console.log('Success:', {
       timestamp: new Date().toISOString(),
       genres,
       yearRange,
@@ -83,7 +77,7 @@ export async function POST(request: Request): Promise<NextResponse> {
       searchDetails: result.searchDetails
     })
   } catch (error) {
-    console.error('[API Track Suggestions Refresh] Error:', error)
+    console.error('Error:', error)
     return NextResponse.json(
       {
         success: false,
