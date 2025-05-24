@@ -130,14 +130,12 @@ export function SpotifyPlayer(): JSX.Element | null {
 
     const initializeWithDelay = async (): Promise<void> => {
       console.log('[SpotifyPlayer] Starting initialization with delay')
-
-      // Add initial delay before any API calls
       await new Promise((resolve) => setTimeout(resolve, INITIALIZATION_DELAY))
-
       const tryInitialize = async (): Promise<void> => {
         try {
           await globalRateLimitedApiCall(() => initializePlayer())
           setIsInitialized(true)
+          clearTimeout(initTimeout)
         } catch (error) {
           console.error('[SpotifyPlayer] Initialization attempt failed:', error)
           await new Promise((resolve) =>
@@ -145,13 +143,9 @@ export function SpotifyPlayer(): JSX.Element | null {
           )
         }
       }
-
       void tryInitialize()
     }
-
-    // Start initialization
     void initializeWithDelay()
-
     return (): void => {
       clearTimeout(initTimeout)
     }
