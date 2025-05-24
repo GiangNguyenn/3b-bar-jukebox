@@ -7,6 +7,11 @@ import {
   verifyDeviceTransfer
 } from '@/services/deviceManagement'
 import { sendApiRequest } from '@/shared/api'
+import {
+  destroyPlayer,
+  createPlayer,
+  useSpotifyPlayer
+} from '../useSpotifyPlayer'
 
 // Recovery system constants
 export const MAX_RECOVERY_RETRIES = 5
@@ -76,7 +81,8 @@ export function useRecoverySystem(
   deviceId: string | null,
   fixedPlaylistId: string | null,
   onHealthStatusUpdate: (status: { device: DeviceHealthStatus }) => void,
-  isInitializing: boolean = false
+  isInitializing: boolean = false,
+  onSuccess?: () => void
 ) {
   // Initialize sub-hooks
   const { state: deviceState, checkDevice } = useDeviceManager(deviceId)
@@ -118,69 +124,57 @@ export function useRecoverySystem(
       error: null
     })
     try {
-      // Step 1: Disconnect
+      // Step 1: Destroy player
       updateState({
-        progress: 0.1,
-        currentStep: 'Disconnecting player',
-        message: 'Disconnecting player...'
+        progress: 0.05,
+        currentStep: 'Destroying player',
+        message: 'Destroying current player...'
       })
-      if (typeof window.spotifyPlayerInstance?.disconnect === 'function') {
-        await window.spotifyPlayerInstance.disconnect()
-      }
-      await new Promise((resolve) => setTimeout(resolve, 1000))
-      // Step 2: Reconnect
+      await destroyPlayer()
+
+      // Step 2: Create new player with random name
       updateState({
-        progress: 0.2,
-        currentStep: 'Reconnecting player',
-        message: 'Reconnecting player...'
+        progress: 0.15,
+        currentStep: 'Creating new player',
+        message: 'Creating new player with random name...'
       })
-      if (typeof window.spotifyPlayerInstance?.connect === 'function') {
-        await window.spotifyPlayerInstance.connect()
-      }
-      // Step 3: Reinitialize
+      const newDeviceId = await createPlayer()
+      // Propagate new device ID to Zustand store
+      const setDeviceId = useSpotifyPlayer.getState().setDeviceId
+      setDeviceId(newDeviceId)
+
+      // Step 3: Wait for new player registration
       updateState({
-        progress: 0.35,
-        currentStep: 'Reinitializing player',
-        message: 'Reinitializing player...'
+        progress: 0.25,
+        currentStep: 'Waiting for new player registration',
+        message: 'Waiting for new player to register...'
       })
-      if (typeof window.initializeSpotifyPlayer === 'function') {
-        await window.initializeSpotifyPlayer()
-      }
-      // Step 3.5: Wait for device registration
+      const found = await waitForDevice(newDeviceId, 10000)
+      if (!found) throw new Error('New device did not register in time')
+
+      // Step 3.5: Activate device, etc. (use newDeviceId from here on)
       updateState({
-        progress: 0.5,
-        currentStep: 'Waiting for device registration',
-        message: 'Waiting for device registration...'
+        progress: 0.3,
+        currentStep: 'Activating device',
+        message: 'Transferring playback to new device...'
       })
-      if (deviceId) {
-        const found = await waitForDevice(deviceId, 10000)
-        if (!found) {
-          throw new Error('Device did not register in time')
+      await sendApiRequest({
+        path: 'me/player',
+        method: 'PUT',
+        body: {
+          device_ids: [newDeviceId],
+          play: false
         }
-        // Step 3.6: Transfer playback to device (activate)
-        updateState({
-          progress: 0.55,
-          currentStep: 'Activating device',
-          message: 'Transferring playback to device...'
-        })
-        await sendApiRequest({
-          path: 'me/player',
-          method: 'PUT',
-          body: {
-            device_ids: [deviceId],
-            play: false
-          }
-        })
-        // Step 3.7: Wait for device to become active
-        updateState({
-          progress: 0.6,
-          currentStep: 'Waiting for device to become active',
-          message: 'Waiting for device to become active...'
-        })
-        const active = await waitForDeviceActive(deviceId, 10000)
-        if (!active) {
-          throw new Error('Device did not become active in time')
-        }
+      })
+      // Step 3.6: Wait for device to become active
+      updateState({
+        progress: 0.6,
+        currentStep: 'Waiting for device to become active',
+        message: 'Waiting for device to become active...'
+      })
+      const active = await waitForDeviceActive(newDeviceId, 10000)
+      if (!active) {
+        throw new Error('Device did not become active in time')
       }
       // Step 4: Clean up other devices
       updateState({
@@ -188,11 +182,11 @@ export function useRecoverySystem(
         currentStep: 'Cleaning up other devices',
         message: 'Cleaning up other devices...'
       })
-      if (deviceId) {
+      if (newDeviceId) {
         let cleanupAttempts = 0
         let cleanupOk = false
         while (!cleanupOk && cleanupAttempts < 3) {
-          cleanupOk = await cleanupOtherDevices(deviceId)
+          cleanupOk = await cleanupOtherDevices(newDeviceId)
           if (!cleanupOk) {
             cleanupAttempts++
             if (cleanupAttempts < 3) {
@@ -212,7 +206,9 @@ export function useRecoverySystem(
         currentStep: 'Verifying device transfer',
         message: 'Verifying device transfer...'
       })
-      const transferOk = deviceId ? await verifyDeviceTransfer(deviceId) : false
+      const transferOk = newDeviceId
+        ? await verifyDeviceTransfer(newDeviceId)
+        : false
       if (!transferOk) {
         throw new Error('Device transfer verification failed')
       }
@@ -223,9 +219,9 @@ export function useRecoverySystem(
         message: 'Resuming playback...'
       })
       const playbackOk =
-        deviceId && fixedPlaylistId
+        newDeviceId && fixedPlaylistId
           ? await resumePlayback(
-              deviceId,
+              newDeviceId,
               `spotify:playlist:${fixedPlaylistId}`
             )
           : false
@@ -244,6 +240,7 @@ export function useRecoverySystem(
       }
       // Step 8: Update health and state
       updateHealth('healthy')
+      if (onSuccess) onSuccess()
       updateState({
         phase: 'success',
         attempts: 0,
@@ -289,7 +286,8 @@ export function useRecoverySystem(
     updateHealth,
     updateState,
     checkDevice,
-    resumePlayback
+    resumePlayback,
+    onSuccess
   ])
 
   // Add a reset function to manually reset the state
