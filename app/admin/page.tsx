@@ -205,104 +205,6 @@ export default function AdminPage(): JSX.Element {
     })
   }, [deviceId, isReady, mounted, isInitializing])
 
-  // Add effect to trigger recovery when device is disconnected
-  useEffect(() => {
-    // Skip recovery during initialization
-    if (isInitializing) {
-      console.log('[Device] Skipping recovery during initialization')
-      return
-    }
-
-    if (healthStatus.device === 'disconnected' && !recoveryState.isRecovering) {
-      console.log('[Device] Device disconnected, triggering recovery', {
-        deviceId,
-        isRecovering: recoveryState.isRecovering,
-        phase: recoveryState.phase,
-        attempts: recoveryState.attempts,
-        timestamp: new Date().toISOString()
-      })
-      void recover()
-    }
-  }, [
-    healthStatus.device,
-    recoveryState.isRecovering,
-    recoveryState.phase,
-    recoveryState.attempts,
-    deviceId,
-    recover,
-    isInitializing
-  ])
-
-  // Add effect to handle device state changes during recovery
-  useEffect(() => {
-    // Skip if still initializing
-    if (isInitializing) {
-      return
-    }
-
-    if (recoveryState.phase === 'recovering') {
-      setHealthStatus((prev: HealthStatus) => ({
-        ...prev,
-        device: 'unresponsive'
-      }))
-    } else if (recoveryState.phase === 'success') {
-      setHealthStatus((prev: HealthStatus) => ({
-        ...prev,
-        device: 'healthy'
-      }))
-    } else if (recoveryState.phase === 'error') {
-      setHealthStatus((prev: HealthStatus) => ({
-        ...prev,
-        device: deviceState.error ? 'disconnected' : 'unresponsive'
-      }))
-    }
-  }, [recoveryState.phase, deviceState.error, isInitializing])
-
-  // Add effect to handle device state changes
-  useEffect(() => {
-    if (deviceState.error) {
-      setHealthStatus((prev: HealthStatus) => ({
-        ...prev,
-        device: 'disconnected'
-      }))
-    } else if (deviceState.isReady) {
-      setHealthStatus((prev: HealthStatus) => ({
-        ...prev,
-        device: 'healthy'
-      }))
-    } else if (deviceState.isTransferring) {
-      setHealthStatus((prev: HealthStatus) => ({
-        ...prev,
-        device: 'unresponsive'
-      }))
-    }
-  }, [deviceState])
-
-  // Update fixed playlist status separately
-  useEffect(() => {
-    if (!isInitialFetchComplete) {
-      setHealthStatus((prev) => ({ ...prev, fixedPlaylist: 'unknown' }))
-      return
-    }
-
-    if (playlistError) {
-      setHealthStatus((prev) => ({ ...prev, fixedPlaylist: 'error' }))
-      return
-    }
-
-    setHealthStatus((prev) => ({
-      ...prev,
-      fixedPlaylist: fixedPlaylistId ? 'found' : 'not_found'
-    }))
-  }, [fixedPlaylistId, playlistError, isInitialFetchComplete])
-
-  // Reset the ref when component unmounts
-  useEffect(() => {
-    return () => {
-      hasUpdatedHealthStatus.current = false
-    }
-  }, [])
-
   // Define the event handler
   useEffect(() => {
     handlePlaybackUpdateRef.current = (event: Event) => {
@@ -1268,9 +1170,7 @@ export default function AdminPage(): JSX.Element {
                       ? 'bg-green-500'
                       : healthStatus.device === 'unresponsive'
                         ? 'bg-yellow-500'
-                        : healthStatus.device === 'disconnected'
-                          ? 'bg-red-500'
-                          : 'bg-gray-500'
+                        : 'bg-gray-500'
                   }`}
                 />
                 <span className='font-medium'>
@@ -1278,9 +1178,7 @@ export default function AdminPage(): JSX.Element {
                     ? 'Device Connected'
                     : healthStatus.device === 'unresponsive'
                       ? 'Device Unresponsive'
-                      : healthStatus.device === 'disconnected'
-                        ? 'Device Disconnected'
-                        : 'Device Status Unknown'}
+                      : 'Device Status Unknown'}
                   {recoveryState.attempts > 0 &&
                     ` (Recovery ${recoveryState.attempts}/5)`}
                 </span>

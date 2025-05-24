@@ -76,54 +76,70 @@ export function useSpotifyHealthMonitor(fixedPlaylistId: string | null) {
   })
   const deviceId = useSpotifyPlayer((state) => state.deviceId)
   const isReady = useSpotifyPlayer((state) => state.isReady)
+  const playbackState = useSpotifyPlayer((state) => state.playbackState)
   const { addLog } = useConsoleLogs()
   const deviceCheckInterval = useRef<NodeJS.Timeout | null>(null)
   const recoveryTimeout = useRef<NodeJS.Timeout | null>(null)
+  const lastDeviceIdChange = useRef<number>(Date.now())
+  const lastRecoverySuccess = useRef<number>(0)
 
-  // Use the unified recovery system
-  const { recover } = useRecoverySystem(deviceId, fixedPlaylistId, () => {})
+  // Use the unified recovery system with onSuccess callback
+  const { recover } = useRecoverySystem(
+    deviceId,
+    fixedPlaylistId,
+    () => {},
+    false,
+    () => {
+      lastRecoverySuccess.current = Date.now()
+    }
+  )
+
+  // Track deviceId changes for grace period
+  useEffect(() => {
+    lastDeviceIdChange.current = Date.now()
+  }, [deviceId])
 
   // Device health check effect
   useEffect(() => {
-    const checkDeviceHealth = async (): Promise<void> => {
-      if (!deviceId) {
-        setHealthStatus((prev) => ({ ...prev, device: 'disconnected' }))
-        void recover()
-        return
-      }
-      try {
-        const state = await sendApiRequest<SpotifyPlaybackState>({
-          path: 'me/player',
-          method: 'GET'
-        })
-        if (!state?.device?.id) {
-          setHealthStatus((prev) => ({ ...prev, device: 'disconnected' }))
+    const GRACE_PERIOD_MS = 2000
+    const POST_RECOVERY_GRACE_MS = 10000
+    const HEALTH_CHECK_INTERVAL_MS = 10000 // Always 10 seconds
+    let interval: NodeJS.Timeout | null = null
+    let timeout: NodeJS.Timeout | null = null
+    if (deviceCheckInterval.current) {
+      clearInterval(deviceCheckInterval.current)
+    }
+    if (timeout) {
+      clearTimeout(timeout)
+    }
+    const intervalDeviceId = deviceId
+    timeout = setTimeout(() => {
+      const checkDeviceHealth = async (): Promise<void> => {
+        if (intervalDeviceId !== useSpotifyPlayer.getState().deviceId) {
+          return
+        }
+        const playbackState = useSpotifyPlayer.getState().playbackState
+        // Only trigger recovery if playback is not progressing
+        if (!playbackState || !playbackState.is_playing) {
+          setHealthStatus((prev) => ({ ...prev, device: 'unresponsive' }))
           void recover()
           return
         }
-        if (isReady) {
-          setHealthStatus((prev) => ({ ...prev, device: 'healthy' }))
-          return
-        }
-        if (state.device.id !== deviceId) {
-          setHealthStatus((prev) => ({ ...prev, device: 'disconnected' }))
-          void recover()
-          return
-        }
-        setHealthStatus((prev) => ({ ...prev, device: 'unresponsive' }))
-        void recover()
-      } catch (error) {
-        setHealthStatus((prev) => ({ ...prev, device: 'unresponsive' }))
-        void recover()
+        // No 'disconnected' state or logs
       }
-    }
-    const getCheckInterval = (): number => {
-      return DEVICE_CHECK_INTERVAL[healthStatus.connection]
-    }
-    deviceCheckInterval.current = setInterval(() => {
-      void checkDeviceHealth()
-    }, getCheckInterval())
+      checkDeviceHealth()
+      interval = setInterval(() => {
+        void checkDeviceHealth()
+      }, HEALTH_CHECK_INTERVAL_MS)
+      deviceCheckInterval.current = interval
+    }, 2000)
     return (): void => {
+      if (interval) {
+        clearInterval(interval)
+      }
+      if (timeout) {
+        clearTimeout(timeout)
+      }
       if (deviceCheckInterval.current) {
         clearInterval(deviceCheckInterval.current)
       }
@@ -131,7 +147,7 @@ export function useSpotifyHealthMonitor(fixedPlaylistId: string | null) {
         clearTimeout(recoveryTimeout.current)
       }
     }
-  }, [deviceId, healthStatus.connection, recover, isReady])
+  }, [deviceId])
 
   // Monitor connection quality
   useEffect(() => {
