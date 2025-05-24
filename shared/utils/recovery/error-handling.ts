@@ -5,6 +5,7 @@ import {
   transferPlaybackToDevice,
   verifyDeviceTransfer
 } from '@/services/deviceManagement'
+import { useRecoverySystem } from '@/hooks/recovery/useRecoverySystem'
 
 const errorRecoveryState: ErrorRecoveryState = {
   lastError: null,
@@ -42,78 +43,13 @@ export async function handleErrorRecovery(
   deviceId: string | null,
   fixedPlaylistId: string | null
 ): Promise<boolean> {
-  if (errorRecoveryState.recoveryInProgress) {
-    console.log('[Error Recovery] Recovery already in progress, skipping')
-    return false
-  }
-
-  const now = Date.now()
-  if (now - errorRecoveryState.lastRecoveryAttempt < RECOVERY_COOLDOWN) {
-    console.log('[Error Recovery] Recovery attempted recently, skipping')
-    return false
-  }
-
-  errorRecoveryState.recoveryInProgress = true
-  errorRecoveryState.lastError =
-    error instanceof Error ? error : new Error(String(error))
-  errorRecoveryState.errorCount++
-  errorRecoveryState.lastRecoveryAttempt = now
-
   try {
-    const errorType = determineErrorType(error)
-    console.log('[Error Recovery] Starting recovery for error type:', errorType)
-
-    switch (errorType) {
-      case ErrorType.AUTH:
-        // Handle auth errors
-        if (typeof window.refreshSpotifyPlayer === 'function') {
-          await window.refreshSpotifyPlayer()
-        }
-        break
-
-      case ErrorType.DEVICE:
-        // Handle device errors
-        if (deviceId) {
-          await transferPlaybackToDevice(deviceId)
-        }
-        break
-
-      case ErrorType.CONNECTION:
-        // Handle connection errors
-        if (typeof window.spotifyPlayerInstance?.connect === 'function') {
-          await window.spotifyPlayerInstance.connect()
-        }
-        break
-
-      case ErrorType.PLAYBACK:
-        // Handle playback errors
-        if (fixedPlaylistId) {
-          await sendApiRequest({
-            path: 'me/player/play',
-            method: 'PUT',
-            body: {
-              context_uri: `spotify:playlist:${fixedPlaylistId}`,
-              position_ms: 0
-            }
-          })
-        }
-        break
-    }
-
-    // Verify recovery was successful
-    if (deviceId) {
-      const isActive = await verifyDeviceTransfer(deviceId)
-      if (!isActive) {
-        throw new Error(ERROR_MESSAGES.RECOVERY_VERIFICATION_FAILED)
-      }
-    }
-
-    errorRecoveryState.errorCount = 0
+    // Use the unified recovery system
+    const { recover } = useRecoverySystem(deviceId, fixedPlaylistId, () => {})
+    await recover()
     return true
   } catch (recoveryError) {
     console.error('[Error Recovery] Recovery failed:', recoveryError)
     return false
-  } finally {
-    errorRecoveryState.recoveryInProgress = false
   }
 }

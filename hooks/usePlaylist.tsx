@@ -103,10 +103,6 @@ export const usePlaylist = (
   ) => {
     try {
       if (trackSuggestionsState) {
-        console.log(
-          '[PARAM CHAIN] Using trackSuggestionsState in handleRefresh (usePlaylist.tsx):',
-          trackSuggestionsState
-        )
         await sendApiRequest({
           path: 'track-suggestions/refresh',
           method: 'POST',
