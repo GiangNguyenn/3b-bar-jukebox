@@ -17,11 +17,17 @@ import { type TrackSuggestionsState } from '@/shared/types/trackSuggestions'
 import type { SpotifyPlayerInstance } from '@/types/spotify'
 import { useTrackSuggestions } from './components/track-suggestions/hooks/useTrackSuggestions'
 import { PlaylistRefreshServiceImpl } from '@/services/playlistRefresh'
-import { useRecoverySystem } from '@/hooks/recovery'
+import { useRecoverySystem } from '@/hooks/recovery/useRecoverySystem'
 import { RecoveryStatus } from '@/components/ui/recovery-status'
 import { HealthStatus } from '@/shared/types'
 import { SpotifyApiService } from '@/services/spotifyApi'
 import { PlaylistDisplay } from './components/playlist/playlist-display'
+import {
+  STALL_THRESHOLD,
+  STALL_CHECK_INTERVAL,
+  MIN_STALLS_BEFORE_RECOVERY,
+  PROGRESS_TOLERANCE
+} from '@/hooks/recovery/useRecoverySystem'
 
 declare global {
   interface Window {
@@ -103,7 +109,7 @@ export default function AdminPage(): JSX.Element {
     tokenExpiringSoon: false,
     fixedPlaylist: 'unknown'
   })
-  const [isManualPause, setIsManualPause] = useState(false)
+  const [isManualPause, setIsManualPause] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [mounted, setIsMounted] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
@@ -115,16 +121,11 @@ export default function AdminPage(): JSX.Element {
   const [_currentYear, _setCurrentYear] = useState(new Date().getFullYear())
   const startingPlaybackTimeoutRef = useRef<NodeJS.Timeout | null>(null)
   const lastPlaybackCheckRef = useRef<number>(Date.now())
-  const playbackStallTimeoutRef = useRef<NodeJS.Timeout | null>(null)
-  const startTimeRef = useRef<number>(Date.now())
   const lastStallCheckRef = useRef<{ timestamp: number; count: number }>({
     timestamp: 0,
     count: 0
   })
-  const lastStateMismatchRef = useRef<{ timestamp: number; count: number }>({
-    timestamp: 0,
-    count: 0
-  })
+  const startTimeRef = useRef<number>(Date.now())
 
   // Add initialization state
   const [isInitializing, setIsInitializing] = useState(true)
@@ -139,7 +140,7 @@ export default function AdminPage(): JSX.Element {
   } = useFixedPlaylist()
   const {
     state: recoveryState,
-    attemptRecovery,
+    recover,
     reset: resetRecovery,
     deviceState
   } = useRecoverySystem(
@@ -167,116 +168,42 @@ export default function AdminPage(): JSX.Element {
   // Add a ref to track if we've already updated the health status
   const hasUpdatedHealthStatus = useRef(false)
 
+  // Add a ref to track consecutive device mismatch detections and a grace period after recovery
+  const deviceMismatchCountRef = useRef(0)
+  const lastRecoveryTimeRef = useRef<number>(0)
+
   // Update health status when device ID or fixed playlist changes
   useEffect(() => {
-    if (!mounted) return
+    if (isInitializing) {
+      setHealthStatus((prev: HealthStatus) => ({
+        ...prev,
+        device: 'unknown'
+      }))
+      return
+    }
 
-    // Update device status based on deviceId and isReady
-    const newDeviceStatus = !deviceId
-      ? 'disconnected'
-      : !isReady
-        ? 'unresponsive'
-        : 'healthy'
+    // Only update status after initialization
+    if (mounted && !isInitializing) {
+      const newDeviceStatus = !deviceId
+        ? 'disconnected'
+        : !isReady
+          ? 'unresponsive'
+          : 'healthy'
 
-    setHealthStatus((prev: HealthStatus) => ({
-      ...prev,
-      device: newDeviceStatus
-    }))
+      setHealthStatus((prev: HealthStatus) => ({
+        ...prev,
+        device: newDeviceStatus
+      }))
+    }
 
     // Log the device status update
     console.log('[Device Status] Updated:', {
       deviceId,
       isReady,
-      status: newDeviceStatus,
+      status: healthStatus.device,
       timestamp: new Date().toISOString()
     })
-  }, [deviceId, isReady, mounted])
-
-  // Add effect to trigger recovery when device is disconnected
-  useEffect(() => {
-    if (healthStatus.device === 'disconnected' && !recoveryState.isRecovering) {
-      console.log('[Device] Device disconnected, triggering recovery', {
-        deviceId,
-        isRecovering: recoveryState.isRecovering,
-        phase: recoveryState.phase,
-        attempts: recoveryState.attempts,
-        timestamp: new Date().toISOString()
-      })
-      void attemptRecovery()
-    }
-  }, [
-    healthStatus.device,
-    recoveryState.isRecovering,
-    recoveryState.phase,
-    recoveryState.attempts,
-    deviceId,
-    attemptRecovery
-  ])
-
-  // Add effect to handle device state changes during recovery
-  useEffect(() => {
-    if (recoveryState.phase === 'checking_device') {
-      setHealthStatus((prev: HealthStatus) => ({
-        ...prev,
-        device: 'unresponsive'
-      }))
-    } else if (recoveryState.phase === 'success') {
-      setHealthStatus((prev: HealthStatus) => ({
-        ...prev,
-        device: 'healthy'
-      }))
-    } else if (recoveryState.phase === 'error') {
-      setHealthStatus((prev: HealthStatus) => ({
-        ...prev,
-        device: deviceState.error ? 'disconnected' : 'unresponsive'
-      }))
-    }
-  }, [recoveryState.phase, deviceState.error])
-
-  // Add effect to handle device state changes
-  useEffect(() => {
-    if (deviceState.error) {
-      setHealthStatus((prev: HealthStatus) => ({
-        ...prev,
-        device: 'disconnected'
-      }))
-    } else if (deviceState.isReady) {
-      setHealthStatus((prev: HealthStatus) => ({
-        ...prev,
-        device: 'healthy'
-      }))
-    } else if (deviceState.isTransferring) {
-      setHealthStatus((prev: HealthStatus) => ({
-        ...prev,
-        device: 'unresponsive'
-      }))
-    }
-  }, [deviceState])
-
-  // Update fixed playlist status separately
-  useEffect(() => {
-    if (!isInitialFetchComplete) {
-      setHealthStatus((prev) => ({ ...prev, fixedPlaylist: 'unknown' }))
-      return
-    }
-
-    if (playlistError) {
-      setHealthStatus((prev) => ({ ...prev, fixedPlaylist: 'error' }))
-      return
-    }
-
-    setHealthStatus((prev) => ({
-      ...prev,
-      fixedPlaylist: fixedPlaylistId ? 'found' : 'not_found'
-    }))
-  }, [fixedPlaylistId, playlistError, isInitialFetchComplete])
-
-  // Reset the ref when component unmounts
-  useEffect(() => {
-    return () => {
-      hasUpdatedHealthStatus.current = false
-    }
-  }, [])
+  }, [deviceId, isReady, mounted, isInitializing])
 
   // Define the event handler
   useEffect(() => {
@@ -496,11 +423,11 @@ export default function AdminPage(): JSX.Element {
           console.log(
             '[Playback] Server error detected, attempting recovery...'
           )
-          void attemptRecovery()
+          void recover()
         }
       }
     },
-    [deviceId, playbackInfo, attemptRecovery]
+    [deviceId, playbackInfo, recover]
   )
 
   // Update the ref when handlePlayback changes
@@ -950,115 +877,117 @@ export default function AdminPage(): JSX.Element {
           return
         }
 
+        // Add grace period after recovery
         const now = Date.now()
+        const gracePeriodMs = 3000
+        if (
+          lastRecoveryTimeRef.current &&
+          now - lastRecoveryTimeRef.current < gracePeriodMs
+        ) {
+          console.log(
+            '[Playback Monitor] Skipping strict device checks during grace period after recovery'
+          )
+          return
+        }
+
         const timeSinceLastCheck = now - lastPlaybackCheckRef.current
         lastPlaybackCheckRef.current = now
 
-        // More conservative stall detection
+        // More sensitive stall detection
         if (
           currentState.is_playing &&
           !isManualPause &&
-          currentState.progress_ms === playbackInfo.progress &&
-          timeSinceLastCheck > 5000
+          Math.abs(currentState.progress_ms - playbackInfo.progress) <
+            PROGRESS_TOLERANCE &&
+          timeSinceLastCheck > STALL_CHECK_INTERVAL
         ) {
           const lastStallCheck = lastStallCheckRef.current
           const timeSinceLastStallCheck = now - lastStallCheck.timestamp
 
-          // Only increment count if more than 10 seconds have passed since last check
-          if (timeSinceLastStallCheck > 10000) {
+          // Reduce the time between stall checks
+          if (timeSinceLastStallCheck > STALL_THRESHOLD) {
             lastStallCheckRef.current = {
               timestamp: now,
               count: lastStallCheck.count + 1
             }
 
-            // Only trigger recovery if we've seen 3 stalls, each more than 10 seconds apart
-            if (lastStallCheck.count >= 2) {
+            console.log('[Playback Monitor] Stall detected:', {
+              count: lastStallCheck.count + 1,
+              timeSinceLastStall: timeSinceLastStallCheck,
+              currentProgress: currentState.progress_ms,
+              lastProgress: playbackInfo.progress,
+              isPlaying: currentState.is_playing,
+              isManualPause,
+              timestamp: new Date().toISOString()
+            })
+
+            // Trigger recovery after fewer stalls
+            if (
+              lastStallCheck.count >= MIN_STALLS_BEFORE_RECOVERY - 1 &&
+              !isManualPause
+            ) {
               console.warn(
-                '[Playback Monitor] Playback stall confirmed after multiple checks',
-                {
-                  stallChecks: lastStallCheck.count + 1,
-                  timeBetweenChecks: timeSinceLastStallCheck,
-                  currentProgress: currentState.progress_ms,
-                  lastProgress: playbackInfo.progress,
-                  isPlaying: currentState.is_playing,
-                  isManualPause,
-                  timestamp: new Date().toISOString()
-                }
+                '[Playback Monitor] Playback stall confirmed, triggering recovery'
               )
-              void attemptRecovery()
-              // Reset the stall check counter after triggering recovery
+              void recover()
               lastStallCheckRef.current = { timestamp: 0, count: 0 }
             }
           }
-        } else if (playbackInfo.progressStalled) {
-          // Reset stall state if progress has resumed or if manually paused
-          setPlaybackInfo((_prev) =>
-            _prev ? { ..._prev, progressStalled: false } : null
+        } else if (playbackInfo.progressStalled && !isManualPause) {
+          // Reset stall state if progress has resumed
+          setPlaybackInfo((prev) =>
+            prev ? { ...prev, progressStalled: false } : null
           )
-          // Reset the stall check counter
           lastStallCheckRef.current = { timestamp: 0, count: 0 }
         }
 
-        // Check if device is still active, but only if we're not in the initial loading phase
-        if (currentState.device?.id !== deviceId && !isInitializing) {
-          console.error('[Playback Monitor] Device mismatch detected', {
+        // Robust device mismatch detection
+        if (!currentState.device?.id) {
+          deviceMismatchCountRef.current += 1
+          console.warn(
+            '[Playback Monitor] Device ID missing in playback state',
+            {
+              count: deviceMismatchCountRef.current,
+              deviceId,
+              currentState,
+              timestamp: new Date().toISOString()
+            }
+          )
+          // Only trigger recovery if missing for 3+ consecutive checks
+          if (
+            deviceMismatchCountRef.current >= 3 &&
+            !isInitializing &&
+            !isManualPause
+          ) {
+            console.error(
+              '[Playback Monitor] Device missing for 3+ checks, triggering recovery'
+            )
+            void recover()
+            deviceMismatchCountRef.current = 0
+            lastRecoveryTimeRef.current = Date.now()
+          }
+        } else if (
+          currentState.device.id !== deviceId &&
+          !isInitializing &&
+          !isManualPause
+        ) {
+          deviceMismatchCountRef.current += 1
+          console.warn('[Playback Monitor] Device mismatch detected', {
             expectedDevice: deviceId,
-            currentDevice: currentState.device?.id,
-            isPlaying: currentState.is_playing,
-            isManualPause,
-            isInitializing,
+            currentDevice: currentState.device.id,
+            count: deviceMismatchCountRef.current,
             timestamp: new Date().toISOString()
           })
-          void attemptRecovery() // Trigger full recovery for device mismatch
-          return
-        }
-
-        // More conservative state mismatch detection
-        const isStateMismatch =
-          currentState.is_playing !== playbackInfo.isPlaying &&
-          !isManualPause &&
-          timeSinceLastCheck > 2000 &&
-          !_setIsStartingPlayback &&
-          !isInitializing // Only check for state mismatch after initialization is complete
-
-        if (isStateMismatch) {
-          const lastMismatchCheck = lastStateMismatchRef.current
-          const timeSinceLastMismatchCheck = now - lastMismatchCheck.timestamp
-
-          // Only increment count if more than 10 seconds have passed since last check
-          if (timeSinceLastMismatchCheck > 10000) {
-            lastStateMismatchRef.current = {
-              timestamp: now,
-              count: lastMismatchCheck.count + 1
-            }
-
-            // Only trigger recovery if we've seen 3 mismatches, each more than 10 seconds apart
-            if (lastMismatchCheck.count >= 2) {
-              console.error(
-                '[Playback Monitor] Playback state mismatch confirmed after multiple checks',
-                {
-                  mismatchChecks: lastMismatchCheck.count + 1,
-                  timeBetweenChecks: timeSinceLastMismatchCheck,
-                  expectedState: playbackInfo.isPlaying,
-                  currentState: currentState.is_playing,
-                  isManualPause,
-                  timeSinceLastCheck,
-                  isStartingPlayback: _setIsStartingPlayback,
-                  isInitializing,
-                  timestamp: new Date().toISOString()
-                }
-              )
-              void attemptRecovery()
-              // Reset the mismatch check counter after triggering recovery
-              lastStateMismatchRef.current = { timestamp: 0, count: 0 }
-            }
+          if (deviceMismatchCountRef.current >= 3) {
+            void recover()
+            deviceMismatchCountRef.current = 0
+            lastRecoveryTimeRef.current = Date.now()
           }
         } else {
-          // Reset the mismatch check counter if states match
-          lastStateMismatchRef.current = { timestamp: 0, count: 0 }
+          deviceMismatchCountRef.current = 0 // Reset on success
         }
 
-        // Update playback info with new state
+        // Update playback info
         setPlaybackInfo((prev) =>
           prev
             ? {
@@ -1072,7 +1001,7 @@ export default function AdminPage(): JSX.Element {
                     (currentState.progress_ms ?? 0)
                   : 0,
                 lastProgressCheck: now,
-                remainingTracks: 0 // Will be updated by SpotifyPlayer component
+                progressStalled: false
               }
             : null
         )
@@ -1086,51 +1015,19 @@ export default function AdminPage(): JSX.Element {
           timestamp: new Date().toISOString()
         })
         if (!isManualPause && !isInitializing) {
-          // Check if it's a device-related error
-          if (
-            error instanceof Error &&
-            error.message.toLowerCase().includes('device')
-          ) {
-            console.error(
-              '[Playback Monitor] Device error detected, triggering full recovery',
-              {
-                error: error.message,
-                isInitializing,
-                timestamp: new Date().toISOString()
-              }
-            )
-            void attemptRecovery()
-          } else {
-            void handlePlayback('play') // Try to resume playback first for non-device errors
-          }
+          void recover()
+          lastRecoveryTimeRef.current = Date.now()
         }
       }
     }
 
-    // Check playback health every 5 seconds
+    // Check more frequently
     const intervalId = setInterval(() => {
       void checkPlaybackHealth()
-    }, 5000)
+    }, STALL_CHECK_INTERVAL)
 
-    // Store the current timeout ref value
-    const currentTimeoutRef = playbackStallTimeoutRef.current
-
-    return () => {
-      clearInterval(intervalId)
-      if (currentTimeoutRef) {
-        clearTimeout(currentTimeoutRef)
-      }
-    }
-  }, [
-    mounted,
-    deviceId,
-    playbackInfo,
-    isManualPause,
-    handlePlayback,
-    attemptRecovery,
-    _setIsStartingPlayback,
-    isInitializing
-  ])
+    return () => clearInterval(intervalId)
+  }, [mounted, deviceId, playbackInfo, isManualPause, recover, isInitializing])
 
   // Add effect to update uptime
   useEffect(() => {
@@ -1148,16 +1045,9 @@ export default function AdminPage(): JSX.Element {
         fixedPlaylistId,
         timestamp: new Date().toISOString()
       })
-
-      // Set loading state
       setIsLoading(true)
-
-      // Reset recovery state before starting
       resetRecovery()
-
-      // Attempt recovery
-      await attemptRecovery()
-
+      await recover()
       console.log('[Force Recovery] Recovery completed successfully', {
         deviceId,
         fixedPlaylistId,
@@ -1176,7 +1066,7 @@ export default function AdminPage(): JSX.Element {
     } finally {
       setIsLoading(false)
     }
-  }, [attemptRecovery, deviceId, fixedPlaylistId, resetRecovery])
+  }, [recover, deviceId, fixedPlaylistId, resetRecovery])
 
   // Add effect to handle recovery state cleanup
   useEffect(() => {
@@ -1214,10 +1104,9 @@ export default function AdminPage(): JSX.Element {
       <SpotifyPlayer />
       <RecoveryStatus
         isRecovering={recoveryState.isRecovering}
-        message={recoveryState.status.message}
-        progress={recoveryState.status.progress}
+        message={recoveryState.message}
+        progress={recoveryState.progress}
         currentStep={recoveryState.currentStep}
-        totalSteps={recoveryState.totalSteps}
       />
 
       <div className='mx-auto max-w-xl space-y-4'>
@@ -1281,9 +1170,7 @@ export default function AdminPage(): JSX.Element {
                       ? 'bg-green-500'
                       : healthStatus.device === 'unresponsive'
                         ? 'bg-yellow-500'
-                        : healthStatus.device === 'disconnected'
-                          ? 'bg-red-500'
-                          : 'bg-gray-500'
+                        : 'bg-gray-500'
                   }`}
                 />
                 <span className='font-medium'>
@@ -1291,9 +1178,7 @@ export default function AdminPage(): JSX.Element {
                     ? 'Device Connected'
                     : healthStatus.device === 'unresponsive'
                       ? 'Device Unresponsive'
-                      : healthStatus.device === 'disconnected'
-                        ? 'Device Disconnected'
-                        : 'Device Status Unknown'}
+                      : 'Device Status Unknown'}
                   {recoveryState.attempts > 0 &&
                     ` (Recovery ${recoveryState.attempts}/5)`}
                 </span>
