@@ -27,22 +27,18 @@ export function ConsoleLogsProvider({ children }: { children: ReactNode }) {
   ) {
     originalAddLog(level, message, context, error)
 
-    // Map to Sentry logger levels
-    if (error) {
-      if (level === 'ERROR') {
+    // Only send errors and warnings to Sentry
+    if (level === 'ERROR') {
+      if (error) {
         logger.error(message, { context, error })
-      } else if (level === 'WARN') {
+      } else {
+        logger.error(message, { context })
+      }
+    } else if (level === 'WARN') {
+      if (error) {
         logger.warn(message, { context, error })
       } else {
-        logger.info(message, { context, error })
-      }
-    } else {
-      if (level === 'ERROR') {
-        logger.error(message, { context })
-      } else if (level === 'WARN') {
         logger.warn(message, { context })
-      } else {
-        logger.info(message, { context })
       }
     }
   }
