@@ -17,5 +17,6 @@ Sentry.init({
     Sentry.captureConsoleIntegration({
       levels: ['error', 'warn', 'log']
     })
-  ]
+  ],
+  _experiments: { enableLogs: true }
 })
