@@ -280,7 +280,7 @@ export function useRecoverySystem(
       })
       // Log an error with Sentry if an error is thrown
       Sentry.logger.error('Recovery failed', {
-        error: error instanceof Error ? error.message : error,
+        error: error instanceof Error ? error.message : String(error),
         deviceId,
         fixedPlaylistId,
         step: state.currentStep,
