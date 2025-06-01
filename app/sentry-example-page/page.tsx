@@ -11,16 +11,16 @@ class SentryExampleFrontendError extends Error {
   }
 }
 
-export default function Page() {
+export default function Page(): JSX.Element {
   const [hasSentError, setHasSentError] = useState(false)
   const [isConnected, setIsConnected] = useState(true)
 
   useEffect(() => {
-    async function checkConnectivity() {
+    async function checkConnectivity(): Promise<void> {
       const result = await Sentry.diagnoseSdkConnectivity()
       setIsConnected(result !== 'sentry-unreachable')
     }
-    checkConnectivity()
+    void checkConnectivity()
   }, [])
 
   return (
@@ -65,8 +65,8 @@ export default function Page() {
 
         <button
           type='button'
-          onClick={async () => {
-            await Sentry.startSpan(
+          onClick={() => {
+            void Sentry.startSpan(
               {
                 name: 'Example Frontend Span',
                 op: 'test'
