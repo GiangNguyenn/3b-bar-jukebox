@@ -39,13 +39,6 @@ export const useSpotifyPlayer = create<SpotifyPlayerState>((set, get) => ({
         return state
       }
 
-      console.log('[SpotifyPlayer] Setting device ID:', {
-        deviceId,
-        currentDeviceId: state.deviceId,
-        isReady: state.isReady,
-        timestamp: Date.now()
-      })
-
       return {
         deviceId,
         isReady: false, // Reset ready state when device ID changes
@@ -74,9 +67,6 @@ export const useSpotifyPlayer = create<SpotifyPlayerState>((set, get) => ({
         // Trigger recovery if enough time has passed since last attempt
         const now = Date.now()
         if (now - state.debug.lastRecoveryAttempt > RECOVERY_COOLDOWN) {
-          console.log(
-            '[SpotifyPlayer] Triggering recovery due to player becoming unready'
-          )
           // Use setTimeout to avoid state updates during render
           setTimeout(() => {
             if (typeof window.spotifyPlayerInstance?.connect === 'function') {
@@ -98,13 +88,6 @@ export const useSpotifyPlayer = create<SpotifyPlayerState>((set, get) => ({
 
       // Only set ready to true if we have a device ID
       const newReadyState = isReady && state.deviceId ? true : false
-      console.log('[SpotifyPlayer] Setting ready state:', {
-        isReady,
-        deviceId: state.deviceId,
-        currentReadyState: state.isReady,
-        newReadyState,
-        timestamp: Date.now()
-      })
       return {
         isReady: newReadyState,
         debug: {
@@ -127,7 +110,7 @@ export const useSpotifyPlayer = create<SpotifyPlayerState>((set, get) => ({
         // Trigger recovery if enough time has passed since last attempt
         const now = Date.now()
         if (now - state.debug.lastRecoveryAttempt > RECOVERY_COOLDOWN) {
-          console.log(
+          console.warn(
             '[SpotifyPlayer] Triggering recovery due to lost playback state'
           )
           // Use setTimeout to avoid state updates during render
