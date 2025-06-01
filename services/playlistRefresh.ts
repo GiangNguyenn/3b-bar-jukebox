@@ -15,6 +15,7 @@ import { handleOperationError } from '@/shared/utils/errorHandling'
 import { DEFAULT_MARKET } from '@/shared/constants/trackSuggestion'
 import { sendApiRequest } from '@/shared/api'
 import { type TrackSuggestionsState } from '@/shared/types/trackSuggestions'
+import * as Sentry from '@sentry/nextjs'
 
 const LAST_SUGGESTED_TRACK_KEY = 'last-suggested-track'
 
@@ -469,10 +470,18 @@ export class PlaylistRefreshServiceImpl implements PlaylistRefreshService {
         searchDetails
       }
     } catch (error) {
+      Sentry.logger.error('Error in addSuggestedTrackToPlaylist', {
+        error: error instanceof Error ? error.message : 'Unknown error',
+        playlistId,
+        currentTrackId,
+        params,
+        timestamp: new Date().toISOString()
+      })
       console.error('Error in addSuggestedTrackToPlaylist:', {
         error: error instanceof Error ? error.message : 'Unknown error',
         playlistId,
         currentTrackId,
+        params,
         timestamp: new Date().toISOString()
       })
       return {
@@ -670,9 +679,16 @@ export class PlaylistRefreshServiceImpl implements PlaylistRefreshService {
       )
 
       if (!result.success) {
+        Sentry.logger.error('[PlaylistRefresh] Failed to add track', {
+          error: result.error,
+          diagnosticInfo,
+          params,
+          timestamp: new Date().toISOString()
+        })
         console.error('[PlaylistRefresh] Failed to add track:', {
           error: result.error,
           diagnosticInfo,
+          params,
           timestamp: new Date().toISOString()
         })
         return {
@@ -698,9 +714,16 @@ export class PlaylistRefreshServiceImpl implements PlaylistRefreshService {
         playerStateRefresh: true
       }
     } catch (error) {
+      Sentry.logger.error('[PlaylistRefresh] Error in refreshPlaylist', {
+        error: error instanceof Error ? error.message : 'Unknown error',
+        stack: error instanceof Error ? error.stack : undefined,
+        params,
+        timestamp: new Date().toISOString()
+      })
       console.error('[PlaylistRefresh] Error in refreshPlaylist:', {
         error: error instanceof Error ? error.message : 'Unknown error',
         stack: error instanceof Error ? error.stack : undefined,
+        params,
         timestamp: new Date().toISOString()
       })
       return {

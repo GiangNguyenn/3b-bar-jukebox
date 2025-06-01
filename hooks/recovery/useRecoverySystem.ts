@@ -12,6 +12,7 @@ import {
   createPlayer,
   useSpotifyPlayer
 } from '../useSpotifyPlayer'
+import * as Sentry from '@sentry/nextjs'
 
 // Recovery system constants
 export const MAX_RECOVERY_RETRIES = 5
@@ -114,6 +115,12 @@ export function useRecoverySystem(
       return
     }
     isRecoveringRef.current = true
+    // Log a warning with Sentry when recovery starts
+    Sentry.logger.warn('Recovery started', {
+      deviceId,
+      fixedPlaylistId,
+      timestamp: new Date().toISOString()
+    })
     updateState({
       phase: 'recovering',
       isRecovering: true,
@@ -270,6 +277,14 @@ export function useRecoverySystem(
         message: `Full recovery failed: ${errorMessage}`,
         progress: 1,
         currentStep: 'Error'
+      })
+      // Log an error with Sentry if an error is thrown
+      Sentry.logger.error('Recovery failed', {
+        error: error instanceof Error ? error.message : error,
+        deviceId,
+        fixedPlaylistId,
+        step: state.currentStep,
+        timestamp: new Date().toISOString()
       })
       // Optionally retry or reload page if needed
       if (state.attempts + 1 >= MAX_RECOVERY_RETRIES) {
