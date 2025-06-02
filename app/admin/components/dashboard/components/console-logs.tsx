@@ -1,6 +1,6 @@
 'use client'
 
-import { LogEntry } from '@/hooks/useConsoleLogs'
+import { LogEntry } from '@/hooks/ConsoleLogsProvider'
 
 interface ConsoleLogsProps {
   logs: LogEntry[]

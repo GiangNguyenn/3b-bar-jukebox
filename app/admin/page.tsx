@@ -11,7 +11,7 @@ import { SpotifyPlaybackState } from '@/shared/types'
 import { useSpotifyPlayerState } from '@/hooks/useSpotifyPlayerState'
 import { TrackSuggestionsTab } from './components/track-suggestions/track-suggestions-tab'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { useConsoleLogs } from '@/hooks/useConsoleLogs'
+import { useConsoleLogsContext } from '@/hooks/ConsoleLogsProvider'
 import { validateSongsBetweenRepeats } from './components/track-suggestions/validations/trackSuggestions'
 import { type TrackSuggestionsState } from '@/shared/types/trackSuggestions'
 import type { SpotifyPlayerInstance } from '@/types/spotify'
@@ -142,7 +142,7 @@ export default function AdminPage(): JSX.Element {
     state: recoveryState,
     recover,
     reset: resetRecovery,
-    deviceState
+    playbackState
   } = useRecoverySystem(
     deviceId,
     fixedPlaylistId,
@@ -153,7 +153,7 @@ export default function AdminPage(): JSX.Element {
       }))
     }, [])
   )
-  const { logs: consoleLogs } = useConsoleLogs()
+  const { logs: consoleLogs, addLog } = useConsoleLogsContext()
 
   // Refs
   const isRefreshing = useRef<boolean>(false)
@@ -166,7 +166,7 @@ export default function AdminPage(): JSX.Element {
   >(null)
 
   // Add a ref to track if we've already updated the health status
-  const hasUpdatedHealthStatus = useRef(false)
+  const _hasUpdatedHealthStatus = useRef(false)
 
   // Add a ref to track consecutive device mismatch detections and a grace period after recovery
   const deviceMismatchCountRef = useRef(0)
@@ -197,13 +197,13 @@ export default function AdminPage(): JSX.Element {
     }
 
     // Log the device status update
-    console.log('[Device Status] Updated:', {
-      deviceId,
-      isReady,
-      status: healthStatus.device,
-      timestamp: new Date().toISOString()
-    })
-  }, [deviceId, isReady, mounted, isInitializing])
+    addLog(
+      'INFO',
+      `[Device Status] Updated: deviceId=${deviceId}, isReady=${isReady}, status=${healthStatus.device}, timestamp=${new Date().toISOString()}`,
+      'Device',
+      undefined
+    )
+  }, [deviceId, isReady, mounted, isInitializing, addLog])
 
   // Define the event handler
   useEffect(() => {
@@ -250,7 +250,7 @@ export default function AdminPage(): JSX.Element {
     return () => {
       window.removeEventListener('playbackUpdate', handleEvent)
     }
-  }, [isManualPause])
+  }, [isManualPause, addLog])
 
   // Add effect to force initial state to paused
   useEffect(() => {
@@ -270,7 +270,7 @@ export default function AdminPage(): JSX.Element {
         playback: 'paused'
       }))
     }
-  }, [isReady, deviceId, playbackInfo])
+  }, [isReady, deviceId, playbackInfo, addLog])
 
   const {
     state: trackSuggestionsState,
@@ -299,7 +299,12 @@ export default function AdminPage(): JSX.Element {
   // Move handleApiError before sendApiRequestWithTokenRecovery
   const handleApiError = useCallback(
     (error: unknown): void => {
-      console.error('[API Error]', error)
+      addLog(
+        'ERROR',
+        '[API Error]',
+        'API',
+        error instanceof Error ? error : undefined
+      )
       if (error instanceof Error) {
         if (error.message.includes('token')) {
           setHealthStatus((prev) => ({ ...prev, auth: 'error' }))
@@ -310,7 +315,7 @@ export default function AdminPage(): JSX.Element {
         }
       }
     },
-    [setHealthStatus]
+    [setHealthStatus, addLog]
   )
 
   // Wrap sendApiRequestWithTokenRecovery in useCallback
@@ -381,11 +386,12 @@ export default function AdminPage(): JSX.Element {
             }))
 
             // Log the resume result
-            console.log('[Playback] Resumed successfully:', {
-              resumedFrom: result.resumedFrom,
-              deviceId,
-              timestamp: new Date().toISOString()
-            })
+            addLog(
+              'INFO',
+              `[Playback] Resumed successfully: resumedFrom=${typeof result.resumedFrom === 'string' ? result.resumedFrom : JSON.stringify(result.resumedFrom)}, deviceId=${deviceId}, timestamp=${new Date().toISOString()}`,
+              'Playback',
+              undefined
+            )
           } else {
             throw new Error('Failed to resume playback')
           }
@@ -397,11 +403,12 @@ export default function AdminPage(): JSX.Element {
           clearTimeout(startingPlaybackTimeoutRef.current)
         }
 
-        console.error('[Playback] Control failed:', {
-          error: error instanceof Error ? error.message : 'Unknown error',
-          deviceId,
-          timestamp: new Date().toISOString()
-        })
+        addLog(
+          'ERROR',
+          '[Playback] Control failed',
+          'Playback',
+          error instanceof Error ? error : undefined
+        )
 
         // Update UI state to reflect the error
         setPlaybackInfo((prev) => ({
@@ -420,14 +427,17 @@ export default function AdminPage(): JSX.Element {
           (error.message.includes('Server error') ||
             error.message.includes('500'))
         ) {
-          console.log(
-            '[Playback] Server error detected, attempting recovery...'
+          addLog(
+            'WARN',
+            '[Playback] Server error detected, attempting recovery...',
+            'Playback',
+            error instanceof Error ? error : undefined
           )
           void recover()
         }
       }
     },
-    [deviceId, playbackInfo, recover]
+    [deviceId, playbackInfo, recover, addLog]
   )
 
   // Update the ref when handlePlayback changes
@@ -439,11 +449,9 @@ export default function AdminPage(): JSX.Element {
   const handleRefresh = useCallback(
     async (source: 'auto' | 'manual' = 'manual'): Promise<void> => {
       if (isRefreshing.current) {
-        console.log(`[Refresh] Skipping ${source} refresh - already refreshing`)
         return
       }
 
-      console.log(`[Refresh] Starting ${source} refresh`)
       isRefreshing.current = true
       setIsLoading(true)
       setError(null)
@@ -451,7 +459,12 @@ export default function AdminPage(): JSX.Element {
       try {
         // Use trackSuggestionsState from the hook
         if (!trackSuggestionsState) {
-          console.error('[Refresh] No track suggestions state available')
+          addLog(
+            'ERROR',
+            '[Refresh] No track suggestions state available',
+            'Refresh',
+            undefined
+          )
           throw new Error('No track suggestions state available')
         }
 
@@ -472,25 +485,26 @@ export default function AdminPage(): JSX.Element {
         if (!result.success) {
           // Check if this is the "enough tracks" message
           if (result.message === 'Enough tracks remaining') {
-            console.log(
-              `[Refresh] ${source} refresh skipped - enough tracks remaining`
-            )
+            // No logging
           } else {
             throw new Error(result.message)
           }
         } else {
-          console.log(
-            `[Refresh] ${source} refresh completed successfully - added suggested song`
-          )
+          // No logging
         }
       } catch (err) {
-        console.error(`[Refresh] ${source} refresh error:`, err)
+        addLog(
+          'ERROR',
+          `[Refresh] ${source} refresh error`,
+          'Refresh',
+          err instanceof Error ? err : undefined
+        )
       } finally {
         setIsLoading(false)
         isRefreshing.current = false
       }
     },
-    [trackSuggestionsState]
+    [trackSuggestionsState, addLog]
   )
 
   // Now we can safely create the ref
@@ -610,24 +624,26 @@ export default function AdminPage(): JSX.Element {
   // Add a new effect to handle Spotify player ready state
   useEffect(() => {
     if (isReady) {
-      console.log('[Spotify Player] Ready state changed:', {
-        isReady,
-        deviceId,
-        timestamp: new Date().toISOString()
-      })
+      addLog(
+        'INFO',
+        `[Spotify Player] Ready state changed: isReady=${isReady}, deviceId=${deviceId}, timestamp=${new Date().toISOString()}`,
+        'Spotify Player',
+        undefined
+      )
     }
-  }, [isReady, deviceId])
+  }, [isReady, deviceId, addLog])
 
   // Add a new effect to handle device ID changes
   useEffect(() => {
     if (deviceId) {
-      console.log('[Spotify Player] Device ID changed:', {
-        deviceId,
-        isReady,
-        timestamp: new Date().toISOString()
-      })
+      addLog(
+        'INFO',
+        `[Spotify Player] Device ID changed: deviceId=${deviceId}, isReady=${isReady}, timestamp=${new Date().toISOString()}`,
+        'Spotify Player',
+        undefined
+      )
     }
-  }, [deviceId, isReady])
+  }, [deviceId, isReady, addLog])
 
   // Add effect to initialize playback state
   useEffect(() => {
@@ -658,7 +674,12 @@ export default function AdminPage(): JSX.Element {
             }))
           }
         } catch (error) {
-          console.error('Error initializing playback state:', error)
+          addLog(
+            'ERROR',
+            'Error initializing playback state',
+            'Playback',
+            error instanceof Error ? error : undefined
+          )
           // Set to paused state on error
           setHealthStatus((_prev) => ({
             ..._prev,
@@ -668,7 +689,7 @@ export default function AdminPage(): JSX.Element {
       }
       void initializePlaybackState()
     }
-  }, [isReady, deviceId, playbackInfo])
+  }, [isReady, deviceId, playbackInfo, addLog])
 
   // Update the event listener to properly handle the Promise
   useEffect(() => {
@@ -774,9 +795,11 @@ export default function AdminPage(): JSX.Element {
       const data = (await response.json()) as RefreshResponse
 
       if (data.success) {
-        console.log(
-          'Track suggestions refreshed successfully',
-          JSON.stringify(data.searchDetails)
+        addLog(
+          'INFO',
+          `Track suggestions refreshed successfully: ${JSON.stringify(data.searchDetails)}`,
+          'Track Suggestions',
+          undefined
         )
       } else {
         throw new Error(data.message ?? 'Failed to refresh track suggestions')
@@ -811,7 +834,7 @@ export default function AdminPage(): JSX.Element {
     }, 1000)
 
     return () => clearInterval(timer)
-  }, [handleRefresh])
+  }, [handleRefresh, addLog])
 
   // Move these hooks before any conditional returns
   const _handlePlaybackClick = useCallback(() => {
@@ -839,7 +862,7 @@ export default function AdminPage(): JSX.Element {
     } else {
       setHealthStatus((prev) => ({ ...prev, fixedPlaylist: 'not_found' }))
     }
-  }, [fixedPlaylistId, playlistError, isInitialFetchComplete])
+  }, [fixedPlaylistId, playlistError, isInitialFetchComplete, addLog])
 
   // Cleanup timeout on unmount
   useEffect(() => {
@@ -854,14 +877,15 @@ export default function AdminPage(): JSX.Element {
   // Update the initialization effect
   useEffect(() => {
     if (isReady && deviceId) {
-      console.log('[Spotify Player] Initialization complete:', {
-        isReady,
-        deviceId,
-        timestamp: new Date().toISOString()
-      })
+      addLog(
+        'INFO',
+        `[Spotify Player] Initialization complete: isReady=${isReady}, deviceId=${deviceId}, timestamp=${new Date().toISOString()}`,
+        'Spotify Player',
+        undefined
+      )
       setIsInitializing(false)
     }
-  }, [isReady, deviceId])
+  }, [isReady, deviceId, addLog])
 
   // Update the playback monitoring effect to respect initialization state
   useEffect(() => {
@@ -873,7 +897,12 @@ export default function AdminPage(): JSX.Element {
         const currentState = await spotifyApi.getPlaybackState()
 
         if (!currentState) {
-          console.error('[Playback Monitor] Failed to get playback state')
+          addLog(
+            'ERROR',
+            '[Playback Monitor] Failed to get playback state',
+            'Playback Monitor',
+            undefined
+          )
           return
         }
 
@@ -884,8 +913,11 @@ export default function AdminPage(): JSX.Element {
           lastRecoveryTimeRef.current &&
           now - lastRecoveryTimeRef.current < gracePeriodMs
         ) {
-          console.log(
-            '[Playback Monitor] Skipping strict device checks during grace period after recovery'
+          addLog(
+            'INFO',
+            '[Playback Monitor] Skipping strict device checks during grace period after recovery',
+            'Playback Monitor',
+            undefined
           )
           return
         }
@@ -911,23 +943,30 @@ export default function AdminPage(): JSX.Element {
               count: lastStallCheck.count + 1
             }
 
-            console.log('[Playback Monitor] Stall detected:', {
-              count: lastStallCheck.count + 1,
-              timeSinceLastStall: timeSinceLastStallCheck,
-              currentProgress: currentState.progress_ms,
-              lastProgress: playbackInfo.progress,
-              isPlaying: currentState.is_playing,
-              isManualPause,
-              timestamp: new Date().toISOString()
-            })
+            addLog(
+              'INFO',
+              `[Playback Monitor] Stall detected: count=${lastStallCheck.count + 1}, timeSinceLastStall=${timeSinceLastStallCheck}, currentProgress=${currentState.progress_ms}, lastProgress=${playbackInfo.progress}, isPlaying=${currentState.is_playing}, isManualPause=${isManualPause}, timestamp=${new Date().toISOString()}`,
+              'Playback Monitor',
+              undefined
+            )
+            // Log a warning using ConsoleLogsProvider
+            addLog(
+              'WARN',
+              'Playback stall detected',
+              'Playback Monitor',
+              undefined
+            )
 
             // Trigger recovery after fewer stalls
             if (
               lastStallCheck.count >= MIN_STALLS_BEFORE_RECOVERY - 1 &&
               !isManualPause
             ) {
-              console.warn(
-                '[Playback Monitor] Playback stall confirmed, triggering recovery'
+              addLog(
+                'WARN',
+                '[Playback Monitor] Playback stall confirmed, triggering recovery',
+                'Playback Monitor',
+                undefined
               )
               void recover()
               lastStallCheckRef.current = { timestamp: 0, count: 0 }
@@ -944,14 +983,11 @@ export default function AdminPage(): JSX.Element {
         // Robust device mismatch detection
         if (!currentState.device?.id) {
           deviceMismatchCountRef.current += 1
-          console.warn(
-            '[Playback Monitor] Device ID missing in playback state',
-            {
-              count: deviceMismatchCountRef.current,
-              deviceId,
-              currentState,
-              timestamp: new Date().toISOString()
-            }
+          addLog(
+            'WARN',
+            `[Playback Monitor] Device mismatch detected: expectedDevice=${deviceId}, currentDevice=${currentState.device?.id ?? 'undefined'}, count=${deviceMismatchCountRef.current}, timestamp=${new Date().toISOString()}`,
+            'Playback Monitor',
+            undefined
           )
           // Only trigger recovery if missing for 3+ consecutive checks
           if (
@@ -959,8 +995,11 @@ export default function AdminPage(): JSX.Element {
             !isInitializing &&
             !isManualPause
           ) {
-            console.error(
-              '[Playback Monitor] Device missing for 3+ checks, triggering recovery'
+            addLog(
+              'ERROR',
+              '[Playback Monitor] Device missing for 3+ checks, triggering recovery',
+              'Playback Monitor',
+              undefined
             )
             void recover()
             deviceMismatchCountRef.current = 0
@@ -972,12 +1011,12 @@ export default function AdminPage(): JSX.Element {
           !isManualPause
         ) {
           deviceMismatchCountRef.current += 1
-          console.warn('[Playback Monitor] Device mismatch detected', {
-            expectedDevice: deviceId,
-            currentDevice: currentState.device.id,
-            count: deviceMismatchCountRef.current,
-            timestamp: new Date().toISOString()
-          })
+          addLog(
+            'WARN',
+            `[Playback Monitor] Device mismatch detected: expectedDevice=${deviceId}, currentDevice=${currentState.device?.id ?? 'undefined'}, count=${deviceMismatchCountRef.current}, timestamp=${new Date().toISOString()}`,
+            'Playback Monitor',
+            undefined
+          )
           if (deviceMismatchCountRef.current >= 3) {
             void recover()
             deviceMismatchCountRef.current = 0
@@ -1006,14 +1045,12 @@ export default function AdminPage(): JSX.Element {
             : null
         )
       } catch (error) {
-        console.error('[Playback Monitor] Error checking playback health:', {
-          error: error instanceof Error ? error.message : 'Unknown error',
-          errorType: error instanceof Error ? error.name : 'Unknown',
-          stack: error instanceof Error ? error.stack : undefined,
-          isManualPause,
-          isInitializing,
-          timestamp: new Date().toISOString()
-        })
+        addLog(
+          'ERROR',
+          `[Playback Monitor] Error checking playback health: error=${error instanceof Error ? error.message : 'Unknown error'}, errorType=${error instanceof Error ? error.name : 'Unknown'}, stack=${error instanceof Error ? error.stack : 'N/A'}, isManualPause=${isManualPause}, isInitializing=${isInitializing}, timestamp=${new Date().toISOString()}`,
+          'Playback Monitor',
+          error instanceof Error ? error : undefined
+        )
         if (!isManualPause && !isInitializing) {
           void recover()
           lastRecoveryTimeRef.current = Date.now()
@@ -1027,7 +1064,15 @@ export default function AdminPage(): JSX.Element {
     }, STALL_CHECK_INTERVAL)
 
     return () => clearInterval(intervalId)
-  }, [mounted, deviceId, playbackInfo, isManualPause, recover, isInitializing])
+  }, [
+    mounted,
+    deviceId,
+    playbackInfo,
+    isManualPause,
+    recover,
+    isInitializing,
+    addLog
+  ])
 
   // Add effect to update uptime
   useEffect(() => {
@@ -1040,36 +1085,45 @@ export default function AdminPage(): JSX.Element {
 
   const handleForceRecovery = useCallback(async () => {
     try {
-      console.log('[Force Recovery] Starting manual recovery', {
-        deviceId,
-        fixedPlaylistId,
-        timestamp: new Date().toISOString()
-      })
+      addLog(
+        'INFO',
+        `[Recovery] Starting manual recovery: deviceId=${deviceId}, fixedPlaylistId=${fixedPlaylistId}, timestamp=${new Date().toISOString()}`,
+        'Recovery',
+        undefined
+      )
       setIsLoading(true)
       resetRecovery()
       await recover()
-      console.log('[Force Recovery] Recovery completed successfully', {
-        deviceId,
-        fixedPlaylistId,
-        timestamp: new Date().toISOString()
-      })
     } catch (error) {
-      console.error('[Force Recovery] Error during recovery:', {
-        error: error instanceof Error ? error.message : 'Unknown error',
-        errorType: error instanceof Error ? error.name : 'Unknown',
-        stack: error instanceof Error ? error.stack : undefined,
-        deviceId,
-        fixedPlaylistId,
-        timestamp: new Date().toISOString()
-      })
+      addLog(
+        'ERROR',
+        `[Recovery] Error during recovery: error=${error instanceof Error ? error.message : 'Unknown error'}, errorType=${error instanceof Error ? error.name : 'Unknown'}, stack=${error instanceof Error ? error.stack : 'N/A'}, deviceId=${deviceId}, fixedPlaylistId=${fixedPlaylistId}, timestamp=${new Date().toISOString()}`,
+        'Recovery',
+        error instanceof Error ? error : undefined
+      )
       setError(error instanceof Error ? error.message : 'Recovery failed')
     } finally {
       setIsLoading(false)
     }
-  }, [recover, deviceId, fixedPlaylistId, resetRecovery])
+  }, [recover, deviceId, fixedPlaylistId, resetRecovery, addLog])
 
-  // Add effect to handle recovery state cleanup
+  // Add effect to handle recovery state cleanup and log success/failure
   useEffect(() => {
+    if (recoveryState.phase === 'success') {
+      addLog(
+        'INFO',
+        `[Recovery] Recovery completed successfully: deviceId=${deviceId}, fixedPlaylistId=${fixedPlaylistId}, timestamp=${new Date().toISOString()}`,
+        'Recovery',
+        undefined
+      )
+    } else if (recoveryState.phase === 'error') {
+      addLog(
+        'ERROR',
+        `[Recovery] Recovery failed: deviceId=${deviceId}, fixedPlaylistId=${fixedPlaylistId}, timestamp=${new Date().toISOString()}`,
+        'Recovery',
+        undefined
+      )
+    }
     if (recoveryState.phase === 'success' || recoveryState.phase === 'error') {
       const cleanupTimer = setTimeout(() => {
         resetRecovery()
@@ -1078,7 +1132,7 @@ export default function AdminPage(): JSX.Element {
       return () => clearTimeout(cleanupTimer)
     }
     return () => {} // Return empty cleanup function for other cases
-  }, [recoveryState.phase, resetRecovery])
+  }, [recoveryState.phase, resetRecovery, addLog, deviceId, fixedPlaylistId])
 
   // Update the loading state check
   if (!mounted) {

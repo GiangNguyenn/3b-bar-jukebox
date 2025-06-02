@@ -25,11 +25,6 @@ export async function autoRemoveTrack({
 
   // If playlist is not longer than songsBetweenRepeats, don't remove anything
   if (playlistTracks.length <= songsBetweenRepeats) {
-    console.log('[Auto Remove] Playlist not long enough to remove tracks:', {
-      playlistLength: playlistTracks.length,
-      songsBetweenRepeats,
-      timestamp: new Date().toISOString()
-    })
     return false
   }
 
@@ -49,13 +44,6 @@ export async function autoRemoveTrack({
           body: {
             tracks: [{ uri: trackToRemove.track.uri }]
           }
-        })
-        console.log('[Auto Remove] Successfully removed first track:', {
-          trackName: trackToRemove.track.name,
-          trackId: trackToRemove.track.id,
-          playlistLength: playlistTracks.length,
-          songsBetweenRepeats,
-          timestamp: new Date().toISOString()
         })
         onSuccess?.()
       },

@@ -2,7 +2,7 @@ import { useState, useCallback, useRef, useEffect } from 'react'
 import { useSpotifyPlayer } from './useSpotifyPlayer'
 import { sendApiRequest } from '@/shared/api'
 import { SpotifyPlaybackState } from '@/shared/types'
-import { useConsoleLogs } from './useConsoleLogs'
+import { useConsoleLogsContext } from './ConsoleLogsProvider'
 import { useRecoverySystem } from './recovery/useRecoverySystem'
 
 // Network Information API types
@@ -77,7 +77,7 @@ export function useSpotifyHealthMonitor(fixedPlaylistId: string | null) {
   const deviceId = useSpotifyPlayer((state) => state.deviceId)
   const isReady = useSpotifyPlayer((state) => state.isReady)
   const playbackState = useSpotifyPlayer((state) => state.playbackState)
-  const { addLog } = useConsoleLogs()
+  const { addLog } = useConsoleLogsContext()
   const deviceCheckInterval = useRef<NodeJS.Timeout | null>(null)
   const recoveryTimeout = useRef<NodeJS.Timeout | null>(null)
   const lastDeviceIdChange = useRef<number>(Date.now())
