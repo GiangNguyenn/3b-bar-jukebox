@@ -298,38 +298,11 @@ export class PlaylistRefreshServiceImpl implements PlaylistRefreshService {
 
     // Check if we have 3 or fewer tracks remaining
     if (tracksRemaining > 3) {
-      console.log(
-        '[PlaylistRefresh] Enough tracks remaining, skipping suggestion:',
-        {
-          tracksRemaining,
-          currentTrackIndex,
-          totalTracks: allPlaylistTracks.length,
-          currentTrackId,
-          timestamp: new Date().toISOString()
-        }
-      )
       return {
         success: false,
         error: 'Enough tracks remaining'
       }
     }
-
-    // Log the upcoming tracks for debugging
-    console.log('[PlaylistRefresh] Upcoming tracks:', {
-      count: upcomingTracks.length,
-      tracksRemaining,
-      currentTrackIndex,
-      totalTracks: allPlaylistTracks.length,
-      tracks: upcomingTracks.map((track) => ({
-        id: track.track.id,
-        name: track.track.name,
-        position: allPlaylistTracks.findIndex(
-          (t) => t.track.id === track.track.id
-        )
-      })),
-      currentTrackId,
-      timestamp: new Date().toISOString()
-    })
 
     const existingTrackIds = Array.from(
       new Set(allPlaylistTracks.map((track) => track.track.id))
@@ -372,12 +345,6 @@ export class PlaylistRefreshServiceImpl implements PlaylistRefreshService {
         maxOffset: params?.maxOffset ?? savedParams?.maxOffset ?? 1000
       }
 
-      console.log('[PlaylistRefresh] Using parameters:', {
-        savedParams,
-        providedParams: params,
-        mergedParams
-      })
-
       while (!success && retryCount < this.retryConfig.maxRetries) {
         const result = await findSuggestedTrack(
           existingTrackIds,
@@ -398,15 +365,6 @@ export class PlaylistRefreshServiceImpl implements PlaylistRefreshService {
         }
 
         if (success) {
-          console.log(
-            '[PlaylistRefresh] Successfully added track, preparing to save:',
-            {
-              name: result.track.name,
-              artist: result.track.artists[0].name,
-              timestamp: new Date().toISOString()
-            }
-          )
-
           this.lastSuggestedTrack = {
             name: result.track.name,
             artist: result.track.artists[0].name,
@@ -424,14 +382,6 @@ export class PlaylistRefreshServiceImpl implements PlaylistRefreshService {
 
           // Save to localStorage if in browser
           if (typeof window !== 'undefined') {
-            console.log(
-              '[PlaylistRefresh] About to save track to localStorage:',
-              {
-                name: this.lastSuggestedTrack.name,
-                artist: this.lastSuggestedTrack.artist,
-                timestamp: new Date().toISOString()
-              }
-            )
             this.saveLastSuggestedTrack()
           }
 
@@ -574,10 +524,6 @@ export class PlaylistRefreshServiceImpl implements PlaylistRefreshService {
       )
 
       if (!playlist) {
-        console.error('[PlaylistRefresh] No playlist found:', {
-          playlistName: this.FIXED_PLAYLIST_NAME,
-          timestamp: new Date().toISOString()
-        })
         return {
           success: false,
           message: `No playlist found with name: ${this.FIXED_PLAYLIST_NAME}`,
@@ -587,12 +533,6 @@ export class PlaylistRefreshServiceImpl implements PlaylistRefreshService {
 
       // Check if the snapshot_id has changed
       const hasPlaylistChanged = this.lastSnapshotId !== snapshotId
-      console.log('[PlaylistRefresh] Snapshot ID comparison:', {
-        lastSnapshotId: this.lastSnapshotId,
-        currentSnapshotId: snapshotId,
-        hasPlaylistChanged,
-        timestamp: new Date().toISOString()
-      })
 
       // Update the lastSnapshotId
       this.lastSnapshotId = snapshotId
@@ -601,10 +541,6 @@ export class PlaylistRefreshServiceImpl implements PlaylistRefreshService {
         await this.withTimeout(this.getCurrentlyPlaying(), this.TIMEOUT_MS)
 
       if (playbackError) {
-        console.error('[PlaylistRefresh] Playback error:', {
-          error: playbackError,
-          timestamp: new Date().toISOString()
-        })
         return {
           success: false,
           message: playbackError,
@@ -829,12 +765,6 @@ export class PlaylistRefreshServiceImpl implements PlaylistRefreshService {
         playlistTracks: allPlaylistTracks,
         playbackState,
         songsBetweenRepeats: params.songsBetweenRepeats
-      })
-
-      console.log('[PlaylistRefresh] Track removal result:', {
-        removedTrack,
-        currentTrackId,
-        timestamp: new Date().toISOString()
       })
 
       const result = await this.addSuggestedTrackToPlaylist(

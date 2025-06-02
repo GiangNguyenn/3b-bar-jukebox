@@ -11,7 +11,7 @@ import { SpotifyPlaybackState } from '@/shared/types'
 import { useSpotifyPlayerState } from '@/hooks/useSpotifyPlayerState'
 import { TrackSuggestionsTab } from './components/track-suggestions/track-suggestions-tab'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { useConsoleLogs } from '@/hooks/useConsoleLogs'
+import { useConsoleLogsContext } from '@/hooks/ConsoleLogsProvider'
 import { validateSongsBetweenRepeats } from './components/track-suggestions/validations/trackSuggestions'
 import { type TrackSuggestionsState } from '@/shared/types/trackSuggestions'
 import type { SpotifyPlayerInstance } from '@/types/spotify'
@@ -153,7 +153,7 @@ export default function AdminPage(): JSX.Element {
       }))
     }, [])
   )
-  const { logs: consoleLogs, addLog } = useConsoleLogs()
+  const { logs: consoleLogs, addLog } = useConsoleLogsContext()
 
   // Refs
   const isRefreshing = useRef<boolean>(false)
@@ -449,21 +449,9 @@ export default function AdminPage(): JSX.Element {
   const handleRefresh = useCallback(
     async (source: 'auto' | 'manual' = 'manual'): Promise<void> => {
       if (isRefreshing.current) {
-        addLog(
-          'INFO',
-          `[Refresh] Skipping ${source} refresh - already refreshing`,
-          'Refresh',
-          undefined
-        )
         return
       }
 
-      addLog(
-        'INFO',
-        `[Refresh] Starting ${source} refresh`,
-        'Refresh',
-        undefined
-      )
       isRefreshing.current = true
       setIsLoading(true)
       setError(null)
@@ -497,22 +485,12 @@ export default function AdminPage(): JSX.Element {
         if (!result.success) {
           // Check if this is the "enough tracks" message
           if (result.message === 'Enough tracks remaining') {
-            addLog(
-              'INFO',
-              `[Refresh] ${source} refresh skipped - enough tracks remaining`,
-              'Refresh',
-              undefined
-            )
+            // No logging
           } else {
             throw new Error(result.message)
           }
         } else {
-          addLog(
-            'INFO',
-            `[Refresh] ${source} refresh completed successfully - added suggested song`,
-            'Refresh',
-            undefined
-          )
+          // No logging
         }
       } catch (err) {
         addLog(
@@ -1007,7 +985,7 @@ export default function AdminPage(): JSX.Element {
           deviceMismatchCountRef.current += 1
           addLog(
             'WARN',
-            `[Playback Monitor] Device mismatch detected: expectedDevice=${deviceId}, currentDevice=${currentState.device.id}, count=${deviceMismatchCountRef.current}, timestamp=${new Date().toISOString()}`,
+            `[Playback Monitor] Device mismatch detected: expectedDevice=${deviceId}, currentDevice=${currentState.device?.id ?? 'undefined'}, count=${deviceMismatchCountRef.current}, timestamp=${new Date().toISOString()}`,
             'Playback Monitor',
             undefined
           )
@@ -1035,7 +1013,7 @@ export default function AdminPage(): JSX.Element {
           deviceMismatchCountRef.current += 1
           addLog(
             'WARN',
-            `[Playback Monitor] Device mismatch detected: expectedDevice=${deviceId}, currentDevice=${currentState.device.id}, count=${deviceMismatchCountRef.current}, timestamp=${new Date().toISOString()}`,
+            `[Playback Monitor] Device mismatch detected: expectedDevice=${deviceId}, currentDevice=${currentState.device?.id ?? 'undefined'}, count=${deviceMismatchCountRef.current}, timestamp=${new Date().toISOString()}`,
             'Playback Monitor',
             undefined
           )
@@ -1116,12 +1094,6 @@ export default function AdminPage(): JSX.Element {
       setIsLoading(true)
       resetRecovery()
       await recover()
-      addLog(
-        'INFO',
-        `[Recovery] Recovery completed successfully: deviceId=${deviceId}, fixedPlaylistId=${fixedPlaylistId}, timestamp=${new Date().toISOString()}`,
-        'Recovery',
-        undefined
-      )
     } catch (error) {
       addLog(
         'ERROR',
@@ -1135,8 +1107,23 @@ export default function AdminPage(): JSX.Element {
     }
   }, [recover, deviceId, fixedPlaylistId, resetRecovery, addLog])
 
-  // Add effect to handle recovery state cleanup
+  // Add effect to handle recovery state cleanup and log success/failure
   useEffect(() => {
+    if (recoveryState.phase === 'success') {
+      addLog(
+        'INFO',
+        `[Recovery] Recovery completed successfully: deviceId=${deviceId}, fixedPlaylistId=${fixedPlaylistId}, timestamp=${new Date().toISOString()}`,
+        'Recovery',
+        undefined
+      )
+    } else if (recoveryState.phase === 'error') {
+      addLog(
+        'ERROR',
+        `[Recovery] Recovery failed: deviceId=${deviceId}, fixedPlaylistId=${fixedPlaylistId}, timestamp=${new Date().toISOString()}`,
+        'Recovery',
+        undefined
+      )
+    }
     if (recoveryState.phase === 'success' || recoveryState.phase === 'error') {
       const cleanupTimer = setTimeout(() => {
         resetRecovery()
@@ -1145,7 +1132,7 @@ export default function AdminPage(): JSX.Element {
       return () => clearTimeout(cleanupTimer)
     }
     return () => {} // Return empty cleanup function for other cases
-  }, [recoveryState.phase, resetRecovery, addLog])
+  }, [recoveryState.phase, resetRecovery, addLog, deviceId, fixedPlaylistId])
 
   // Update the loading state check
   if (!mounted) {
