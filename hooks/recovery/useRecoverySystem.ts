@@ -112,6 +112,12 @@ export function useRecoverySystem(
   const recover = useCallback(async (): Promise<void> => {
     if (state.isRecovering || isRecoveringRef.current) {
       // Already recovering, do not start another
+      Sentry.logger.warn('Recovery attempt while already recovering', {
+        deviceId,
+        fixedPlaylistId,
+        timestamp: new Date().toISOString(),
+        attempts: state.attempts
+      })
       return
     }
     isRecoveringRef.current = true
@@ -119,7 +125,8 @@ export function useRecoverySystem(
     Sentry.logger.warn('Recovery started', {
       deviceId,
       fixedPlaylistId,
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
+      attempts: state.attempts
     })
     updateState({
       phase: 'recovering',
@@ -137,6 +144,12 @@ export function useRecoverySystem(
         currentStep: 'Destroying player',
         message: 'Destroying current player...'
       })
+      Sentry.logger.warn('Destroying player', {
+        deviceId,
+        fixedPlaylistId,
+        timestamp: new Date().toISOString(),
+        step: 'Destroying player'
+      })
       await destroyPlayer()
 
       // Step 2: Create new player with random name
@@ -144,6 +157,12 @@ export function useRecoverySystem(
         progress: 0.15,
         currentStep: 'Creating new player',
         message: 'Creating new player with random name...'
+      })
+      Sentry.logger.warn('Creating new player', {
+        deviceId,
+        fixedPlaylistId,
+        timestamp: new Date().toISOString(),
+        step: 'Creating new player'
       })
       const newDeviceId = await createPlayer()
       // Propagate new device ID to Zustand store
@@ -156,14 +175,34 @@ export function useRecoverySystem(
         currentStep: 'Waiting for new player registration',
         message: 'Waiting for new player to register...'
       })
+      Sentry.logger.warn('Waiting for new player registration', {
+        deviceId: newDeviceId,
+        fixedPlaylistId,
+        timestamp: new Date().toISOString(),
+        step: 'Waiting for new player registration'
+      })
       const found = await waitForDevice(newDeviceId, 10000)
-      if (!found) throw new Error('New device did not register in time')
+      if (!found) {
+        Sentry.logger.error('New device did not register in time', {
+          deviceId: newDeviceId,
+          fixedPlaylistId,
+          timestamp: new Date().toISOString(),
+          step: 'Wait for device registration'
+        })
+        throw new Error('New device did not register in time')
+      }
 
       // Step 3.5: Activate device, etc. (use newDeviceId from here on)
       updateState({
         progress: 0.3,
         currentStep: 'Activating device',
         message: 'Transferring playback to new device...'
+      })
+      Sentry.logger.warn('Transferring playback to new device', {
+        deviceId: newDeviceId,
+        fixedPlaylistId,
+        timestamp: new Date().toISOString(),
+        step: 'Transferring playback'
       })
       await sendApiRequest({
         path: 'me/player',
@@ -179,8 +218,20 @@ export function useRecoverySystem(
         currentStep: 'Waiting for device to become active',
         message: 'Waiting for device to become active...'
       })
+      Sentry.logger.warn('Waiting for device to become active', {
+        deviceId: newDeviceId,
+        fixedPlaylistId,
+        timestamp: new Date().toISOString(),
+        step: 'Wait for device active'
+      })
       const active = await waitForDeviceActive(newDeviceId, 10000)
       if (!active) {
+        Sentry.logger.error('Device did not become active in time', {
+          deviceId: newDeviceId,
+          fixedPlaylistId,
+          timestamp: new Date().toISOString(),
+          step: 'Wait for device active'
+        })
         throw new Error('Device did not become active in time')
       }
       // Step 4: Clean up other devices
@@ -189,6 +240,12 @@ export function useRecoverySystem(
         currentStep: 'Cleaning up other devices',
         message: 'Cleaning up other devices...'
       })
+      Sentry.logger.warn('Cleaning up other devices', {
+        deviceId: newDeviceId,
+        fixedPlaylistId,
+        timestamp: new Date().toISOString(),
+        step: 'Cleaning up other devices'
+      })
       if (newDeviceId) {
         let cleanupAttempts = 0
         let cleanupOk = false
@@ -196,12 +253,29 @@ export function useRecoverySystem(
           cleanupOk = await cleanupOtherDevices(newDeviceId)
           if (!cleanupOk) {
             cleanupAttempts++
+            Sentry.logger.warn('Device cleanup attempt failed', {
+              deviceId: newDeviceId,
+              fixedPlaylistId,
+              timestamp: new Date().toISOString(),
+              step: 'Device cleanup',
+              attempt: cleanupAttempts
+            })
             if (cleanupAttempts < 3) {
               await new Promise((resolve) => setTimeout(resolve, 1000))
             }
           }
         }
         if (!cleanupOk) {
+          Sentry.logger.error(
+            'Failed to clean up other devices after multiple attempts',
+            {
+              deviceId: newDeviceId,
+              fixedPlaylistId,
+              timestamp: new Date().toISOString(),
+              step: 'Device cleanup',
+              attempts: cleanupAttempts
+            }
+          )
           throw new Error(
             'Failed to clean up other devices after multiple attempts'
           )
@@ -213,10 +287,22 @@ export function useRecoverySystem(
         currentStep: 'Verifying device transfer',
         message: 'Verifying device transfer...'
       })
+      Sentry.logger.warn('Verifying device transfer', {
+        deviceId: newDeviceId,
+        fixedPlaylistId,
+        timestamp: new Date().toISOString(),
+        step: 'Verifying device transfer'
+      })
       const transferOk = newDeviceId
         ? await verifyDeviceTransfer(newDeviceId)
         : false
       if (!transferOk) {
+        Sentry.logger.error('Device transfer verification failed', {
+          deviceId: newDeviceId,
+          fixedPlaylistId,
+          timestamp: new Date().toISOString(),
+          step: 'Verify device transfer'
+        })
         throw new Error('Device transfer verification failed')
       }
       // Step 6: Resume playback
@@ -224,6 +310,12 @@ export function useRecoverySystem(
         progress: 0.9,
         currentStep: 'Resuming playback',
         message: 'Resuming playback...'
+      })
+      Sentry.logger.warn('Resuming playback', {
+        deviceId: newDeviceId,
+        fixedPlaylistId,
+        timestamp: new Date().toISOString(),
+        step: 'Resuming playback'
       })
       const playbackOk =
         newDeviceId && fixedPlaylistId
@@ -233,6 +325,12 @@ export function useRecoverySystem(
             )
           : false
       if (!playbackOk) {
+        Sentry.logger.error('Playback resume failed', {
+          deviceId: newDeviceId,
+          fixedPlaylistId,
+          timestamp: new Date().toISOString(),
+          step: 'Resume playback'
+        })
         throw new Error('Playback resume failed')
       }
       // Step 7: Verify recovery success
@@ -241,9 +339,57 @@ export function useRecoverySystem(
         currentStep: 'Verifying recovery',
         message: 'Verifying recovery...'
       })
+      Sentry.logger.warn('Verifying recovery', {
+        deviceId: newDeviceId,
+        fixedPlaylistId,
+        timestamp: new Date().toISOString(),
+        step: 'Verifying recovery'
+      })
       const finalDeviceCheck = await checkDevice()
       if (!finalDeviceCheck) {
-        throw new Error('Final device check failed after recovery')
+        // Gather more detailed device state for error reporting
+        let deviceStateDetails = null
+        try {
+          const devices = await sendApiRequest<{ devices: any[] }>({
+            path: 'me/player/devices',
+            method: 'GET'
+          })
+          deviceStateDetails = devices
+        } catch (err) {
+          deviceStateDetails = {
+            error: err instanceof Error ? err.message : String(err)
+          }
+        }
+        Sentry.logger.error('Final device check failed after recovery', {
+          deviceId: newDeviceId,
+          fixedPlaylistId,
+          timestamp: new Date().toISOString(),
+          step: 'Final device check',
+          deviceStateDetails
+        })
+        // If the device is present and active, consider this a soft warning, not a hard failure
+        if (
+          deviceStateDetails &&
+          Array.isArray(deviceStateDetails.devices) &&
+          deviceStateDetails.devices.some(
+            (d) => d.id === newDeviceId && d.is_active
+          )
+        ) {
+          Sentry.logger.warn(
+            'Device is present and active despite checkDevice() failure',
+            {
+              deviceId: newDeviceId,
+              fixedPlaylistId,
+              timestamp: new Date().toISOString(),
+              step: 'Final device check',
+              deviceStateDetails
+            }
+          )
+        } else {
+          throw new Error(
+            `Final device check failed after recovery. Device state: ${JSON.stringify(deviceStateDetails)}`
+          )
+        }
       }
       // Step 8: Update health and state
       updateHealth('healthy')
@@ -257,6 +403,20 @@ export function useRecoverySystem(
         progress: 1,
         currentStep: 'Success',
         lastStallCheck: { timestamp: 0, count: 0 }
+      })
+      Sentry.logger.warn('Full recovery successful', {
+        deviceId: newDeviceId,
+        fixedPlaylistId,
+        timestamp: new Date().toISOString(),
+        step: 'Success'
+      })
+      // Always log to Sentry that the final recovery process was successful
+      Sentry.logger.warn('Recovery process completed: SUCCESS', {
+        deviceId: newDeviceId,
+        fixedPlaylistId,
+        timestamp: new Date().toISOString(),
+        step: 'Final recovery',
+        attempts: state.attempts
       })
       setTimeout(() => {
         updateState({
@@ -284,10 +444,27 @@ export function useRecoverySystem(
         deviceId,
         fixedPlaylistId,
         step: state.currentStep,
-        timestamp: new Date().toISOString()
+        timestamp: new Date().toISOString(),
+        attempts: state.attempts + 1
+      })
+      // Always log to Sentry that the final recovery process was a failure
+      Sentry.logger.error('Recovery process completed: FAILURE', {
+        error: error instanceof Error ? error.message : String(error),
+        deviceId,
+        fixedPlaylistId,
+        step: 'Final recovery',
+        timestamp: new Date().toISOString(),
+        attempts: state.attempts + 1
       })
       // Optionally retry or reload page if needed
       if (state.attempts + 1 >= MAX_RECOVERY_RETRIES) {
+        Sentry.logger.error('Max recovery attempts reached, reloading page', {
+          deviceId,
+          fixedPlaylistId,
+          step: state.currentStep,
+          timestamp: new Date().toISOString(),
+          attempts: state.attempts + 1
+        })
         window.location.reload()
       }
     } finally {
