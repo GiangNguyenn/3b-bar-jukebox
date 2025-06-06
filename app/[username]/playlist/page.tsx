@@ -61,7 +61,9 @@ const PlaylistPage = memo((): JSX.Element => {
       window.location.reload()
     } catch (error) {
       console.error('[Create Playlist] Error:', error)
-      setCreateError(error instanceof Error ? error.message : 'Failed to create playlist')
+      setCreateError(
+        error instanceof Error ? error.message : 'Failed to create playlist'
+      )
     } finally {
       setIsCreating(false)
     }
@@ -141,8 +143,12 @@ const PlaylistPage = memo((): JSX.Element => {
   if (!username) {
     return (
       <div className='flex min-h-screen flex-col items-center justify-center p-4'>
-        <h1 className='mb-4 text-2xl font-bold text-red-500'>Invalid Playlist URL</h1>
-        <p className='text-center'>Please provide a valid username in the URL.</p>
+        <h1 className='mb-4 text-2xl font-bold text-red-500'>
+          Invalid Playlist URL
+        </h1>
+        <p className='text-center'>
+          Please provide a valid username in the URL.
+        </p>
       </div>
     )
   }
@@ -151,12 +157,16 @@ const PlaylistPage = memo((): JSX.Element => {
   if (playlistError || !fixedPlaylistId) {
     return (
       <div className='flex min-h-screen flex-col items-center justify-center p-4'>
-        <h1 className='mb-4 text-2xl font-bold text-red-500'>Playlist Not Found</h1>
-        <p className='mb-4 text-center'>Could not find a playlist for user: {username}</p>
+        <h1 className='mb-4 text-2xl font-bold text-red-500'>
+          Playlist Not Found
+        </h1>
+        <p className='mb-4 text-center'>
+          Could not find a playlist for user: {username}
+        </p>
         <button
           onClick={() => void handleCreatePlaylist()}
           disabled={isCreating}
-          className='rounded bg-blue-500 px-4 py-2 text-white hover:bg-blue-600 disabled:opacity-50'
+          className='text-white rounded bg-blue-500 px-4 py-2 hover:bg-blue-600 disabled:opacity-50'
         >
           {isCreating ? 'Creating...' : 'Create Playlist'}
         </button>
@@ -184,4 +194,4 @@ const PlaylistPage = memo((): JSX.Element => {
 
 PlaylistPage.displayName = 'PlaylistPage'
 
-export default PlaylistPage 
+export default PlaylistPage
