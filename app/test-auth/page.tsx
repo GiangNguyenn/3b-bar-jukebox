@@ -29,7 +29,10 @@ export default function TestAuth(): JSX.Element {
     const getUser = async (): Promise<void> => {
       console.log('Fetching user...')
       try {
-        const { data: { user }, error } = await supabase.auth.getUser()
+        const {
+          data: { user },
+          error
+        } = await supabase.auth.getUser()
         console.log('User fetch response:', { user, error })
 
         if (error) {
@@ -42,7 +45,7 @@ export default function TestAuth(): JSX.Element {
           setUser(user)
           // Create profile if it doesn't exist
           const response = await fetch('/api/auth/profile', {
-            method: 'POST',
+            method: 'POST'
           })
           const data = await response.json()
           console.log('Profile creation response:', data)
@@ -122,21 +125,23 @@ export default function TestAuth(): JSX.Element {
 
   async function createPlaylist() {
     try {
-      console.log('Creating playlist...');
+      console.log('Creating playlist...')
       const response = await fetch('/api/playlists', {
-        method: 'POST',
-      });
-      const data = await response.json();
-      console.log('Playlist creation response:', data);
-      
+        method: 'POST'
+      })
+      const data = await response.json()
+      console.log('Playlist creation response:', data)
+
       if (data.error) {
-        setError(data.error);
+        setError(data.error)
       } else {
-        setError(null);
+        setError(null)
       }
     } catch (error) {
-      console.error('Error creating playlist:', error);
-      setError(error instanceof Error ? error.message : 'Failed to create playlist');
+      console.error('Error creating playlist:', error)
+      setError(
+        error instanceof Error ? error.message : 'Failed to create playlist'
+      )
     }
   }
 
@@ -153,49 +158,52 @@ export default function TestAuth(): JSX.Element {
   }
 
   return (
-    <div className="min-h-screen bg-gray-100 py-12 px-4 sm:px-6 lg:px-8">
-      <div className="max-w-md mx-auto bg-white rounded-lg shadow-md p-6">
-        <h1 className="text-2xl font-bold text-center mb-6">Auth Test Page</h1>
-        
+    <div className='min-h-screen bg-gray-100 px-4 py-12 sm:px-6 lg:px-8'>
+      <div className='bg-white mx-auto max-w-md rounded-lg p-6 shadow-md'>
+        <h1 className='mb-6 text-center text-2xl font-bold'>Auth Test Page</h1>
+
         {loading ? (
-          <div className="flex justify-center items-center">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900"></div>
+          <div className='flex items-center justify-center'>
+            <div className='h-8 w-8 animate-spin rounded-full border-b-2 border-gray-900'></div>
           </div>
         ) : (
-          <div className="space-y-4">
+          <div className='space-y-4'>
             {error && (
-              <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded relative" role="alert">
-                <span className="block sm:inline">{error}</span>
+              <div
+                className='relative rounded border border-red-200 bg-red-50 px-4 py-3 text-red-700'
+                role='alert'
+              >
+                <span className='block sm:inline'>{error}</span>
               </div>
             )}
-            
+
             {user ? (
-              <div className="space-y-4">
-                <div className="bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded">
+              <div className='space-y-4'>
+                <div className='rounded border border-green-200 bg-green-50 px-4 py-3 text-green-700'>
                   <p>Logged in as: {user.email}</p>
                   <p>User ID: {user.id}</p>
                 </div>
-                
+
                 <button
                   onClick={() => void createPlaylist()}
-                  className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+                  className='text-white flex w-full justify-center rounded-md border border-transparent bg-indigo-600 px-4 py-2 text-sm font-medium shadow-sm hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2'
                 >
                   Create 3B Saigon Playlist
                 </button>
-                
+
                 <button
                   onClick={() => void handleLogout()}
-                  className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-red-600 hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500"
+                  className='text-white flex w-full justify-center rounded-md border border-transparent bg-red-600 px-4 py-2 text-sm font-medium shadow-sm hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2'
                 >
                   Logout
                 </button>
               </div>
             ) : (
-              <div className="text-center">
-                <p className="mb-4">Not logged in</p>
+              <div className='text-center'>
+                <p className='mb-4'>Not logged in</p>
                 <button
                   onClick={() => void handleLogin()}
-                  className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500"
+                  className='text-white flex w-full justify-center rounded-md border border-transparent bg-green-600 px-4 py-2 text-sm font-medium shadow-sm hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2'
                 >
                   Login with Spotify
                 </button>
