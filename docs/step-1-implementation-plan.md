@@ -116,7 +116,10 @@ Would you like me to:
 
 ### 6. Basic Route Structure
 
-- [ ] Move the current playlist/search/add page from `/` to a new dynamic route: `/[username]/playlist`.
+- [x] Move the current playlist/search/add page from `/` to a new dynamic route: `/[username]/playlist`.
+  - [x] Created new dynamic route at `app/[username]/playlist/page.tsx`
+  - [x] Updated `useFixedPlaylist` hook to fetch playlist ID from database using username
+  - [x] Created new landing page at root route (`/`)
 - [ ] Implement playlist creation flow:
   - [ ] Check if user has a "3B Saigon" playlist
   - [ ] Create playlist if it doesn't exist using Spotify API
