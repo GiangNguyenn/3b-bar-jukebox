@@ -60,11 +60,15 @@ const authOptions: NextAuthOptions = {
         params: {
           scope: [
             'user-read-email',
+            'user-read-private',
             'playlist-modify-public',
             'playlist-modify-private',
             'playlist-read-private',
+            'playlist-read-collaborative',
             'user-read-playback-state',
-            'user-modify-playback-state'
+            'user-modify-playback-state',
+            'user-library-read',
+            'user-library-modify'
           ].join(' ')
         }
       }
