@@ -1,64 +1,166 @@
 'use client'
 
-import { useSession, signIn, signOut } from 'next-auth/react'
+import { createClientComponentClient } from '@supabase/auth-helpers-nextjs'
+import { useRouter, useSearchParams } from 'next/navigation'
+import { useEffect, useState } from 'react'
+import { type User } from '@supabase/supabase-js'
 
 export default function TestAuth(): JSX.Element {
-  const { data: session, status } = useSession()
+  const [user, setUser] = useState<User | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [authState, setAuthState] = useState<'idle' | 'loading' | 'error'>('idle')
+  const router = useRouter()
+  const searchParams = useSearchParams()
+  const supabase = createClientComponentClient()
 
-  const handleSignIn = (): void => {
-    void signIn('spotify')
+  useEffect(() => {
+    // Check for error in URL
+    const errorParam = searchParams.get('error')
+    if (errorParam) {
+      setError(decodeURIComponent(errorParam))
+      setAuthState('error')
+    }
+  }, [searchParams])
+
+  useEffect(() => {
+    const getUser = async (): Promise<void> => {
+      console.log('Getting user...')
+      try {
+        const { data, error: userError } = await supabase.auth.getUser()
+        console.log('Auth response:', { data, error: userError })
+        
+        if (userError) {
+          console.error('Auth error:', userError)
+          // Don't treat "Auth session missing" as an error
+          if (userError.message === 'Auth session missing!') {
+            setError(null)
+          } else {
+            throw userError
+          }
+        }
+        
+        setUser(data.user)
+      } catch (err) {
+        console.error('Error in getUser:', err)
+        setError(err instanceof Error ? err.message : 'Failed to get user')
+      } finally {
+        console.log('Setting loading to false')
+        setLoading(false)
+      }
+    }
+
+    void getUser()
+  }, [supabase])
+
+  const handleLogin = async (): Promise<void> => {
+    try {
+      setError(null)
+      setAuthState('loading')
+      console.log('Starting login...')
+      
+      const { data, error: signInError } = await supabase.auth.signInWithOAuth({
+        provider: 'spotify',
+        options: {
+          redirectTo: `${window.location.origin}/test-auth/callback`,
+          scopes: 'user-read-email user-read-private'
+        }
+      })
+      
+      console.log('Sign in response:', { data, error: signInError })
+      
+      if (signInError) {
+        console.error('Sign in error:', signInError)
+        throw signInError
+      }
+      
+      if (data?.url) {
+        console.log('Redirecting to:', data.url)
+        window.location.href = data.url
+      }
+    } catch (err) {
+      console.error('Error in handleLogin:', err)
+      setError(err instanceof Error ? err.message : 'Failed to sign in')
+      setAuthState('error')
+    }
   }
 
-  const handleSignOut = (): void => {
-    void signOut()
+  const handleLogout = async (): Promise<void> => {
+    try {
+      setError(null)
+      console.log('Starting logout...')
+      const { error: signOutError } = await supabase.auth.signOut()
+      if (signOutError) {
+        console.error('Sign out error:', signOutError)
+        throw signOutError
+      }
+      router.refresh()
+    } catch (err) {
+      console.error('Error in handleLogout:', err)
+      setError(err instanceof Error ? err.message : 'Failed to sign out')
+    }
   }
 
-  if (status === 'loading') {
+  if (loading) {
     return (
-      <div className='flex min-h-screen items-center justify-center bg-black'>
-        <div className='text-white'>Loading...</div>
+      <div className="p-4">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900 mx-auto"></div>
+          <p className="mt-2">Loading...</p>
+          {error && (
+            <p className="text-red-500 mt-2">Error: {error}</p>
+          )}
+        </div>
       </div>
     )
   }
 
   return (
-    <div className='flex min-h-screen flex-col items-center justify-center bg-black p-4'>
-      <div className='w-full max-w-md space-y-8 rounded-lg bg-gray-900 p-8 shadow-lg'>
-        <div className='text-center'>
-          <h2 className='text-white text-2xl font-bold'>
-            Auth Status: {status}
-          </h2>
-
-          {session ? (
-            <div className='mt-4 space-y-4'>
-              <div className='rounded bg-gray-800 p-4'>
-                <h3 className='text-white mb-2 text-lg font-semibold'>
-                  Session Data:
-                </h3>
-                <pre className='whitespace-pre-wrap text-sm text-gray-300'>
-                  {JSON.stringify(session, null, 2)}
-                </pre>
-              </div>
-
-              <button
-                onClick={handleSignOut}
-                className='text-white w-full rounded-md bg-red-600 px-4 py-2 hover:bg-red-700'
-              >
-                Sign Out
-              </button>
-            </div>
-          ) : (
-            <div className='mt-4'>
-              <button
-                onClick={handleSignIn}
-                className='text-white w-full rounded-md bg-[#1DB954] px-4 py-2 hover:bg-[#1ed760]'
-              >
-                Sign In with Spotify
-              </button>
-            </div>
+    <div className="p-4">
+      <h1 className="text-2xl font-bold mb-4">Supabase Auth Test</h1>
+      
+      {error && (
+        <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4">
+          {error}
+          <button 
+            onClick={() => setError(null)}
+            className="float-right text-red-700 hover:text-red-900"
+          >
+            ×
+          </button>
+        </div>
+      )}
+      
+      {user ? (
+        <div>
+          <p>Logged in as: {user.email}</p>
+          <pre className="bg-gray-100 p-4 rounded mt-4">
+            {JSON.stringify(user, null, 2)}
+          </pre>
+          <button
+            onClick={() => void handleLogout()}
+            className="mt-4 bg-red-500 text-white px-4 py-2 rounded hover:bg-red-600 transition-colors"
+          >
+            Logout
+          </button>
+        </div>
+      ) : (
+        <div className="text-center space-y-4">
+          <p className="text-gray-600">You are not logged in</p>
+          <button
+            onClick={() => void handleLogin()}
+            disabled={authState === 'loading'}
+            className={`bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600 transition-colors ${
+              authState === 'loading' ? 'opacity-50 cursor-not-allowed' : ''
+            }`}
+          >
+            {authState === 'loading' ? 'Logging in...' : 'Login with Spotify'}
+          </button>
+          {authState === 'error' && (
+            <p className="text-red-500 mt-2">Failed to start login process. Please try again.</p>
           )}
         </div>
-      </div>
+      )}
     </div>
   )
 }
