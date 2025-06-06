@@ -13,7 +13,7 @@ Implement proper Spotify OAuth login using NextAuth.js, replacing in-memory toke
 - [x] Add `next-auth` and required dependencies to the project.
 - [x] Create or update the Next.js API route at `/api/auth/[...nextauth].ts` to initialize NextAuth with the Spotify provider.
 - [x] Configure Spotify OAuth credentials (client ID, client secret) using environment variables.
-  **Validation:**
+      **Validation:**
 - [x] Visit `/api/auth/signin` and confirm the NextAuth sign-in page appears with Spotify as an option.
 - [x] Check for errors in the terminal and browser console related to NextAuth configuration.
 
@@ -22,7 +22,7 @@ Implement proper Spotify OAuth login using NextAuth.js, replacing in-memory toke
 - [x] Set up the Spotify provider in NextAuth configuration.
 - [x] Define required scopes for playlist management and playback.
 - [x] Handle the OAuth callback to receive access and refresh tokens.
-  **Validation:**
+      **Validation:**
 - [x] Click the Spotify login button and confirm redirection to Spotify's OAuth consent screen.
 - [x] After authorizing, confirm redirection back to the app and that a session cookie is set.
 
@@ -30,13 +30,14 @@ Implement proper Spotify OAuth login using NextAuth.js, replacing in-memory toke
 
 - [x] Configure NextAuth to use JWT sessions.
 - [x] Implement custom `jwt()` and `session()` callbacks to store and expose access/refresh tokens in the session object.
-  **Validation:**
+      **Validation:**
 - [x] Inspect the session using `useSession` or `/api/auth/session` and confirm it contains a valid Spotify access token and refresh token.
 - [x] Log out and log in again; the session should update accordingly.
 
 ### 4. Supabase Setup and Integration
 
 - [x] Create Supabase project:
+
   - [x] Sign up for Supabase account
   - [x] Create new project
   - [x] Configure project settings:
@@ -72,12 +73,15 @@ Implement proper Spotify OAuth login using NextAuth.js, replacing in-memory toke
     - [x] `SUPABASE_SERVICE_ROLE_KEY` (for admin operations)
 
 Next steps:
+
 1. Set the redirect URL in Supabase:
+
    - Go to Authentication > URL Configuration
    - Add your project's callback URL: `https://[YOUR_PROJECT_REF].supabase.co/auth/v1/callback`
    - Replace `[YOUR_PROJECT_REF]` with your actual project reference
 
 2. Enable "Auto-confirm" for Spotify users:
+
    - Go to Authentication > Providers > Spotify
    - Enable "Auto-confirm" option
    - This will automatically create user accounts when they authenticate with Spotify
@@ -88,6 +92,7 @@ Next steps:
    - Enable refresh token rotation
 
 Would you like me to:
+
 1. Help you set up the Vercel environment variables?
 2. Explain how these credentials will be used in the application?
 3. Add any additional environment variables we might need?
@@ -103,7 +108,7 @@ Would you like me to:
 - [ ] Create API endpoints for:
   - [ ] User profile management
   - [ ] Playlist ID storage and retrieval
-  **Validation:**
+        **Validation:**
 - [ ] Database schema correctly enforces access control
 - [ ] Each user has their own "3B Saigon" playlist
 - [ ] Only playlist owner can access admin features
@@ -122,7 +127,7 @@ Would you like me to:
   - [ ] Handle cases where playlist doesn't exist yet
 - [ ] Update all internal links and navigation to use the new dynamic route.
 - [ ] Ensure the playlist page remains public and accessible without authentication.
-  **Validation:**
+      **Validation:**
 - [ ] Visit `/[username]/playlist` as an unauthenticated user: see the playlist and search interface.
 - [ ] New users get their own "3B Saigon" playlist created automatically via Spotify API.
 - [ ] Anyone can search and add songs without logging in.
@@ -143,7 +148,7 @@ Would you like me to:
   - [ ] Limit song additions per IP
   - [ ] Limit search requests
   - [ ] Handle Spotify API rate limits
-  **Validation:**
+        **Validation:**
 - [ ] Public features work without authentication
 - [ ] Search and add functions are performant
 - [ ] Rate limiting prevents abuse
@@ -156,7 +161,7 @@ Would you like me to:
 - [ ] Add a brief app description explaining the public song addition feature.
 - [ ] Use NextAuth's `useSession` to check authentication and redirect authenticated users to their `/[username]/admin` page.
 - [ ] Add a search or browse feature to discover public playlists.
-  **Validation:**
+      **Validation:**
 - [ ] Visit `/` as a logged-out user: see a landing page with login button and app description.
 - [ ] Visit `/` as a logged-in user: redirected to `/[username]/admin`.
 - [ ] Users can discover and access public playlists from the landing page.
@@ -195,7 +200,7 @@ Would you like me to:
   - [ ] Create empty playlist if not found
   - [ ] Store playlist ID in database
   - [ ] Initialize player with new playlist
-  **Validation:**
+        **Validation:**
 - [ ] Access `/[username]/admin` as playlist owner: see full admin interface
 - [ ] Access `/[username]/admin` as non-owner: see access denied message
 - [ ] Access `/[username]/admin` as unauthenticated user: redirected to login
@@ -210,7 +215,7 @@ Would you like me to:
 
 - [ ] Ensure that after login, users are redirected to their personalized playlist page.
 - [ ] Update any deep links or bookmarks to use the new route structure.
-  **Validation:**
+      **Validation:**
 - [ ] After login, confirm redirection to `/[username]/playlist`.
 - [ ] All links to the playlist page use the new dynamic route.
 - [ ] Bookmarks and direct navigation to `/[username]/playlist` work.
@@ -224,7 +229,7 @@ Would you like me to:
   - [ ] API failures
 - [ ] Add user-friendly error messages
 - [ ] Implement fallback UI states
-  **Validation:**
+      **Validation:**
 - [ ] Users see helpful error messages
 - [ ] System gracefully handles edge cases
 - [ ] Error states are properly logged
@@ -234,7 +239,7 @@ Would you like me to:
 
 - [x] Add Spotify client credentials and NextAuth secret to the environment configuration.
 - [x] Document required environment variables in the project README or `.env.example`.
-  **Validation:**
+      **Validation:**
 - [x] Remove or misconfigure a required environment variable and restart the app; the app should fail gracefully and provide a clear error message.
 
 ### 13. Testing
@@ -243,7 +248,7 @@ Would you like me to:
 - [ ] Test that `/[username]/playlist` is accessible without login and shows the correct playlist.
 - [ ] Test that unauthenticated users see the landing page.
 - [ ] Test that `/[username]/admin` is protected and only accessible by the correct user.
-  **Validation:**
+      **Validation:**
 - [ ] Automated: Write integration tests for login, logout, protected routes, and redirects using Cypress or Playwright. Write unit tests for session handling and token management.
 - [x] Manual: Go through each user flow as described above. Test with multiple Spotify accounts to ensure user isolation.
 
@@ -251,7 +256,7 @@ Would you like me to:
 
 - [x] Add login and logout UI components/buttons to the frontend (e.g., in the header or admin page).
 - [x] Use NextAuth client methods (`signIn`, `signOut`, `useSession`) to manage authentication state in the app.
-  **Validation:**
+      **Validation:**
 - [x] Click login on the landing page and complete the Spotify OAuth flow; after login, land on your admin page.
 - [x] Click logout; return to the landing page and session data is cleared.
 
@@ -259,7 +264,7 @@ Would you like me to:
 
 - [x] Ensure the Spotify access token is available in the session object for authenticated API requests and playback.
 - [ ] Update any server-side or client-side code that previously relied on in-memory tokens to use the session token instead.
-  **Validation:**
+      **Validation:**
 - [x] Use the session object to confirm the Spotify access token is present.
 - [x] Make an authenticated API call using the token from the session.
 - [x] Confirm token refresh works if the token expires.
