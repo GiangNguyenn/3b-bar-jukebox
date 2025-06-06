@@ -30,4 +30,4 @@ export async function GET(request: Request): Promise<NextResponse> {
 
   // If no code or error, redirect back to the test page
   return NextResponse.redirect(`${requestUrl.origin}/test-auth`)
-} 
+}
