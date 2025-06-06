@@ -3,84 +3,97 @@ import { sendApiRequest } from '../shared/api'
 import { useMyPlaylists } from './useMyPlaylists'
 import { useEffect, useState } from 'react'
 import { ERROR_MESSAGES, ErrorMessage } from '@/shared/constants/errors'
+import { createClientComponentClient } from '@supabase/auth-helpers-nextjs'
+import { useParams, usePathname } from 'next/navigation'
 
-const FIXED_PLAYLIST_NAME = '3B Saigon'
 const MAX_RETRIES = 3
 const RETRY_DELAY = 1000 // 1 second
 
-export const useFixedPlaylist = () => {
+export function useFixedPlaylist() {
+  const params = useParams()
+  const pathname = usePathname()
+  const displayName = params?.username as string | undefined
+  const supabase = createClientComponentClient()
   const [fixedPlaylistId, setFixedPlaylistId] = useState<string | null>(null)
-  const [isLoading, setIsLoading] = useState(false)
-  const [error, setError] = useState<ErrorMessage | null>(null)
+  const [error, setError] = useState<Error | null>(null)
+  const [isLoading, setIsLoading] = useState(true)
   const [isInitialFetchComplete, setIsInitialFetchComplete] = useState(false)
-  const [retryCount, setRetryCount] = useState(0)
 
-  const { data: playlists, isError, refetchPlaylists } = useMyPlaylists()
-
-  // Check for existing playlist whenever playlists data changes
   useEffect(() => {
-    if (playlists?.items) {
-      const existingPlaylist = playlists.items.find(
-        (playlist) => playlist.name === FIXED_PLAYLIST_NAME
-      )
-      if (existingPlaylist) {
-        setFixedPlaylistId(existingPlaylist.id)
-      } else {
-        setError(ERROR_MESSAGES.FAILED_TO_LOAD)
-      }
+    // Reset state when displayName changes
+    setFixedPlaylistId(null)
+    setError(null)
+    setIsLoading(true)
+    setIsInitialFetchComplete(false)
+
+    // If we're on the home page, we don't need to fetch a playlist
+    if (pathname === '/') {
+      setIsLoading(false)
+      setIsInitialFetchComplete(true)
+      return
     }
-  }, [playlists])
 
-  // Fetch playlists on mount with retry logic
-  useEffect(() => {
-    const fetchPlaylists = async () => {
+    // If no displayName, we're done loading
+    if (!displayName) {
+      setError(new Error('Display name is required'))
+      setIsLoading(false)
+      setIsInitialFetchComplete(true)
+      return
+    }
+
+    const fetchPlaylistId = async () => {
       try {
-        // Force a revalidation with fresh data
-        await refetchPlaylists(
-          async () => {
-            const response = await sendApiRequest<SpotifyPlaylists>({
-              path: '/me/playlists'
-            })
-            return response
-          },
-          {
-            revalidate: true,
-            populateCache: true,
-            rollbackOnError: true
-          }
-        )
-        setIsInitialFetchComplete(true)
-      } catch (error) {
-        console.error('[Fixed Playlist] Error fetching playlists:', error)
+        // Get the user's profile ID using their display_name
+        const { data: profile, error: profileError } = await supabase
+          .from('profiles')
+          .select('id')
+          .eq('display_name', displayName)
+          .single()
 
-        // Check if it's a rate limit error
-        if (error instanceof Error && error.message.includes('429')) {
-          if (retryCount < MAX_RETRIES) {
-            console.log(
-              `[Fixed Playlist] Rate limited, retrying in ${RETRY_DELAY}ms (attempt ${retryCount + 1}/${MAX_RETRIES})`
-            )
-            setRetryCount((prev) => prev + 1)
-            setTimeout(() => {
-              void fetchPlaylists()
-            }, RETRY_DELAY)
-            return
-          }
-          setError(ERROR_MESSAGES.FAILED_TO_LOAD)
-        } else {
-          setError(ERROR_MESSAGES.FAILED_TO_LOAD)
+        if (profileError) {
+          console.error('[Fixed Playlist] Error fetching profile:', profileError)
+          throw new Error('Failed to fetch user profile')
         }
+
+        if (!profile) {
+          console.error('[Fixed Playlist] Profile not found for display name:', displayName)
+          throw new Error('User profile not found')
+        }
+
+        // Get their playlist ID
+        const { data: playlist, error: playlistError } = await supabase
+          .from('playlists')
+          .select('spotify_playlist_id')
+          .eq('user_id', profile.id)
+          .single()
+
+        if (playlistError) {
+          console.error('[Fixed Playlist] Error fetching playlist:', playlistError)
+          throw new Error('Failed to fetch playlist')
+        }
+
+        if (!playlist) {
+          console.error('[Fixed Playlist] Required playlist not found: 3B Saigon')
+          throw new Error('Required playlist not found')
+        }
+
+        setFixedPlaylistId(playlist.spotify_playlist_id)
+      } catch (err) {
+        console.error('[Fixed Playlist] Error:', err)
+        setError(err instanceof Error ? err : new Error('An unknown error occurred'))
+      } finally {
+        setIsLoading(false)
         setIsInitialFetchComplete(true)
       }
     }
-    void fetchPlaylists()
-  }, [refetchPlaylists, retryCount])
+
+    void fetchPlaylistId()
+  }, [displayName, supabase, pathname])
 
   return {
     fixedPlaylistId,
-    playlists,
-    isLoading,
     error,
-    isError,
+    isLoading,
     isInitialFetchComplete
   }
 }

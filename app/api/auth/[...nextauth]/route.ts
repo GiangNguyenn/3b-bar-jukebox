@@ -5,6 +5,8 @@ import type { NextAuthOptions } from 'next-auth'
 import type { JWT } from 'next-auth/jwt'
 import type { Session } from 'next-auth'
 import type { Account, User } from 'next-auth'
+import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs'
+import { cookies } from 'next/headers'
 
 // Extend the built-in session types
 declare module 'next-auth' {
@@ -42,31 +44,22 @@ interface SpotifyTokenResponse {
   error?: string
 }
 
-function isSpotifyTokenResponse(json: unknown): json is SpotifyTokenResponse {
-  return (
-    typeof json === 'object' &&
-    json !== null &&
-    typeof (json as Record<string, unknown>).access_token === 'string' &&
-    typeof (json as Record<string, unknown>).expires_in === 'number'
-  )
-}
-
-const authOptions: NextAuthOptions = {
+export const authOptions: NextAuthOptions = {
   providers: [
     SpotifyProvider({
-      clientId: process.env.SPOTIFY_CLIENT_ID!,
-      clientSecret: process.env.SPOTIFY_CLIENT_SECRET!,
+      clientId: process.env.SPOTIFY_CLIENT_ID ?? '',
+      clientSecret: process.env.SPOTIFY_CLIENT_SECRET ?? '',
       authorization: {
         params: {
           scope: [
             'user-read-email',
-            'user-read-private',
             'playlist-modify-public',
             'playlist-modify-private',
             'playlist-read-private',
-            'playlist-read-collaborative',
             'user-read-playback-state',
             'user-modify-playback-state',
+            'user-read-private',
+            'playlist-read-collaborative',
             'user-library-read',
             'user-library-modify'
           ].join(' ')
@@ -75,126 +68,171 @@ const authOptions: NextAuthOptions = {
     })
   ],
   callbacks: {
-    async jwt({
-      token,
-      account,
-      user
-    }: {
-      token: JWT
-      account: Account | null
-      user: User | null
-    }): Promise<JWT> {
-      // Initial sign in
+    async jwt({ token, account, user }) {
       if (account && user) {
         return {
           ...token,
           accessToken: account.access_token,
           refreshToken: account.refresh_token,
-          accessTokenExpires: account.expires_at
-            ? account.expires_at * 1000
-            : undefined, // Convert to milliseconds
-          user: {
-            id: account.providerAccountId,
-            name: user.name,
-            email: user.email,
-            image: user.image
-          }
+          accessTokenExpires: account.expires_at ? account.expires_at * 1000 : 0,
+          user
         }
       }
 
       // Return previous token if the access token has not expired yet
-      if (token.accessTokenExpires && Date.now() < token.accessTokenExpires) {
+      if (Date.now() < (token.accessTokenExpires ?? 0)) {
         return token
       }
 
       // Access token has expired, try to update it
       return refreshAccessToken(token)
     },
-    session({ session, token }: { session: Session; token: JWT }): Session {
-      if (token.user) {
-        session.user = token.user
-      }
-
-      if (token.accessToken) {
+    async session({ session, token }) {
+      if (token) {
+        session.user = token.user ?? session.user
         session.accessToken = token.accessToken
-      }
-
-      if (token.error) {
         session.error = token.error
       }
 
       return session
+    },
+    async signIn({ user, account }) {
+      if (!account?.provider || account.provider !== 'spotify') {
+        return false
+      }
+
+      try {
+        const supabase = createRouteHandlerClient({ cookies })
+
+        // Create or update user in Supabase
+        const { data: { user: supabaseUser }, error: userError } = await supabase.auth.signInWithOAuth({
+          provider: 'spotify',
+          options: {
+            redirectTo: `${process.env.NEXTAUTH_URL}/api/auth/callback/supabase`,
+            scopes: [
+              'user-read-email',
+              'playlist-modify-public',
+              'playlist-modify-private',
+              'playlist-read-private',
+              'user-read-playback-state',
+              'user-modify-playback-state',
+              'user-read-private',
+              'playlist-read-collaborative',
+              'user-library-read',
+              'user-library-modify'
+            ].join(' ')
+          }
+        })
+
+        if (userError) {
+          console.error('Error signing in with Supabase:', userError)
+          return false
+        }
+
+        if (!supabaseUser?.id) {
+          console.error('No Supabase user ID returned')
+          return false
+        }
+
+        // Create profile if it doesn't exist
+        const { data: profile, error: profileError } = await supabase
+          .from('profiles')
+          .select('display_name')
+          .eq('id', supabaseUser.id)
+          .single()
+
+        if (profileError && profileError.code !== 'PGRST116') {
+          console.error('Error checking profile:', profileError)
+          return false
+        }
+
+        if (!profile) {
+          // Create new profile
+          const { error: insertError } = await supabase
+            .from('profiles')
+            .insert({
+              id: supabaseUser.id,
+              display_name: user.name,
+              spotify_user_id: account.providerAccountId
+            })
+
+          if (insertError) {
+            console.error('Error creating profile:', insertError)
+            return false
+          }
+        }
+
+        return true
+      } catch (error) {
+        console.error('Error in signIn callback:', error)
+        return false
+      }
+    },
+    async redirect({ url, baseUrl }) {
+      // After sign in, redirect to the user's playlist page
+      if (url.startsWith(baseUrl)) {
+        const supabase = createRouteHandlerClient({ cookies })
+        const { data: { user } } = await supabase.auth.getUser()
+        
+        if (user) {
+          const { data: profile } = await supabase
+            .from('profiles')
+            .select('display_name')
+            .eq('id', user.id)
+            .single()
+
+          if (profile?.display_name) {
+            return `${baseUrl}/${profile.display_name}/playlist`
+          }
+        }
+      }
+      return url
     }
   },
   pages: {
-    signIn: '/auth/signin',
-    error: '/auth/error'
+    signIn: '/',
+    error: '/'
   },
-  session: {
-    strategy: 'jwt',
-    maxAge: 30 * 24 * 60 * 60, // 30 days
-    updateAge: 24 * 60 * 60 // 24 hours
-  },
-  jwt: {
-    maxAge: 30 * 24 * 60 * 60 // 30 days
-  },
-  secret: process.env.NEXTAUTH_SECRET,
   debug: process.env.NODE_ENV === 'development'
 }
 
 async function refreshAccessToken(token: JWT): Promise<JWT> {
   try {
-    if (!token.refreshToken) {
-      throw new Error('No refresh token available')
-    }
-
     const response = await fetch('https://accounts.spotify.com/api/token', {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/x-www-form-urlencoded',
-        Authorization: `Basic ${Buffer.from(
-          `${process.env.SPOTIFY_CLIENT_ID}:${process.env.SPOTIFY_CLIENT_SECRET}`
-        ).toString('base64')}`
+        'Content-Type': 'application/x-www-form-urlencoded'
       },
       body: new URLSearchParams({
         grant_type: 'refresh_token',
-        refresh_token: token.refreshToken
+        refresh_token: token.refreshToken ?? '',
+        client_id: process.env.SPOTIFY_CLIENT_ID ?? '',
+        client_secret: process.env.SPOTIFY_CLIENT_SECRET ?? ''
       })
     })
 
-    const json: unknown = await response.json()
-    if (isSpotifyTokenResponse(json)) {
-      const refreshedTokens = json
-      if (!response.ok) {
-        throw new Error(refreshedTokens.error ?? 'Failed to refresh token')
-      }
-      return {
-        ...token,
-        accessToken: refreshedTokens.access_token,
-        accessTokenExpires: Date.now() + refreshedTokens.expires_in * 1000,
-        refreshToken: refreshedTokens.refresh_token ?? token.refreshToken,
-        error: undefined
-      }
-    } else {
-      throw new Error('Invalid response from Spotify token endpoint')
+    const tokens: SpotifyTokenResponse = await response.json()
+
+    if (!response.ok) {
+      throw tokens
     }
-  } catch (error: unknown) {
-    if (error instanceof Error) {
-      console.error('Error refreshing access token:', error.message)
-    } else {
-      console.error('Error refreshing access token:', error)
-    }
+
     return {
       ...token,
-      accessToken: undefined,
-      refreshToken: undefined,
-      accessTokenExpires: undefined,
-      error: 'RefreshAccessTokenError',
-      user: undefined
+      accessToken: tokens.access_token,
+      accessTokenExpires: Date.now() + tokens.expires_in * 1000,
+      // Fall back to old refresh token, but note that
+      // many providers give a new refresh token when you refresh the access token
+      refreshToken: tokens.refresh_token ?? token.refreshToken
+    }
+  } catch (error) {
+    console.error('Error refreshing access token:', error)
+    return {
+      ...token,
+      error: 'RefreshAccessTokenError'
     }
   }
 }
 
 const handler = NextAuth(authOptions)
-
 export { handler as GET, handler as POST }

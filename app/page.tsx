@@ -1,124 +1,84 @@
 'use client'
-import { useFixedPlaylist } from '@/hooks/useFixedPlaylist'
-import { usePlaylist } from '@/hooks/usePlaylist'
-import { useEffect, useState, useMemo, memo, useCallback } from 'react'
-import { useSearchTracks } from '../hooks/useSearchTracks'
-import Playlist from '@/components/Playlist/Playlist'
-import Loading from './loading'
-import SearchInput from '@/components/SearchInput'
-import { useDebounce } from 'use-debounce'
-import { SpotifySearchRequest } from '@/hooks/useSearchTracks'
-import { TrackDetails } from '@/shared/types'
-import { useMyPlaylists } from '@/hooks/useMyPlaylists'
 
-interface PlaylistRefreshEvent extends CustomEvent {
-  detail: {
-    timestamp: number
-  }
-}
+import { useEffect } from 'react'
+import { useRouter } from 'next/navigation'
+import { createClientComponentClient } from '@supabase/auth-helpers-nextjs'
 
-declare global {
-  interface WindowEventMap {
-    playlistRefresh: PlaylistRefreshEvent
-  }
-}
-
-const Home = memo((): JSX.Element => {
-  const {
-    fixedPlaylistId,
-    isLoading: isCreatingPlaylist,
-    isInitialFetchComplete
-  } = useFixedPlaylist()
-  const { playlist, refreshPlaylist } = usePlaylist(fixedPlaylistId ?? '')
-  const { refetchPlaylists } = useMyPlaylists()
-  const [searchQuery, setSearchQuery] = useState('')
-  const { searchTracks, tracks: searchResults } = useSearchTracks()
+const Home = (): JSX.Element => {
+  const router = useRouter()
+  const supabase = createClientComponentClient()
 
   useEffect(() => {
-    if (!fixedPlaylistId && isInitialFetchComplete) {
-      console.error('[Fixed Playlist] Required playlist not found: 3B Saigon')
+    const checkUser = async (): Promise<void> => {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (user) {
+        // Get the user's profile to get their display_name
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('display_name')
+          .eq('id', user.id)
+          .single()
+
+        if (profile?.display_name) {
+          // If user is logged in, redirect to their playlist page using display_name
+          router.push(`/${profile.display_name}/playlist`)
+        }
+      }
     }
-  }, [fixedPlaylistId, isInitialFetchComplete])
 
-  const handleTrackAdded = useCallback((): void => {
-    // Force a revalidation with fresh data
-    void refreshPlaylist()
-    // Dispatch a custom event to force immediate UI update
-    window.dispatchEvent(
-      new CustomEvent('playlistRefresh', {
-        detail: { timestamp: Date.now() }
+    void checkUser()
+  }, [router, supabase])
+
+  const handleLogin = async (): Promise<void> => {
+    try {
+      const { data, error } = await supabase.auth.signInWithOAuth({
+        provider: 'spotify',
+        options: {
+          redirectTo: `${window.location.origin}/api/auth/callback/supabase`,
+          scopes: [
+            'user-read-email',
+            'playlist-modify-public',
+            'playlist-modify-private',
+            'playlist-read-private',
+            'user-read-playback-state',
+            'user-modify-playback-state',
+            'user-read-private',
+            'playlist-read-collaborative',
+            'user-library-read',
+            'user-library-modify'
+          ].join(' ')
+        }
       })
-    )
-    // Force a refresh of the playlists data
-    void refetchPlaylists()
-  }, [refreshPlaylist, refetchPlaylists])
 
-  const [debouncedSearchQuery] = useDebounce(searchQuery, 300)
-
-  const handleSearch = useCallback(
-    async (query: string): Promise<void> => {
-      if (!query.trim()) {
+      if (error) {
+        console.error('Error signing in:', error)
         return
       }
 
-      const searchRequest: SpotifySearchRequest = {
-        query,
-        type: 'track',
-        limit: 20
+      if (data?.url) {
+        window.location.href = data.url
       }
-
-      await searchTracks(searchRequest)
-    },
-    [searchTracks]
-  )
-
-  useEffect(() => {
-    const searchTrackDebounce = async (): Promise<void> => {
-      try {
-        if (debouncedSearchQuery !== '') {
-          await handleSearch(debouncedSearchQuery)
-        }
-      } catch (error) {
-        console.error('[Search] Error searching tracks:', error)
-      }
+    } catch (error) {
+      console.error('Error in handleLogin:', error)
     }
-
-    void searchTrackDebounce()
-  }, [debouncedSearchQuery, handleSearch])
-
-  const searchInputProps = useMemo<{
-    searchQuery: string
-    setSearchQuery: (query: string) => void
-    searchResults: TrackDetails[]
-    setSearchResults: () => void
-    playlistId: string
-    onTrackAdded: () => void
-  }>(
-    () => ({
-      searchQuery,
-      setSearchQuery,
-      searchResults,
-      setSearchResults: (): void => {}, // This is handled by useSearchTracks now
-      playlistId: fixedPlaylistId ?? '',
-      onTrackAdded: handleTrackAdded
-    }),
-    [searchQuery, searchResults, fixedPlaylistId, handleTrackAdded]
-  )
-
-  if (isCreatingPlaylist || !playlist || !fixedPlaylistId) {
-    return <Loading />
   }
 
-  const { tracks } = playlist
-
   return (
-    <div className='items-center justify-items-center space-y-3 p-4 pt-10 font-mono'>
-      <SearchInput {...searchInputProps} />
-      <Playlist tracks={tracks.items} />
+    <div className='flex min-h-screen flex-col items-center justify-center p-4'>
+      <div className='text-center'>
+        <h1 className='mb-4 text-4xl font-bold'>3B Saigon Jukebox</h1>
+        <p className='mb-8 text-lg text-gray-600'>
+          Create and manage your own playlist for the bar
+        </p>
+        <button
+          onClick={() => void handleLogin()}
+          className='rounded-full bg-green-500 px-8 py-3 text-lg font-semibold text-white hover:bg-green-600'
+        >
+          Sign in with Spotify
+        </button>
+      </div>
     </div>
   )
-})
-
-Home.displayName = 'Home'
+}
 
 export default Home
