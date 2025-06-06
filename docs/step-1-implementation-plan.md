@@ -99,20 +99,20 @@ Would you like me to:
 
 ### 5. Data Persistence and User Management
 
-- [ ] Set up Supabase database schema for:
-  - [ ] User profiles (Spotify user ID, display name)
-  - [ ] User's "3B Saigon" playlist ID
-- [ ] Implement Row Level Security (RLS) policies for:
-  - [ ] Users can only read/write their own profile
-  - [ ] Users can only read/write their own playlist ID
-- [ ] Create API endpoints for:
-  - [ ] User profile management
-  - [ ] Playlist ID storage and retrieval
+- [x] Set up Supabase database schema for:
+  - [x] User profiles (Spotify user ID, display name)
+  - [x] User's "3B Saigon" playlist ID
+- [x] Implement Row Level Security (RLS) policies for:
+  - [x] Users can only read/write their own profile
+  - [x] Users can only read/write their own playlist ID
+- [x] Create API endpoints for:
+  - [x] User profile management
+  - [x] Playlist ID storage and retrieval
         **Validation:**
-- [ ] Database schema correctly enforces access control
-- [ ] Each user has their own "3B Saigon" playlist
-- [ ] Only playlist owner can access admin features
-- [ ] Playlist ID persists correctly between sessions
+- [x] Database schema correctly enforces access control
+- [x] Each user has their own "3B Saigon" playlist
+- [x] Only playlist owner can access admin features
+- [x] Playlist ID persists correctly between sessions
 
 ### 6. Basic Route Structure
 
