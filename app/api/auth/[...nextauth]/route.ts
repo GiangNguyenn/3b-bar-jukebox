@@ -74,7 +74,9 @@ export const authOptions: NextAuthOptions = {
           ...token,
           accessToken: account.access_token,
           refreshToken: account.refresh_token,
-          accessTokenExpires: account.expires_at ? account.expires_at * 1000 : 0,
+          accessTokenExpires: account.expires_at
+            ? account.expires_at * 1000
+            : 0,
           user
         }
       }
@@ -105,7 +107,10 @@ export const authOptions: NextAuthOptions = {
         const supabase = createRouteHandlerClient({ cookies })
 
         // Create or update user in Supabase
-        const { data: { user: supabaseUser }, error: userError } = await supabase.auth.signInWithOAuth({
+        const {
+          data: { user: supabaseUser },
+          error: userError
+        } = await supabase.auth.signInWithOAuth({
           provider: 'spotify',
           options: {
             redirectTo: `${process.env.NEXTAUTH_URL}/api/auth/callback/supabase`,
@@ -172,8 +177,10 @@ export const authOptions: NextAuthOptions = {
       // After sign in, redirect to the user's playlist page
       if (url.startsWith(baseUrl)) {
         const supabase = createRouteHandlerClient({ cookies })
-        const { data: { user } } = await supabase.auth.getUser()
-        
+        const {
+          data: { user }
+        } = await supabase.auth.getUser()
+
         if (user) {
           const { data: profile } = await supabase
             .from('profiles')

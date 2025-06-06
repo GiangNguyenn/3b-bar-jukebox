@@ -10,9 +10,7 @@ export async function GET(request: Request): Promise<NextResponse> {
 
   if (error) {
     console.error('Auth error:', { error, error_description })
-    return NextResponse.redirect(
-      `${requestUrl.origin}?error=${error}`
-    )
+    return NextResponse.redirect(`${requestUrl.origin}?error=${error}`)
   }
 
   if (code) {
@@ -63,7 +61,9 @@ export async function GET(request: Request): Promise<NextResponse> {
         .single()
 
       if (profile?.display_name) {
-        return NextResponse.redirect(`${requestUrl.origin}/${profile.display_name}/playlist`)
+        return NextResponse.redirect(
+          `${requestUrl.origin}/${profile.display_name}/playlist`
+        )
       }
 
       return NextResponse.redirect(requestUrl.origin)
@@ -75,7 +75,5 @@ export async function GET(request: Request): Promise<NextResponse> {
     }
   }
 
-  return NextResponse.redirect(
-    `${requestUrl.origin}?error=No code provided`
-  )
-} 
+  return NextResponse.redirect(`${requestUrl.origin}?error=No code provided`)
+}

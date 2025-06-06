@@ -51,12 +51,18 @@ export function useFixedPlaylist() {
           .single()
 
         if (profileError) {
-          console.error('[Fixed Playlist] Error fetching profile:', profileError)
+          console.error(
+            '[Fixed Playlist] Error fetching profile:',
+            profileError
+          )
           throw new Error('Failed to fetch user profile')
         }
 
         if (!profile) {
-          console.error('[Fixed Playlist] Profile not found for display name:', displayName)
+          console.error(
+            '[Fixed Playlist] Profile not found for display name:',
+            displayName
+          )
           throw new Error('User profile not found')
         }
 
@@ -68,19 +74,26 @@ export function useFixedPlaylist() {
           .single()
 
         if (playlistError) {
-          console.error('[Fixed Playlist] Error fetching playlist:', playlistError)
+          console.error(
+            '[Fixed Playlist] Error fetching playlist:',
+            playlistError
+          )
           throw new Error('Failed to fetch playlist')
         }
 
         if (!playlist) {
-          console.error('[Fixed Playlist] Required playlist not found: 3B Saigon')
+          console.error(
+            '[Fixed Playlist] Required playlist not found: 3B Saigon'
+          )
           throw new Error('Required playlist not found')
         }
 
         setFixedPlaylistId(playlist.spotify_playlist_id)
       } catch (err) {
         console.error('[Fixed Playlist] Error:', err)
-        setError(err instanceof Error ? err : new Error('An unknown error occurred'))
+        setError(
+          err instanceof Error ? err : new Error('An unknown error occurred')
+        )
       } finally {
         setIsLoading(false)
         setIsInitialFetchComplete(true)

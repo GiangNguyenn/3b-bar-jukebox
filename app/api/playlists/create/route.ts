@@ -17,13 +17,13 @@ interface SpotifyPlaylistResponse {
 export async function POST(request: Request): Promise<NextResponse> {
   try {
     const supabase = createRouteHandlerClient({ cookies })
-    const { data: { session }, error: sessionError } = await supabase.auth.getSession()
+    const {
+      data: { session },
+      error: sessionError
+    } = await supabase.auth.getSession()
 
     if (sessionError || !session) {
-      return NextResponse.json(
-        { error: 'Unauthorized' },
-        { status: 401 }
-      )
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
     // Get user's profile to get their ID
@@ -35,10 +35,7 @@ export async function POST(request: Request): Promise<NextResponse> {
 
     if (profileError || !profile) {
       console.error('[Create Playlist] Error fetching profile:', profileError)
-      return NextResponse.json(
-        { error: 'Profile not found' },
-        { status: 404 }
-      )
+      return NextResponse.json({ error: 'Profile not found' }, { status: 404 })
     }
 
     // Check if user already has a playlist
@@ -48,12 +45,13 @@ export async function POST(request: Request): Promise<NextResponse> {
       .eq('user_id', profile.id)
       .single()
 
-    if (playlistError && playlistError.code !== 'PGRST116') { // PGRST116 is "no rows returned"
-      console.error('[Create Playlist] Error checking existing playlist:', playlistError)
-      return NextResponse.json(
-        { error: 'Database error' },
-        { status: 500 }
+    if (playlistError && playlistError.code !== 'PGRST116') {
+      // PGRST116 is "no rows returned"
+      console.error(
+        '[Create Playlist] Error checking existing playlist:',
+        playlistError
       )
+      return NextResponse.json({ error: 'Database error' }, { status: 500 })
     }
 
     if (existingPlaylist) {
@@ -75,7 +73,10 @@ export async function POST(request: Request): Promise<NextResponse> {
     })
 
     if (!response.id) {
-      console.error('[Create Playlist] Error creating Spotify playlist:', response)
+      console.error(
+        '[Create Playlist] Error creating Spotify playlist:',
+        response
+      )
       return NextResponse.json(
         { error: 'Failed to create Spotify playlist' },
         { status: 500 }
@@ -83,12 +84,10 @@ export async function POST(request: Request): Promise<NextResponse> {
     }
 
     // Store playlist ID in database
-    const { error: insertError } = await supabase
-      .from('playlists')
-      .insert({
-        user_id: profile.id,
-        spotify_playlist_id: response.id
-      })
+    const { error: insertError } = await supabase.from('playlists').insert({
+      user_id: profile.id,
+      spotify_playlist_id: response.id
+    })
 
     if (insertError) {
       console.error('[Create Playlist] Error storing playlist ID:', insertError)
@@ -106,4 +105,4 @@ export async function POST(request: Request): Promise<NextResponse> {
       { status: 500 }
     )
   }
-} 
+}

@@ -10,7 +10,9 @@ const Home = (): JSX.Element => {
 
   useEffect(() => {
     const checkUser = async (): Promise<void> => {
-      const { data: { user } } = await supabase.auth.getUser()
+      const {
+        data: { user }
+      } = await supabase.auth.getUser()
       if (user) {
         // Get the user's profile to get their display_name
         const { data: profile } = await supabase
@@ -72,7 +74,7 @@ const Home = (): JSX.Element => {
         </p>
         <button
           onClick={() => void handleLogin()}
-          className='rounded-full bg-green-500 px-8 py-3 text-lg font-semibold text-white hover:bg-green-600'
+          className='text-white rounded-full bg-green-500 px-8 py-3 text-lg font-semibold hover:bg-green-600'
         >
           Sign in with Spotify
         </button>
