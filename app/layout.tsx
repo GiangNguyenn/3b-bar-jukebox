@@ -3,7 +3,6 @@ import { Belgrano } from 'next/font/google'
 import Script from 'next/script'
 import './globals.css'
 import Header from '@/components/Header'
-import { SessionProvider } from '@/components/SessionProvider'
 
 // const geistSans = localFont({
 //   src: "./fonts/GeistVF.woff",
@@ -94,10 +93,8 @@ export default function RootLayout({
         <Script src='/spotify-init.js' strategy='beforeInteractive' />
       </head>
       <body className={`${belgrano.variable} min-h-screen antialiased`}>
-        <SessionProvider>
-          <Header />
-          {children}
-        </SessionProvider>
+        <Header />
+        {children}
       </body>
     </html>
   )
