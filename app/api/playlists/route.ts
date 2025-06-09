@@ -1,178 +1,195 @@
 import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs'
 import { cookies } from 'next/headers'
 import { NextResponse } from 'next/server'
+import type { Database } from '@/types/supabase'
+import type { SpotifyPlaylistItem } from '@/shared/types'
 
-export async function POST() {
+export async function GET(): Promise<NextResponse> {
   try {
-    const supabase = createRouteHandlerClient({ cookies })
+    const supabase = createRouteHandlerClient<Database>({ cookies })
 
     // Get the current user
     const {
-      data: { session },
-      error: sessionError
-    } = await supabase.auth.getSession()
+      data: { user },
+      error: userError
+    } = await supabase.auth.getUser()
 
-    if (sessionError || !session) {
-      console.error('Session error:', sessionError)
+    if (userError || !user) {
+      console.error('Auth error:', userError)
       return NextResponse.json({ error: 'Not authenticated' }, { status: 401 })
     }
 
-    // Get the provider token from the session
-    const providerToken = session.provider_token
-    if (!providerToken) {
-      console.error('No provider token found in session')
-      return NextResponse.json(
-        { error: 'No access token available' },
-        { status: 401 }
-      )
-    }
-
-    // Get the user from the session
-    const user = session.user
-    console.log('User data:', {
-      id: user.id,
-      metadata: user.user_metadata,
-      email: user.email
-    })
-
-    // Get user's profile to get Spotify user ID
+    // Get the user's profile
     const { data: profile, error: profileError } = await supabase
       .from('profiles')
-      .select('spotify_user_id')
+      .select('id')
       .eq('id', user.id)
       .single()
 
-    if (profileError || !profile) {
+    if (profileError) {
       console.error('Error fetching profile:', profileError)
+      return NextResponse.json(
+        { error: 'Failed to fetch profile' },
+        { status: 500 }
+      )
+    }
+
+    if (!profile) {
+      console.error('Profile not found')
       return NextResponse.json({ error: 'Profile not found' }, { status: 404 })
     }
 
-    console.log('Profile data:', profile)
-
-    // Check if user already has a playlist
-    const { data: existingPlaylist } = await supabase
+    // Get the user's playlist
+    const { data: playlist, error: playlistError } = await supabase
       .from('playlists')
-      .select()
+      .select('spotify_playlist_id')
       .eq('user_id', user.id)
       .single()
 
-    if (existingPlaylist) {
-      console.log('Existing playlist found:', existingPlaylist)
-      return NextResponse.json({
-        message: 'Playlist already exists',
-        playlist: existingPlaylist
-      })
+    if (playlistError) {
+      console.error('Error fetching playlist:', playlistError)
+      return NextResponse.json(
+        { error: 'Failed to fetch playlist' },
+        { status: 500 }
+      )
     }
 
-    console.log('Creating Spotify playlist for user:', profile.spotify_user_id)
+    if (!playlist) {
+      console.error('Playlist not found')
+      return NextResponse.json({ error: 'Playlist not found' }, { status: 404 })
+    }
 
-    // Create new playlist in Spotify
+    // Get the playlist details from Spotify
     const response = await fetch(
-      `https://api.spotify.com/v1/users/${profile.spotify_user_id}/playlists`,
+      `https://api.spotify.com/v1/playlists/${playlist.spotify_playlist_id}`,
       {
-        method: 'POST',
         headers: {
-          Authorization: `Bearer ${providerToken}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          name: '3B Saigon',
-          description: 'My 3B Saigon playlist',
-          public: true
-        })
+          Authorization: `Bearer ${user.user_metadata.access_token}`
+        }
       }
     )
 
     if (!response.ok) {
-      const error = await response.json()
-      console.error('Spotify API error:', {
-        status: response.status,
-        statusText: response.statusText,
-        error
-      })
+      const errorData = (await response.json()) as {
+        error: { message: string }
+      }
+      console.error('Spotify API error:', errorData)
       return NextResponse.json(
-        {
-          error: 'Failed to create Spotify playlist',
-          details: error
-        },
-        { status: 500 }
+        { error: errorData.error.message },
+        { status: response.status }
       )
     }
 
-    const spotifyPlaylist = await response.json()
-    console.log('Spotify playlist created:', spotifyPlaylist)
+    const playlistData = (await response.json()) as SpotifyPlaylistItem
 
-    // Store playlist in database
-    const { data: playlist, error: insertError } = await supabase
-      .from('playlists')
-      .insert({
-        user_id: user.id,
-        spotify_playlist_id: spotifyPlaylist.id,
-        name: spotifyPlaylist.name
-      })
-      .select()
-      .single()
-
-    if (insertError) {
-      console.error('Error storing playlist:', insertError)
-      return NextResponse.json(
-        { error: 'Failed to store playlist' },
-        { status: 500 }
-      )
-    }
-
-    return NextResponse.json({
-      message: 'Playlist created successfully',
-      playlist
-    })
+    return NextResponse.json({ playlist: playlistData })
   } catch (error) {
-    console.error('Error in playlist creation:', error)
+    console.error('Error in playlist route:', error)
     return NextResponse.json(
-      {
-        error: 'Internal server error',
-        details: error instanceof Error ? error.message : 'Unknown error'
-      },
+      { error: 'Internal server error' },
       { status: 500 }
     )
   }
 }
 
-export async function GET() {
+export async function POST(request: Request): Promise<NextResponse> {
   try {
-    const supabase = createRouteHandlerClient({ cookies })
+    const supabase = createRouteHandlerClient<Database>({ cookies })
 
     // Get the current user
     const {
-      data: { session },
-      error: sessionError
-    } = await supabase.auth.getSession()
+      data: { user },
+      error: userError
+    } = await supabase.auth.getUser()
 
-    if (sessionError || !session) {
+    if (userError || !user) {
+      console.error('Auth error:', userError)
       return NextResponse.json({ error: 'Not authenticated' }, { status: 401 })
     }
 
-    // Get user's playlists
-    const { data: playlists, error: playlistsError } = await supabase
-      .from('playlists')
-      .select()
-      .eq('user_id', session.user.id)
+    // Get the user's profile
+    const { data: profile, error: profileError } = await supabase
+      .from('profiles')
+      .select('id')
+      .eq('id', user.id)
+      .single()
 
-    if (playlistsError) {
-      console.error('Error fetching playlists:', playlistsError)
+    if (profileError) {
+      console.error('Error fetching profile:', profileError)
       return NextResponse.json(
-        { error: 'Failed to fetch playlists' },
+        { error: 'Failed to fetch profile' },
         { status: 500 }
       )
     }
 
-    return NextResponse.json({ playlists })
-  } catch (error) {
-    console.error('Error in playlist fetch:', error)
-    return NextResponse.json(
+    if (!profile) {
+      console.error('Profile not found')
+      return NextResponse.json({ error: 'Profile not found' }, { status: 404 })
+    }
+
+    // Get the user's playlist
+    const { data: playlist, error: playlistError } = await supabase
+      .from('playlists')
+      .select('spotify_playlist_id')
+      .eq('user_id', user.id)
+      .single()
+
+    if (playlistError) {
+      console.error('Error fetching playlist:', playlistError)
+      return NextResponse.json(
+        { error: 'Failed to fetch playlist' },
+        { status: 500 }
+      )
+    }
+
+    if (!playlist) {
+      console.error('Playlist not found')
+      return NextResponse.json({ error: 'Playlist not found' }, { status: 404 })
+    }
+
+    // Get the request body
+    const body = (await request.json()) as { trackUri: string }
+
+    if (!body.trackUri) {
+      return NextResponse.json(
+        { error: 'Track URI is required' },
+        { status: 400 }
+      )
+    }
+
+    // Add the track to the playlist
+    const response = await fetch(
+      `https://api.spotify.com/v1/playlists/${playlist.spotify_playlist_id}/tracks`,
       {
-        error: 'Internal server error',
-        details: error instanceof Error ? error.message : 'Unknown error'
-      },
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${user.user_metadata.access_token}`
+        },
+        body: JSON.stringify({
+          uris: [body.trackUri]
+        })
+      }
+    )
+
+    if (!response.ok) {
+      const errorData = (await response.json()) as {
+        error: { message: string }
+      }
+      console.error('Spotify API error:', errorData)
+      return NextResponse.json(
+        { error: errorData.error.message },
+        { status: response.status }
+      )
+    }
+
+    const responseData = (await response.json()) as { snapshot_id: string }
+
+    return NextResponse.json({ snapshot_id: responseData.snapshot_id })
+  } catch (error) {
+    console.error('Error in playlist route:', error)
+    return NextResponse.json(
+      { error: 'Internal server error' },
       { status: 500 }
     )
   }

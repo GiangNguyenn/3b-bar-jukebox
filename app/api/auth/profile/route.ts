@@ -1,16 +1,54 @@
 import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs'
 import { cookies } from 'next/headers'
 import { NextResponse } from 'next/server'
+import type { Database } from '@/types/supabase'
 
-export async function POST() {
+interface ProfileData {
+  id: string
+  spotify_user_id: string
+  display_name: string
+  avatar_url?: string
+  spotify_access_token?: string
+  spotify_refresh_token?: string
+  spotify_token_expires_at?: number
+}
+
+interface UserResponse {
+  data: {
+    user: {
+      id: string
+      email?: string
+      user_metadata: {
+        provider_id: string
+        name: string
+        avatar_url?: string
+        provider_token?: string
+        provider_refresh_token?: string
+        provider_token_expires_at?: number
+      }
+    } | null
+  }
+  error: Error | null
+}
+
+interface ProfileResponse {
+  data: ProfileData | null
+  error: {
+    code: string
+    message: string
+  } | null
+}
+
+export async function POST(): Promise<NextResponse> {
   try {
-    const supabase = createRouteHandlerClient({ cookies })
+    const supabase = createRouteHandlerClient<Database>({ cookies })
 
     // Get the current user
+    const response = (await supabase.auth.getUser()) as UserResponse
     const {
       data: { user },
       error: userError
-    } = await supabase.auth.getUser()
+    } = response
 
     if (userError || !user) {
       console.error('Auth error:', userError)
@@ -24,11 +62,13 @@ export async function POST() {
     })
 
     // Check if profile already exists
-    const { data: existingProfile, error: selectError } = await supabase
+    const profileResponse = (await supabase
       .from('profiles')
       .select()
       .eq('id', user.id)
-      .single()
+      .single()) as ProfileResponse
+
+    const { data: existingProfile, error: selectError } = profileResponse
 
     if (selectError && selectError.code !== 'PGRST116') {
       // PGRST116 is "no rows returned"
@@ -40,16 +80,38 @@ export async function POST() {
     }
 
     if (existingProfile) {
-      console.log('Profile already exists:', existingProfile)
-      return NextResponse.json({ message: 'Profile already exists' })
+      // Update existing profile with new tokens
+      const { error: updateError } = await supabase
+        .from('profiles')
+        .update({
+          spotify_access_token: user.user_metadata.provider_token,
+          spotify_refresh_token: user.user_metadata.provider_refresh_token,
+          spotify_token_expires_at: user.user_metadata.provider_token_expires_at
+        })
+        .eq('id', user.id)
+
+      if (updateError) {
+        console.error('Error updating profile:', updateError)
+        return NextResponse.json(
+          { error: 'Failed to update profile' },
+          { status: 500 }
+        )
+      }
+
+      console.log('Profile updated with new tokens')
+      return NextResponse.json({ message: 'Profile updated' })
     }
 
     // Create new profile
-    const profileData = {
+    const metadata = user.user_metadata
+    const profileData: ProfileData = {
       id: user.id,
-      spotify_user_id: user.user_metadata.provider_id,
-      display_name: user.user_metadata.name,
-      avatar_url: user.user_metadata.avatar_url
+      spotify_user_id: metadata.provider_id,
+      display_name: metadata.name,
+      avatar_url: metadata.avatar_url,
+      spotify_access_token: metadata.provider_token,
+      spotify_refresh_token: metadata.provider_refresh_token,
+      spotify_token_expires_at: metadata.provider_token_expires_at
     }
 
     console.log('Creating profile with data:', profileData)
@@ -73,10 +135,7 @@ export async function POST() {
   } catch (error) {
     console.error('Error in profile creation:', error)
     return NextResponse.json(
-      {
-        error: 'Internal server error',
-        details: error instanceof Error ? error.message : 'Unknown error'
-      },
+      { error: 'Internal server error' },
       { status: 500 }
     )
   }

@@ -5,6 +5,9 @@ declare module 'next-auth' {
   interface Session extends DefaultSession {
     accessToken?: string
     error?: string
+    provider_token?: string
+    provider_refresh_token?: string
+    provider_token_expires_at?: number
   }
   interface Account extends NextAuthAccount {
     expires_at: number
@@ -18,5 +21,8 @@ declare module 'next-auth/jwt' {
     accessTokenExpires?: number
     error?: string
     user?: Session['user']
+    provider_token?: string
+    provider_refresh_token?: string
+    provider_token_expires_at?: number
   }
 }

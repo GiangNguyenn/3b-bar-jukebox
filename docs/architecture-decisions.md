@@ -15,12 +15,18 @@
 - **Tool:** NextAuth.js
 - **Provider:** Spotify OAuth (Authorization Code Flow)
 - **Session Handling:** JWT-based with access & refresh token management in custom callbacks
+- **Credential Management:**
+  - Admin user's Spotify credentials stored in database
+  - Public features use stored admin credentials
+  - No authentication required for public features
+  - Automatic token refresh for stored credentials
 
 ## 3. Database
 
 - **Platform:** Supabase (PostgreSQL with Row-Level Security)
 - **Stored Data:**
   - Users and their Spotify account info
+  - Admin user's Spotify credentials (access token, refresh token)
   - Playlist metadata linked to each user
   - (Optional) Tracks added to playlists via your app
 - **Why Supabase:**
@@ -33,7 +39,10 @@
 
 - **Spotify Web API:** For playlist creation, track search, and track addition
 - **Spotify Web Playback SDK:** For playing music in the admin page only
-- **Token Usage:** Tokens are refreshed via NextAuth and used in serverless API routes
+- **Token Usage:**
+  - Admin interface: Tokens refreshed via NextAuth
+  - Public features: Uses stored admin credentials
+  - Server-side API routes handle token refresh
 
 ## 5. API Backend
 
@@ -42,6 +51,11 @@
   - `/api/add-track` – Server-side track addition using Spotify API
   - `/api/create-playlist` – Server-side setup for new users
   - `/api/auth/[...nextauth].ts` – NextAuth handler
+  - `/api/search` – Public search using admin credentials
+- **Security:**
+  - Admin routes require authentication
+  - Public routes use stored admin credentials
+  - Rate limiting on public endpoints
 
 ## 6. Deployment
 
@@ -57,6 +71,8 @@
 - Public read-only access to user playlists
 - Authenticated access to admin playback interface
 - RLS on Supabase to isolate user data
+- Secure storage of admin credentials
+- Rate limiting on public endpoints
 
 ## 8. Scalability
 

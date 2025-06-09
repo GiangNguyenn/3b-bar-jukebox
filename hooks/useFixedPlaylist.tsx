@@ -28,6 +28,7 @@ export function useFixedPlaylist() {
 
     // If we're on the home page, we don't need to fetch a playlist
     if (pathname === '/') {
+      console.log('[FixedPlaylist] On home page, skipping playlist fetch')
       setIsLoading(false)
       setIsInitialFetchComplete(true)
       return
@@ -35,6 +36,7 @@ export function useFixedPlaylist() {
 
     // If no displayName, we're done loading
     if (!displayName) {
+      console.log('[FixedPlaylist] No display name provided')
       setError(new Error('Display name is required'))
       setIsLoading(false)
       setIsInitialFetchComplete(true)
@@ -43,30 +45,34 @@ export function useFixedPlaylist() {
 
     const fetchPlaylistId = async () => {
       try {
+        console.log(
+          '[FixedPlaylist] Fetching profile for display name:',
+          displayName
+        )
         // Get the user's profile ID using their display_name
         const { data: profile, error: profileError } = await supabase
           .from('profiles')
-          .select('id')
+          .select('id, spotify_access_token')
           .eq('display_name', displayName)
           .single()
 
         if (profileError) {
-          console.error(
-            '[Fixed Playlist] Error fetching profile:',
-            profileError
-          )
+          console.error('[FixedPlaylist] Error fetching profile:', profileError)
           throw new Error('Failed to fetch user profile')
         }
 
         if (!profile) {
           console.error(
-            '[Fixed Playlist] Profile not found for display name:',
+            '[FixedPlaylist] Profile not found for display name:',
             displayName
           )
           throw new Error('User profile not found')
         }
 
+        console.log('[FixedPlaylist] Found profile:', profile.id)
+
         // Get their playlist ID
+        console.log('[FixedPlaylist] Fetching playlist for user:', profile.id)
         const { data: playlist, error: playlistError } = await supabase
           .from('playlists')
           .select('spotify_playlist_id')
@@ -75,7 +81,7 @@ export function useFixedPlaylist() {
 
         if (playlistError) {
           console.error(
-            '[Fixed Playlist] Error fetching playlist:',
+            '[FixedPlaylist] Error fetching playlist:',
             playlistError
           )
           throw new Error('Failed to fetch playlist')
@@ -83,14 +89,19 @@ export function useFixedPlaylist() {
 
         if (!playlist) {
           console.error(
-            '[Fixed Playlist] Required playlist not found: 3B Saigon'
+            '[FixedPlaylist] Required playlist not found for user:',
+            profile.id
           )
           throw new Error('Required playlist not found')
         }
 
+        console.log(
+          '[FixedPlaylist] Found playlist:',
+          playlist.spotify_playlist_id
+        )
         setFixedPlaylistId(playlist.spotify_playlist_id)
       } catch (err) {
-        console.error('[Fixed Playlist] Error:', err)
+        console.error('[FixedPlaylist] Error:', err)
         setError(
           err instanceof Error ? err : new Error('An unknown error occurred')
         )

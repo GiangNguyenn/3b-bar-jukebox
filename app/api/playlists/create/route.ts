@@ -1,40 +1,57 @@
 import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs'
 import { cookies } from 'next/headers'
 import { NextResponse } from 'next/server'
-import { sendApiRequest } from '@/shared/api'
+import type { Database } from '@/types/supabase'
 
-interface SpotifyPlaylistResponse {
+interface CreatePlaylistResponse {
   id: string
   name: string
-  description: string
+  description: string | null
   public: boolean
   owner: {
     id: string
     display_name: string
   }
+  tracks: {
+    href: string
+    total: number
+  }
+  type: string
+  uri: string
 }
 
-export async function POST(request: Request): Promise<NextResponse> {
+export async function POST(): Promise<NextResponse> {
   try {
-    const supabase = createRouteHandlerClient({ cookies })
-    const {
-      data: { session },
-      error: sessionError
-    } = await supabase.auth.getSession()
+    const supabase = createRouteHandlerClient<Database>({ cookies })
 
-    if (sessionError || !session) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    // Get the current user
+    const {
+      data: { user },
+      error: userError
+    } = await supabase.auth.getUser()
+
+    if (userError || !user) {
+      console.error('Auth error:', userError)
+      return NextResponse.json({ error: 'Not authenticated' }, { status: 401 })
     }
 
-    // Get user's profile to get their ID
+    // Get the user's profile
     const { data: profile, error: profileError } = await supabase
       .from('profiles')
       .select('id')
-      .eq('id', session.user.id)
+      .eq('id', user.id)
       .single()
 
-    if (profileError || !profile) {
-      console.error('[Create Playlist] Error fetching profile:', profileError)
+    if (profileError) {
+      console.error('Error fetching profile:', profileError)
+      return NextResponse.json(
+        { error: 'Failed to fetch profile' },
+        { status: 500 }
+      )
+    }
+
+    if (!profile) {
+      console.error('Profile not found')
       return NextResponse.json({ error: 'Profile not found' }, { status: 404 })
     }
 
@@ -42,64 +59,69 @@ export async function POST(request: Request): Promise<NextResponse> {
     const { data: existingPlaylist, error: playlistError } = await supabase
       .from('playlists')
       .select('spotify_playlist_id')
-      .eq('user_id', profile.id)
+      .eq('user_id', user.id)
       .single()
 
     if (playlistError && playlistError.code !== 'PGRST116') {
-      // PGRST116 is "no rows returned"
-      console.error(
-        '[Create Playlist] Error checking existing playlist:',
-        playlistError
+      console.error('Error checking existing playlist:', playlistError)
+      return NextResponse.json(
+        { error: 'Failed to check existing playlist' },
+        { status: 500 }
       )
-      return NextResponse.json({ error: 'Database error' }, { status: 500 })
     }
 
     if (existingPlaylist) {
-      return NextResponse.json(
-        { error: 'Playlist already exists' },
-        { status: 400 }
-      )
+      console.log('Playlist already exists:', existingPlaylist)
+      return NextResponse.json({ message: 'Playlist already exists' })
     }
 
     // Create playlist in Spotify
-    const response = await sendApiRequest<SpotifyPlaylistResponse>({
-      path: '/me/playlists',
+    const response = await fetch('https://api.spotify.com/v1/me/playlists', {
       method: 'POST',
-      body: {
-        name: '3B Saigon',
-        description: 'A boutique beer & music experience',
-        public: true
-      }
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${user.user_metadata.access_token}`
+      },
+      body: JSON.stringify({
+        name: `${user.user_metadata.name}'s Playlist`,
+        description: 'Created by JM Bar Jukebox',
+        public: false
+      })
     })
 
-    if (!response.id) {
-      console.error(
-        '[Create Playlist] Error creating Spotify playlist:',
-        response
-      )
+    if (!response.ok) {
+      const errorData = (await response.json()) as {
+        error: { message: string }
+      }
+      console.error('Spotify API error:', errorData)
       return NextResponse.json(
-        { error: 'Failed to create Spotify playlist' },
-        { status: 500 }
+        { error: errorData.error.message },
+        { status: response.status }
       )
     }
 
-    // Store playlist ID in database
+    const playlistData = (await response.json()) as CreatePlaylistResponse
+
+    // Store playlist in database
     const { error: insertError } = await supabase.from('playlists').insert({
-      user_id: profile.id,
-      spotify_playlist_id: response.id
+      user_id: user.id,
+      spotify_playlist_id: playlistData.id
     })
 
     if (insertError) {
-      console.error('[Create Playlist] Error storing playlist ID:', insertError)
+      console.error('Error creating playlist:', insertError)
       return NextResponse.json(
-        { error: 'Failed to store playlist ID' },
+        {
+          error: 'Failed to create playlist',
+          details: insertError
+        },
         { status: 500 }
       )
     }
 
-    return NextResponse.json({ playlistId: response.id })
+    return NextResponse.json({ message: 'Playlist created successfully' })
   } catch (error) {
-    console.error('[Create Playlist] Error:', error)
+    console.error('Error in playlist creation:', error)
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }

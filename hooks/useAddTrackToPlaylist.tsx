@@ -1,4 +1,4 @@
-import { TrackItem } from '@/shared/types'
+import { TrackItem, SpotifyPlaylistItem } from '@/shared/types'
 import { sendApiRequest } from '@/shared/api'
 import { useGetPlaylist } from './useGetPlaylist'
 import { useTrackOperation } from './useTrackOperation'
@@ -12,19 +12,55 @@ interface UseAddTrackToPlaylistProps {
 export const useAddTrackToPlaylist = ({
   playlistId
 }: UseAddTrackToPlaylistProps) => {
-  const { isError: playlistError, refetchPlaylist } = useGetPlaylist(playlistId)
+  const {
+    isError: playlistError,
+    refetchPlaylist,
+    data: playlist
+  } = useGetPlaylist(playlistId)
   const [pendingTracks, setPendingTracks] = useState<Set<string>>(new Set())
+  const [optimisticTrack, setOptimisticTrack] = useState<TrackItem | null>(null)
 
   const { isLoading, error, isSuccess, executeOperation } = useTrackOperation({
     playlistId,
     playlistError,
-    refetchPlaylist
+    refetchPlaylist: async () => {
+      await refetchPlaylist()
+    }
   })
 
   const addTrack = async (track: TrackItem): Promise<void> => {
     const operation = async (track: TrackItem): Promise<void> => {
       // Optimistically update UI
       setPendingTracks((prev) => new Set(prev).add(track.track.uri))
+      setOptimisticTrack(track)
+
+      // Optimistically update playlist data
+      if (playlist) {
+        const optimisticPlaylist: SpotifyPlaylistItem = {
+          ...playlist,
+          tracks: {
+            ...playlist.tracks,
+            items: [
+              ...playlist.tracks.items,
+              {
+                ...track,
+                added_at: new Date().toISOString(),
+                added_by: {
+                  id: 'optimistic',
+                  uri: 'spotify:user:optimistic',
+                  href: 'https://api.spotify.com/v1/users/optimistic',
+                  external_urls: {
+                    spotify: 'https://open.spotify.com/user/optimistic'
+                  },
+                  type: 'user'
+                }
+              }
+            ]
+          }
+        }
+        // Update the cache with optimistic data
+        await refetchPlaylist(optimisticPlaylist)
+      }
 
       try {
         await sendApiRequest({
@@ -34,6 +70,8 @@ export const useAddTrackToPlaylist = ({
             uris: [track.track.uri]
           }
         })
+        // Refresh playlist with actual data
+        await refetchPlaylist()
       } catch (error) {
         console.error('[Add Track] Error adding track:', error)
         // Revert optimistic update on error
@@ -42,6 +80,9 @@ export const useAddTrackToPlaylist = ({
           newSet.delete(track.track.uri)
           return newSet
         })
+        setOptimisticTrack(null)
+        // Revert playlist data on error
+        await refetchPlaylist()
         throw new Error(ERROR_MESSAGES.FAILED_TO_ADD)
       }
     }
@@ -58,6 +99,7 @@ export const useAddTrackToPlaylist = ({
         newSet.delete(track.track.uri)
         return newSet
       })
+      setOptimisticTrack(null)
     }
   }
 
@@ -66,6 +108,7 @@ export const useAddTrackToPlaylist = ({
     isLoading,
     error,
     isSuccess,
-    pendingTracks: Array.from(pendingTracks)
+    pendingTracks: Array.from(pendingTracks),
+    optimisticTrack
   }
 }

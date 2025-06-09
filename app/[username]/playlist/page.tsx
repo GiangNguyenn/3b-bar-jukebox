@@ -20,10 +20,20 @@ interface PlaylistPageProps {
 export default function PlaylistPage({ params }: PlaylistPageProps) {
   const { username } = params
   const supabase = createClientComponentClient()
-  const { data: profile, error: profileError, isLoading: isProfileLoading } = useGetProfile(username)
+  const {
+    data: profile,
+    error: profileError,
+    isLoading: isProfileLoading
+  } = useGetProfile(username)
   const { fixedPlaylistId, isLoading: isPlaylistIdLoading } = useFixedPlaylist()
-  const { data: playlist, error: playlistError, isLoading: isPlaylistLoading } = useGetPlaylist(fixedPlaylistId)
-  const { addTrack, optimisticTrack } = useAddTrackToPlaylist({ playlistId: fixedPlaylistId ?? '' })
+  const {
+    data: playlist,
+    error: playlistError,
+    isLoading: isPlaylistLoading
+  } = useGetPlaylist(fixedPlaylistId)
+  const { addTrack, optimisticTrack } = useAddTrackToPlaylist({
+    playlistId: fixedPlaylistId ?? ''
+  })
 
   const handleAddTrack = async (track: TrackDetails): Promise<void> => {
     try {
@@ -70,13 +80,16 @@ export default function PlaylistPage({ params }: PlaylistPageProps) {
   }
 
   return (
-    <div className="w-full">
-      <div className="mx-auto flex w-full flex-col space-y-6 sm:w-10/12 md:w-8/12 lg:w-9/12">
-        <div className="w-full">
+    <div className='w-full'>
+      <div className='mx-auto flex w-full flex-col space-y-6 sm:w-10/12 md:w-8/12 lg:w-9/12'>
+        <div className='w-full'>
           <SearchInput onAddTrack={handleAddTrack} />
         </div>
         <Suspense fallback={<div>Loading playlist...</div>}>
-          <Playlist tracks={playlist.tracks.items} optimisticTrack={optimisticTrack} />
+          <Playlist
+            tracks={playlist.tracks.items}
+            optimisticTrack={optimisticTrack}
+          />
         </Suspense>
       </div>
     </div>
