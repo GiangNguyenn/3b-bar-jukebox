@@ -8,4 +8,4 @@ export default function AuthLayout({
   children: React.ReactNode
 }): JSX.Element {
   return <SessionProvider>{children}</SessionProvider>
-} 
+}
