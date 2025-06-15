@@ -2,7 +2,6 @@
 
 import React, { useState } from 'react'
 import Image from 'next/image'
-import logo from '../app/public/logo.png'
 import { FALLBACK_GENRES } from '@/shared/constants/trackSuggestion'
 
 interface ErrorDetails {
@@ -187,11 +186,10 @@ const Header = (): JSX.Element => {
         }}
       >
         <Image
-          src={logo}
+          src="/logo.png"
           width={100}
           height={100}
           alt='3B SAIGON JUKEBOX Logo'
-          priority
           className={`transition-transform duration-200 hover:scale-105 ${isLoading ? 'animate-spin' : ''}`}
           style={{ width: 'auto', height: 'auto' }}
         />

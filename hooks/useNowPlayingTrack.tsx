@@ -1,12 +1,22 @@
 import { sendApiRequest } from '@/shared/api'
 import { SpotifyPlaybackState } from '@/shared/types'
 import { handleOperationError, AppError } from '@/shared/utils/errorHandling'
-import React from 'react'
+import React, { useEffect, useRef } from 'react'
 import useSWR from 'swr'
 
 const useNowPlayingTrack = () => {
+  const isMounted = useRef(true)
+  const lastTrackId = useRef<string | null>(null)
+
+  useEffect(() => {
+    return () => {
+      isMounted.current = false
+    }
+  }, [])
+
   const fetcher = async () => {
-    console.log('[useNowPlayingTrack] Fetching current track')
+    if (!isMounted.current) return undefined
+
     return handleOperationError(
       async () => {
         // Construct the URL with query parameters
@@ -16,7 +26,6 @@ const useNowPlayingTrack = () => {
         })
         const path = `me/player/currently-playing?${queryParams.toString()}`
 
-        console.log('[useNowPlayingTrack] Making API request to:', path)
         const response = await sendApiRequest<SpotifyPlaybackState>({
           path,
           extraHeaders: {
@@ -24,25 +33,28 @@ const useNowPlayingTrack = () => {
           }
         })
 
-        console.log('[useNowPlayingTrack] Received response:', {
-          isPlaying: response?.is_playing,
-          trackName: response?.item?.name,
-          trackId: response?.item?.id
-        })
+        if (!isMounted.current) return undefined
+
+        // Only log if the track has changed
+        const currentTrackId = response?.item?.id
+        if (currentTrackId !== lastTrackId.current) {
+          console.log('[useNowPlayingTrack] Track changed:', {
+            isPlaying: response?.is_playing,
+            trackName: response?.item?.name,
+            trackId: currentTrackId
+          })
+          lastTrackId.current = currentTrackId
+        }
 
         return response
       },
       'useNowPlayingTrack',
       (error) => {
+        if (!isMounted.current) return
+
         console.error(
           '[useNowPlayingTrack] Error fetching current track:',
-          error,
-          {
-            timestamp: new Date().toISOString(),
-            errorMessage:
-              error instanceof Error ? error.message : 'Unknown error',
-            errorStack: error instanceof Error ? error.stack : undefined
-          }
+          error instanceof Error ? error.message : 'Unknown error'
         )
       }
     )
@@ -57,22 +69,18 @@ const useNowPlayingTrack = () => {
       revalidateIfStale: false,
       refreshInterval: 10000, // Check every 10 seconds
       onError: (err) => {
-        console.error('[useNowPlayingTrack] SWR Error:', err, {
-          timestamp: new Date().toISOString()
-        })
+        if (!isMounted.current) return
+        console.error('[useNowPlayingTrack] SWR Error:', err instanceof Error ? err.message : 'Unknown error')
       },
       onSuccess: (data) => {
-        console.log('[useNowPlayingTrack] Successfully fetched track:', {
-          isPlaying: data?.is_playing,
-          trackName: data?.item?.name,
-          trackId: data?.item?.id
-        })
+        if (!isMounted.current) return
+        // Success logging is handled in the fetcher
       }
     }
   )
 
   return {
-    data,
+    data: data ?? undefined,
     isLoading: isLoading || error,
     error: error
       ? error instanceof AppError

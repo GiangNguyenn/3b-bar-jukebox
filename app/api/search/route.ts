@@ -1,30 +1,79 @@
 import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs'
 import { cookies } from 'next/headers'
 import { NextResponse } from 'next/server'
+import type { Database } from '@/types/supabase'
+
+// Types
+interface SpotifyTokenResponse {
+  access_token: string
+  expires_in: number
+  token_type: string
+  scope: string
+}
+
+interface AdminProfile {
+  spotify_access_token: string
+  spotify_refresh_token: string
+  spotify_token_expires_at: string
+  spotify_client_id: string
+  spotify_client_secret: string
+}
+
+interface ErrorResponse {
+  error: string
+  code: string
+  status: number
+}
+
+interface SearchResponse {
+  tracks?: {
+    items: Array<{
+      id: string
+      name: string
+      artists: Array<{
+        id: string
+        name: string
+      }>
+      album: {
+        id: string
+        name: string
+        images: Array<{
+          url: string
+          height: number
+          width: number
+        }>
+      }
+    }>
+  }
+}
 
 export const dynamic = 'force-dynamic'
 export const revalidate = 0
 
-export async function GET(request: Request) {
+export async function GET(request: Request): Promise<NextResponse<SearchResponse | ErrorResponse>> {
   const { searchParams } = new URL(request.url)
   const query = searchParams.get('q')
-  const type = searchParams.get('type') || 'track'
+  const type = searchParams.get('type') ?? 'track'
 
   if (!query) {
     return NextResponse.json(
-      { error: 'Query parameter is required' },
+      { 
+        error: 'Query parameter is required',
+        code: 'MISSING_QUERY',
+        status: 400
+      },
       { status: 400 }
     )
   }
 
   try {
-    const supabase = createRouteHandlerClient({ cookies })
+    const supabase = createRouteHandlerClient<Database>({ cookies })
 
     // Get admin profile from database
     const { data: adminProfile, error: profileError } = await supabase
       .from('profiles')
       .select(
-        'spotify_access_token, spotify_refresh_token, spotify_token_expires_at'
+        'spotify_access_token, spotify_refresh_token, spotify_token_expires_at, spotify_client_id, spotify_client_secret'
       )
       .eq('display_name', '3B')
       .single()
@@ -32,15 +81,21 @@ export async function GET(request: Request) {
     if (profileError || !adminProfile) {
       console.error('[Search] Error fetching admin profile:', profileError)
       return NextResponse.json(
-        { error: 'Failed to get admin credentials' },
+        { 
+          error: 'Failed to get admin credentials',
+          code: 'ADMIN_PROFILE_ERROR',
+          status: 500
+        },
         { status: 500 }
       )
     }
 
+    const typedProfile = adminProfile as AdminProfile
+
     // Check if token needs refresh
-    const tokenExpiresAt = new Date(adminProfile.spotify_token_expires_at)
+    const tokenExpiresAt = new Date(typedProfile.spotify_token_expires_at)
     const now = new Date()
-    let accessToken = adminProfile.spotify_access_token
+    let accessToken = typedProfile.spotify_access_token
 
     if (tokenExpiresAt <= now) {
       // Token is expired, refresh it
@@ -49,33 +104,37 @@ export async function GET(request: Request) {
         headers: {
           'Content-Type': 'application/x-www-form-urlencoded',
           Authorization: `Basic ${Buffer.from(
-            `${process.env.SPOTIFY_CLIENT_ID}:${process.env.SPOTIFY_CLIENT_SECRET}`
+            `${typedProfile.spotify_client_id}:${typedProfile.spotify_client_secret}`
           ).toString('base64')}`
         },
         body: new URLSearchParams({
           grant_type: 'refresh_token',
-          refresh_token: adminProfile.spotify_refresh_token
+          refresh_token: typedProfile.spotify_refresh_token
         })
       })
 
       if (!response.ok) {
         console.error('[Search] Error refreshing token:', await response.text())
         return NextResponse.json(
-          { error: 'Failed to refresh token' },
+          { 
+            error: 'Failed to refresh token',
+            code: 'TOKEN_REFRESH_ERROR',
+            status: 500
+          },
           { status: 500 }
         )
       }
 
-      const data = await response.json()
-      accessToken = data.access_token
+      const tokenData = (await response.json()) as SpotifyTokenResponse
+      accessToken = tokenData.access_token
 
       // Update the token in the database
       const { error: updateError } = await supabase
         .from('profiles')
         .update({
-          spotify_access_token: data.access_token,
+          spotify_access_token: tokenData.access_token,
           spotify_token_expires_at: new Date(
-            Date.now() + data.expires_in * 1000
+            Date.now() + tokenData.expires_in * 1000
           ).toISOString()
         })
         .eq('display_name', '3B')
@@ -100,17 +159,25 @@ export async function GET(request: Request) {
     if (!searchResponse.ok) {
       console.error('[Search] Spotify API error:', await searchResponse.text())
       return NextResponse.json(
-        { error: 'Failed to search Spotify' },
+        { 
+          error: 'Failed to search Spotify',
+          code: 'SPOTIFY_API_ERROR',
+          status: searchResponse.status
+        },
         { status: searchResponse.status }
       )
     }
 
-    const searchData = await searchResponse.json()
+    const searchData = (await searchResponse.json()) as SearchResponse
     return NextResponse.json(searchData)
   } catch (error) {
     console.error('[Search] Error:', error)
     return NextResponse.json(
-      { error: 'Internal server error' },
+      { 
+        error: 'Internal server error',
+        code: 'INTERNAL_ERROR',
+        status: 500
+      },
       { status: 500 }
     )
   }

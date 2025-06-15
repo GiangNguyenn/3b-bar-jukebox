@@ -24,7 +24,7 @@ export const PROGRESS_TOLERANCE = 100 // Allow 100ms difference in progress
 
 type RecoveryPhase = 'idle' | 'recovering' | 'success' | 'error'
 
-interface RecoveryState {
+export interface RecoveryState {
   phase: RecoveryPhase
   attempts: number
   error: string | null

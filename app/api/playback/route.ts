@@ -8,7 +8,7 @@ import {
 import { verifyPlaybackResume } from '@/shared/utils/recovery/playback-verification'
 
 interface PlaybackRequest {
-  action: 'play'
+  action: 'play' | 'pause'
   contextUri?: string
   deviceId?: string
   position_ms?: number
@@ -53,6 +53,27 @@ export async function POST(request: Request): Promise<NextResponse> {
         { error: 'Failed to transfer playback to device' },
         { status: 500 }
       )
+    }
+
+    // Make the appropriate API call based on action
+    if (action === 'play') {
+      await sendApiRequest({
+        path: 'me/player/play',
+        method: 'PUT',
+        body: {
+          device_id: deviceId,
+          context_uri: contextUri,
+          position_ms: position_ms
+        }
+      })
+    } else if (action === 'pause') {
+      await sendApiRequest({
+        path: 'me/player/pause',
+        method: 'PUT',
+        body: {
+          device_id: deviceId
+        }
+      })
     }
 
     // Get current state for verification

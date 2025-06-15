@@ -56,9 +56,10 @@ export const useGetPlaylist = (id: string | null) => {
     id ? `playlist-${id}` : null,
     fetcher,
     {
-      refreshInterval: 30000, // Refresh every 30 seconds
-      revalidateOnFocus: true,
-      revalidateOnReconnect: true,
+      refreshInterval: 180000, // Refresh every 3 minutes instead of 30 seconds
+      revalidateOnFocus: false, // Disable revalidation on focus
+      revalidateOnReconnect: false, // Disable revalidation on reconnect
+      dedupingInterval: 30000, // Dedupe requests within 30 seconds
       onError: (err) => {
         console.error('[GetPlaylist] SWR Error:', err, {
           playlistId: id,
@@ -85,8 +86,9 @@ export const useGetPlaylist = (id: string | null) => {
     console.log('[GetPlaylist] Refetching playlist:', id)
     if (optimisticData) {
       return mutate(optimisticData, { revalidate: false })
+    } else {
+      return mutate()
     }
-    return mutate()
   }
 
   return {

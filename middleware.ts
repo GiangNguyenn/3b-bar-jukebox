@@ -3,13 +3,13 @@ import type { NextRequest } from 'next/server'
 
 export async function middleware(request: NextRequest) {
   // Only run on the first request to the app
-  if (request.cookies.has('admin_profile_checked')) {
+  if (request.cookies.has('profile_checked')) {
     return NextResponse.next()
   }
 
   try {
-    // Call the admin profile setup endpoint
-    const response = await fetch(`${request.nextUrl.origin}/api/auth/admin`, {
+    // Call the profile setup endpoint
+    const response = await fetch(`${request.nextUrl.origin}/api/auth/profile`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'
@@ -17,15 +17,15 @@ export async function middleware(request: NextRequest) {
     })
 
     if (!response.ok) {
-      console.error('Failed to setup admin profile:', await response.text())
+      console.error('Failed to setup profile:', await response.text())
     }
   } catch (error) {
-    console.error('Error setting up admin profile:', error)
+    console.error('Error setting up profile:', error)
   }
 
-  // Set a cookie to indicate we've checked for the admin profile
+  // Set a cookie to indicate we've checked for the profile
   const response = NextResponse.next()
-  response.cookies.set('admin_profile_checked', 'true', {
+  response.cookies.set('profile_checked', 'true', {
     maxAge: 60 * 60 * 24 // 24 hours
   })
 

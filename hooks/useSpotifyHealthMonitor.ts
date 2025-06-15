@@ -82,6 +82,13 @@ export function useSpotifyHealthMonitor(fixedPlaylistId: string | null) {
   const recoveryTimeout = useRef<NodeJS.Timeout | null>(null)
   const lastDeviceIdChange = useRef<number>(Date.now())
   const lastRecoverySuccess = useRef<number>(0)
+  const lastConnectionStatus = useRef<string>('unknown')
+  const addLogRef = useRef(addLog)
+
+  // Update ref when addLog changes
+  useEffect(() => {
+    addLogRef.current = addLog
+  }, [addLog])
 
   // Use the unified recovery system with onSuccess callback
   const { recover } = useRecoverySystem(
@@ -106,12 +113,14 @@ export function useSpotifyHealthMonitor(fixedPlaylistId: string | null) {
     const HEALTH_CHECK_INTERVAL_MS = 10000 // Always 10 seconds
     let interval: NodeJS.Timeout | null = null
     let timeout: NodeJS.Timeout | null = null
+
     if (deviceCheckInterval.current) {
       clearInterval(deviceCheckInterval.current)
     }
     if (timeout) {
       clearTimeout(timeout)
     }
+
     const intervalDeviceId = deviceId
     timeout = setTimeout(() => {
       const checkDeviceHealth = async (): Promise<void> => {
@@ -125,7 +134,6 @@ export function useSpotifyHealthMonitor(fixedPlaylistId: string | null) {
           void recover()
           return
         }
-        // No 'disconnected' state or logs
       }
       checkDeviceHealth()
       interval = setInterval(() => {
@@ -133,6 +141,7 @@ export function useSpotifyHealthMonitor(fixedPlaylistId: string | null) {
       }, HEALTH_CHECK_INTERVAL_MS)
       deviceCheckInterval.current = interval
     }, 2000)
+
     return (): void => {
       if (interval) {
         clearInterval(interval)
@@ -147,14 +156,17 @@ export function useSpotifyHealthMonitor(fixedPlaylistId: string | null) {
         clearTimeout(recoveryTimeout.current)
       }
     }
-  }, [deviceId])
+  }, [deviceId, recover])
 
   // Monitor connection quality
   useEffect(() => {
     const updateConnectionStatus = (): void => {
       if (!navigator.onLine) {
-        console.log('[Connection] Device is offline')
-        setHealthStatus((prev) => ({ ...prev, connection: 'poor' }))
+        if (lastConnectionStatus.current !== 'poor') {
+          addLogRef.current('INFO', 'Device is offline', '[Connection]')
+          setHealthStatus((prev) => ({ ...prev, connection: 'poor' }))
+          lastConnectionStatus.current = 'poor'
+        }
         return
       }
 
@@ -162,53 +174,50 @@ export function useSpotifyHealthMonitor(fixedPlaylistId: string | null) {
         .connection
       if (connection) {
         const { effectiveType, downlink, rtt } = connection
-        console.log('[Connection] Network info:', {
-          effectiveType,
-          downlink,
-          rtt,
-          type: connection.type
-        })
+        let newStatus: 'good' | 'unstable' | 'poor' = 'good'
 
         if (connection.type === 'ethernet' || connection.type === 'wifi') {
-          console.log('[Connection] Using ethernet/wifi, marking as good')
-          setHealthStatus((prev) => ({ ...prev, connection: 'good' }))
-          return
-        }
-
-        if (
+          newStatus = 'good'
+        } else if (
           effectiveType === '4g' &&
           downlink &&
           downlink >= 2 &&
           rtt &&
           rtt < 100
         ) {
-          console.log('[Connection] Good 4G connection')
-          setHealthStatus((prev) => ({ ...prev, connection: 'good' }))
+          newStatus = 'good'
         } else if (effectiveType === '3g' && downlink && downlink >= 1) {
-          console.log('[Connection] Unstable 3G connection')
-          setHealthStatus((prev) => ({ ...prev, connection: 'unstable' }))
+          newStatus = 'unstable'
         } else {
-          console.log('[Connection] Poor connection')
-          setHealthStatus((prev) => ({ ...prev, connection: 'poor' }))
+          newStatus = 'poor'
+        }
+
+        if (newStatus !== lastConnectionStatus.current) {
+          addLogRef.current('INFO', `Connection status changed to ${newStatus}`, '[Connection]')
+          setHealthStatus((prev) => ({ ...prev, connection: newStatus }))
+          lastConnectionStatus.current = newStatus
         }
       } else {
-        console.log(
-          '[Connection] Network API not available, using online status'
-        )
-        setHealthStatus((prev) => ({
-          ...prev,
-          connection: navigator.onLine ? 'good' : 'poor'
-        }))
+        const newStatus = navigator.onLine ? 'good' : 'poor'
+        if (newStatus !== lastConnectionStatus.current) {
+          addLogRef.current('INFO', `Connection status changed to ${newStatus}`, '[Connection]')
+          setHealthStatus((prev) => ({
+            ...prev,
+            connection: newStatus
+          }))
+          lastConnectionStatus.current = newStatus
+        }
       }
     }
 
+    // Initial check
     updateConnectionStatus()
 
+    // Set up event listeners
     window.addEventListener('online', updateConnectionStatus)
     window.addEventListener('offline', updateConnectionStatus)
 
-    const connection = (navigator as { connection?: NetworkInformation })
-      .connection
+    const connection = (navigator as { connection?: NetworkInformation }).connection
     if (connection) {
       connection.addEventListener('change', updateConnectionStatus)
     }
@@ -220,10 +229,7 @@ export function useSpotifyHealthMonitor(fixedPlaylistId: string | null) {
         connection.removeEventListener('change', updateConnectionStatus)
       }
     }
-  }, [])
+  }, []) // Empty dependency array since we're using refs
 
-  return {
-    healthStatus,
-    attemptRecovery: recover
-  }
+  return healthStatus
 }

@@ -1,197 +1,162 @@
-import { NextResponse } from 'next/server'
 import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs'
 import { cookies } from 'next/headers'
-import { AppError } from '@/shared/utils/errorHandling'
-import { ERROR_MESSAGES } from '@/shared/constants/errors'
-import { headers } from 'next/headers'
+import { NextResponse } from 'next/server'
+import type { Database } from '@/types/supabase'
 
-// Configure the route to be dynamic
-export const dynamic = 'force-dynamic'
-
-const SPOTIFY_TOKEN_URL = 'https://accounts.spotify.com/api/token'
-const CLIENT_ID = process.env.SPOTIFY_CLIENT_ID ?? ''
-const CLIENT_SECRET = process.env.SPOTIFY_CLIENT_SECRET ?? ''
-
+// Types
 interface SpotifyTokenResponse {
   access_token: string
+  refresh_token: string
+  expires_in: number
   token_type: string
   scope: string
-  expires_in: number
-  refresh_token?: string
 }
 
 interface ErrorResponse {
   error: string
-  details?: unknown
+  code: string
+  status: number
 }
 
-// Add token cache
-const tokenCache: { token: string | null; expiry: number } = {
-  token: null,
-  expiry: 0
+interface TokenResponse {
+  access_token: string
+  refresh_token: string
+  expires_at: number
 }
 
-export async function GET(
-  request: Request
-): Promise<NextResponse<SpotifyTokenResponse | ErrorResponse>> {
+interface AdminProfile {
+  id: string
+  spotify_access_token: string
+  spotify_refresh_token: string
+  spotify_token_expires_at: string
+}
+
+// Constants
+const AUTH = {
+  TOKEN_URL: 'https://accounts.spotify.com/api/token',
+  GRANT_TYPE: 'refresh_token',
+  CONTENT_TYPE: 'application/x-www-form-urlencoded'
+} as const
+
+// Environment variables
+const SPOTIFY_CLIENT_ID = process.env.SPOTIFY_CLIENT_ID
+const SPOTIFY_CLIENT_SECRET = process.env.SPOTIFY_CLIENT_SECRET
+
+if (!SPOTIFY_CLIENT_ID || !SPOTIFY_CLIENT_SECRET) {
+  throw new Error('Missing required environment variables: SPOTIFY_CLIENT_ID and/or SPOTIFY_CLIENT_SECRET')
+}
+
+export const dynamic = 'force-dynamic'
+export const revalidate = 0
+
+export async function GET(): Promise<NextResponse<TokenResponse | ErrorResponse>> {
   try {
-    if (!CLIENT_ID || !CLIENT_SECRET) {
-      console.error('[Token] Missing client credentials')
-      throw new AppError(ERROR_MESSAGES.UNAUTHORIZED, undefined, 'TokenRefresh')
-    }
+    const supabase = createRouteHandlerClient<Database>({ cookies })
 
-    // Get the user's session
-    const supabase = createRouteHandlerClient({ cookies })
-    const {
-      data: { session }
-    } = await supabase.auth.getSession()
-
-    // Get the display name from the referer URL
-    const referer = headers().get('referer')
-    if (!referer) {
-      console.error('[Token] No referer header found')
-      throw new AppError(ERROR_MESSAGES.UNAUTHORIZED, undefined, 'TokenRefresh')
-    }
-
-    const refererUrl = new URL(referer)
-    const displayName = refererUrl.pathname.split('/')[1]
-
-    if (!displayName) {
-      console.error('[Token] No display name found in URL')
-      throw new AppError(ERROR_MESSAGES.UNAUTHORIZED, undefined, 'TokenRefresh')
-    }
-
-    // Get the user's profile with tokens
-    const { data: profile, error: profileError } = await supabase
+    // Get admin profile from database
+    const { data: adminProfile, error: profileError } = await supabase
       .from('profiles')
       .select(
-        'spotify_access_token, spotify_refresh_token, spotify_token_expires_at'
+        'id, spotify_access_token, spotify_refresh_token, spotify_token_expires_at'
       )
-      .eq('display_name', displayName)
+      .limit(1)
       .single()
 
-    if (profileError || !profile) {
-      console.error('[Token] Failed to get profile:', profileError)
-      throw new AppError(ERROR_MESSAGES.UNAUTHORIZED, undefined, 'TokenRefresh')
-    }
-
-    // Check if we have a valid cached token
-    const now = Date.now()
-    const timeUntilExpiry = tokenCache.expiry - now
-    const minutesUntilExpiry = timeUntilExpiry / (60 * 1000)
-
-    // If token is valid and not expiring soon (more than 15 minutes left), return cached token
-    if (tokenCache.token && minutesUntilExpiry > 15) {
-      console.log('[Token] Using cached token')
-      return NextResponse.json({
-        access_token: tokenCache.token,
-        token_type: 'Bearer',
-        scope:
-          'user-read-playback-state user-modify-playback-state playlist-read-private playlist-modify-private',
-        expires_in: Math.floor(timeUntilExpiry / 1000)
-      })
-    }
-
-    // If the current token is still valid, use it
-    if (profile.spotify_access_token && profile.spotify_token_expires_at) {
-      const tokenExpiry = new Date(profile.spotify_token_expires_at).getTime()
-      if (now < tokenExpiry - 15 * 60 * 1000) {
-        // 15 minutes before expiry
-        console.log('[Token] Using profile token')
-        tokenCache.token = profile.spotify_access_token
-        tokenCache.expiry = tokenExpiry
-        return NextResponse.json({
-          access_token: profile.spotify_access_token,
-          token_type: 'Bearer',
-          scope:
-            'user-read-playback-state user-modify-playback-state playlist-read-private playlist-modify-private',
-          expires_in: Math.floor((tokenExpiry - now) / 1000)
-        })
-      }
-    }
-
-    // If we need to refresh the token
-    if (!profile.spotify_refresh_token) {
-      console.error('[Token] No refresh token available')
-      throw new AppError(ERROR_MESSAGES.UNAUTHORIZED, undefined, 'TokenRefresh')
-    }
-
-    const auth = Buffer.from(`${CLIENT_ID}:${CLIENT_SECRET}`).toString('base64')
-
-    const response = await fetch(SPOTIFY_TOKEN_URL, {
-      method: 'POST',
-      headers: {
-        Authorization: `Basic ${auth}`,
-        'Content-Type': 'application/x-www-form-urlencoded'
-      },
-      body: new URLSearchParams({
-        grant_type: 'refresh_token',
-        refresh_token: profile.spotify_refresh_token
-      }),
-      cache: 'no-store'
-    })
-
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}))
-      console.error('[Token] Failed to refresh token:', {
-        status: response.status,
-        statusText: response.statusText,
-        error: errorData
-      })
-      throw new AppError(
-        errorData.error || 'Failed to refresh Spotify token',
-        undefined,
-        'TokenRefresh'
+    if (profileError || !adminProfile) {
+      console.error('[Token] Error fetching admin profile:', profileError)
+      return NextResponse.json(
+        { 
+          error: 'Failed to get admin credentials',
+          code: 'ADMIN_PROFILE_ERROR',
+          status: 500
+        },
+        { status: 500 }
       )
     }
 
-    const data = await response.json()
-    if (!data.access_token) {
-      console.error('[Token] Invalid token response:', data)
-      throw new AppError(ERROR_MESSAGES.UNAUTHORIZED, undefined, 'TokenRefresh')
+    // Type guard to ensure adminProfile has required fields
+    const typedProfile = adminProfile as AdminProfile
+    if (!typedProfile.spotify_access_token || !typedProfile.spotify_refresh_token || !typedProfile.spotify_token_expires_at) {
+      return NextResponse.json(
+        { 
+          error: 'Invalid admin profile data',
+          code: 'INVALID_PROFILE_DATA',
+          status: 500
+        },
+        { status: 500 }
+      )
     }
 
-    // Update the profile with new tokens
-    const { error: updateError } = await supabase
-      .from('profiles')
-      .update({
-        spotify_access_token: data.access_token,
-        spotify_refresh_token:
-          data.refresh_token || profile.spotify_refresh_token,
-        spotify_token_expires_at: new Date(
-          now + data.expires_in * 1000
-        ).toISOString(),
-        updated_at: new Date().toISOString()
+    // Check if token needs refresh
+    const tokenExpiresAt = new Date(typedProfile.spotify_token_expires_at)
+    const now = new Date()
+
+    if (tokenExpiresAt <= now) {
+      // Token is expired, refresh it
+      const response = await fetch(AUTH.TOKEN_URL, {
+        method: 'POST',
+        headers: {
+          'Content-Type': AUTH.CONTENT_TYPE,
+          Authorization: `Basic ${Buffer.from(
+            `${SPOTIFY_CLIENT_ID}:${SPOTIFY_CLIENT_SECRET}`
+          ).toString('base64')}`
+        },
+        body: new URLSearchParams({
+          grant_type: AUTH.GRANT_TYPE,
+          refresh_token: typedProfile.spotify_refresh_token
+        })
       })
-      .eq('display_name', displayName)
 
-    if (updateError) {
-      console.error('[Token] Failed to update profile:', updateError)
-      throw new AppError(ERROR_MESSAGES.UNAUTHORIZED, undefined, 'TokenRefresh')
+      if (!response.ok) {
+        const errorText = await response.text()
+        console.error('[Token] Error refreshing token:', errorText)
+        return NextResponse.json(
+          { 
+            error: 'Failed to refresh token',
+            code: 'TOKEN_REFRESH_ERROR',
+            status: 500
+          },
+          { status: 500 }
+        )
+      }
+
+      const tokenData = (await response.json()) as SpotifyTokenResponse
+
+      // Update the token in the database
+      const { error: updateError } = await supabase
+        .from('profiles')
+        .update({
+          spotify_access_token: tokenData.access_token,
+          spotify_token_expires_at: new Date(
+            Date.now() + tokenData.expires_in * 1000
+          ).toISOString()
+        })
+        .eq('id', adminProfile.id)
+
+      if (updateError) {
+        console.error('[Token] Error updating token:', updateError)
+      }
+
+      return NextResponse.json({
+        access_token: tokenData.access_token,
+        refresh_token: tokenData.refresh_token ?? typedProfile.spotify_refresh_token,
+        expires_at: Math.floor(Date.now() / 1000) + tokenData.expires_in
+      })
     }
 
-    // Update token cache
-    tokenCache.token = data.access_token
-    tokenCache.expiry = now + data.expires_in * 1000
-
+    // Token is still valid, return it
     return NextResponse.json({
-      access_token: data.access_token,
-      token_type: 'Bearer',
-      scope:
-        'user-read-playback-state user-modify-playback-state playlist-read-private playlist-modify-private',
-      expires_in: data.expires_in
+      access_token: typedProfile.spotify_access_token,
+      refresh_token: typedProfile.spotify_refresh_token,
+      expires_at: Math.floor(tokenExpiresAt.getTime() / 1000)
     })
   } catch (error) {
-    console.error('[Token] Unexpected error in token refresh:', error)
-    const appError =
-      error instanceof AppError
-        ? error
-        : new AppError(ERROR_MESSAGES.GENERIC_ERROR, error, 'TokenRefresh')
-
+    console.error('[Token] Error:', error)
     return NextResponse.json(
-      {
-        error: appError.message,
-        details: appError.originalError
+      { 
+        error: 'Internal server error',
+        code: 'INTERNAL_ERROR',
+        status: 500
       },
       { status: 500 }
     )

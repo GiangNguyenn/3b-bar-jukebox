@@ -82,7 +82,7 @@ const Playlist: React.FC<IPlaylistProps> = ({ tracks }): JSX.Element => {
       <div className='w-full'>
         <div className='mx-auto flex w-full overflow-hidden rounded-lg bg-primary-100 shadow-md sm:w-10/12 md:w-8/12 lg:w-9/12'>
           <div className='flex w-full flex-col'>
-            <NowPlaying nowPlaying={playbackState} />
+            <NowPlaying nowPlaying={playbackState || undefined} />
             <div className='flex flex-col p-5'>
               <div className='text-center text-gray-500'>
                 No tracks in the playlist yet
@@ -98,7 +98,7 @@ const Playlist: React.FC<IPlaylistProps> = ({ tracks }): JSX.Element => {
     <div className='w-full'>
       <div className='mx-auto flex w-full overflow-hidden rounded-lg bg-primary-100 shadow-md sm:w-10/12 md:w-8/12 lg:w-9/12'>
         <div className='flex w-full flex-col'>
-          <NowPlaying nowPlaying={playbackState} />
+          <NowPlaying nowPlaying={playbackState || undefined} />
 
           <div className='flex flex-col p-5'>
             <div className='mb-2 flex items-center justify-between border-b pb-1'>
