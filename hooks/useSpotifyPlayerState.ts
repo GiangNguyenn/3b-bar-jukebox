@@ -239,7 +239,9 @@ export function useSpotifyPlayerState(
           }
 
           console.log('[SpotifyPlayer] Player connected successfully')
+          // @ts-ignore - Spotify SDK type definitions are incompatible with our custom types
           playerInstance = player
+          // @ts-ignore - Spotify SDK type definitions are incompatible with our custom types
           window.spotifyPlayerInstance = player
 
           // Set up player event listeners

@@ -212,30 +212,28 @@ export type UserQueue = {
     type: string
     uri: string
   }
-  queue: [
-    {
-      album: Album
-      artists: Artist[]
-      available_markets: string[]
-      disc_number: number
-      duration_ms: number
-      external_ids: {
-        isrc: string
-      }
-      external_urls: {
-        spotify: string
-      }
-      href: string
-      id: string
-      is_local: boolean
-      name: string
-      popularity: number
-      preview_url: string
-      track_number: number
-      type: string
-      uri: string
+  queue: Array<{
+    album: Album
+    artists: Artist[]
+    available_markets: string[]
+    disc_number: number
+    duration_ms: number
+    external_ids: {
+      isrc: string
     }
-  ]
+    external_urls: {
+      spotify: string
+    }
+    href: string
+    id: string
+    is_local: boolean
+    name: string
+    popularity: number
+    preview_url: string
+    track_number: number
+    type: string
+    uri: string
+  }>
 }
 
 export interface TokenResponse {

@@ -23,8 +23,8 @@ export const useAddTrackToPlaylist = ({
   const { isLoading, error, isSuccess, executeOperation } = useTrackOperation({
     playlistId,
     playlistError,
-    refetchPlaylist: async () => {
-      await refetchPlaylist()
+    refetchPlaylist: async (optimisticData?: SpotifyPlaylistItem) => {
+      return refetchPlaylist(optimisticData)
     }
   })
 

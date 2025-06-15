@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { z } from 'zod'
-import { songsBetweenRepeatsSchema } from '@/app/admin/components/track-suggestions/validations/trackSuggestions'
+import { songsBetweenRepeatsSchema } from '@/app/[username]/admin/components/track-suggestions/validations/trackSuggestions'
 import { PlaylistRefreshServiceImpl } from '@/services/playlistRefresh'
 
 export const runtime = 'nodejs'

@@ -41,9 +41,11 @@ interface ProfileResponse {
 
 export async function POST(): Promise<NextResponse> {
   try {
+    console.log('[Profile] Starting profile creation/update')
     const supabase = createRouteHandlerClient<Database>({ cookies })
 
     // Get the current user
+    console.log('[Profile] Getting user from session')
     const response = (await supabase.auth.getUser()) as UserResponse
     const {
       data: { user },
@@ -51,17 +53,24 @@ export async function POST(): Promise<NextResponse> {
     } = response
 
     if (userError || !user) {
-      console.error('Auth error:', userError)
-      return NextResponse.json({ error: 'Not authenticated' }, { status: 401 })
+      console.error('[Profile] Auth error:', userError)
+      return NextResponse.json(
+        { 
+          error: 'Not authenticated',
+          details: userError
+        }, 
+        { status: 401 }
+      )
     }
 
-    console.log('User data:', {
+    console.log('[Profile] User data:', {
       id: user.id,
       metadata: user.user_metadata,
       email: user.email
     })
 
     // Check if profile already exists
+    console.log('[Profile] Checking for existing profile')
     const profileResponse = (await supabase
       .from('profiles')
       .select()
@@ -72,14 +81,18 @@ export async function POST(): Promise<NextResponse> {
 
     if (selectError && selectError.code !== 'PGRST116') {
       // PGRST116 is "no rows returned"
-      console.error('Error checking existing profile:', selectError)
+      console.error('[Profile] Error checking existing profile:', selectError)
       return NextResponse.json(
-        { error: 'Failed to check existing profile' },
+        { 
+          error: 'Failed to check existing profile',
+          details: selectError
+        },
         { status: 500 }
       )
     }
 
     if (existingProfile) {
+      console.log('[Profile] Updating existing profile')
       // Update existing profile with new tokens
       const { error: updateError } = await supabase
         .from('profiles')
@@ -91,18 +104,22 @@ export async function POST(): Promise<NextResponse> {
         .eq('id', user.id)
 
       if (updateError) {
-        console.error('Error updating profile:', updateError)
+        console.error('[Profile] Error updating profile:', updateError)
         return NextResponse.json(
-          { error: 'Failed to update profile' },
+          { 
+            error: 'Failed to update profile',
+            details: updateError
+          },
           { status: 500 }
         )
       }
 
-      console.log('Profile updated with new tokens')
+      console.log('[Profile] Profile updated with new tokens')
       return NextResponse.json({ message: 'Profile updated' })
     }
 
     // Create new profile
+    console.log('[Profile] Creating new profile')
     const metadata = user.user_metadata
     const profileData: ProfileData = {
       id: user.id,
@@ -114,14 +131,18 @@ export async function POST(): Promise<NextResponse> {
       spotify_token_expires_at: metadata.provider_token_expires_at
     }
 
-    console.log('Creating profile with data:', profileData)
+    console.log('[Profile] Profile data:', {
+      ...profileData,
+      spotify_access_token: '***',
+      spotify_refresh_token: '***'
+    })
 
     const { error: insertError } = await supabase
       .from('profiles')
       .insert(profileData)
 
     if (insertError) {
-      console.error('Error creating profile:', insertError)
+      console.error('[Profile] Error creating profile:', insertError)
       return NextResponse.json(
         {
           error: 'Failed to create profile',
@@ -131,11 +152,15 @@ export async function POST(): Promise<NextResponse> {
       )
     }
 
+    console.log('[Profile] Profile created successfully')
     return NextResponse.json({ message: 'Profile created successfully' })
   } catch (error) {
-    console.error('Error in profile creation:', error)
+    console.error('[Profile] Error in profile creation:', error)
     return NextResponse.json(
-      { error: 'Internal server error' },
+      { 
+        error: 'Internal server error',
+        details: error instanceof Error ? error.message : String(error)
+      },
       { status: 500 }
     )
   }

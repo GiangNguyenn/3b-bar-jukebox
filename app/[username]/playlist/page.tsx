@@ -9,7 +9,7 @@ import { TrackDetails, TrackItem } from '@/shared/types'
 import SearchInput from '@/components/SearchInput'
 import Playlist from '@/components/Playlist/Playlist'
 import { handleApiError } from '@/shared/utils/errorHandling'
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs'
+import { AppError } from '@/shared/utils/errorHandling'
 
 interface PlaylistPageProps {
   params: {
@@ -17,23 +17,22 @@ interface PlaylistPageProps {
   }
 }
 
-export default function PlaylistPage({ params }: PlaylistPageProps) {
+export default function PlaylistPage({ params }: PlaylistPageProps): JSX.Element {
   const { username } = params
-  const supabase = createClientComponentClient()
   const {
     data: profile,
     error: profileError,
     isLoading: isProfileLoading
-  } = useGetProfile(username)
+  } = useGetProfile(username) as { data: { username: string } | null; error: Error | null; isLoading: boolean }
   const { fixedPlaylistId, isLoading: isPlaylistIdLoading } = useFixedPlaylist()
   const {
     data: playlist,
     error: playlistError,
     isLoading: isPlaylistLoading
-  } = useGetPlaylist(fixedPlaylistId)
+  } = useGetPlaylist(fixedPlaylistId) as { data: { tracks: { items: TrackItem[] } } | null; error: Error | null; isLoading: boolean }
   const { addTrack, optimisticTrack } = useAddTrackToPlaylist({
     playlistId: fixedPlaylistId ?? ''
-  })
+  }) as { addTrack: (track: TrackItem) => Promise<void>; optimisticTrack: TrackItem | undefined }
 
   const handleAddTrack = async (track: TrackDetails): Promise<void> => {
     try {
@@ -55,15 +54,17 @@ export default function PlaylistPage({ params }: PlaylistPageProps) {
     } catch (error) {
       console.error('[PlaylistPage] Error adding track:', error)
       const appError = handleApiError(error, 'PlaylistPage')
-      // You might want to show this error to the user
+      if (appError instanceof AppError) {
+        console.error('[PlaylistPage] AppError:', appError.message)
+      }
     }
   }
 
-  if (profileError) {
+  if (profileError instanceof Error) {
     return <div>Error loading profile: {profileError.message}</div>
   }
 
-  if (playlistError) {
+  if (playlistError instanceof Error) {
     return <div>Error loading playlist: {playlistError.message}</div>
   }
 

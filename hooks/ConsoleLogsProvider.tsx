@@ -6,7 +6,9 @@ import {
   ReactNode,
   useState,
   useEffect,
-  useCallback
+  useCallback,
+  useRef,
+  useMemo
 } from 'react'
 import * as Sentry from '@sentry/nextjs'
 
@@ -30,42 +32,96 @@ interface ConsoleLogsContextType {
   clearLogs: () => void
 }
 
+interface ConsoleLogsProviderProps {
+  maxLogs?: number
+  enableConsoleOverride?: boolean
+  enableSentry?: boolean
+  rateLimit?: number
+  maxMessageLength?: number
+}
+
 const ConsoleLogsContext = createContext<ConsoleLogsContextType | null>(null)
 
-const MAX_LOGS = 50
+const DEFAULT_MAX_LOGS = 50
+const DEFAULT_RATE_LIMIT = 1000 // ms
+const DEFAULT_MAX_MESSAGE_LENGTH = 1000
 
-export function ConsoleLogsProvider({ children }: { children: ReactNode }) {
+export function ConsoleLogsProvider({
+  children,
+  maxLogs = DEFAULT_MAX_LOGS,
+  enableConsoleOverride = true,
+  enableSentry = true,
+  rateLimit = DEFAULT_RATE_LIMIT,
+  maxMessageLength = DEFAULT_MAX_MESSAGE_LENGTH
+}: ConsoleLogsProviderProps & { children: ReactNode }) {
   const [logs, setLogs] = useState<LogEntry[]>([])
-  const { logger } = Sentry
+  const loggerRef = useRef(Sentry.logger)
+  const isConsoleOverridden = useRef(false)
+  const setLogsRef = useRef(setLogs)
+  const lastLogTime = useRef(0)
 
-  const addLog = useCallback(
+  // Update ref when setLogs changes
+  useEffect(() => {
+    setLogsRef.current = setLogs
+  }, [setLogs])
+
+  // Validate and sanitize message
+  const validateMessage = useCallback((message: string): string => {
+    if (message.length > maxMessageLength) {
+      return message.slice(0, maxMessageLength) + '...'
+    }
+    return message
+  }, [maxMessageLength])
+
+  // Safe Sentry logging with error handling
+  const logToSentry = useCallback(
     (level: LogLevel, message: string, context?: string, error?: Error) => {
-      const timestamp = new Date().toISOString()
-      setLogs((prev) => {
-        const newLog = { timestamp, level, message, context, error }
-        const updatedLogs = [...prev, newLog]
-        return updatedLogs.slice(-MAX_LOGS)
-      })
+      if (!enableSentry) return
 
-      // Only send errors and warnings to Sentry
-      if (level === 'ERROR') {
-        if (error) {
-          logger.error(message, { context, error })
-        } else {
-          logger.error(message, { context })
+      try {
+        if (level === 'ERROR') {
+          loggerRef.current.error(message, { context, error })
+        } else if (level === 'WARN') {
+          loggerRef.current.warn(message, { context, error })
         }
-      } else if (level === 'WARN') {
-        if (error) {
-          logger.warn(message, { context, error })
-        } else {
-          logger.warn(message, { context })
-        }
+      } catch (e) {
+        // Fallback logging if Sentry fails
+        console.error('Failed to log to Sentry:', e)
       }
     },
-    [logger]
+    [enableSentry]
   )
 
+  // Rate-limited addLog
+  const addLog = useCallback(
+    (level: LogLevel, message: string, context?: string, error?: Error) => {
+      const now = Date.now()
+      if (now - lastLogTime.current < rateLimit) {
+        return
+      }
+      lastLogTime.current = now
+
+      const timestamp = new Date().toISOString()
+      const sanitizedMessage = validateMessage(message)
+      const newLog = { timestamp, level, message: sanitizedMessage, context, error }
+
+      // Use functional update to avoid stale state
+      setLogsRef.current((prev) => {
+        const updatedLogs = [...prev, newLog]
+        return updatedLogs.slice(-maxLogs)
+      })
+
+      // Log to Sentry if enabled
+      logToSentry(level, sanitizedMessage, context, error)
+    },
+    [rateLimit, validateMessage, logToSentry, maxLogs]
+  )
+
+  // Separate effect for console overrides
   useEffect(() => {
+    if (!enableConsoleOverride || isConsoleOverridden.current) return
+    isConsoleOverridden.current = true
+
     const originalConsoleLog = console.log
     const originalConsoleInfo = console.info
     const originalConsoleWarn = console.warn
@@ -113,26 +169,8 @@ export function ConsoleLogsProvider({ children }: { children: ReactNode }) {
         error = lastArg
       }
 
-      setLogs((prev) => {
-        const newLog = { timestamp, level, message, context, error }
-        const updatedLogs = [...prev, newLog]
-        return updatedLogs.slice(-MAX_LOGS)
-      })
-
-      // Sentry integration for console.warn/error
-      if (level === 'ERROR') {
-        if (error) {
-          logger.error(message, { context, error })
-        } else {
-          logger.error(message, { context })
-        }
-      } else if (level === 'WARN') {
-        if (error) {
-          logger.warn(message, { context, error })
-        } else {
-          logger.warn(message, { context })
-        }
-      }
+      // Use addLog instead of setLogs directly
+      addLog(level, message, context, error)
     }
 
     // Override console methods
@@ -162,13 +200,20 @@ export function ConsoleLogsProvider({ children }: { children: ReactNode }) {
       console.info = originalConsoleInfo
       console.warn = originalConsoleWarn
       console.error = originalConsoleError
+      isConsoleOverridden.current = false
     }
-  }, [logger])
+  }, [enableConsoleOverride, addLog])
 
-  const clearLogs = () => setLogs([])
+  const clearLogs = useCallback(() => setLogsRef.current([]), [])
+
+  // Memoize context value to prevent unnecessary re-renders
+  const contextValue = useMemo(
+    () => ({ logs, addLog, clearLogs }),
+    [logs, addLog, clearLogs]
+  )
 
   return (
-    <ConsoleLogsContext.Provider value={{ logs, addLog, clearLogs }}>
+    <ConsoleLogsContext.Provider value={contextValue}>
       {children}
     </ConsoleLogsContext.Provider>
   )

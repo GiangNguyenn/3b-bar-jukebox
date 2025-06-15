@@ -24,8 +24,8 @@ const Home = (): JSX.Element => {
           .single()
 
         if (profile?.display_name) {
-          // If user is logged in, redirect to their playlist page using display_name
-          router.push(`/${profile.display_name}/playlist`)
+          // If user is logged in, redirect to their admin page using display_name
+          router.push(`/${profile.display_name}/admin`)
         }
       }
     }
@@ -86,6 +86,16 @@ const Home = (): JSX.Element => {
     }
   }
 
+  const onLoginClick = (e: React.MouseEvent<HTMLButtonElement>): void => {
+    e.preventDefault()
+    void handleLogin()
+  }
+
+  const onSignOutClick = (e: React.MouseEvent<HTMLButtonElement>): void => {
+    e.preventDefault()
+    void handleSignOut()
+  }
+
   return (
     <div className='flex min-h-screen flex-col items-center justify-center bg-black'>
       <div className='w-full max-w-md space-y-8 rounded-lg bg-gray-900 p-8 shadow-lg'>
@@ -100,7 +110,7 @@ const Home = (): JSX.Element => {
 
         <div className='mt-8 space-y-4'>
           <button
-            onClick={handleLogin}
+            onClick={onLoginClick}
             disabled={isLoading}
             className='text-white group relative flex w-full justify-center rounded-md bg-[#1DB954] px-3 py-3 text-sm font-semibold hover:bg-[#1ed760] focus:outline-none focus:ring-2 focus:ring-[#1DB954] focus:ring-offset-2 disabled:opacity-50'
           >
@@ -111,7 +121,7 @@ const Home = (): JSX.Element => {
           </button>
 
           <button
-            onClick={handleSignOut}
+            onClick={onSignOutClick}
             disabled={isLoading}
             className='text-white group relative flex w-full justify-center rounded-md bg-gray-700 px-3 py-3 text-sm font-semibold hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2 disabled:opacity-50'
           >
