@@ -120,6 +120,29 @@ export function ConsoleLogsProvider({
         return updatedLogs.slice(-maxLogs)
       })
 
+      // Log to browser console with appropriate console method
+      const consoleMethod = level.toLowerCase() as 'log' | 'info' | 'warn' | 'error'
+      const consoleArgs = context 
+        ? [`[${context}]`, sanitizedMessage, error].filter(Boolean)
+        : [sanitizedMessage, error].filter(Boolean)
+      
+      switch (consoleMethod) {
+        case 'log':
+          console.log(...consoleArgs)
+          break
+        case 'info':
+          console.info(...consoleArgs)
+          break
+        case 'warn':
+          console.warn(...consoleArgs)
+          break
+        case 'error':
+          console.error(...consoleArgs)
+          break
+        default:
+          console.log(...consoleArgs)
+      }
+
       // Log to Sentry if enabled
       logToSentry(level, sanitizedMessage, context, error)
     },

@@ -240,12 +240,12 @@ export class SpotifyApiService implements SpotifyApiClient {
         // First ensure we have an active device
         const deviceId = await this.ensureActiveDevice()
 
-        // Get current state after ensuring device
-        const currentState = await this.getPlaybackState()
-
         // Get the fixed playlist ID - we'll need this in all cases
         const fixedPlaylistId = await this.getFixedPlaylistId()
         const fixedPlaylistUri = `spotify:playlist:${fixedPlaylistId}`
+
+        // Get current state after ensuring device
+        const currentState = await this.getPlaybackState()
 
         // If we have a current state with context and item, try to resume from there
         if (currentState?.context?.uri && currentState?.item?.uri) {
@@ -326,6 +326,15 @@ export class SpotifyApiService implements SpotifyApiClient {
           },
           retryConfig: this.retryConfig
         })
+
+        // Wait a moment for playback to start
+        await new Promise((resolve) => setTimeout(resolve, 1000))
+
+        // Verify playback started
+        const verifyState = await this.getPlaybackState()
+        if (!verifyState?.is_playing) {
+          throw new Error('Playback failed to start')
+        }
 
         return {
           success: true

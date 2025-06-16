@@ -8,7 +8,6 @@ import { useFixedPlaylist } from '@/hooks/useFixedPlaylist'
 import { SpotifyPlayer } from '@/components/SpotifyPlayer'
 import { sendApiRequest } from '@/shared/api'
 import { SpotifyPlaybackState } from '@/shared/types'
-import { useSpotifyPlayerState } from '@/hooks/useSpotifyPlayerState'
 import { TrackSuggestionsTab } from './components/track-suggestions/track-suggestions-tab'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useConsoleLogsContext } from '@/hooks/ConsoleLogsProvider'
@@ -28,8 +27,8 @@ import {
   PROGRESS_TOLERANCE
 } from '@/hooks/recovery/useRecoverySystem'
 import { HealthStatusSection } from './components/dashboard/health-status-section'
-import { useHealthMonitor } from './hooks/useHealthMonitor'
 import { usePlaylist } from '@/hooks/usePlaylist'
+import { useSpotifyHealthMonitor } from '@/hooks/useSpotifyHealthMonitor'
 
 const REFRESH_INTERVAL = 180000 // 3 minutes in milliseconds
 
@@ -125,12 +124,11 @@ export default function AdminPage(): JSX.Element {
   const [isInitializing, setIsInitializing] = useState(true)
 
   // Hooks
-  const isReady = useSpotifyPlayer((state) => state.isReady)
-  const deviceId = useSpotifyPlayer((state) => state.deviceId)
+  const { deviceId, isReady, playbackState } = useSpotifyPlayer()
   const {
     fixedPlaylistId,
-    error: playlistError,
-    isInitialFetchComplete
+    isLoading: isFixedPlaylistLoading,
+    error: fixedPlaylistError
   } = useFixedPlaylist()
   const { logs: consoleLogs, addLog } = useConsoleLogsContext()
 
@@ -163,14 +161,8 @@ export default function AdminPage(): JSX.Element {
     }, [])
   )
 
-  // Use the new health monitor hook
-  const { healthStatus, setHealthStatus } = useHealthMonitor({
-    deviceId,
-    isReady,
-    isManualPause,
-    isInitializing,
-    playbackInfo
-  })
+  // Replace the old health monitor with the consolidated one
+  const { healthStatus, setHealthStatus } = useSpotifyHealthMonitor(fixedPlaylistId)
 
   // Refs
   const isRefreshing = useRef<boolean>(false)
@@ -294,21 +286,6 @@ export default function AdminPage(): JSX.Element {
   const [refreshError, setRefreshError] = useState<string | null>(null)
   const [_timeUntilRefresh, setTimeUntilRefresh] = useState(REFRESH_INTERVAL)
   const lastRefreshTime = useRef<number>(Date.now())
-
-  // Remove unused refreshToken
-  useSpotifyPlayerState(deviceId ?? '')
-
-  // Remove initialization-related interfaces and constants
-  const _MAX_RECOVERY_ATTEMPTS = 5
-  const _RECOVERY_STEPS = useMemo(
-    () => [
-      { message: 'Refreshing player state...', weight: 0.2 },
-      { message: 'Ensuring active device...', weight: 0.2 },
-      { message: 'Attempting to reconnect...', weight: 0.3 },
-      { message: 'Reinitializing player...', weight: 0.3 }
-    ],
-    []
-  )
 
   // Move handleApiError before sendApiRequestWithTokenRecovery
   const handleApiError = useCallback(
@@ -700,12 +677,12 @@ export default function AdminPage(): JSX.Element {
 
   // Add effect to update fixed playlist status
   useEffect(() => {
-    if (!isInitialFetchComplete) {
+    if (isFixedPlaylistLoading) {
       setHealthStatus((prev) => ({ ...prev, fixedPlaylist: 'unknown' }))
       return
     }
 
-    if (playlistError) {
+    if (fixedPlaylistError) {
       setHealthStatus((prev) => ({ ...prev, fixedPlaylist: 'error' }))
       return
     }
@@ -715,7 +692,7 @@ export default function AdminPage(): JSX.Element {
     } else {
       setHealthStatus((prev) => ({ ...prev, fixedPlaylist: 'not_found' }))
     }
-  }, [fixedPlaylistId, playlistError, isInitialFetchComplete, addLog])
+  }, [fixedPlaylistId, fixedPlaylistError, isFixedPlaylistLoading, addLog])
 
   // Cleanup timeout on unmount
   useEffect(() => {
@@ -729,8 +706,22 @@ export default function AdminPage(): JSX.Element {
 
   // Update the initialization effect
   useEffect(() => {
+    const initializePlayer = async () => {
+      try {
+        console.log('[AdminPage] Initializing player...')
+        const { createPlayer } = await import('@/hooks/useSpotifyPlayer')
+        await createPlayer()
+        console.log('[AdminPage] Player initialized')
+      } catch (error) {
+        console.error('[AdminPage] Error initializing player:', error)
+        addLog('ERROR', `Error initializing player: ${error instanceof Error ? error.message : 'Unknown error'}`)
+      }
+    }
+
     if (isReady && deviceId) {
       setIsInitializing(false)
+    } else {
+      void initializePlayer()
     }
   }, [isReady, deviceId, addLog])
 
@@ -850,6 +841,31 @@ export default function AdminPage(): JSX.Element {
     ) {
       setActiveTab(value)
     }
+  }
+
+  // Update error handling
+  if (fixedPlaylistError) {
+    return (
+      <div className='p-4 text-red-500'>
+        <p>Error loading playlist: {fixedPlaylistError.message}</p>
+      </div>
+    )
+  }
+
+  if (isFixedPlaylistLoading) {
+    return (
+      <div className='p-4 text-gray-500'>
+        <p>Loading playlist...</p>
+      </div>
+    )
+  }
+
+  if (playlistRefreshError) {
+    return (
+      <div className='p-4 text-red-500'>
+        <p>Error refreshing playlist: {playlistRefreshError.message}</p>
+      </div>
+    )
   }
 
   return (

@@ -4,6 +4,7 @@ import { sendApiRequest } from '@/shared/api'
 import { SpotifyPlaybackState } from '@/shared/types'
 import { useConsoleLogsContext } from './ConsoleLogsProvider'
 import { useRecoverySystem } from './recovery/useRecoverySystem'
+import { SpotifyApiService } from '@/services/spotifyApi'
 
 // Network Information API types
 interface NetworkInformation extends EventTarget {
@@ -55,6 +56,12 @@ const DEVICE_CHECK_INTERVAL = {
   unknown: 5000 // 5 seconds for initial checks
 }
 
+const STALL_CHECK_INTERVAL = 5000 // 5 seconds
+const MIN_STALLS_BEFORE_RECOVERY = 3
+const DEVICE_MISMATCH_THRESHOLD = 3
+const DEVICE_CHANGE_GRACE_PERIOD = 10000 // 10 seconds
+const RECOVERY_COOLDOWN = 30000 // 30 seconds
+
 const RECOVERY_STEPS = [
   { message: 'Refreshing player state...', weight: 0.2 },
   { message: 'Ensuring active device...', weight: 0.2 },
@@ -74,43 +81,66 @@ export function useSpotifyHealthMonitor(fixedPlaylistId: string | null) {
     tokenExpiringSoon: false,
     fixedPlaylist: 'unknown'
   })
+
   const deviceId = useSpotifyPlayer((state) => state.deviceId)
   const isReady = useSpotifyPlayer((state) => state.isReady)
   const playbackState = useSpotifyPlayer((state) => state.playbackState)
   const { addLog } = useConsoleLogsContext()
+  
+  // Refs for tracking state
   const deviceCheckInterval = useRef<NodeJS.Timeout | null>(null)
   const recoveryTimeout = useRef<NodeJS.Timeout | null>(null)
   const lastDeviceIdChange = useRef<number>(Date.now())
   const lastRecoverySuccess = useRef<number>(0)
   const lastConnectionStatus = useRef<string>('unknown')
   const addLogRef = useRef(addLog)
+  const wasPlayingRef = useRef(false)
+  const lastPlaybackCheckRef = useRef<number>(Date.now())
+  const lastStallCheckRef = useRef<{ timestamp: number; count: number }>({
+    timestamp: 0,
+    count: 0
+  })
+  const deviceMismatchCountRef = useRef(0)
+  const isInitialStateRef = useRef(true)
 
   // Update ref when addLog changes
   useEffect(() => {
     addLogRef.current = addLog
   }, [addLog])
 
+  // Track playback state changes
+  useEffect(() => {
+    if (playbackState?.is_playing) {
+      wasPlayingRef.current = true
+      isInitialStateRef.current = false
+    }
+  }, [playbackState?.is_playing])
+
+  // Track deviceId changes
+  useEffect(() => {
+    lastDeviceIdChange.current = Date.now()
+    // Reset initial state when device changes
+    isInitialStateRef.current = true
+  }, [deviceId])
+
   // Use the unified recovery system with onSuccess callback
   const { recover } = useRecoverySystem(
     deviceId,
     fixedPlaylistId,
-    () => {},
+    useCallback((status) => {
+      setHealthStatus((prev) => ({
+        ...prev,
+        device: status.device
+      }))
+    }, []),
     false,
     () => {
       lastRecoverySuccess.current = Date.now()
     }
   )
 
-  // Track deviceId changes for grace period
-  useEffect(() => {
-    lastDeviceIdChange.current = Date.now()
-  }, [deviceId])
-
   // Device health check effect
   useEffect(() => {
-    const GRACE_PERIOD_MS = 2000
-    const POST_RECOVERY_GRACE_MS = 10000
-    const HEALTH_CHECK_INTERVAL_MS = 10000 // Always 10 seconds
     let interval: NodeJS.Timeout | null = null
     let timeout: NodeJS.Timeout | null = null
 
@@ -127,20 +157,70 @@ export function useSpotifyHealthMonitor(fixedPlaylistId: string | null) {
         if (intervalDeviceId !== useSpotifyPlayer.getState().deviceId) {
           return
         }
+
+        const now = Date.now()
+        const timeSinceDeviceChange = now - lastDeviceIdChange.current
+        const timeSinceLastRecovery = now - lastRecoverySuccess.current
+
+        // Don't check health during grace periods
+        if (timeSinceDeviceChange < DEVICE_CHANGE_GRACE_PERIOD || 
+            timeSinceLastRecovery < RECOVERY_COOLDOWN) {
+          return
+        }
+
         const playbackState = useSpotifyPlayer.getState().playbackState
-        // Only trigger recovery if playback is not progressing
-        if (!playbackState || !playbackState.is_playing) {
+        if (!playbackState) {
+          return
+        }
+
+        // Don't trigger recovery during initial state
+        if (isInitialStateRef.current) {
+          return
+        }
+
+        // Check for unexpected playback stops
+        if (wasPlayingRef.current && !playbackState.is_playing) {
+          addLogRef.current('WARN', 'Playback stopped unexpectedly', 'HealthMonitor', {
+            deviceId: intervalDeviceId,
+            timestamp: new Date().toISOString()
+          } as any)
           setHealthStatus((prev) => ({ ...prev, device: 'unresponsive' }))
           void recover()
           return
         }
+
+        // Check for device mismatch
+        try {
+          const spotifyApi = SpotifyApiService.getInstance()
+          const state = await spotifyApi.getPlaybackState()
+
+          if (state?.device?.id && state.device.id !== intervalDeviceId) {
+            deviceMismatchCountRef.current += 1
+            if (deviceMismatchCountRef.current >= DEVICE_MISMATCH_THRESHOLD) {
+              addLogRef.current('WARN', 'Device mismatch detected', 'HealthMonitor', {
+                expectedDeviceId: intervalDeviceId,
+                actualDeviceId: state.device.id,
+                timestamp: new Date().toISOString()
+              } as any)
+              void recover()
+              deviceMismatchCountRef.current = 0
+            }
+          } else {
+            deviceMismatchCountRef.current = 0
+          }
+        } catch (error) {
+          if (error instanceof Error) {
+            addLogRef.current('ERROR', 'Error checking device health', 'HealthMonitor', error)
+          }
+        }
       }
+
       checkDeviceHealth()
       interval = setInterval(() => {
         void checkDeviceHealth()
-      }, HEALTH_CHECK_INTERVAL_MS)
+      }, DEVICE_CHECK_INTERVAL.unknown)
       deviceCheckInterval.current = interval
-    }, 2000)
+    }, DEVICE_CHANGE_GRACE_PERIOD)
 
     return (): void => {
       if (interval) {
@@ -240,5 +320,5 @@ export function useSpotifyHealthMonitor(fixedPlaylistId: string | null) {
     }
   }, []) // Empty dependency array since we're using refs
 
-  return healthStatus
+  return { healthStatus, setHealthStatus }
 }
