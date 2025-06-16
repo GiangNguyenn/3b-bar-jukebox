@@ -1239,7 +1239,7 @@ export default function AdminPage(): JSX.Element {
               </div>
             )}
 
-            <HealthStatusSection 
+            <HealthStatusSection
               healthStatus={healthStatus}
               playbackInfo={playbackInfo}
               formatTime={formatTime}

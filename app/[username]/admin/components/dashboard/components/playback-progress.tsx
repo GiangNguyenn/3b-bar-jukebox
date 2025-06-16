@@ -27,4 +27,4 @@ export function PlaybackProgress({
       </div>
     </div>
   )
-} 
+}
