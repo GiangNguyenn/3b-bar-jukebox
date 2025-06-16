@@ -45,7 +45,8 @@ export function useConnectionMonitor() {
 
   // Function to check connection using Network Information API
   const checkNetworkInfo = (): Partial<ConnectionMetrics> => {
-    const connection = (navigator as { connection?: NetworkInformation }).connection
+    const connection = (navigator as { connection?: NetworkInformation })
+      .connection
     if (!connection) return { isOnline: navigator.onLine }
 
     const { type, effectiveType, downlink, rtt, saveData } = connection
@@ -164,7 +165,8 @@ export function useConnectionMonitor() {
     window.addEventListener('online', handleOnline)
     window.addEventListener('offline', handleOffline)
 
-    const connection = (navigator as { connection?: NetworkInformation }).connection
+    const connection = (navigator as { connection?: NetworkInformation })
+      .connection
     if (connection) {
       connection.addEventListener('change', handleNetworkChange)
     }
@@ -186,4 +188,4 @@ export function useConnectionMonitor() {
   }, [])
 
   return metrics
-} 
+}

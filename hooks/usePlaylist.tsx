@@ -96,7 +96,7 @@ export const usePlaylist = (
   ) => {
     try {
       const playlistRefreshService = PlaylistRefreshServiceImpl.getInstance()
-      
+
       if (trackSuggestionsState) {
         const result = await playlistRefreshService.refreshTrackSuggestions({
           genres: trackSuggestionsState.genres,

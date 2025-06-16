@@ -9,7 +9,7 @@ export async function middleware(request: NextRequest) {
 
   // Check if this is an admin route
   const isAdminRoute = request.nextUrl.pathname.includes('/admin')
-  
+
   if (isAdminRoute) {
     const {
       data: { session }
@@ -23,7 +23,7 @@ export async function middleware(request: NextRequest) {
 
     // Get the username from the URL
     const username = request.nextUrl.pathname.split('/')[1]
-    
+
     // Get the user's profile
     const { data: profile } = await supabase
       .from('profiles')
