@@ -3,7 +3,7 @@ import { create } from 'zustand'
 import { SpotifyPlaybackState } from '@/shared/types'
 import { useCallback } from 'react'
 import { useRecoverySystem } from './recovery'
-import { getSpotifyToken } from '@/shared/api'
+import { tokenManager } from '@/shared/token/tokenManager'
 
 // Spotify Web Playback SDK types
 interface SpotifySDKPlaybackState {
@@ -326,7 +326,7 @@ async function createPlayer(): Promise<string> {
       }
 
       // Get OAuth token using the shared/api util
-      const accessToken = await getSpotifyToken()
+      const accessToken = await tokenManager.getToken()
 
       // Create the player
       // @ts-ignore - Spotify SDK type definitions are incomplete

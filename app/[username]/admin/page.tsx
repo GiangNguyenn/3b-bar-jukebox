@@ -90,6 +90,18 @@ interface NetworkInformation extends EventTarget {
   onchange?: (this: NetworkInformation, ev: Event) => void
 }
 
+// Add debounce utility at the top of the file
+const debounce = <T extends (...args: any[]) => any>(
+  func: T,
+  wait: number
+): ((...args: Parameters<T>) => void) => {
+  let timeout: NodeJS.Timeout | null = null
+  return (...args: Parameters<T>) => {
+    if (timeout) clearTimeout(timeout)
+    timeout = setTimeout(() => func(...args), wait)
+  }
+}
+
 export default function AdminPage(): JSX.Element {
   // State declarations
   const [isLoading, setIsLoading] = useState(false)
@@ -914,11 +926,11 @@ export default function AdminPage(): JSX.Element {
     }
   }, [isReady, deviceId, addLog])
 
-  // Update the playback monitoring effect to respect initialization state
+  // Update the health monitoring effect
   useEffect(() => {
     if (!mounted || !deviceId || !playbackInfo || isInitializing) return
 
-    const checkPlaybackHealth = async () => {
+    const checkHealth = async () => {
       try {
         const spotifyApi = SpotifyApiService.getInstance()
         const currentState = await spotifyApi.getPlaybackState()
@@ -926,8 +938,8 @@ export default function AdminPage(): JSX.Element {
         if (!currentState) {
           addLog(
             'ERROR',
-            '[Playback Monitor] Failed to get playback state',
-            'Playback Monitor',
+            '[Health Monitor] Failed to get playback state',
+            'Health Monitor',
             undefined
           )
           return
@@ -940,142 +952,99 @@ export default function AdminPage(): JSX.Element {
           lastRecoveryTimeRef.current &&
           now - lastRecoveryTimeRef.current < gracePeriodMs
         ) {
-          addLog(
-            'INFO',
-            '[Playback Monitor] Skipping strict device checks during grace period after recovery',
-            'Playback Monitor',
-            undefined
-          )
           return
         }
 
         const timeSinceLastCheck = now - lastPlaybackCheckRef.current
         lastPlaybackCheckRef.current = now
 
-        // More sensitive stall detection
-        if (
-          currentState.is_playing &&
-          !isManualPause &&
-          Math.abs(currentState.progress_ms - playbackInfo.progress) <
-            PROGRESS_TOLERANCE &&
-          timeSinceLastCheck > STALL_CHECK_INTERVAL
-        ) {
-          const lastStallCheck = lastStallCheckRef.current
-          const timeSinceLastStallCheck = now - lastStallCheck.timestamp
+        // Update device status
+        const newDeviceStatus = !deviceId
+          ? 'disconnected'
+          : !isReady
+            ? 'unresponsive'
+            : 'healthy'
 
-          // Reduce the time between stall checks
-          if (timeSinceLastStallCheck > STALL_THRESHOLD) {
-            lastStallCheckRef.current = {
-              timestamp: now,
-              count: lastStallCheck.count + 1
-            }
+        // Update playback status
+        const isActuallyPlaying = currentState.is_playing ?? false
+        const newPlaybackStatus = isActuallyPlaying && !isManualPause ? 'playing' : 'paused'
 
-            addLog(
-              'INFO',
-              `[Playback Monitor] Stall detected: count=${lastStallCheck.count + 1}, timeSinceLastStall=${timeSinceLastStallCheck}, currentProgress=${currentState.progress_ms}, lastProgress=${playbackInfo.progress}, isPlaying=${currentState.is_playing}, isManualPause=${isManualPause}, timestamp=${new Date().toISOString()}`,
-              'Playback Monitor',
-              undefined
-            )
-            // Log a warning using ConsoleLogsProvider
-            addLog(
-              'WARN',
-              'Playback stall detected',
-              'Playback Monitor',
-              undefined
-            )
-
-            // Trigger recovery after fewer stalls
-            if (
-              lastStallCheck.count >= MIN_STALLS_BEFORE_RECOVERY - 1 &&
-              !isManualPause
-            ) {
-              addLog(
-                'WARN',
-                '[Playback Monitor] Playback stall confirmed, triggering recovery',
-                'Playback Monitor',
-                undefined
-              )
-              void recover()
-              lastStallCheckRef.current = { timestamp: 0, count: 0 }
-            }
-          }
-        } else if (playbackInfo.progressStalled && !isManualPause) {
-          // Reset stall state if progress has resumed
-          setPlaybackInfo((prev) =>
-            prev ? { ...prev, progressStalled: false } : null
-          )
-          lastStallCheckRef.current = { timestamp: 0, count: 0 }
-        }
-
-        // Robust device mismatch detection
-        if (!currentState.device?.id) {
-          deviceMismatchCountRef.current += 1
-          addLog(
-            'WARN',
-            `[Playback Monitor] Device mismatch detected: expectedDevice=${deviceId}, currentDevice=${currentState.device?.id ?? 'undefined'}, count=${deviceMismatchCountRef.current}, timestamp=${new Date().toISOString()}`,
-            'Playback Monitor',
-            undefined
-          )
-          // Only trigger recovery if missing for 3+ consecutive checks
-          if (
-            deviceMismatchCountRef.current >= 3 &&
-            !isInitializing &&
-            !isManualPause
-          ) {
-            addLog(
-              'ERROR',
-              '[Playback Monitor] Device missing for 3+ checks, triggering recovery',
-              'Playback Monitor',
-              undefined
-            )
-            void recover()
-            deviceMismatchCountRef.current = 0
-            lastRecoveryTimeRef.current = Date.now()
-          }
-        } else if (
-          currentState.device.id !== deviceId &&
-          !isInitializing &&
-          !isManualPause
-        ) {
-          deviceMismatchCountRef.current += 1
-          addLog(
-            'WARN',
-            `[Playback Monitor] Device mismatch detected: expectedDevice=${deviceId}, currentDevice=${currentState.device?.id ?? 'undefined'}, count=${deviceMismatchCountRef.current}, timestamp=${new Date().toISOString()}`,
-            'Playback Monitor',
-            undefined
-          )
-          if (deviceMismatchCountRef.current >= 3) {
-            void recover()
-            deviceMismatchCountRef.current = 0
-            lastRecoveryTimeRef.current = Date.now()
-          }
-        } else {
-          deviceMismatchCountRef.current = 0 // Reset on success
-        }
+        // Update health status
+        setHealthStatus((prev) => ({
+          ...prev,
+          device: newDeviceStatus,
+          playback: newPlaybackStatus
+        }))
 
         // Update playback info
         setPlaybackInfo((prev) =>
           prev
             ? {
                 ...prev,
-                isPlaying: currentState.is_playing ?? false,
+                isPlaying: isActuallyPlaying,
                 currentTrack: currentState.item?.name ?? '',
                 progress: currentState.progress_ms ?? 0,
                 duration_ms: currentState.item?.duration_ms ?? 0,
                 timeUntilEnd: currentState.item?.duration_ms
-                  ? currentState.item.duration_ms -
-                    (currentState.progress_ms ?? 0)
+                  ? currentState.item.duration_ms - (currentState.progress_ms ?? 0)
                   : 0,
                 lastProgressCheck: now,
                 progressStalled: false
               }
             : null
         )
+
+        // Check for stalls
+        if (
+          isActuallyPlaying &&
+          !isManualPause &&
+          Math.abs(currentState.progress_ms - playbackInfo.progress) < PROGRESS_TOLERANCE &&
+          timeSinceLastCheck > STALL_CHECK_INTERVAL
+        ) {
+          const lastStallCheck = lastStallCheckRef.current
+          const timeSinceLastStallCheck = now - lastStallCheck.timestamp
+
+          if (timeSinceLastStallCheck > STALL_THRESHOLD) {
+            lastStallCheckRef.current = {
+              timestamp: now,
+              count: lastStallCheck.count + 1
+            }
+
+            if (lastStallCheck.count >= MIN_STALLS_BEFORE_RECOVERY - 1 && !isManualPause) {
+              void recover()
+              lastStallCheckRef.current = { timestamp: 0, count: 0 }
+            }
+          }
+        } else if (playbackInfo.progressStalled && !isManualPause) {
+          setPlaybackInfo((prev) =>
+            prev ? { ...prev, progressStalled: false } : null
+          )
+          lastStallCheckRef.current = { timestamp: 0, count: 0 }
+        }
+
+        // Check device mismatch
+        if (!currentState.device?.id) {
+          deviceMismatchCountRef.current += 1
+          if (deviceMismatchCountRef.current >= 3 && !isInitializing && !isManualPause) {
+            void recover()
+            deviceMismatchCountRef.current = 0
+            lastRecoveryTimeRef.current = now
+          }
+        } else if (currentState.device.id !== deviceId && !isInitializing && !isManualPause) {
+          deviceMismatchCountRef.current += 1
+          if (deviceMismatchCountRef.current >= 3) {
+            void recover()
+            deviceMismatchCountRef.current = 0
+            lastRecoveryTimeRef.current = now
+          }
+        } else {
+          deviceMismatchCountRef.current = 0
+        }
       } catch (error) {
         addLog(
           'ERROR',
-          `[Playback Monitor] Error checking playback health: error=${error instanceof Error ? error.message : 'Unknown error'}, errorType=${error instanceof Error ? error.name : 'Unknown'}, stack=${error instanceof Error ? error.stack : 'N/A'}, isManualPause=${isManualPause}, isInitializing=${isInitializing}, timestamp=${new Date().toISOString()}`,
-          'Playback Monitor',
+          `[Health Monitor] Error checking health: ${error instanceof Error ? error.message : 'Unknown error'}`,
+          'Health Monitor',
           error instanceof Error ? error : undefined
         )
         if (!isManualPause && !isInitializing) {
@@ -1085,10 +1054,13 @@ export default function AdminPage(): JSX.Element {
       }
     }
 
-    // Check more frequently
+    // Debounce the health check
+    const debouncedCheckHealth = debounce(checkHealth, 1000)
+
+    // Check less frequently
     const intervalId = setInterval(() => {
-      void checkPlaybackHealth()
-    }, STALL_CHECK_INTERVAL)
+      void debouncedCheckHealth()
+    }, 5000) // Check every 5 seconds instead of more frequently
 
     return () => clearInterval(intervalId)
   }, [
@@ -1098,7 +1070,8 @@ export default function AdminPage(): JSX.Element {
     isManualPause,
     recover,
     isInitializing,
-    addLog
+    addLog,
+    isReady
   ])
 
   // Add effect to update uptime
