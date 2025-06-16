@@ -56,7 +56,6 @@ export function useHealthMonitor({
     fixedPlaylist: 'unknown'
   })
 
-  const { addLog } = useConsoleLogsContext()
   const lastPlaybackCheckRef = useRef<number>(Date.now())
   const lastStallCheckRef = useRef<{ timestamp: number; count: number }>({
     timestamp: 0,
@@ -85,128 +84,43 @@ export function useHealthMonitor({
       ...prev,
       connection: connectionMetrics.status
     }))
+  }, [connectionMetrics.status])
 
-    // Log connection changes
-    addLog(
-      'INFO',
-      `[Connection] Status updated: ${connectionMetrics.status}, type=${connectionMetrics.type}, effectiveType=${connectionMetrics.effectiveType}, downlink=${connectionMetrics.downlink}Mbps, rtt=${connectionMetrics.rtt}ms`,
-      'Connection',
-      undefined
-    )
-  }, [connectionMetrics, addLog])
-
-  // Health monitoring effect
+  // Monitor playback health
   useEffect(() => {
-    if (!deviceId || isInitializing) return
+    if (!deviceId || !playbackInfo || isInitializing) return
 
-    const checkHealth = async () => {
+    const checkPlaybackHealth = async () => {
+      const now = Date.now()
+      const timeSinceLastCheck = now - lastPlaybackCheckRef.current
+
+      // Check for stalls
+      if (playbackInfo.progressStalled) {
+        const { timestamp, count } = lastStallCheckRef.current
+        if (now - timestamp > STALL_CHECK_INTERVAL) {
+          lastStallCheckRef.current = {
+            timestamp: now,
+            count: count + 1
+          }
+
+          if (count + 1 >= MIN_STALLS_BEFORE_RECOVERY) {
+            void recover()
+            lastStallCheckRef.current = { timestamp: now, count: 0 }
+          }
+        }
+      } else {
+        lastStallCheckRef.current = { timestamp: now, count: 0 }
+      }
+
+      // Check for device mismatch
       try {
         const spotifyApi = SpotifyApiService.getInstance()
-        const currentState = await spotifyApi.getPlaybackState()
+        const state = await spotifyApi.getPlaybackState()
 
-        if (!currentState) {
-          addLog(
-            'WARN',
-            '[Health Monitor] Failed to get playback state, will retry',
-            'Health Monitor',
-            undefined
-          )
-          return
-        }
-
-        const now = Date.now()
-        const gracePeriodMs = 3000
         if (
-          lastRecoveryTimeRef.current &&
-          now - lastRecoveryTimeRef.current < gracePeriodMs
-        ) {
-          return
-        }
-
-        const timeSinceLastCheck = now - lastPlaybackCheckRef.current
-        lastPlaybackCheckRef.current = now
-
-        // Update device status based on current state
-        const newDeviceStatus = !deviceId
-          ? 'disconnected'
-          : !isReady
-            ? 'unresponsive'
-            : currentState.device?.id === deviceId
-              ? 'healthy'
-              : 'unresponsive'
-
-        // Update playback status based on current state and manual pause
-        const isActuallyPlaying = currentState.is_playing ?? false
-        const newPlaybackStatus = !isReady
-          ? 'paused'
-          : isActuallyPlaying && !isManualPause
-            ? 'playing'
-            : 'paused'
-
-        // Only update status if it has changed
-        setHealthStatus((prev) => {
-          if (prev.device === newDeviceStatus && prev.playback === newPlaybackStatus) {
-            return prev
-          }
-          return {
-            ...prev,
-            device: newDeviceStatus,
-            playback: newPlaybackStatus
-          }
-        })
-
-        // Log status changes
-        addLog(
-          'INFO',
-          `[Health Monitor] Status updated: device=${newDeviceStatus}, playback=${newPlaybackStatus}, deviceId=${deviceId}, isReady=${isReady}, timestamp=${new Date().toISOString()}`,
-          'Health Monitor',
-          undefined
-        )
-
-        // Stall detection logic
-        if (
-          isActuallyPlaying &&
-          !isManualPause &&
-          playbackInfo &&
-          Math.abs(currentState.progress_ms - playbackInfo.progress) <
-            PROGRESS_TOLERANCE &&
-          timeSinceLastCheck > STALL_CHECK_INTERVAL
-        ) {
-          const lastStallCheck = lastStallCheckRef.current
-          const timeSinceLastStallCheck = now - lastStallCheck.timestamp
-
-          if (timeSinceLastStallCheck > STALL_THRESHOLD) {
-            lastStallCheckRef.current = {
-              timestamp: now,
-              count: lastStallCheck.count + 1
-            }
-
-            if (
-              lastStallCheck.count >= MIN_STALLS_BEFORE_RECOVERY - 1 &&
-              !isManualPause
-            ) {
-              void recover()
-              lastStallCheckRef.current = { timestamp: 0, count: 0 }
-            }
-          }
-        }
-
-        // Device mismatch detection
-        if (!currentState.device?.id) {
-          deviceMismatchCountRef.current += 1
-          if (
-            deviceMismatchCountRef.current >= 3 &&
-            !isInitializing &&
-            !isManualPause
-          ) {
-            void recover()
-            deviceMismatchCountRef.current = 0
-            lastRecoveryTimeRef.current = now
-          }
-        } else if (
-          currentState.device.id !== deviceId &&
-          !isInitializing &&
-          !isManualPause
+          state?.device?.id &&
+          state.device.id !== deviceId &&
+          now - lastRecoveryTimeRef.current > 30000
         ) {
           deviceMismatchCountRef.current += 1
           if (deviceMismatchCountRef.current >= 3) {
@@ -218,33 +132,18 @@ export function useHealthMonitor({
           deviceMismatchCountRef.current = 0
         }
       } catch (error) {
-        addLog(
-          'ERROR',
-          `[Health Monitor] Error checking health: ${error instanceof Error ? error.message : 'Unknown error'}`,
-          'Health Monitor',
-          error instanceof Error ? error : undefined
-        )
-        if (!isManualPause && !isInitializing) {
-          void recover()
-          lastRecoveryTimeRef.current = Date.now()
+        // Only log errors, not warnings or info
+        if (error instanceof Error) {
+          throw error
         }
       }
+
+      lastPlaybackCheckRef.current = now
     }
 
-    const intervalId = setInterval(checkHealth, 5000)
+    const intervalId = setInterval(checkPlaybackHealth, STALL_CHECK_INTERVAL)
     return () => clearInterval(intervalId)
-  }, [
-    deviceId,
-    isReady,
-    isManualPause,
-    isInitializing,
-    playbackInfo,
-    recover,
-    addLog
-  ])
+  }, [deviceId, playbackInfo, isInitializing, recover])
 
-  return {
-    healthStatus,
-    setHealthStatus
-  }
+  return { healthStatus, setHealthStatus }
 } 
