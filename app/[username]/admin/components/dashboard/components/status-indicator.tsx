@@ -18,8 +18,7 @@ export function StatusIndicator({
   subtitle
 }: StatusIndicatorProps): JSX.Element {
   return (
-    <div className='rounded-lg border border-gray-800 bg-gray-900/50 p-4'>
-      <h3 className='mb-2 text-sm font-medium text-gray-400'>{title}</h3>
+    <div className='flex items-center justify-between py-1'>
       <div className='flex items-center space-x-2'>
         <div
           className={cn(
@@ -27,10 +26,15 @@ export function StatusIndicator({
             colorMap[status] ?? 'bg-gray-500'
           )}
         />
-        <span className='text-sm text-gray-300'>
-          {label}
-          {subtitle && <span className='ml-2 text-gray-400'>{subtitle}</span>}
-        </span>
+        <span className='text-sm font-medium text-gray-300'>{title}</span>
+      </div>
+      <div className='flex items-center space-x-2'>
+        <span className='text-sm text-gray-300'>{label}</span>
+        {subtitle && (
+          <span className='text-sm text-gray-400'>
+            - {subtitle}
+          </span>
+        )}
       </div>
     </div>
   )

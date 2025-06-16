@@ -27,6 +27,7 @@ import {
   MIN_STALLS_BEFORE_RECOVERY,
   PROGRESS_TOLERANCE
 } from '@/hooks/recovery/useRecoverySystem'
+import { HealthStatusSection } from './components/dashboard/health-status-section'
 
 const REFRESH_INTERVAL = 180000 // 3 minutes in milliseconds
 
@@ -1238,161 +1239,12 @@ export default function AdminPage(): JSX.Element {
               </div>
             )}
 
-            <div className='flex items-center gap-2 rounded-lg border border-gray-800 bg-gray-900/50 p-4'>
-              <div
-                className={`h-3 w-3 rounded-full ${isReady ? 'bg-green-500' : 'bg-yellow-500'}`}
-              />
-              <span className='font-medium'>
-                {isReady ? 'Player Ready' : 'Player Initializing...'}
-              </span>
-            </div>
-
-            <div className='space-y-4'>
-              <div className='flex items-center gap-2 rounded-lg border border-gray-800 bg-gray-900/50 p-4'>
-                <div
-                  className={`h-3 w-3 rounded-full ${
-                    healthStatus.device === 'healthy'
-                      ? 'bg-green-500'
-                      : healthStatus.device === 'unresponsive'
-                        ? 'bg-yellow-500'
-                        : 'bg-gray-500'
-                  }`}
-                />
-                <span className='font-medium'>
-                  {healthStatus.device === 'healthy'
-                    ? 'Device Connected'
-                    : healthStatus.device === 'unresponsive'
-                      ? 'Device Unresponsive'
-                      : 'Device Status Unknown'}
-                  {recoveryState.attempts > 0 &&
-                    ` (Recovery ${recoveryState.attempts}/5)`}
-                </span>
-              </div>
-
-              <div className='flex items-center gap-2 rounded-lg border border-gray-800 bg-gray-900/50 p-4'>
-                <div
-                  className={`h-3 w-3 rounded-full ${
-                    healthStatus.playback === 'playing'
-                      ? 'animate-pulse bg-green-500'
-                      : healthStatus.playback === 'paused'
-                        ? 'bg-yellow-500'
-                        : healthStatus.playback === 'error'
-                          ? 'bg-red-500'
-                          : 'bg-gray-500'
-                  }`}
-                />
-                <div className='flex flex-1 flex-col gap-2'>
-                  <div className='flex items-center gap-2'>
-                    <span className='font-medium'>
-                      {healthStatus.playback === 'playing'
-                        ? 'Playback Active'
-                        : healthStatus.playback === 'paused'
-                          ? 'Playback Paused'
-                          : healthStatus.playback === 'error'
-                            ? 'Playback Error'
-                            : 'Playback Stopped'}
-                    </span>
-                    {playbackInfo?.currentTrack && (
-                      <span className='text-sm text-gray-400'>
-                        -{' '}
-                        <span className='text-white font-medium'>
-                          {playbackInfo.currentTrack}
-                        </span>
-                      </span>
-                    )}
-                  </div>
-                  {playbackInfo?.duration_ms && (
-                    <div className='space-y-1'>
-                      <div className='relative h-1.5 overflow-hidden rounded-full bg-gray-700'>
-                        <div
-                          className='absolute left-0 top-0 h-full bg-green-500 transition-all duration-1000 ease-linear'
-                          style={{
-                            width: `${(playbackInfo.progress / playbackInfo.duration_ms) * 100}%`
-                          }}
-                        />
-                      </div>
-                      <div className='flex justify-between text-xs text-gray-500'>
-                        <span>{formatTime(playbackInfo.progress)}</span>
-                        <span>{formatTime(playbackInfo.duration_ms)}</span>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              <div className='flex items-center gap-2 rounded-lg border border-gray-800 bg-gray-900/50 p-4'>
-                <div
-                  className={`h-3 w-3 rounded-full ${
-                    healthStatus.token === 'valid' &&
-                    !healthStatus.tokenExpiringSoon
-                      ? 'bg-green-500'
-                      : healthStatus.token === 'valid' &&
-                          healthStatus.tokenExpiringSoon
-                        ? 'bg-yellow-500'
-                        : healthStatus.token === 'error'
-                          ? 'bg-red-500'
-                          : 'bg-gray-500'
-                  }`}
-                />
-                <span className='font-medium'>
-                  {healthStatus.token === 'valid' &&
-                  !healthStatus.tokenExpiringSoon
-                    ? 'Token Valid'
-                    : healthStatus.token === 'valid' &&
-                        healthStatus.tokenExpiringSoon
-                      ? 'Token Expiring Soon'
-                      : healthStatus.token === 'error'
-                        ? 'Token Error'
-                        : 'Token Status Unknown'}
-                </span>
-              </div>
-
-              <div className='flex items-center gap-2 rounded-lg border border-gray-800 bg-gray-900/50 p-4'>
-                <div
-                  className={`h-3 w-3 rounded-full ${
-                    healthStatus.connection === 'good'
-                      ? 'bg-green-500'
-                      : healthStatus.connection === 'unstable'
-                        ? 'bg-yellow-500'
-                        : healthStatus.connection === 'poor'
-                          ? 'bg-red-500'
-                          : 'bg-gray-500'
-                  }`}
-                />
-                <span className='font-medium'>
-                  {healthStatus.connection === 'good'
-                    ? 'Connection Good'
-                    : healthStatus.connection === 'unstable'
-                      ? 'Connection Unstable'
-                      : healthStatus.connection === 'poor'
-                        ? 'Connection Poor'
-                        : 'Connection Status Unknown'}
-                </span>
-              </div>
-
-              <div className='flex items-center gap-2 rounded-lg border border-gray-800 bg-gray-900/50 p-4'>
-                <div
-                  className={`h-3 w-3 rounded-full ${
-                    healthStatus.fixedPlaylist === 'found'
-                      ? 'bg-green-500'
-                      : healthStatus.fixedPlaylist === 'not_found'
-                        ? 'bg-red-500'
-                        : healthStatus.fixedPlaylist === 'error'
-                          ? 'bg-red-500'
-                          : 'bg-gray-500'
-                  }`}
-                />
-                <span className='font-medium'>
-                  {healthStatus.fixedPlaylist === 'found'
-                    ? 'Playlist found'
-                    : healthStatus.fixedPlaylist === 'not_found'
-                      ? 'Fixed Playlist Not Found'
-                      : healthStatus.fixedPlaylist === 'error'
-                        ? 'Fixed Playlist Error'
-                        : 'Fixed Playlist Status Unknown'}
-                </span>
-              </div>
-            </div>
+            <HealthStatusSection 
+              healthStatus={healthStatus}
+              playbackInfo={playbackInfo}
+              formatTime={formatTime}
+              isReady={isReady}
+            />
 
             <div className='mt-8 space-y-4'>
               <h2 className='text-xl font-semibold'>Controls</h2>
