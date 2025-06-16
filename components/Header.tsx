@@ -186,7 +186,7 @@ const Header = (): JSX.Element => {
         }}
       >
         <Image
-          src="/logo.png"
+          src='/logo.png'
           width={100}
           height={100}
           alt='3B SAIGON JUKEBOX Logo'

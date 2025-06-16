@@ -18,19 +18,9 @@ export function StatusGrid({
   fixedPlaylistIsInitialFetchComplete
 }: StatusGridProps): JSX.Element {
   return (
-    <div className="grid grid-cols-2 gap-4">
+    <div className='grid grid-cols-2 gap-4'>
       <StatusIndicator
-        title="Player Status"
-        status={isReady ? 'ready' : 'initializing'}
-        colorMap={{
-          ready: 'bg-green-500',
-          initializing: 'bg-yellow-500'
-        }}
-        label={isReady ? 'Ready' : 'Initializing...'}
-      />
-
-      <StatusIndicator
-        title="Device Health"
+        title='Device Health'
         status={healthStatus.device}
         colorMap={{
           healthy: 'bg-green-500',
@@ -46,7 +36,7 @@ export function StatusGrid({
       />
 
       <StatusIndicator
-        title="Playback State"
+        title='Playback State'
         status={
           playbackState?.is_playing
             ? 'playing'
@@ -72,7 +62,7 @@ export function StatusGrid({
       />
 
       <StatusIndicator
-        title="Token Status"
+        title='Token Status'
         status={healthStatus.token}
         colorMap={{
           valid: 'bg-green-500',
@@ -90,40 +80,25 @@ export function StatusGrid({
       />
 
       <StatusIndicator
-        title="Connection"
-        status={healthStatus.connection}
+        title='Connection'
+        status={isReady ? (navigator.onLine ? 'good' : 'poor') : 'unknown'}
         colorMap={{
           good: 'bg-green-500',
-          unstable: 'bg-yellow-500',
           poor: 'bg-red-500',
-          error: 'bg-red-500',
           unknown: 'bg-gray-500'
         }}
-        label={
-          healthStatus.connection.charAt(0).toUpperCase() +
-          healthStatus.connection.slice(1)
-        }
+        label={isReady ? (navigator.onLine ? 'Good' : 'Poor') : 'Unknown'}
       />
 
       <StatusIndicator
-        title="Fixed Playlist"
-        status={healthStatus.fixedPlaylist}
+        title='Fixed Playlist'
+        status={fixedPlaylistIsInitialFetchComplete ? 'found' : 'not_found'}
         colorMap={{
           found: 'bg-green-500',
-          not_found: 'bg-red-500',
-          error: 'bg-red-500',
-          unknown: 'bg-gray-500'
+          not_found: 'bg-red-500'
         }}
-        label={
-          healthStatus.fixedPlaylist === 'found'
-            ? 'Found'
-            : healthStatus.fixedPlaylist === 'not_found'
-              ? 'Not Found'
-              : healthStatus.fixedPlaylist === 'error'
-                ? 'Error'
-                : 'Unknown'
-        }
+        label={fixedPlaylistIsInitialFetchComplete ? 'Found' : 'Not Found'}
       />
     </div>
   )
-} 
+}

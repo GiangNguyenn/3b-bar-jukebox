@@ -214,7 +214,7 @@ export function PlaylistDisplay({
                         tracks.length - index
                       )}
                     </td>
-                    <td className='px-4 py-3 text-sm text-gray-400'>
+                    <td className='text-white px-4 py-3 text-sm'>
                       {track.track?.name}
                       {isCurrentlyPlaying && (
                         <span className='ml-2 text-xs text-green-500'>
@@ -238,7 +238,7 @@ export function PlaylistDisplay({
                     <td className='px-4 py-3 text-sm text-gray-400'>
                       {formatDuration(track.track?.duration_ms ?? 0)}
                     </td>
-                    <td className='px-4 py-3 text-sm text-gray-400'>
+                    <td className='px-4 py-3 text-sm'>
                       <div className='flex items-center gap-2'>
                         <button
                           onClick={() =>
@@ -300,4 +300,4 @@ function formatDuration(ms: number): string {
   const minutes = Math.floor(ms / 60000)
   const seconds = Math.floor((ms % 60000) / 1000)
   return `${minutes}:${seconds.toString().padStart(2, '0')}`
-} 
+}

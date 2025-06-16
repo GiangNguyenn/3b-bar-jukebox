@@ -7,7 +7,9 @@ import { handleOperationError, AppError } from '@/shared/utils/errorHandling'
 interface UseTrackOperationProps {
   playlistId: string | null
   playlistError?: boolean
-  refetchPlaylist: (optimisticData?: SpotifyPlaylistItem) => Promise<SpotifyPlaylistItem | null | undefined>
+  refetchPlaylist: (
+    optimisticData?: SpotifyPlaylistItem
+  ) => Promise<SpotifyPlaylistItem | null | undefined>
 }
 
 interface TrackOperationState {

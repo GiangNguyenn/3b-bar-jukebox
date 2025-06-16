@@ -66,12 +66,15 @@ export function ConsoleLogsProvider({
   }, [setLogs])
 
   // Validate and sanitize message
-  const validateMessage = useCallback((message: string): string => {
-    if (message.length > maxMessageLength) {
-      return message.slice(0, maxMessageLength) + '...'
-    }
-    return message
-  }, [maxMessageLength])
+  const validateMessage = useCallback(
+    (message: string): string => {
+      if (message.length > maxMessageLength) {
+        return message.slice(0, maxMessageLength) + '...'
+      }
+      return message
+    },
+    [maxMessageLength]
+  )
 
   // Safe Sentry logging with error handling
   const logToSentry = useCallback(
@@ -103,7 +106,13 @@ export function ConsoleLogsProvider({
 
       const timestamp = new Date().toISOString()
       const sanitizedMessage = validateMessage(message)
-      const newLog = { timestamp, level, message: sanitizedMessage, context, error }
+      const newLog = {
+        timestamp,
+        level,
+        message: sanitizedMessage,
+        context,
+        error
+      }
 
       // Use functional update to avoid stale state
       setLogsRef.current((prev) => {

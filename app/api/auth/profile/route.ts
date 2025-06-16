@@ -55,10 +55,10 @@ export async function POST(): Promise<NextResponse> {
     if (userError || !user) {
       console.error('[Profile] Auth error:', userError)
       return NextResponse.json(
-        { 
+        {
           error: 'Not authenticated',
           details: userError
-        }, 
+        },
         { status: 401 }
       )
     }
@@ -83,7 +83,7 @@ export async function POST(): Promise<NextResponse> {
       // PGRST116 is "no rows returned"
       console.error('[Profile] Error checking existing profile:', selectError)
       return NextResponse.json(
-        { 
+        {
           error: 'Failed to check existing profile',
           details: selectError
         },
@@ -106,7 +106,7 @@ export async function POST(): Promise<NextResponse> {
       if (updateError) {
         console.error('[Profile] Error updating profile:', updateError)
         return NextResponse.json(
-          { 
+          {
             error: 'Failed to update profile',
             details: updateError
           },
@@ -157,7 +157,7 @@ export async function POST(): Promise<NextResponse> {
   } catch (error) {
     console.error('[Profile] Error in profile creation:', error)
     return NextResponse.json(
-      { 
+      {
         error: 'Internal server error',
         details: error instanceof Error ? error.message : String(error)
       },

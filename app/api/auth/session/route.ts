@@ -24,7 +24,9 @@ interface ErrorResponse {
   status: number
 }
 
-export async function GET(): Promise<NextResponse<SessionResponse | ErrorResponse>> {
+export async function GET(): Promise<
+  NextResponse<SessionResponse | ErrorResponse>
+> {
   try {
     const supabase = createRouteHandlerClient<Database>({ cookies })
     const {
@@ -35,7 +37,7 @@ export async function GET(): Promise<NextResponse<SessionResponse | ErrorRespons
     if (error) {
       console.error('Error getting session:', error)
       return NextResponse.json(
-        { 
+        {
           error: 'Not authenticated',
           code: 'UNAUTHENTICATED',
           status: 401
@@ -46,7 +48,7 @@ export async function GET(): Promise<NextResponse<SessionResponse | ErrorRespons
 
     if (!session) {
       return NextResponse.json(
-        { 
+        {
           error: 'Not authenticated',
           code: 'UNAUTHENTICATED',
           status: 401
@@ -72,7 +74,7 @@ export async function GET(): Promise<NextResponse<SessionResponse | ErrorRespons
   } catch (error) {
     console.error('Error in session route:', error)
     return NextResponse.json(
-      { 
+      {
         error: 'Internal server error',
         code: 'INTERNAL_ERROR',
         status: 500

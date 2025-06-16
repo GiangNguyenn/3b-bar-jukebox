@@ -4,7 +4,8 @@ import { usePlaybackManager } from './usePlaybackManager'
 import { useHealthStatus, DeviceHealthStatus } from './useHealthStatus'
 import {
   cleanupOtherDevices,
-  verifyDeviceTransfer
+  verifyDeviceTransfer,
+  transferPlaybackToDevice
 } from '@/services/deviceManagement'
 import { sendApiRequest } from '@/shared/api'
 import {
@@ -204,14 +205,11 @@ export function useRecoverySystem(
         timestamp: new Date().toISOString(),
         step: 'Transferring playback'
       })
-      await sendApiRequest({
-        path: 'me/player',
-        method: 'PUT',
-        body: {
-          device_ids: [newDeviceId],
-          play: false
-        }
-      })
+      const transferSuccess = await transferPlaybackToDevice(newDeviceId)
+      if (!transferSuccess) {
+        throw new Error('Failed to transfer playback to new device')
+      }
+
       // Step 3.6: Wait for device to become active
       updateState({
         progress: 0.6,

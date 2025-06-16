@@ -43,13 +43,17 @@ const SPOTIFY_CLIENT_ID = process.env.SPOTIFY_CLIENT_ID
 const SPOTIFY_CLIENT_SECRET = process.env.SPOTIFY_CLIENT_SECRET
 
 if (!SPOTIFY_CLIENT_ID || !SPOTIFY_CLIENT_SECRET) {
-  throw new Error('Missing required environment variables: SPOTIFY_CLIENT_ID and/or SPOTIFY_CLIENT_SECRET')
+  throw new Error(
+    'Missing required environment variables: SPOTIFY_CLIENT_ID and/or SPOTIFY_CLIENT_SECRET'
+  )
 }
 
 export const dynamic = 'force-dynamic'
 export const revalidate = 0
 
-export async function GET(): Promise<NextResponse<TokenResponse | ErrorResponse>> {
+export async function GET(): Promise<
+  NextResponse<TokenResponse | ErrorResponse>
+> {
   try {
     const supabase = createRouteHandlerClient<Database>({ cookies })
 
@@ -65,7 +69,7 @@ export async function GET(): Promise<NextResponse<TokenResponse | ErrorResponse>
     if (profileError || !adminProfile) {
       console.error('[Token] Error fetching admin profile:', profileError)
       return NextResponse.json(
-        { 
+        {
           error: 'Failed to get admin credentials',
           code: 'ADMIN_PROFILE_ERROR',
           status: 500
@@ -76,9 +80,13 @@ export async function GET(): Promise<NextResponse<TokenResponse | ErrorResponse>
 
     // Type guard to ensure adminProfile has required fields
     const typedProfile = adminProfile as AdminProfile
-    if (!typedProfile.spotify_access_token || !typedProfile.spotify_refresh_token || !typedProfile.spotify_token_expires_at) {
+    if (
+      !typedProfile.spotify_access_token ||
+      !typedProfile.spotify_refresh_token ||
+      !typedProfile.spotify_token_expires_at
+    ) {
       return NextResponse.json(
-        { 
+        {
           error: 'Invalid admin profile data',
           code: 'INVALID_PROFILE_DATA',
           status: 500
@@ -88,8 +96,8 @@ export async function GET(): Promise<NextResponse<TokenResponse | ErrorResponse>
     }
 
     // Check if token needs refresh
-    const tokenExpiresAt = new Date(typedProfile.spotify_token_expires_at)
-    const now = new Date()
+    const tokenExpiresAt = Number(typedProfile.spotify_token_expires_at)
+    const now = Math.floor(Date.now() / 1000)
 
     if (tokenExpiresAt <= now) {
       // Token is expired, refresh it
@@ -111,7 +119,7 @@ export async function GET(): Promise<NextResponse<TokenResponse | ErrorResponse>
         const errorText = await response.text()
         console.error('[Token] Error refreshing token:', errorText)
         return NextResponse.json(
-          { 
+          {
             error: 'Failed to refresh token',
             code: 'TOKEN_REFRESH_ERROR',
             status: 500
@@ -127,9 +135,7 @@ export async function GET(): Promise<NextResponse<TokenResponse | ErrorResponse>
         .from('profiles')
         .update({
           spotify_access_token: tokenData.access_token,
-          spotify_token_expires_at: new Date(
-            Date.now() + tokenData.expires_in * 1000
-          ).toISOString()
+          spotify_token_expires_at: Math.floor(Date.now() / 1000) + tokenData.expires_in
         })
         .eq('id', adminProfile.id)
 
@@ -139,7 +145,8 @@ export async function GET(): Promise<NextResponse<TokenResponse | ErrorResponse>
 
       return NextResponse.json({
         access_token: tokenData.access_token,
-        refresh_token: tokenData.refresh_token ?? typedProfile.spotify_refresh_token,
+        refresh_token:
+          tokenData.refresh_token ?? typedProfile.spotify_refresh_token,
         expires_at: Math.floor(Date.now() / 1000) + tokenData.expires_in
       })
     }
@@ -148,12 +155,12 @@ export async function GET(): Promise<NextResponse<TokenResponse | ErrorResponse>
     return NextResponse.json({
       access_token: typedProfile.spotify_access_token,
       refresh_token: typedProfile.spotify_refresh_token,
-      expires_at: Math.floor(tokenExpiresAt.getTime() / 1000)
+      expires_at: tokenExpiresAt
     })
   } catch (error) {
     console.error('[Token] Error:', error)
     return NextResponse.json(
-      { 
+      {
         error: 'Internal server error',
         code: 'INTERNAL_ERROR',
         status: 500

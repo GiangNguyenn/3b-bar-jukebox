@@ -9,7 +9,7 @@ export function TrackSuggestions(): JSX.Element {
     <div className='space-y-4'>
       {suggestions.length > 0 ? (
         <div className='rounded-lg border border-gray-800 bg-gray-900/50 p-4'>
-          <h3 className='mb-2 text-lg font-semibold text-white'>
+          <h3 className='text-white mb-2 text-lg font-semibold'>
             Recent Suggestions
           </h3>
           <ul className='space-y-2'>
@@ -25,9 +25,11 @@ export function TrackSuggestions(): JSX.Element {
         </div>
       ) : (
         <div className='rounded-lg border border-gray-800 bg-gray-900/50 p-4'>
-          <p className='text-sm text-gray-400'>No track suggestions available</p>
+          <p className='text-sm text-gray-400'>
+            No track suggestions available
+          </p>
         </div>
       )}
     </div>
   )
-} 
+}

@@ -11,19 +11,21 @@ export function QueueDisplay(): JSX.Element {
   }
 
   return (
-    <div className="space-y-4">
-      <h2 className="text-lg font-semibold">Queue</h2>
-      <div className="space-y-2">
+    <div className='space-y-4'>
+      <h2 className='text-lg font-semibold'>Queue</h2>
+      <div className='space-y-2'>
         {queue.queue.map((track: UserQueue['queue'][number], index: number) => (
-          <div 
-            key={`${track.id}-${index}`} 
-            className="flex items-center space-x-4"
+          <div
+            key={`${track.id}-${index}`}
+            className='flex items-center space-x-4'
           >
-            <span className="text-sm text-gray-400">{index + 1}</span>
+            <span className='text-sm text-gray-400'>{index + 1}</span>
             <div>
-              <p className="text-sm font-medium">{track.name}</p>
-              <p className="text-sm text-gray-400">
-                {track.artists.map((artist: { name: string }) => artist.name).join(', ')}
+              <p className='text-sm font-medium'>{track.name}</p>
+              <p className='text-sm text-gray-400'>
+                {track.artists
+                  .map((artist: { name: string }) => artist.name)
+                  .join(', ')}
               </p>
             </div>
           </div>
@@ -31,4 +33,4 @@ export function QueueDisplay(): JSX.Element {
       </div>
     </div>
   )
-} 
+}

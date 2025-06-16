@@ -193,14 +193,22 @@ export function useSpotifyHealthMonitor(fixedPlaylistId: string | null) {
         }
 
         if (newStatus !== lastConnectionStatus.current) {
-          addLogRef.current('INFO', `Connection status changed to ${newStatus}`, '[Connection]')
+          addLogRef.current(
+            'INFO',
+            `Connection status changed to ${newStatus}`,
+            '[Connection]'
+          )
           setHealthStatus((prev) => ({ ...prev, connection: newStatus }))
           lastConnectionStatus.current = newStatus
         }
       } else {
         const newStatus = navigator.onLine ? 'good' : 'poor'
         if (newStatus !== lastConnectionStatus.current) {
-          addLogRef.current('INFO', `Connection status changed to ${newStatus}`, '[Connection]')
+          addLogRef.current(
+            'INFO',
+            `Connection status changed to ${newStatus}`,
+            '[Connection]'
+          )
           setHealthStatus((prev) => ({
             ...prev,
             connection: newStatus
@@ -217,7 +225,8 @@ export function useSpotifyHealthMonitor(fixedPlaylistId: string | null) {
     window.addEventListener('online', updateConnectionStatus)
     window.addEventListener('offline', updateConnectionStatus)
 
-    const connection = (navigator as { connection?: NetworkInformation }).connection
+    const connection = (navigator as { connection?: NetworkInformation })
+      .connection
     if (connection) {
       connection.addEventListener('change', updateConnectionStatus)
     }

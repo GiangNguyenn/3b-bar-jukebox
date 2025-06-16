@@ -56,7 +56,11 @@ interface ErrorResponse {
 }
 
 // Extend Session type to include provider tokens
-interface SessionWithProviderTokens extends Omit<Session, 'provider_token' | 'provider_refresh_token' | 'provider_token_expires_at'> {
+interface SessionWithProviderTokens
+  extends Omit<
+    Session,
+    'provider_token' | 'provider_refresh_token' | 'provider_token_expires_at'
+  > {
   provider_token: string
   provider_refresh_token: string
   provider_token_expires_at: number
@@ -84,12 +88,18 @@ function checkRateLimit(key: string): boolean {
   const limit = rateLimitMap.get(key)
 
   if (!limit) {
-    rateLimitMap.set(key, { count: 1, resetTime: now + AUTH.RATE_LIMIT.windowMs })
+    rateLimitMap.set(key, {
+      count: 1,
+      resetTime: now + AUTH.RATE_LIMIT.windowMs
+    })
     return true
   }
 
   if (now > limit.resetTime) {
-    rateLimitMap.set(key, { count: 1, resetTime: now + AUTH.RATE_LIMIT.windowMs })
+    rateLimitMap.set(key, {
+      count: 1,
+      resetTime: now + AUTH.RATE_LIMIT.windowMs
+    })
     return true
   }
 
@@ -101,9 +111,11 @@ function checkRateLimit(key: string): boolean {
   return true
 }
 
-export async function GET(request: Request): Promise<NextResponse<ErrorResponse | null>> {
+export async function GET(
+  request: Request
+): Promise<NextResponse<ErrorResponse | null>> {
   validateEnv()
-  
+
   const requestUrl = new URL(request.url)
   const code = requestUrl.searchParams.get('code')
   const error = requestUrl.searchParams.get('error')
@@ -131,7 +143,10 @@ export async function GET(request: Request): Promise<NextResponse<ErrorResponse 
   }
 
   if (error) {
-    console.error('[Callback] Auth error from provider:', { error, error_description })
+    console.error('[Callback] Auth error from provider:', {
+      error,
+      error_description
+    })
     return NextResponse.json(
       {
         error: error_description ?? error,
@@ -143,8 +158,8 @@ export async function GET(request: Request): Promise<NextResponse<ErrorResponse 
   }
 
   if (!validateCode(code)) {
-    console.error('[Callback] Invalid authorization code:', { 
-      codeLength: (code as string | null)?.length ?? 0 
+    console.error('[Callback] Invalid authorization code:', {
+      codeLength: (code as string | null)?.length ?? 0
     })
     return NextResponse.json(
       {
@@ -170,12 +185,14 @@ export async function GET(request: Request): Promise<NextResponse<ErrorResponse 
       console.error('[Callback] Session exchange failed:', {
         error: sessionError,
         hasSession: !!session,
-        sessionData: session ? {
-          user: session.user?.id,
-          expiresAt: session.expires_at,
-          hasAccessToken: !!session.access_token,
-          hasRefreshToken: !!session.refresh_token
-        } : null
+        sessionData: session
+          ? {
+              user: session.user?.id,
+              expiresAt: session.expires_at,
+              hasAccessToken: !!session.access_token,
+              hasRefreshToken: !!session.refresh_token
+            }
+          : null
       })
       return NextResponse.json(
         {
@@ -227,7 +244,9 @@ export async function GET(request: Request): Promise<NextResponse<ErrorResponse 
     const sessionWithTokens = session as SessionWithProviderTokens
     const providerToken = sessionWithTokens.provider_token
     const providerRefreshToken = sessionWithTokens.provider_refresh_token
-    const providerTokenExpiresAt = sessionWithTokens.provider_token_expires_at ?? Math.floor(Date.now() / 1000) + 3600
+    const providerTokenExpiresAt =
+      sessionWithTokens.provider_token_expires_at ??
+      Math.floor(Date.now() / 1000) + 3600
 
     console.log('[Callback] Provider tokens status:', {
       hasProviderToken: !!providerToken,
@@ -279,9 +298,18 @@ export async function GET(request: Request): Promise<NextResponse<ErrorResponse 
     }
 
     // Debug log the session data
-    console.log('[Callback] Full session data:', JSON.stringify(session, null, 2))
-    console.log('[Callback] User metadata:', JSON.stringify(userMetadata, null, 2))
-    console.log('[Callback] Raw user data:', JSON.stringify(session.user, null, 2))
+    console.log(
+      '[Callback] Full session data:',
+      JSON.stringify(session, null, 2)
+    )
+    console.log(
+      '[Callback] User metadata:',
+      JSON.stringify(userMetadata, null, 2)
+    )
+    console.log(
+      '[Callback] Raw user data:',
+      JSON.stringify(session.user, null, 2)
+    )
 
     // Create or update profile with tokens from Supabase session
     const profileData: ProfileData = {
@@ -345,7 +373,11 @@ export async function GET(request: Request): Promise<NextResponse<ErrorResponse 
       userId: session.user.id
     })
 
-    if (!typedProfile.spotify_access_token || !typedProfile.spotify_refresh_token || !typedProfile.spotify_token_expires_at) {
+    if (
+      !typedProfile.spotify_access_token ||
+      !typedProfile.spotify_refresh_token ||
+      !typedProfile.spotify_token_expires_at
+    ) {
       console.error('[Callback] Invalid profile data:', {
         profile: typedProfile,
         userId: session.user.id
@@ -372,7 +404,9 @@ export async function GET(request: Request): Promise<NextResponse<ErrorResponse 
           .single()
 
         if (!profile) {
-          console.error('[Callback] Profile verification failed: Profile not found after update')
+          console.error(
+            '[Callback] Profile verification failed: Profile not found after update'
+          )
           throw new Error('Profile not found after update')
         }
         console.log('[Callback] Profile verification successful:', {
