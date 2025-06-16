@@ -102,7 +102,7 @@ class TokenManager {
       // Update cache
       this.tokenCache = {
         token: data.access_token,
-        expiry: Date.now() + (data.expires_in * 1000)
+        expiry: Date.now() + data.expires_in * 1000
       }
 
       return data.access_token
@@ -122,20 +122,22 @@ class TokenManager {
   public isTokenValid(): boolean {
     const now = Date.now()
     return Boolean(
-      this.tokenCache.token && 
-      now < this.tokenCache.expiry - (this.config.refreshThreshold ?? 0) * 1000
+      this.tokenCache.token &&
+        now <
+          this.tokenCache.expiry - (this.config.refreshThreshold ?? 0) * 1000
     )
   }
 }
 
 // Export a singleton instance
 export const tokenManager = TokenManager.getInstance({
-  baseUrl: typeof window !== 'undefined' 
-    ? window.location.origin 
-    : process.env.VERCEL_URL 
-      ? `https://${process.env.VERCEL_URL}`
-      : process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'
+  baseUrl:
+    typeof window !== 'undefined'
+      ? window.location.origin
+      : process.env.VERCEL_URL
+        ? `https://${process.env.VERCEL_URL}`
+        : process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'
 })
 
 // Export types
-export type { TokenManagerConfig } 
+export type { TokenManagerConfig }

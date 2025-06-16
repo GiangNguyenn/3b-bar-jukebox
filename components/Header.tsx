@@ -3,6 +3,7 @@
 import React, { useState } from 'react'
 import Image from 'next/image'
 import { FALLBACK_GENRES } from '@/shared/constants/trackSuggestion'
+import { type TrackSuggestionsState } from '@/shared/types/trackSuggestions'
 
 interface ErrorDetails {
   errorMessage?: string
@@ -44,15 +45,6 @@ declare global {
   interface WindowEventMap {
     playlistRefresh: PlaylistRefreshEvent
   }
-}
-
-interface TrackSuggestionsState {
-  genres: string[]
-  yearRange: [number, number]
-  popularity: number
-  allowExplicit: boolean
-  maxSongLength: number
-  songsBetweenRepeats: number
 }
 
 const Header = (): JSX.Element => {

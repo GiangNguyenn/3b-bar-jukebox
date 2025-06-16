@@ -10,6 +10,8 @@ import useSWR from 'swr'
 import { sendApiRequest } from '@/shared/api'
 import { handleOperationError, AppError } from '@/shared/utils/errorHandling'
 import { Genre } from '@/services/trackSuggestion'
+import { PlaylistRefreshServiceImpl } from '@/services/playlistRefresh'
+import { type TrackSuggestionsState } from '@/shared/types/trackSuggestions'
 
 interface SpotifyPlaylistObjectFull {
   tracks: {
@@ -21,15 +23,6 @@ interface CurrentlyPlayingResponse {
   item: {
     id: string
   }
-}
-
-interface TrackSuggestionsState {
-  genres: Genre[]
-  yearRange: [number, number]
-  popularity: number
-  allowExplicit: boolean
-  maxSongLength: number
-  songsBetweenRepeats: number
 }
 
 const fetcher = async (playlistId: string) => {
@@ -51,7 +44,7 @@ const fetcher = async (playlistId: string) => {
 const currentlyPlayingFetcher = async () => {
   return handleOperationError(
     async () => {
-      const response = await sendApiRequest<CurrentlyPlayingResponse>({
+      const response = await sendApiRequest<SpotifyPlaybackState>({
         path: 'me/player/currently-playing',
         method: 'GET'
       })
@@ -59,7 +52,7 @@ const currentlyPlayingFetcher = async () => {
     },
     'CurrentlyPlayingFetcher',
     (error) => {
-      console.error('[Playlist] Error fetching currently playing track:', error)
+      console.error('[Playlist] Error fetching currently playing:', error)
     }
   )
 }
@@ -102,13 +95,24 @@ export const usePlaylist = (
     trackSuggestionsState?: TrackSuggestionsState
   ) => {
     try {
+      const playlistRefreshService = PlaylistRefreshServiceImpl.getInstance()
+      
       if (trackSuggestionsState) {
-        await sendApiRequest({
-          path: 'track-suggestions/refresh',
-          method: 'POST',
-          body: trackSuggestionsState
+        const result = await playlistRefreshService.refreshTrackSuggestions({
+          genres: trackSuggestionsState.genres,
+          yearRange: trackSuggestionsState.yearRange,
+          popularity: trackSuggestionsState.popularity,
+          allowExplicit: trackSuggestionsState.allowExplicit,
+          maxSongLength: trackSuggestionsState.maxSongLength,
+          songsBetweenRepeats: trackSuggestionsState.songsBetweenRepeats,
+          maxOffset: trackSuggestionsState.maxOffset
         })
+
+        if (!result.success) {
+          throw new Error(result.message)
+        }
       }
+
       // Force a revalidation with fresh data
       await refreshPlaylist(
         async () => {
@@ -129,6 +133,7 @@ export const usePlaylist = (
         `[Playlist] Error refreshing playlist ${playlistId}:`,
         error
       )
+      throw error
     }
   }
 
