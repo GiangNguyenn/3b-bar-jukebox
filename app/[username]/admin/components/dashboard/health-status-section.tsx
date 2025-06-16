@@ -64,14 +64,14 @@ export function HealthStatusSection({
     <div className='rounded-lg border border-gray-800 bg-gray-900/50 p-4'>
       <div className='space-y-2'>
         <StatusIndicator
-          title="Player Status"
+          title='Player Status'
           status={isReady ? 'ready' : 'initializing'}
           colorMap={playerColorMap}
           label={isReady ? 'Player Ready' : 'Player Initializing...'}
         />
 
         <StatusIndicator
-          title="Device Status"
+          title='Device Status'
           status={healthStatus.device}
           colorMap={deviceColorMap}
           label={
@@ -84,7 +84,7 @@ export function HealthStatusSection({
         />
 
         <StatusIndicator
-          title="Playback Status"
+          title='Playback Status'
           status={healthStatus.playback}
           colorMap={playbackColorMap}
           label={
@@ -110,7 +110,7 @@ export function HealthStatusSection({
         )}
 
         <StatusIndicator
-          title="Token Status"
+          title='Token Status'
           status={healthStatus.token}
           colorMap={tokenColorMap}
           label={
@@ -125,7 +125,7 @@ export function HealthStatusSection({
         />
 
         <StatusIndicator
-          title="Connection Status"
+          title='Connection Status'
           status={healthStatus.connection}
           colorMap={connectionColorMap}
           label={
@@ -140,7 +140,7 @@ export function HealthStatusSection({
         />
 
         <StatusIndicator
-          title="Playlist Status"
+          title='Playlist Status'
           status={healthStatus.fixedPlaylist}
           colorMap={playlistColorMap}
           label={
@@ -156,4 +156,4 @@ export function HealthStatusSection({
       </div>
     </div>
   )
-} 
+}
