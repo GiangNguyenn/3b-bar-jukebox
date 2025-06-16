@@ -28,6 +28,8 @@ import {
   PROGRESS_TOLERANCE
 } from '@/hooks/recovery/useRecoverySystem'
 import { HealthStatusSection } from './components/dashboard/health-status-section'
+import { useHealthMonitor } from './hooks/useHealthMonitor'
+import { usePlaylist } from '@/hooks/usePlaylist'
 
 const REFRESH_INTERVAL = 180000 // 3 minutes in milliseconds
 
@@ -38,7 +40,7 @@ interface PlaybackInfo {
   duration_ms?: number
   timeUntilEnd?: number
   lastProgressCheck?: number
-  progressStalled?: boolean
+  progressStalled: boolean
   remainingTracks: number
 }
 
@@ -107,14 +109,6 @@ export default function AdminPage(): JSX.Element {
   const [isLoading, setIsLoading] = useState(false)
   const [_loadingAction, setLoadingAction] = useState<string | null>(null)
   const [playbackInfo, setPlaybackInfo] = useState<PlaybackInfo | null>(null)
-  const [healthStatus, setHealthStatus] = useState<HealthStatus>({
-    playback: 'paused',
-    device: 'unknown',
-    token: 'valid',
-    connection: 'unknown',
-    tokenExpiringSoon: false,
-    fixedPlaylist: 'unknown'
-  })
   const [isManualPause, setIsManualPause] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [mounted, setIsMounted] = useState(false)
@@ -125,11 +119,6 @@ export default function AdminPage(): JSX.Element {
   const [uptime, setUptime] = useState(0)
   const [_currentYear, _setCurrentYear] = useState(new Date().getFullYear())
   const startingPlaybackTimeoutRef = useRef<NodeJS.Timeout | null>(null)
-  const lastPlaybackCheckRef = useRef<number>(Date.now())
-  const lastStallCheckRef = useRef<{ timestamp: number; count: number }>({
-    timestamp: 0,
-    count: 0
-  })
   const startTimeRef = useRef<number>(Date.now())
 
   // Add initialization state
@@ -144,11 +133,25 @@ export default function AdminPage(): JSX.Element {
     isInitialFetchComplete
   } = useFixedPlaylist()
   const { logs: consoleLogs, addLog } = useConsoleLogsContext()
+
+  // Use the playlist hook
+  const {
+    playlist,
+    error: playlistRefreshError,
+    refreshPlaylist
+  } = usePlaylist(fixedPlaylistId ?? '')
+
+  // Use the track suggestions hook
+  const {
+    state: trackSuggestionsState,
+    updateState: updateTrackSuggestionsState
+  } = useTrackSuggestions()
+
+  // Add back recovery system
   const {
     state: recoveryState,
     recover,
-    reset: resetRecovery,
-    playbackState: _playbackState
+    reset: resetRecovery
   } = useRecoverySystem(
     deviceId,
     fixedPlaylistId,
@@ -159,6 +162,15 @@ export default function AdminPage(): JSX.Element {
       }))
     }, [])
   )
+
+  // Use the new health monitor hook
+  const { healthStatus, setHealthStatus } = useHealthMonitor({
+    deviceId,
+    isReady,
+    isManualPause,
+    isInitializing,
+    playbackInfo
+  })
 
   // Refs
   const isRefreshing = useRef<boolean>(false)
@@ -197,18 +209,20 @@ export default function AdminPage(): JSX.Element {
 
       setHealthStatus((prev: HealthStatus) => ({
         ...prev,
-        device: newDeviceStatus
+        device: newDeviceStatus,
+        // Also update player status based on isReady
+        playback: prev.playback === 'playing' && !isReady ? 'paused' : prev.playback
       }))
-    }
 
-    // Log the device status update
-    addLog(
-      'INFO',
-      `[Device Status] Updated: deviceId=${deviceId}, isReady=${isReady}, status=${healthStatus.device}, timestamp=${new Date().toISOString()}`,
-      'Device',
-      undefined
-    )
-  }, [deviceId, isReady, mounted, isInitializing, addLog, healthStatus.device])
+      // Log the device status update
+      addLog(
+        'INFO',
+        `[Device Status] Updated: deviceId=${deviceId}, isReady=${isReady}, status=${newDeviceStatus}, timestamp=${new Date().toISOString()}`,
+        'Device',
+        undefined
+      )
+    }
+  }, [deviceId, isReady, mounted, isInitializing, addLog])
 
   // Define the event handler
   useEffect(() => {
@@ -217,10 +231,16 @@ export default function AdminPage(): JSX.Element {
         .detail
       if (!state) return
 
+      // Check if the current track is a URI (starts with spotify:)
+      const trackName = state.item?.name
+      const isUri = trackName?.startsWith('spotify:')
+
       // Update playback info
-      setPlaybackInfo((_prev) => ({
+      setPlaybackInfo((prev) => ({
+        ...prev,
         isPlaying: state.is_playing ?? false,
-        currentTrack: state.item?.name ?? '',
+        // Only update the track name if it's not a URI
+        currentTrack: isUri ? (prev?.currentTrack ?? '') : (trackName ?? ''),
         progress: state.progress_ms ?? 0,
         duration_ms: state.item?.duration_ms ?? 0,
         timeUntilEnd: state.item?.duration_ms
@@ -277,10 +297,6 @@ export default function AdminPage(): JSX.Element {
     }
   }, [isReady, deviceId, playbackInfo, addLog])
 
-  const {
-    state: trackSuggestionsState,
-    updateState: updateTrackSuggestionsState
-  } = useTrackSuggestions()
   const [isRefreshingSuggestions, setIsRefreshingSuggestions] = useState(false)
   const [refreshError, setRefreshError] = useState<string | null>(null)
   const [_timeUntilRefresh, setTimeUntilRefresh] = useState(REFRESH_INTERVAL)
@@ -484,10 +500,10 @@ export default function AdminPage(): JSX.Element {
     handlePlaybackRef.current = handlePlayPause
   }, [handlePlayPause])
 
-  // Declare handleRefresh first
+  // Replace the custom refresh handler with the playlist hook's refresh
   const handleRefresh = useCallback(
     async (source: 'auto' | 'manual' = 'manual'): Promise<void> => {
-      if (isRefreshing.current) {
+      if (isRefreshing.current || !trackSuggestionsState) {
         return
       }
 
@@ -496,41 +512,13 @@ export default function AdminPage(): JSX.Element {
       setError(null)
 
       try {
-        // Use trackSuggestionsState from the hook
-        if (!trackSuggestionsState) {
-          addLog(
-            'ERROR',
-            '[Refresh] No track suggestions state available',
-            'Refresh',
-            undefined
-          )
-          throw new Error('No track suggestions state available')
-        }
-
-        // Get the PlaylistRefreshService instance
-        const playlistRefreshService = PlaylistRefreshServiceImpl.getInstance()
-
-        // Call the service's refreshTrackSuggestions method
-        const result = await playlistRefreshService.refreshTrackSuggestions({
-          genres: trackSuggestionsState.genres,
-          yearRange: trackSuggestionsState.yearRange,
-          popularity: trackSuggestionsState.popularity,
-          allowExplicit: trackSuggestionsState.allowExplicit,
-          maxSongLength: trackSuggestionsState.maxSongLength,
-          songsBetweenRepeats: trackSuggestionsState.songsBetweenRepeats,
-          maxOffset: trackSuggestionsState.maxOffset
-        })
-
-        if (!result.success) {
-          // Check if this is the "enough tracks" message
-          if (result.message === 'Enough tracks remaining') {
-            // No logging
-          } else {
-            throw new Error(result.message)
-          }
-        } else {
-          // No logging
-        }
+        await refreshPlaylist(trackSuggestionsState)
+        addLog(
+          'INFO',
+          `[Refresh] ${source} refresh completed successfully`,
+          'Refresh',
+          undefined
+        )
       } catch (err) {
         addLog(
           'ERROR',
@@ -538,13 +526,58 @@ export default function AdminPage(): JSX.Element {
           'Refresh',
           err instanceof Error ? err : undefined
         )
+        setError(err instanceof Error ? err.message : 'Refresh failed')
       } finally {
         setIsLoading(false)
         isRefreshing.current = false
       }
     },
-    [trackSuggestionsState, addLog]
+    [trackSuggestionsState, refreshPlaylist, addLog]
   )
+
+  // Replace the custom track suggestions refresh with the playlist service
+  const handleTrackSuggestionsRefresh = useCallback(async (): Promise<void> => {
+    if (!trackSuggestionsState) return
+
+    setIsLoading(true)
+    setError(null)
+
+    try {
+      const playlistRefreshService = PlaylistRefreshServiceImpl.getInstance()
+      const result = await playlistRefreshService.refreshTrackSuggestions({
+        genres: trackSuggestionsState.genres,
+        yearRange: trackSuggestionsState.yearRange,
+        popularity: trackSuggestionsState.popularity,
+        allowExplicit: trackSuggestionsState.allowExplicit,
+        maxSongLength: trackSuggestionsState.maxSongLength,
+        songsBetweenRepeats: trackSuggestionsState.songsBetweenRepeats,
+        maxOffset: trackSuggestionsState.maxOffset
+      })
+
+      if (result.success) {
+        addLog(
+          'INFO',
+          `Track suggestions refreshed successfully: ${JSON.stringify(result.searchDetails)}`,
+          'Track Suggestions',
+          undefined
+        )
+      } else {
+        throw new Error(result.message)
+      }
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : 'Unknown error occurred'
+      setError(errorMessage)
+      addLog(
+        'ERROR',
+        `[Track Suggestions] Refresh failed: ${errorMessage}`,
+        'Track Suggestions',
+        error instanceof Error ? error : undefined
+      )
+    } finally {
+      setIsLoading(false)
+    }
+  }, [trackSuggestionsState, addLog])
 
   // Now we can safely create the ref
   const handleRefreshRef = useRef(handleRefresh)
@@ -575,74 +608,6 @@ export default function AdminPage(): JSX.Element {
       }
     }
   }, [])
-
-  // Monitor connection quality
-  useEffect(() => {
-    if (!mounted) return
-
-    const updateConnectionStatus = (): void => {
-      if (!navigator.onLine) {
-        setHealthStatus((prev) => ({ ...prev, connection: 'poor' }))
-        return
-      }
-
-      // Check connection type and effective type if available
-      const connection = (navigator as { connection?: NetworkInformation })
-        .connection
-      if (connection) {
-        const { effectiveType, downlink, rtt } = connection
-
-        // Default to 'good' for ethernet and wifi connections
-        if (connection.type === 'ethernet' || connection.type === 'wifi') {
-          setHealthStatus((prev) => ({ ...prev, connection: 'good' }))
-          return
-        }
-
-        // For other connection types, use effectiveType and metrics
-        if (
-          effectiveType === '4g' &&
-          downlink &&
-          downlink >= 2 &&
-          rtt &&
-          rtt < 100
-        ) {
-          setHealthStatus((prev) => ({ ...prev, connection: 'good' }))
-        } else if (effectiveType === '3g' && downlink && downlink >= 1) {
-          setHealthStatus((prev) => ({ ...prev, connection: 'unstable' }))
-        } else {
-          setHealthStatus((prev) => ({ ...prev, connection: 'poor' }))
-        }
-      } else {
-        // If Network Information API is not available, use online status
-        setHealthStatus((prev) => ({
-          ...prev,
-          connection: navigator.onLine ? 'good' : 'poor'
-        }))
-      }
-    }
-
-    // Initial status update
-    updateConnectionStatus()
-
-    // Listen for online/offline events
-    window.addEventListener('online', updateConnectionStatus)
-    window.addEventListener('offline', updateConnectionStatus)
-
-    // Listen for connection changes if available
-    const connection = (navigator as { connection?: NetworkInformation })
-      .connection
-    if (connection) {
-      connection.addEventListener('change', updateConnectionStatus)
-    }
-
-    return () => {
-      window.removeEventListener('online', updateConnectionStatus)
-      window.removeEventListener('offline', updateConnectionStatus)
-      if (connection) {
-        connection.removeEventListener('change', updateConnectionStatus)
-      }
-    }
-  }, [mounted])
 
   const formatTime = (ms: number): string => {
     const seconds = Math.floor(ms / 1000)
@@ -745,113 +710,6 @@ export default function AdminPage(): JSX.Element {
     }
   }, [])
 
-  const handleTrackSuggestionsRefresh = async (): Promise<void> => {
-    if (!trackSuggestionsState) {
-      return
-    }
-
-    // Validate required fields
-    const {
-      genres,
-      yearRange,
-      popularity,
-      allowExplicit,
-      maxSongLength,
-      songsBetweenRepeats
-    } = trackSuggestionsState
-
-    if (!Array.isArray(genres) || genres.length === 0 || genres.length > 10) {
-      setRefreshError('Invalid genres: must have between 1 and 10 genres')
-      return
-    }
-
-    if (!Array.isArray(yearRange) || yearRange.length !== 2) {
-      setRefreshError('Invalid year range: must be an array of two numbers')
-      return
-    }
-
-    const [startYear, endYear] = yearRange
-    if (startYear < 1900 || endYear > new Date().getFullYear()) {
-      setRefreshError(
-        `Invalid year range: must be between 1900 and ${new Date().getFullYear()}`
-      )
-      return
-    }
-
-    if (typeof popularity !== 'number' || popularity < 0 || popularity > 100) {
-      setRefreshError('Invalid popularity: must be between 0 and 100')
-      return
-    }
-
-    if (
-      typeof maxSongLength !== 'number' ||
-      maxSongLength < 30 ||
-      maxSongLength > 600
-    ) {
-      setRefreshError(
-        'Invalid max song length: must be between 30 and 600 seconds'
-      )
-      return
-    }
-
-    const songsBetweenRepeatsError =
-      validateSongsBetweenRepeats(songsBetweenRepeats)
-    if (songsBetweenRepeatsError) {
-      setRefreshError(songsBetweenRepeatsError)
-      return
-    }
-
-    setIsRefreshingSuggestions(true)
-    setRefreshError(null)
-
-    try {
-      // Strip out optional fields and send only required ones
-      const requestBody = {
-        genres,
-        yearRange,
-        popularity,
-        allowExplicit,
-        maxSongLength,
-        songsBetweenRepeats,
-        maxOffset: trackSuggestionsState.maxOffset
-      }
-
-      const response = await fetch('/api/track-suggestions/refresh-site', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(requestBody)
-      })
-
-      if (!response.ok) {
-        const errorData = (await response.json()) as { message?: string }
-        throw new Error(
-          errorData.message ?? `HTTP error! status: ${response.status}`
-        )
-      }
-
-      const data = (await response.json()) as RefreshResponse
-
-      if (data.success) {
-        addLog(
-          'INFO',
-          `Track suggestions refreshed successfully: ${JSON.stringify(data.searchDetails)}`,
-          'Track Suggestions',
-          undefined
-        )
-      } else {
-        throw new Error(data.message ?? 'Failed to refresh track suggestions')
-      }
-    } catch (error) {
-      const errorMessage =
-        error instanceof Error ? error.message : 'Unknown error occurred'
-      setRefreshError(errorMessage)
-    } finally {
-      setIsRefreshingSuggestions(false)
-    }
-  }
-
   const handleTrackSuggestionsStateChange = (
     newState: TrackSuggestionsState
   ): void => {
@@ -926,11 +784,11 @@ export default function AdminPage(): JSX.Element {
     }
   }, [isReady, deviceId, addLog])
 
-  // Update the health monitoring effect
+  // Update the health monitoring effect to only handle playback info updates
   useEffect(() => {
     if (!mounted || !deviceId || !playbackInfo || isInitializing) return
 
-    const checkHealth = async () => {
+    const checkPlaybackState = async () => {
       try {
         const spotifyApi = SpotifyApiService.getInstance()
         const currentState = await spotifyApi.getPlaybackState()
@@ -938,141 +796,44 @@ export default function AdminPage(): JSX.Element {
         if (!currentState) {
           addLog(
             'ERROR',
-            '[Health Monitor] Failed to get playback state',
-            'Health Monitor',
+            '[Playback] Failed to get playback state',
+            'Playback',
             undefined
           )
           return
         }
-
-        // Add grace period after recovery
-        const now = Date.now()
-        const gracePeriodMs = 3000
-        if (
-          lastRecoveryTimeRef.current &&
-          now - lastRecoveryTimeRef.current < gracePeriodMs
-        ) {
-          return
-        }
-
-        const timeSinceLastCheck = now - lastPlaybackCheckRef.current
-        lastPlaybackCheckRef.current = now
-
-        // Update device status
-        const newDeviceStatus = !deviceId
-          ? 'disconnected'
-          : !isReady
-            ? 'unresponsive'
-            : 'healthy'
-
-        // Update playback status
-        const isActuallyPlaying = currentState.is_playing ?? false
-        const newPlaybackStatus = isActuallyPlaying && !isManualPause ? 'playing' : 'paused'
-
-        // Update health status
-        setHealthStatus((prev) => ({
-          ...prev,
-          device: newDeviceStatus,
-          playback: newPlaybackStatus
-        }))
 
         // Update playback info
         setPlaybackInfo((prev) =>
           prev
             ? {
                 ...prev,
-                isPlaying: isActuallyPlaying,
+                isPlaying: currentState.is_playing ?? false,
                 currentTrack: currentState.item?.name ?? '',
                 progress: currentState.progress_ms ?? 0,
                 duration_ms: currentState.item?.duration_ms ?? 0,
                 timeUntilEnd: currentState.item?.duration_ms
-                  ? currentState.item.duration_ms - (currentState.progress_ms ?? 0)
+                  ? currentState.item.duration_ms -
+                    (currentState.progress_ms ?? 0)
                   : 0,
-                lastProgressCheck: now,
+                lastProgressCheck: Date.now(),
                 progressStalled: false
               }
             : null
         )
-
-        // Check for stalls
-        if (
-          isActuallyPlaying &&
-          !isManualPause &&
-          Math.abs(currentState.progress_ms - playbackInfo.progress) < PROGRESS_TOLERANCE &&
-          timeSinceLastCheck > STALL_CHECK_INTERVAL
-        ) {
-          const lastStallCheck = lastStallCheckRef.current
-          const timeSinceLastStallCheck = now - lastStallCheck.timestamp
-
-          if (timeSinceLastStallCheck > STALL_THRESHOLD) {
-            lastStallCheckRef.current = {
-              timestamp: now,
-              count: lastStallCheck.count + 1
-            }
-
-            if (lastStallCheck.count >= MIN_STALLS_BEFORE_RECOVERY - 1 && !isManualPause) {
-              void recover()
-              lastStallCheckRef.current = { timestamp: 0, count: 0 }
-            }
-          }
-        } else if (playbackInfo.progressStalled && !isManualPause) {
-          setPlaybackInfo((prev) =>
-            prev ? { ...prev, progressStalled: false } : null
-          )
-          lastStallCheckRef.current = { timestamp: 0, count: 0 }
-        }
-
-        // Check device mismatch
-        if (!currentState.device?.id) {
-          deviceMismatchCountRef.current += 1
-          if (deviceMismatchCountRef.current >= 3 && !isInitializing && !isManualPause) {
-            void recover()
-            deviceMismatchCountRef.current = 0
-            lastRecoveryTimeRef.current = now
-          }
-        } else if (currentState.device.id !== deviceId && !isInitializing && !isManualPause) {
-          deviceMismatchCountRef.current += 1
-          if (deviceMismatchCountRef.current >= 3) {
-            void recover()
-            deviceMismatchCountRef.current = 0
-            lastRecoveryTimeRef.current = now
-          }
-        } else {
-          deviceMismatchCountRef.current = 0
-        }
       } catch (error) {
         addLog(
           'ERROR',
-          `[Health Monitor] Error checking health: ${error instanceof Error ? error.message : 'Unknown error'}`,
-          'Health Monitor',
+          `[Playback] Error checking state: ${error instanceof Error ? error.message : 'Unknown error'}`,
+          'Playback',
           error instanceof Error ? error : undefined
         )
-        if (!isManualPause && !isInitializing) {
-          void recover()
-          lastRecoveryTimeRef.current = Date.now()
-        }
       }
     }
 
-    // Debounce the health check
-    const debouncedCheckHealth = debounce(checkHealth, 1000)
-
-    // Check less frequently
-    const intervalId = setInterval(() => {
-      void debouncedCheckHealth()
-    }, 5000) // Check every 5 seconds instead of more frequently
-
+    const intervalId = setInterval(checkPlaybackState, 5000)
     return () => clearInterval(intervalId)
-  }, [
-    mounted,
-    deviceId,
-    playbackInfo,
-    isManualPause,
-    recover,
-    isInitializing,
-    addLog,
-    isReady
-  ])
+  }, [mounted, deviceId, playbackInfo, isInitializing, addLog])
 
   // Add effect to update uptime
   useEffect(() => {

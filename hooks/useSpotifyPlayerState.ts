@@ -612,9 +612,7 @@ export function useSpotifyPlayerState(
       } catch (error) {
         console.error('[Player] Error initializing player:', error)
         setError(
-          error instanceof Error
-            ? error.message
-            : 'Failed to initialize player'
+          error instanceof Error ? error.message : 'Failed to initialize player'
         )
       }
     }

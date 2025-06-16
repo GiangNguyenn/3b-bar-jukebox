@@ -5,15 +5,7 @@ import NowPlaying from '@/components/Playlist/NowPlaying'
 import useNowPlayingTrack from '@/hooks/useNowPlayingTrack'
 import { filterUpcomingTracks } from '@/lib/utils'
 import { FALLBACK_GENRES } from '@/shared/constants/trackSuggestion'
-
-interface TrackSuggestionsState {
-  genres: string[]
-  yearRange: [number, number]
-  popularity: number
-  allowExplicit: boolean
-  maxSongLength: number
-  songsBetweenRepeats: number
-}
+import { type TrackSuggestionsState } from '@/shared/types/trackSuggestions'
 
 interface IPlaylistProps {
   tracks: TrackItem[]
