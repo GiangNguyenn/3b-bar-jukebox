@@ -211,7 +211,8 @@ export default function AdminPage(): JSX.Element {
         ...prev,
         device: newDeviceStatus,
         // Also update player status based on isReady
-        playback: prev.playback === 'playing' && !isReady ? 'paused' : prev.playback
+        playback:
+          prev.playback === 'playing' && !isReady ? 'paused' : prev.playback
       }))
     }
   }, [deviceId, isReady, mounted, isInitializing])
@@ -743,11 +744,7 @@ export default function AdminPage(): JSX.Element {
         const currentState = await spotifyApi.getPlaybackState()
 
         if (!currentState) {
-          addLog(
-            'ERROR',
-            'Failed to get playback state',
-            'Playback'
-          )
+          addLog('ERROR', 'Failed to get playback state', 'Playback')
           return
         }
 
@@ -813,11 +810,7 @@ export default function AdminPage(): JSX.Element {
   // Add effect to handle recovery state cleanup and log success/failure
   useEffect(() => {
     if (recoveryState.phase === 'error') {
-      addLog(
-        'ERROR',
-        'Recovery failed',
-        'Recovery'
-      )
+      addLog('ERROR', 'Recovery failed', 'Recovery')
     }
     if (recoveryState.phase === 'success' || recoveryState.phase === 'error') {
       const cleanupTimer = setTimeout(() => {
