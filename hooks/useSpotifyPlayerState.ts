@@ -4,6 +4,7 @@ import { sendApiRequest } from '@/shared/api'
 import { SpotifyPlaybackState, TokenInfo } from '@/shared/types'
 import type { SpotifyPlayerInstance } from '@/types/spotify'
 import { debounce } from '@/lib/utils'
+import { tokenManager } from '@/shared/token/tokenManager'
 
 // Singleton to track initialization state
 let isInitializing = false
@@ -56,7 +57,7 @@ export function useSpotifyPlayerState(
   const MAX_RECONNECT_ATTEMPTS = 3
   const initializationCheckInterval = useRef<NodeJS.Timeout | null>(null)
   const playlistRefreshInterval = useRef<NodeJS.Timeout | null>(null)
-  const tokenRefreshInterval = useRef<NodeJS.Timeout | null>(null)
+  const currentAccessToken = useRef<string | null>(null)
   const lastReadyState = useRef<boolean>(false)
 
   // Track ready state changes
@@ -67,6 +68,13 @@ export function useSpotifyPlayerState(
       }
     })
     return () => unsubscribe()
+  }, [])
+
+  useEffect(() => {
+    isMounted.current = true
+    return () => {
+      isMounted.current = false
+    }
   }, [])
 
   const checkPlayerReady = useCallback(async (): Promise<boolean> => {
@@ -105,47 +113,6 @@ export function useSpotifyPlayerState(
     }
   }, [setIsReady, setDeviceId])
 
-  const refreshToken = useCallback(async (): Promise<void> => {
-    if (!isMounted.current) return
-    try {
-      const response = await fetch('/api/token')
-      if (!response.ok) {
-        throw new Error('Failed to refresh Spotify token')
-      }
-      const tokenData = await response.json()
-      const { access_token, expires_in, scope, token_type } = tokenData
-      currentAccessToken = access_token
-
-      // Emit token update event
-      const now = Date.now()
-      const tokenInfo: TokenInfo = {
-        lastRefresh: now,
-        expiresIn: expires_in,
-        scope,
-        type: token_type,
-        lastActualRefresh: now,
-        expiryTime: now + expires_in * 1000
-      }
-      window.dispatchEvent(
-        new CustomEvent('tokenUpdate', { detail: tokenInfo })
-      )
-
-      // Set up token refresh timer
-      if (tokenRefreshInterval.current) {
-        clearTimeout(tokenRefreshInterval.current)
-      }
-      const refreshDelay = (expires_in - 15 * 60) * 1000 // 15 minutes before expiry
-      tokenRefreshInterval.current = setTimeout(refreshToken, refreshDelay)
-    } catch (error) {
-      console.error('[Token] Error refreshing token:', error)
-      setError(
-        error instanceof Error
-          ? error.message
-          : 'Failed to refresh Spotify token'
-      )
-    }
-  }, [])
-
   const initializePlayer = useCallback(async (): Promise<void> => {
     // If already initialized, return immediately
     if (isInitialized) {
@@ -168,48 +135,24 @@ export function useSpotifyPlayerState(
     try {
       initializationPromise = (async () => {
         try {
-          // Get access token
-          const tokenInfo = await sendApiRequest<{
-            access_token: string
-            token_type: string
-            scope: string
-            expires_in: number
-          }>({
-            path: '/api/token',
-            method: 'GET',
-            isLocalApi: true
-          })
-
-          currentAccessToken = tokenInfo.access_token
-
-          // Calculate token refresh delay (refresh 5 minutes before expiry)
-          const now = Date.now()
-          const refreshDelay = (tokenInfo.expires_in - 300) * 1000 // 5 minutes before expiry
-
-          tokenRefreshInterval.current = setTimeout(refreshToken, refreshDelay)
-
-          // Wait for SDK to be ready
-          if (!window.Spotify) {
-            await new Promise<void>((resolve, reject) => {
-              const timeout = setTimeout(() => {
-                console.warn(
-                  '[SpotifyPlayer] SDK failed to load within 10 seconds'
-                )
-                reject(
-                  new Error('Spotify SDK failed to load within 10 seconds')
-                )
-              }, 10000)
-
-              const handleSDKReady = () => {
-                clearTimeout(timeout)
-                resolve()
-              }
-
-              window.addEventListener('spotifySDKReady', handleSDKReady, {
-                once: true
-              })
-            })
+          const token = await tokenManager.getToken()
+          if (!token) {
+            throw new Error('Failed to get Spotify token')
           }
+          currentAccessToken.current = token
+
+          // Emit token update event
+          const tokenInfo: TokenInfo = {
+            lastRefresh: Date.now(),
+            expiresIn: 3600, // Default to 1 hour
+            scope: 'streaming user-read-email user-read-private',
+            type: 'Bearer',
+            lastActualRefresh: Date.now(),
+            expiryTime: Date.now() + 3600 * 1000
+          }
+          window.dispatchEvent(
+            new CustomEvent('tokenUpdate', { detail: tokenInfo })
+          )
 
           // Check if we already have a player instance
           if (playerInstance) {
@@ -221,8 +164,8 @@ export function useSpotifyPlayerState(
           const player = new window.Spotify.Player({
             name: '3B Saigon Jukebox',
             getOAuthToken: (cb: (token: string) => void) => {
-              if (currentAccessToken) {
-                cb(currentAccessToken)
+              if (currentAccessToken.current) {
+                cb(currentAccessToken.current)
               }
             },
             volume: 0.5
@@ -324,7 +267,7 @@ export function useSpotifyPlayerState(
       resetInitializationState()
       throw error
     }
-  }, [refreshToken, setDeviceId, setIsReady, setPlaybackState])
+  }, [setDeviceId, setIsReady, setPlaybackState])
 
   const reconnectPlayer = useCallback(async (): Promise<void> => {
     if (
@@ -644,12 +587,40 @@ export function useSpotifyPlayerState(
   }, [playlistId])
 
   useEffect(() => {
-    return () => {
-      if (tokenRefreshInterval.current) {
-        clearTimeout(tokenRefreshInterval.current)
+    if (!deviceId) return
+
+    const initializePlayer = async () => {
+      try {
+        const token = await tokenManager.getToken()
+        if (!token) {
+          throw new Error('Failed to get Spotify token')
+        }
+        currentAccessToken.current = token
+
+        // Emit token update event
+        const tokenInfo: TokenInfo = {
+          lastRefresh: Date.now(),
+          expiresIn: 3600, // Default to 1 hour
+          scope: 'streaming user-read-email user-read-private',
+          type: 'Bearer',
+          lastActualRefresh: Date.now(),
+          expiryTime: Date.now() + 3600 * 1000
+        }
+        window.dispatchEvent(
+          new CustomEvent('tokenUpdate', { detail: tokenInfo })
+        )
+      } catch (error) {
+        console.error('[Player] Error initializing player:', error)
+        setError(
+          error instanceof Error
+            ? error.message
+            : 'Failed to initialize player'
+        )
       }
     }
-  }, [])
+
+    void initializePlayer()
+  }, [deviceId])
 
   return {
     error,
@@ -669,6 +640,9 @@ export function useSpotifyPlayerState(
     reconnectPlayer,
     refreshPlayerState,
     refreshPlaylistState,
-    refreshToken
+    refreshToken: async () => {
+      // This is now a no-op since token management is handled by tokenManager
+      return Promise.resolve()
+    }
   }
 }

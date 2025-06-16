@@ -26,14 +26,12 @@ export function StatusIndicator({
             colorMap[status] ?? 'bg-gray-500'
           )}
         />
-        <span className='text-sm font-semibold text-white'>{title}</span>
+        <span className='text-white text-sm font-semibold'>{title}</span>
       </div>
       <div className='flex items-center space-x-2'>
-        <span className='text-sm font-semibold text-white'>{label}</span>
+        <span className='text-white text-sm font-semibold'>{label}</span>
         {subtitle && (
-          <span className='text-sm text-gray-400'>
-            - {subtitle}
-          </span>
+          <span className='text-sm text-gray-400'>- {subtitle}</span>
         )}
       </div>
     </div>
