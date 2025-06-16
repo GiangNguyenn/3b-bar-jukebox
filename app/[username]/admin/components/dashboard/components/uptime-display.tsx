@@ -21,12 +21,10 @@ function formatTime(seconds: number): string {
 export function UptimeDisplay({ uptime }: UptimeDisplayProps): JSX.Element {
   return (
     <div className='rounded-lg border border-gray-800 bg-gray-900/50 p-4'>
-      <h3 className='mb-2 text-sm font-medium text-gray-400'>
-        Uptime
-      </h3>
+      <h3 className='mb-2 text-sm font-medium text-gray-400'>Uptime</h3>
       <p className='text-2xl font-semibold text-gray-300'>
         {formatTime(uptime)}
       </p>
     </div>
   )
-} 
+}

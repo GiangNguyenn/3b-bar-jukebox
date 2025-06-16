@@ -70,7 +70,10 @@ const useNowPlayingTrack = () => {
       refreshInterval: 10000, // Check every 10 seconds
       onError: (err) => {
         if (!isMounted.current) return
-        console.error('[useNowPlayingTrack] SWR Error:', err instanceof Error ? err.message : 'Unknown error')
+        console.error(
+          '[useNowPlayingTrack] SWR Error:',
+          err instanceof Error ? err.message : 'Unknown error'
+        )
       },
       onSuccess: (data) => {
         if (!isMounted.current) return

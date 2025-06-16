@@ -50,14 +50,16 @@ interface SearchResponse {
 export const dynamic = 'force-dynamic'
 export const revalidate = 0
 
-export async function GET(request: Request): Promise<NextResponse<SearchResponse | ErrorResponse>> {
+export async function GET(
+  request: Request
+): Promise<NextResponse<SearchResponse | ErrorResponse>> {
   const { searchParams } = new URL(request.url)
   const query = searchParams.get('q')
   const type = searchParams.get('type') ?? 'track'
 
   if (!query) {
     return NextResponse.json(
-      { 
+      {
         error: 'Query parameter is required',
         code: 'MISSING_QUERY',
         status: 400
@@ -81,7 +83,7 @@ export async function GET(request: Request): Promise<NextResponse<SearchResponse
     if (profileError || !adminProfile) {
       console.error('[Search] Error fetching admin profile:', profileError)
       return NextResponse.json(
-        { 
+        {
           error: 'Failed to get admin credentials',
           code: 'ADMIN_PROFILE_ERROR',
           status: 500
@@ -116,7 +118,7 @@ export async function GET(request: Request): Promise<NextResponse<SearchResponse
       if (!response.ok) {
         console.error('[Search] Error refreshing token:', await response.text())
         return NextResponse.json(
-          { 
+          {
             error: 'Failed to refresh token',
             code: 'TOKEN_REFRESH_ERROR',
             status: 500
@@ -159,7 +161,7 @@ export async function GET(request: Request): Promise<NextResponse<SearchResponse
     if (!searchResponse.ok) {
       console.error('[Search] Spotify API error:', await searchResponse.text())
       return NextResponse.json(
-        { 
+        {
           error: 'Failed to search Spotify',
           code: 'SPOTIFY_API_ERROR',
           status: searchResponse.status
@@ -173,7 +175,7 @@ export async function GET(request: Request): Promise<NextResponse<SearchResponse
   } catch (error) {
     console.error('[Search] Error:', error)
     return NextResponse.json(
-      { 
+      {
         error: 'Internal server error',
         code: 'INTERNAL_ERROR',
         status: 500

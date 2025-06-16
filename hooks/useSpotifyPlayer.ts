@@ -76,8 +76,14 @@ type SpotifySDKEventCallbacks = {
 interface SpotifyPlayerInstance {
   connect: () => Promise<boolean>
   disconnect: () => void
-  addListener: <T extends SpotifySDKEventTypes>(eventName: T, callback: SpotifySDKEventCallbacks[T]) => void
-  removeListener: <T extends SpotifySDKEventTypes>(eventName: T, callback: SpotifySDKEventCallbacks[T]) => void
+  addListener: <T extends SpotifySDKEventTypes>(
+    eventName: T,
+    callback: SpotifySDKEventCallbacks[T]
+  ) => void
+  removeListener: <T extends SpotifySDKEventTypes>(
+    eventName: T,
+    callback: SpotifySDKEventCallbacks[T]
+  ) => void
   getCurrentState: () => Promise<SpotifySDKPlaybackState | null>
   setName: (name: string) => Promise<void>
   getVolume: () => Promise<number>
@@ -168,10 +174,13 @@ export const useSpotifyPlayer = create<SpotifyPlayerState>((set, get) => ({
       if (!isReady && state.isReady && state.deviceId) {
         // Use requestAnimationFrame to ensure we're not in a render cycle
         requestAnimationFrame(() => {
-          console.error('[SpotifyPlayer] Critical error: Player became unready', {
-            deviceId: state.deviceId,
-            timestamp: Date.now()
-          })
+          console.error(
+            '[SpotifyPlayer] Critical error: Player became unready',
+            {
+              deviceId: state.deviceId,
+              timestamp: Date.now()
+            }
+          )
 
           // Trigger recovery if enough time has passed since last attempt
           const now = Date.now()
@@ -253,7 +262,10 @@ export const useSpotifyPlayer = create<SpotifyPlayerState>((set, get) => ({
 
       // Use requestAnimationFrame to ensure we're not in a render cycle
       requestAnimationFrame(() => {
-        console.log('[SpotifyPlayer] Playback state updated:', playbackState?.item?.name)
+        console.log(
+          '[SpotifyPlayer] Playback state updated:',
+          playbackState?.item?.name
+        )
       })
 
       return {
@@ -357,7 +369,12 @@ async function createPlayer(): Promise<string> {
               volume_percent: 50,
               supports_volume: true
             },
-            repeat_state: sdkState.repeat_mode === 0 ? 'off' : sdkState.repeat_mode === 1 ? 'context' : 'track',
+            repeat_state:
+              sdkState.repeat_mode === 0
+                ? 'off'
+                : sdkState.repeat_mode === 1
+                  ? 'context'
+                  : 'track',
             shuffle_state: sdkState.shuffle,
             context: {
               type: sdkState.context.uri.split(':')[1] || 'playlist',
@@ -370,62 +387,78 @@ async function createPlayer(): Promise<string> {
             timestamp: sdkState.timestamp,
             progress_ms: sdkState.position,
             is_playing: !sdkState.paused,
-            item: sdkState.track_window?.current_track ? {
-              album: {
-                album_type: 'album',
-                total_tracks: 1,
-                available_markets: [],
-                external_urls: { spotify: sdkState.track_window.current_track.album.uri },
-                href: sdkState.track_window.current_track.album.uri,
-                id: sdkState.track_window.current_track.album.uri.split(':').pop() || '',
-                images: sdkState.track_window.current_track.album.images.map(img => ({
-                  url: img.url,
-                  height: img.height,
-                  width: img.width
-                })),
-                name: sdkState.track_window.current_track.album.name,
-                release_date: '',
-                release_date_precision: 'day',
-                type: 'album',
-                uri: sdkState.track_window.current_track.album.uri,
-                artists: sdkState.track_window.current_track.artists.map(artist => ({
-                  external_urls: { spotify: artist.uri },
-                  href: artist.uri,
-                  id: artist.uri.split(':').pop() || '',
-                  name: artist.name,
-                  type: 'artist',
-                  uri: artist.uri
-                }))
-              },
-              artists: sdkState.track_window.current_track.artists.map(artist => ({
-                external_urls: { spotify: artist.uri },
-                href: artist.uri,
-                id: artist.uri.split(':').pop() || '',
-                name: artist.name,
-                type: 'artist',
-                uri: artist.uri
-              })),
-              available_markets: [],
-              disc_number: 1,
-              duration_ms: sdkState.track_window.current_track.duration_ms,
-              explicit: false,
-              external_ids: {
-                isrc: '',
-                ean: '',
-                upc: ''
-              },
-              external_urls: { spotify: sdkState.track_window.current_track.uri },
-              href: sdkState.track_window.current_track.uri,
-              id: sdkState.track_window.current_track.id,
-              is_playable: true,
-              name: sdkState.track_window.current_track.name,
-              popularity: 0,
-              preview_url: sdkState.track_window.current_track.uri,
-              track_number: 1,
-              type: 'track',
-              uri: sdkState.track_window.current_track.uri,
-              is_local: false
-            } : null,
+            item: sdkState.track_window?.current_track
+              ? {
+                  album: {
+                    album_type: 'album',
+                    total_tracks: 1,
+                    available_markets: [],
+                    external_urls: {
+                      spotify: sdkState.track_window.current_track.album.uri
+                    },
+                    href: sdkState.track_window.current_track.album.uri,
+                    id:
+                      sdkState.track_window.current_track.album.uri
+                        .split(':')
+                        .pop() || '',
+                    images:
+                      sdkState.track_window.current_track.album.images.map(
+                        (img) => ({
+                          url: img.url,
+                          height: img.height,
+                          width: img.width
+                        })
+                      ),
+                    name: sdkState.track_window.current_track.album.name,
+                    release_date: '',
+                    release_date_precision: 'day',
+                    type: 'album',
+                    uri: sdkState.track_window.current_track.album.uri,
+                    artists: sdkState.track_window.current_track.artists.map(
+                      (artist) => ({
+                        external_urls: { spotify: artist.uri },
+                        href: artist.uri,
+                        id: artist.uri.split(':').pop() || '',
+                        name: artist.name,
+                        type: 'artist',
+                        uri: artist.uri
+                      })
+                    )
+                  },
+                  artists: sdkState.track_window.current_track.artists.map(
+                    (artist) => ({
+                      external_urls: { spotify: artist.uri },
+                      href: artist.uri,
+                      id: artist.uri.split(':').pop() || '',
+                      name: artist.name,
+                      type: 'artist',
+                      uri: artist.uri
+                    })
+                  ),
+                  available_markets: [],
+                  disc_number: 1,
+                  duration_ms: sdkState.track_window.current_track.duration_ms,
+                  explicit: false,
+                  external_ids: {
+                    isrc: '',
+                    ean: '',
+                    upc: ''
+                  },
+                  external_urls: {
+                    spotify: sdkState.track_window.current_track.uri
+                  },
+                  href: sdkState.track_window.current_track.uri,
+                  id: sdkState.track_window.current_track.id,
+                  is_playable: true,
+                  name: sdkState.track_window.current_track.name,
+                  popularity: 0,
+                  preview_url: sdkState.track_window.current_track.uri,
+                  track_number: 1,
+                  type: 'track',
+                  uri: sdkState.track_window.current_track.uri,
+                  is_local: false
+                }
+              : null,
             currently_playing_type: 'track',
             actions: {
               interrupting_playback: !sdkState.disallows.pausing,

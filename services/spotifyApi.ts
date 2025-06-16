@@ -21,6 +21,9 @@ export interface SpotifyApiClient {
       position: number
     }
   }>
+  pausePlayback(deviceId: string): Promise<{
+    success: boolean
+  }>
 }
 
 export class SpotifyApiService implements SpotifyApiClient {
@@ -384,5 +387,22 @@ export class SpotifyApiService implements SpotifyApiClient {
       console.error('[SpotifyApi] Error ensuring active device:', error)
       throw error
     }
+  }
+
+  async pausePlayback(deviceId: string): Promise<{ success: boolean }> {
+    return handleOperationError(async () => {
+      try {
+        await this.apiClient({
+          path: `me/player/pause?device_id=${deviceId}`,
+          method: 'PUT',
+          retryConfig: this.retryConfig
+        })
+
+        return { success: true }
+      } catch (error) {
+        console.error('[SpotifyApi] Error in pausePlayback:', error)
+        throw error
+      }
+    }, 'SpotifyApi.pausePlayback')
   }
 }

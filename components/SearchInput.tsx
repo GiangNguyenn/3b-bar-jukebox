@@ -15,7 +15,9 @@ interface SearchResponse {
   }
 }
 
-export default function SearchInput({ onAddTrack }: SearchInputProps): JSX.Element {
+export default function SearchInput({
+  onAddTrack
+}: SearchInputProps): JSX.Element {
   const [searchQuery, setSearchQuery] = useState('')
   const [searchResults, setSearchResults] = useState<TrackDetails[]>([])
   const [isSearching, setIsSearching] = useState(false)
@@ -31,11 +33,13 @@ export default function SearchInput({ onAddTrack }: SearchInputProps): JSX.Eleme
     setError(null)
 
     try {
-      const response = await fetch(`/api/search?q=${encodeURIComponent(searchQuery)}`)
+      const response = await fetch(
+        `/api/search?q=${encodeURIComponent(searchQuery)}`
+      )
       if (!response.ok) {
         throw new Error('Search failed')
       }
-      const data = await response.json() as SearchResponse
+      const data = (await response.json()) as SearchResponse
       setSearchResults(data.tracks?.items ?? [])
     } catch (error) {
       console.error('[SearchInput] Error searching tracks:', error)
@@ -47,7 +51,9 @@ export default function SearchInput({ onAddTrack }: SearchInputProps): JSX.Eleme
     }
   }
 
-  const handleKeyPress = (event: React.KeyboardEvent<HTMLInputElement>): void => {
+  const handleKeyPress = (
+    event: React.KeyboardEvent<HTMLInputElement>
+  ): void => {
     if (event.key === 'Enter') {
       void handleSearch()
     }
@@ -79,7 +85,7 @@ export default function SearchInput({ onAddTrack }: SearchInputProps): JSX.Eleme
         <button
           onClick={() => void handleSearch()}
           disabled={isSearching}
-          className='absolute right-2 top-1/2 -translate-y-1/2 rounded bg-blue-500 px-4 py-1 text-white hover:bg-blue-600 disabled:bg-gray-400'
+          className='text-white absolute right-2 top-1/2 -translate-y-1/2 rounded bg-blue-500 px-4 py-1 hover:bg-blue-600 disabled:bg-gray-400'
         >
           {isSearching ? 'Searching...' : 'Search'}
         </button>

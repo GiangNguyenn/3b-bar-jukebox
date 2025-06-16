@@ -16,7 +16,9 @@ export function ProtectedRoute({
   useEffect(() => {
     const checkSession = async (): Promise<void> => {
       try {
-        const { data: { session } } = await supabase.auth.getSession()
+        const {
+          data: { session }
+        } = await supabase.auth.getSession()
         if (!session) {
           router.push('/login')
           return
@@ -34,10 +36,10 @@ export function ProtectedRoute({
   if (isLoading) {
     return (
       <div className='flex min-h-screen items-center justify-center'>
-        <div className='h-8 w-8 animate-spin rounded-full border-2 border-white border-t-transparent'></div>
+        <div className='border-white h-8 w-8 animate-spin rounded-full border-2 border-t-transparent'></div>
       </div>
     )
   }
 
   return <>{children}</>
-} 
+}

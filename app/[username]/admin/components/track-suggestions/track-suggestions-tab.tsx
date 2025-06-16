@@ -1,7 +1,6 @@
 'use client'
 
 import { useEffect, useRef, useCallback } from 'react'
-import { useTrackSuggestions } from './hooks/useTrackSuggestions'
 import { GenresSelector } from './components/genres-selector'
 import { YearRangeSelector } from './components/year-range-selector'
 import { PopularitySelector } from './components/popularity-selector'
@@ -10,7 +9,11 @@ import { MaxSongLengthSelector } from './components/max-song-length-selector'
 import { SongsBetweenRepeatsSelector } from './components/songs-between-repeats-selector'
 import { MaxOffsetSelector } from './components/max-offset-selector'
 import { LastSuggestedTrack } from './components/last-suggested-track'
-import type { TrackSuggestionsState, LastSuggestedTrackInfo } from '@/shared/types/trackSuggestions'
+import {
+  type TrackSuggestionsState,
+  type LastSuggestedTrackInfo
+} from '@/shared/types/trackSuggestions'
+import { useTrackSuggestions } from './hooks/useTrackSuggestions'
 
 interface TrackSuggestionsTabProps {
   onStateChange: (state: TrackSuggestionsState) => void
@@ -142,4 +145,4 @@ export function TrackSuggestionsTab({
       </div>
     </div>
   )
-} 
+}

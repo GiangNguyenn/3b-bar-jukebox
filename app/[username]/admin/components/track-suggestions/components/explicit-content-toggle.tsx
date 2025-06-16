@@ -19,8 +19,10 @@ export function ExplicitContentToggle({
           onChange={(e) => onToggleChange(e.target.checked)}
           className='rounded border-input bg-background text-foreground focus:ring-2 focus:ring-ring'
         />
-        <span className='text-sm text-muted-foreground'>Allow explicit content</span>
+        <span className='text-sm text-muted-foreground'>
+          Allow explicit content
+        </span>
       </label>
     </div>
   )
-} 
+}

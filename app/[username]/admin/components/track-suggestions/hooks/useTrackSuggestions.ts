@@ -82,37 +82,61 @@ export function useTrackSuggestions(): UseTrackSuggestionsReturn {
     return () => clearTimeout(timeoutId)
   }, [state])
 
-  const updateState = useCallback((newState: Partial<TrackSuggestionsState>): void => {
-    setState((prev) => ({ ...prev, ...newState }))
-  }, [])
+  const updateState = useCallback(
+    (newState: Partial<TrackSuggestionsState>): void => {
+      setState((prev) => ({ ...prev, ...newState }))
+    },
+    []
+  )
 
-  const setGenres = useCallback((genres: Genre[]): void => {
-    updateState({ genres })
-  }, [updateState])
+  const setGenres = useCallback(
+    (genres: Genre[]): void => {
+      updateState({ genres })
+    },
+    [updateState]
+  )
 
-  const setYearRange = useCallback((yearRange: [number, number]): void => {
-    updateState({ yearRange })
-  }, [updateState])
+  const setYearRange = useCallback(
+    (yearRange: [number, number]): void => {
+      updateState({ yearRange })
+    },
+    [updateState]
+  )
 
-  const setPopularity = useCallback((popularity: number): void => {
-    updateState({ popularity })
-  }, [updateState])
+  const setPopularity = useCallback(
+    (popularity: number): void => {
+      updateState({ popularity })
+    },
+    [updateState]
+  )
 
-  const setAllowExplicit = useCallback((allowExplicit: boolean): void => {
-    updateState({ allowExplicit })
-  }, [updateState])
+  const setAllowExplicit = useCallback(
+    (allowExplicit: boolean): void => {
+      updateState({ allowExplicit })
+    },
+    [updateState]
+  )
 
-  const setMaxSongLength = useCallback((maxSongLength: number): void => {
-    updateState({ maxSongLength })
-  }, [updateState])
+  const setMaxSongLength = useCallback(
+    (maxSongLength: number): void => {
+      updateState({ maxSongLength })
+    },
+    [updateState]
+  )
 
-  const setSongsBetweenRepeats = useCallback((songsBetweenRepeats: number): void => {
-    updateState({ songsBetweenRepeats })
-  }, [updateState])
+  const setSongsBetweenRepeats = useCallback(
+    (songsBetweenRepeats: number): void => {
+      updateState({ songsBetweenRepeats })
+    },
+    [updateState]
+  )
 
-  const setMaxOffset = useCallback((maxOffset: number): void => {
-    updateState({ maxOffset })
-  }, [updateState])
+  const setMaxOffset = useCallback(
+    (maxOffset: number): void => {
+      updateState({ maxOffset })
+    },
+    [updateState]
+  )
 
   return {
     state,
@@ -125,4 +149,4 @@ export function useTrackSuggestions(): UseTrackSuggestionsReturn {
     setSongsBetweenRepeats,
     setMaxOffset
   }
-} 
+}

@@ -31,4 +31,4 @@ export function validateSongsBetweenRepeats(value: number): string | null {
     return `Songs between repeats cannot exceed ${SONGS_BETWEEN_REPEATS_MAX}`
   }
   return null
-} 
+}

@@ -1,13 +1,24 @@
 import { sendApiRequest } from '@/shared/api'
-import { cleanupOtherDevices, verifyDeviceTransfer } from '@/services/deviceManagement'
+import {
+  cleanupOtherDevices,
+  verifyDeviceTransfer
+} from '@/services/deviceManagement'
 import * as Sentry from '@sentry/nextjs'
 
 // Helper to wait for device to become active
-async function waitForDeviceActive(deviceId: string, timeoutMs = 10000): Promise<boolean> {
-  console.log('[Recovery] Waiting for device to become active:', { deviceId, timeoutMs })
+async function waitForDeviceActive(
+  deviceId: string,
+  timeoutMs = 10000
+): Promise<boolean> {
+  console.log('[Recovery] Waiting for device to become active:', {
+    deviceId,
+    timeoutMs
+  })
   const start = Date.now()
   while (Date.now() - start < timeoutMs) {
-    const devices = await sendApiRequest<{ devices: { id: string; is_active: boolean }[] }>({
+    const devices = await sendApiRequest<{
+      devices: { id: string; is_active: boolean }[]
+    }>({
       path: 'me/player/devices',
       method: 'GET'
     })
@@ -26,12 +37,16 @@ async function waitForDeviceActive(deviceId: string, timeoutMs = 10000): Promise
   return false
 }
 
-export async function recoverDevice(deviceId: string): Promise<{ success: boolean; error?: string }> {
+export async function recoverDevice(
+  deviceId: string
+): Promise<{ success: boolean; error?: string }> {
   console.log('[Recovery] Starting recovery process')
   try {
     // Step 1: Get current devices
     console.log('[Recovery] Getting current devices')
-    const devices = await sendApiRequest<{ devices: { id: string; is_active: boolean }[] }>({
+    const devices = await sendApiRequest<{
+      devices: { id: string; is_active: boolean }[]
+    }>({
       path: 'me/player/devices',
       method: 'GET'
     })
@@ -101,4 +116,4 @@ export async function recoverDevice(deviceId: string): Promise<{ success: boolea
       error: error instanceof Error ? error.message : 'Recovery failed'
     }
   }
-} 
+}

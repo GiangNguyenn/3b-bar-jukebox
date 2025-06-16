@@ -22,10 +22,10 @@ export function PlaybackControls({
   const isPlaying = playbackState?.is_playing ?? false
 
   return (
-    <div className='flex items-center justify-center'>
+    <div className='flex items-center justify-center gap-4'>
       <button
         className={cn(
-          'flex h-10 w-10 items-center justify-center rounded-full transition-colors',
+          'flex h-8 w-8 items-center justify-center rounded-full transition-colors',
           canControlPlayback && !isLoading
             ? 'hover:bg-muted active:scale-95'
             : 'cursor-not-allowed opacity-50'
@@ -37,14 +37,14 @@ export function PlaybackControls({
         <Image
           src={isPlaying ? '/pause.svg' : '/play.svg'}
           alt={isPlaying ? 'Pause' : 'Play'}
-          width={20}
-          height={20}
+          width={16}
+          height={16}
           className={cn(
-            'h-5 w-5',
+            'h-4 w-4',
             loadingAction === 'playPause' && 'animate-spin'
           )}
         />
       </button>
     </div>
   )
-} 
+}

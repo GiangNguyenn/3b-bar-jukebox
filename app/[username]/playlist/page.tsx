@@ -17,22 +17,35 @@ interface PlaylistPageProps {
   }
 }
 
-export default function PlaylistPage({ params }: PlaylistPageProps): JSX.Element {
+export default function PlaylistPage({
+  params
+}: PlaylistPageProps): JSX.Element {
   const { username } = params
   const {
     data: profile,
     error: profileError,
     isLoading: isProfileLoading
-  } = useGetProfile(username) as { data: { username: string } | null; error: Error | null; isLoading: boolean }
+  } = useGetProfile(username) as {
+    data: { username: string } | null
+    error: Error | null
+    isLoading: boolean
+  }
   const { fixedPlaylistId, isLoading: isPlaylistIdLoading } = useFixedPlaylist()
   const {
     data: playlist,
     error: playlistError,
     isLoading: isPlaylistLoading
-  } = useGetPlaylist(fixedPlaylistId) as { data: { tracks: { items: TrackItem[] } } | null; error: Error | null; isLoading: boolean }
+  } = useGetPlaylist(fixedPlaylistId) as {
+    data: { tracks: { items: TrackItem[] } } | null
+    error: Error | null
+    isLoading: boolean
+  }
   const { addTrack, optimisticTrack } = useAddTrackToPlaylist({
     playlistId: fixedPlaylistId ?? ''
-  }) as { addTrack: (track: TrackItem) => Promise<void>; optimisticTrack: TrackItem | undefined }
+  }) as {
+    addTrack: (track: TrackItem) => Promise<void>
+    optimisticTrack: TrackItem | undefined
+  }
 
   const handleAddTrack = async (track: TrackDetails): Promise<void> => {
     try {

@@ -11,7 +11,10 @@ interface PlaylistProps {
   optimisticTrack?: TrackItem
 }
 
-export default function Playlist({ tracks, optimisticTrack }: PlaylistProps): JSX.Element {
+export default function Playlist({
+  tracks,
+  optimisticTrack
+}: PlaylistProps): JSX.Element {
   const containerRef = useRef<HTMLDivElement>(null)
   const currentTrackIdRef = useRef<string | null>(null)
   const { data: playbackState, error: playbackError } = useNowPlayingTrack()
@@ -20,7 +23,9 @@ export default function Playlist({ tracks, optimisticTrack }: PlaylistProps): JS
     if (!containerRef.current) return
 
     const container = containerRef.current
-    const currentTrack = container.querySelector('[data-track-id="' + currentTrackIdRef.current + '"]')
+    const currentTrack = container.querySelector(
+      '[data-track-id="' + currentTrackIdRef.current + '"]'
+    )
     if (currentTrack) {
       currentTrack.scrollIntoView({ behavior: 'smooth', block: 'center' })
     }
