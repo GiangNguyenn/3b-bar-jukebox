@@ -280,6 +280,7 @@ export const useSpotifyPlayer = create<SpotifyPlayerState>((set, get) => ({
 }))
 
 let playerInitializationPromise: Promise<string> | null = null
+let playerCleanupTimeout: NodeJS.Timeout | null = null
 
 function destroyPlayer() {
   const player = window.spotifyPlayerInstance
@@ -294,22 +295,39 @@ function destroyPlayer() {
 }
 
 async function createPlayer(): Promise<string> {
+  // If we have an existing player, return its device ID
+  if (window.spotifyPlayerInstance) {
+    const currentDeviceId = useSpotifyPlayer.getState().deviceId
+    if (currentDeviceId) {
+      console.log('[SpotifyPlayer] Using existing player with device ID:', currentDeviceId)
+      return currentDeviceId
+    }
+  }
+
+  // If we're already initializing, wait for that to complete
   if (playerInitializationPromise) {
+    console.log('[SpotifyPlayer] Waiting for existing initialization to complete')
     return playerInitializationPromise
   }
-  if (window.spotifyPlayerInstance) {
-    // Optionally, return the deviceId if available
-    return Promise.resolve(
-      useSpotifyPlayer.getState().deviceId || 'existing-player'
-    )
+
+  // Clear any existing cleanup timeout
+  if (playerCleanupTimeout) {
+    clearTimeout(playerCleanupTimeout)
+    playerCleanupTimeout = null
   }
+
+  console.log('[SpotifyPlayer] Starting new player initialization')
   playerInitializationPromise = (async () => {
     try {
+      // Destroy any existing player first
+      destroyPlayer()
+
       // Generate a unique player name with a timestamp
       const playerName = `Jukebox-${Date.now()}`
 
       // Ensure the Spotify SDK is loaded
       if (!window.Spotify) {
+        console.log('[SpotifyPlayer] Waiting for SDK to load...')
         await new Promise<void>((resolve, reject) => {
           const timeout = setTimeout(() => {
             reject(new Error('Spotify SDK failed to load in time'))
@@ -323,12 +341,20 @@ async function createPlayer(): Promise<string> {
             { once: true }
           )
         })
+        console.log('[SpotifyPlayer] SDK loaded')
+      } else {
+        // SDK is already loaded, dispatch the ready event
+        console.log('[SpotifyPlayer] SDK already loaded')
+        window.dispatchEvent(new Event('spotifySDKReady'))
       }
 
       // Get OAuth token using the shared/api util
+      console.log('[SpotifyPlayer] Getting OAuth token...')
       const accessToken = await tokenManager.getToken()
+      console.log('[SpotifyPlayer] Got OAuth token')
 
       // Create the player
+      console.log('[SpotifyPlayer] Creating player instance...')
       // @ts-ignore - Spotify SDK type definitions are incomplete
       const player = new window.Spotify.Player({
         name: playerName,
@@ -337,15 +363,14 @@ async function createPlayer(): Promise<string> {
         },
         volume: 0.5
       })
-
-      // @ts-ignore - Spotify SDK type definitions are incomplete
-      window.spotifyPlayerInstance = player
+      console.log('[SpotifyPlayer] Player instance created')
 
       // Set up event handlers
       // @ts-ignore - Spotify SDK event types are incompatible with our custom types
       player.addListener('ready', ({ device_id }) => {
         // Use requestAnimationFrame to ensure we're not in a render cycle
         requestAnimationFrame(() => {
+          console.log('[SpotifyPlayer] Player ready with device ID:', device_id)
           useSpotifyPlayer.getState().setDeviceId(device_id)
           useSpotifyPlayer.getState().setIsReady(true)
         })
@@ -353,7 +378,6 @@ async function createPlayer(): Promise<string> {
 
       // @ts-ignore - Spotify SDK event types are incompatible with our custom types
       player.addListener('player_state_changed', (state: unknown) => {
-        console.log('[SpotifyPlayer] Player state changed:', state)
         // Use requestAnimationFrame to ensure we're not in a render cycle
         requestAnimationFrame(() => {
           // Convert the SDK's PlaybackState to our SpotifyPlaybackState type
@@ -387,78 +411,7 @@ async function createPlayer(): Promise<string> {
             timestamp: sdkState.timestamp,
             progress_ms: sdkState.position,
             is_playing: !sdkState.paused,
-            item: sdkState.track_window?.current_track
-              ? {
-                  album: {
-                    album_type: 'album',
-                    total_tracks: 1,
-                    available_markets: [],
-                    external_urls: {
-                      spotify: sdkState.track_window.current_track.album.uri
-                    },
-                    href: sdkState.track_window.current_track.album.uri,
-                    id:
-                      sdkState.track_window.current_track.album.uri
-                        .split(':')
-                        .pop() || '',
-                    images:
-                      sdkState.track_window.current_track.album.images.map(
-                        (img) => ({
-                          url: img.url,
-                          height: img.height,
-                          width: img.width
-                        })
-                      ),
-                    name: sdkState.track_window.current_track.album.name,
-                    release_date: '',
-                    release_date_precision: 'day',
-                    type: 'album',
-                    uri: sdkState.track_window.current_track.album.uri,
-                    artists: sdkState.track_window.current_track.artists.map(
-                      (artist) => ({
-                        external_urls: { spotify: artist.uri },
-                        href: artist.uri,
-                        id: artist.uri.split(':').pop() || '',
-                        name: artist.name,
-                        type: 'artist',
-                        uri: artist.uri
-                      })
-                    )
-                  },
-                  artists: sdkState.track_window.current_track.artists.map(
-                    (artist) => ({
-                      external_urls: { spotify: artist.uri },
-                      href: artist.uri,
-                      id: artist.uri.split(':').pop() || '',
-                      name: artist.name,
-                      type: 'artist',
-                      uri: artist.uri
-                    })
-                  ),
-                  available_markets: [],
-                  disc_number: 1,
-                  duration_ms: sdkState.track_window.current_track.duration_ms,
-                  explicit: false,
-                  external_ids: {
-                    isrc: '',
-                    ean: '',
-                    upc: ''
-                  },
-                  external_urls: {
-                    spotify: sdkState.track_window.current_track.uri
-                  },
-                  href: sdkState.track_window.current_track.uri,
-                  id: sdkState.track_window.current_track.id,
-                  is_playable: true,
-                  name: sdkState.track_window.current_track.name,
-                  popularity: 0,
-                  preview_url: sdkState.track_window.current_track.uri,
-                  track_number: 1,
-                  type: 'track',
-                  uri: sdkState.track_window.current_track.uri,
-                  is_local: false
-                }
-              : null,
+            item: sdkState.track_window.current_track,
             currently_playing_type: 'track',
             actions: {
               interrupting_playback: !sdkState.disallows.pausing,
@@ -478,23 +431,28 @@ async function createPlayer(): Promise<string> {
         })
       })
 
+      // @ts-ignore - Spotify SDK event types are incompatible with our custom types
       player.addListener('not_ready', () => {
         // Use requestAnimationFrame to ensure we're not in a render cycle
         requestAnimationFrame(() => {
+          console.log('[SpotifyPlayer] Player not ready')
           useSpotifyPlayer.getState().setIsReady(false)
         })
       })
 
       player.addListener('initialization_error', ({ message }) => {
         console.error('[SpotifyPlayer] Initialization error:', message)
+        destroyPlayer()
       })
 
       player.addListener('authentication_error', ({ message }) => {
         console.error('[SpotifyPlayer] Authentication error:', message)
+        destroyPlayer()
       })
 
       player.addListener('account_error', ({ message }) => {
         console.error('[SpotifyPlayer] Account error:', message)
+        destroyPlayer()
       })
 
       player.addListener('playback_error', ({ message }) => {
@@ -510,9 +468,18 @@ async function createPlayer(): Promise<string> {
       // Store the player instance
       window.spotifyPlayerInstance = player
 
+      // Set up cleanup timeout
+      playerCleanupTimeout = setTimeout(() => {
+        if (window.spotifyPlayerInstance === player) {
+          console.log('[SpotifyPlayer] Cleaning up inactive player')
+          destroyPlayer()
+        }
+      }, 300000) // 5 minutes
+
       return useSpotifyPlayer.getState().deviceId || 'new-player'
     } catch (error) {
       console.error('[SpotifyPlayer] Error creating player:', error)
+      destroyPlayer()
       throw error
     }
   })()
