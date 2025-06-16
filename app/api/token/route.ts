@@ -135,7 +135,8 @@ export async function GET(): Promise<
         .from('profiles')
         .update({
           spotify_access_token: tokenData.access_token,
-          spotify_token_expires_at: Math.floor(Date.now() / 1000) + tokenData.expires_in
+          spotify_token_expires_at:
+            Math.floor(Date.now() / 1000) + tokenData.expires_in
         })
         .eq('id', adminProfile.id)
 
