@@ -213,16 +213,8 @@ export default function AdminPage(): JSX.Element {
         // Also update player status based on isReady
         playback: prev.playback === 'playing' && !isReady ? 'paused' : prev.playback
       }))
-
-      // Log the device status update
-      addLog(
-        'INFO',
-        `[Device Status] Updated: deviceId=${deviceId}, isReady=${isReady}, status=${newDeviceStatus}, timestamp=${new Date().toISOString()}`,
-        'Device',
-        undefined
-      )
     }
-  }, [deviceId, isReady, mounted, isInitializing, addLog])
+  }, [deviceId, isReady, mounted, isInitializing])
 
   // Define the event handler
   useEffect(() => {
@@ -370,12 +362,6 @@ export default function AdminPage(): JSX.Element {
         // If currently playing, pause playback
         const result = await spotifyApi.pausePlayback(deviceId)
         if (result.success) {
-          addLog(
-            'INFO',
-            `[Playback] Paused successfully: deviceId=${deviceId}, timestamp=${new Date().toISOString()}`,
-            'Playback',
-            undefined
-          )
           setPlaybackInfo((prev) =>
             prev
               ? {
@@ -396,12 +382,6 @@ export default function AdminPage(): JSX.Element {
         // If not playing, resume playback
         const result = await spotifyApi.resumePlayback()
         if (result.success) {
-          addLog(
-            'INFO',
-            `[Playback] Resumed successfully: resumedFrom=${typeof result.resumedFrom === 'string' ? result.resumedFrom : JSON.stringify(result.resumedFrom)}, deviceId=${deviceId}, timestamp=${new Date().toISOString()}`,
-            'Playback',
-            undefined
-          )
           setPlaybackInfo((prev) =>
             prev
               ? {
@@ -445,7 +425,7 @@ export default function AdminPage(): JSX.Element {
     } catch (error) {
       addLog(
         'ERROR',
-        '[Playback] Control failed',
+        'Playback control failed',
         'Playback',
         error instanceof Error ? error : undefined
       )
@@ -471,7 +451,7 @@ export default function AdminPage(): JSX.Element {
       ) {
         addLog(
           'WARN',
-          '[Playback] Server error detected, attempting recovery...',
+          'Server error detected, attempting recovery',
           'Playback',
           error instanceof Error ? error : undefined
         )
@@ -513,16 +493,10 @@ export default function AdminPage(): JSX.Element {
 
       try {
         await refreshPlaylist(trackSuggestionsState)
-        addLog(
-          'INFO',
-          `[Refresh] ${source} refresh completed successfully`,
-          'Refresh',
-          undefined
-        )
       } catch (err) {
         addLog(
           'ERROR',
-          `[Refresh] ${source} refresh error`,
+          `${source} refresh error`,
           'Refresh',
           err instanceof Error ? err : undefined
         )
@@ -554,14 +528,7 @@ export default function AdminPage(): JSX.Element {
         maxOffset: trackSuggestionsState.maxOffset
       })
 
-      if (result.success) {
-        addLog(
-          'INFO',
-          `Track suggestions refreshed successfully: ${JSON.stringify(result.searchDetails)}`,
-          'Track Suggestions',
-          undefined
-        )
-      } else {
+      if (!result.success) {
         throw new Error(result.message)
       }
     } catch (error) {
@@ -570,7 +537,7 @@ export default function AdminPage(): JSX.Element {
       setError(errorMessage)
       addLog(
         'ERROR',
-        `[Track Suggestions] Refresh failed: ${errorMessage}`,
+        `Track suggestions refresh failed: ${errorMessage}`,
         'Track Suggestions',
         error instanceof Error ? error : undefined
       )
@@ -628,24 +595,12 @@ export default function AdminPage(): JSX.Element {
   // Add a new effect to handle Spotify player ready state
   useEffect(() => {
     if (isReady) {
-      addLog(
-        'INFO',
-        `[Spotify Player] Ready state changed: isReady=${isReady}, deviceId=${deviceId}, timestamp=${new Date().toISOString()}`,
-        'Spotify Player',
-        undefined
-      )
     }
   }, [isReady, deviceId, addLog])
 
   // Add a new effect to handle device ID changes
   useEffect(() => {
     if (deviceId) {
-      addLog(
-        'INFO',
-        `[Spotify Player] Device ID changed: deviceId=${deviceId}, isReady=${isReady}, timestamp=${new Date().toISOString()}`,
-        'Spotify Player',
-        undefined
-      )
     }
   }, [deviceId, isReady, addLog])
 
@@ -774,12 +729,6 @@ export default function AdminPage(): JSX.Element {
   // Update the initialization effect
   useEffect(() => {
     if (isReady && deviceId) {
-      addLog(
-        'INFO',
-        `[Spotify Player] Initialization complete: isReady=${isReady}, deviceId=${deviceId}, timestamp=${new Date().toISOString()}`,
-        'Spotify Player',
-        undefined
-      )
       setIsInitializing(false)
     }
   }, [isReady, deviceId, addLog])
@@ -796,9 +745,8 @@ export default function AdminPage(): JSX.Element {
         if (!currentState) {
           addLog(
             'ERROR',
-            '[Playback] Failed to get playback state',
-            'Playback',
-            undefined
+            'Failed to get playback state',
+            'Playback'
           )
           return
         }
@@ -824,7 +772,7 @@ export default function AdminPage(): JSX.Element {
       } catch (error) {
         addLog(
           'ERROR',
-          `[Playback] Error checking state: ${error instanceof Error ? error.message : 'Unknown error'}`,
+          `Error checking state: ${error instanceof Error ? error.message : 'Unknown error'}`,
           'Playback',
           error instanceof Error ? error : undefined
         )
@@ -846,19 +794,13 @@ export default function AdminPage(): JSX.Element {
 
   const handleForceRecovery = useCallback(async () => {
     try {
-      addLog(
-        'INFO',
-        `[Recovery] Starting manual recovery: deviceId=${deviceId}, fixedPlaylistId=${fixedPlaylistId}, timestamp=${new Date().toISOString()}`,
-        'Recovery',
-        undefined
-      )
       setIsLoading(true)
       resetRecovery()
       await recover()
     } catch (error) {
       addLog(
         'ERROR',
-        `[Recovery] Error during recovery: error=${error instanceof Error ? error.message : 'Unknown error'}, errorType=${error instanceof Error ? error.name : 'Unknown'}, stack=${error instanceof Error ? error.stack : 'N/A'}, deviceId=${deviceId}, fixedPlaylistId=${fixedPlaylistId}, timestamp=${new Date().toISOString()}`,
+        `Error during recovery: ${error instanceof Error ? error.message : 'Unknown error'}`,
         'Recovery',
         error instanceof Error ? error : undefined
       )
@@ -870,19 +812,11 @@ export default function AdminPage(): JSX.Element {
 
   // Add effect to handle recovery state cleanup and log success/failure
   useEffect(() => {
-    if (recoveryState.phase === 'success') {
-      addLog(
-        'INFO',
-        `[Recovery] Recovery completed successfully: deviceId=${deviceId}, fixedPlaylistId=${fixedPlaylistId}, timestamp=${new Date().toISOString()}`,
-        'Recovery',
-        undefined
-      )
-    } else if (recoveryState.phase === 'error') {
+    if (recoveryState.phase === 'error') {
       addLog(
         'ERROR',
-        `[Recovery] Recovery failed: deviceId=${deviceId}, fixedPlaylistId=${fixedPlaylistId}, timestamp=${new Date().toISOString()}`,
-        'Recovery',
-        undefined
+        'Recovery failed',
+        'Recovery'
       )
     }
     if (recoveryState.phase === 'success' || recoveryState.phase === 'error') {
