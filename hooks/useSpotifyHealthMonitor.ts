@@ -1,10 +1,11 @@
 import { useState, useCallback, useRef, useEffect } from 'react'
-import { useSpotifyPlayer } from './useSpotifyPlayer'
+import { useSpotifyPlayerStore, spotifyPlayerStore } from './useSpotifyPlayer'
 import { sendApiRequest } from '@/shared/api'
 import { SpotifyPlaybackState } from '@/shared/types'
 import { useConsoleLogsContext } from './ConsoleLogsProvider'
 import { useRecoverySystem } from './recovery/useRecoverySystem'
 import { SpotifyApiService } from '@/services/spotifyApi'
+import { useFixedPlaylist } from './useFixedPlaylist'
 
 // Network Information API types
 interface NetworkInformation extends EventTarget {
@@ -31,6 +32,10 @@ interface HealthStatus {
   connection: 'good' | 'unstable' | 'poor' | 'unknown'
   tokenExpiringSoon: boolean
   fixedPlaylist: 'found' | 'not_found' | 'error' | 'unknown'
+  recovery?: 'idle' | 'recovering' | 'completed' | 'failed'
+  recoveryMessage?: string
+  recoveryProgress?: number
+  recoveryCurrentStep?: string
 }
 
 interface RecoveryState {
@@ -79,14 +84,17 @@ export function useSpotifyHealthMonitor(fixedPlaylistId: string | null) {
     token: 'valid',
     connection: 'unknown',
     tokenExpiringSoon: false,
-    fixedPlaylist: 'unknown'
+    fixedPlaylist: 'unknown',
+    recovery: 'idle',
+    recoveryMessage: '',
+    recoveryProgress: 0,
+    recoveryCurrentStep: ''
   })
 
-  const deviceId = useSpotifyPlayer((state) => state.deviceId)
-  const isReady = useSpotifyPlayer((state) => state.isReady)
-  const playbackState = useSpotifyPlayer((state) => state.playbackState)
+  const { deviceId, isReady, playbackState } = useSpotifyPlayerStore()
   const { addLog } = useConsoleLogsContext()
-  
+  const { error: fixedPlaylistError, isLoading: isFixedPlaylistLoading, isInitialFetchComplete } = useFixedPlaylist()
+
   // Refs for tracking state
   const deviceCheckInterval = useRef<NodeJS.Timeout | null>(null)
   const recoveryTimeout = useRef<NodeJS.Timeout | null>(null)
@@ -102,6 +110,11 @@ export function useSpotifyHealthMonitor(fixedPlaylistId: string | null) {
   })
   const deviceMismatchCountRef = useRef(0)
   const isInitialStateRef = useRef(true)
+  const lastProgressMsRef = useRef<number>(0)
+  const lastProgressCheckRef = useRef<number>(Date.now())
+  const progressStallCountRef = useRef(0)
+  const userManuallyPausedRef = useRef(false)
+  const manualPauseTimestampRef = useRef<number>(0)
 
   // Update ref when addLog changes
   useEffect(() => {
@@ -123,20 +136,79 @@ export function useSpotifyHealthMonitor(fixedPlaylistId: string | null) {
     isInitialStateRef.current = true
   }, [deviceId])
 
-  // Use the unified recovery system with onSuccess callback
+  // Update device status when player becomes ready
+  useEffect(() => {
+    if (isReady && deviceId) {
+      setHealthStatus((prev) => ({ ...prev, device: 'healthy' }))
+      addLogRef.current('INFO', `Device ready: ${deviceId}`, 'HealthMonitor')
+    } else if (!isReady && deviceId) {
+      setHealthStatus((prev) => ({ ...prev, device: 'unknown' }))
+    }
+  }, [isReady, deviceId])
+
+  // Update playlist status based on fixed playlist hook
+  useEffect(() => {
+    if (!isInitialFetchComplete) {
+      // Still loading
+      setHealthStatus((prev) => ({ ...prev, fixedPlaylist: 'unknown' }))
+      return
+    }
+
+    if (isFixedPlaylistLoading) {
+      // Still loading
+      setHealthStatus((prev) => ({ ...prev, fixedPlaylist: 'unknown' }))
+      return
+    }
+
+    if (fixedPlaylistError) {
+      // Error occurred
+      setHealthStatus((prev) => ({ ...prev, fixedPlaylist: 'error' }))
+      addLogRef.current('ERROR', `Fixed playlist error: ${fixedPlaylistError.message}`, 'HealthMonitor')
+      return
+    }
+
+    if (fixedPlaylistId) {
+      // Playlist found
+      setHealthStatus((prev) => ({ ...prev, fixedPlaylist: 'found' }))
+      addLogRef.current('INFO', `Fixed playlist found: ${fixedPlaylistId}`, 'HealthMonitor')
+    } else {
+      // No playlist found
+      setHealthStatus((prev) => ({ ...prev, fixedPlaylist: 'not_found' }))
+      addLogRef.current('WARN', 'No fixed playlist found', 'HealthMonitor')
+    }
+  }, [isInitialFetchComplete, isFixedPlaylistLoading, fixedPlaylistError, fixedPlaylistId])
+
+  // Update playback status based on playback state
+  useEffect(() => {
+    addLogRef.current('INFO', `Playback status effect: playbackState=${JSON.stringify(playbackState)}`, 'HealthMonitor')
+    if (!playbackState) {
+      setHealthStatus((prev) => ({ ...prev, playback: 'unknown' }))
+      addLogRef.current('INFO', 'Set playback status to unknown', 'HealthMonitor')
+      return
+    }
+
+    if (playbackState.is_playing) {
+      setHealthStatus((prev) => ({ ...prev, playback: 'playing' }))
+      addLogRef.current('INFO', 'Set playback status to playing', 'HealthMonitor')
+    } else if (playbackState.item) {
+      setHealthStatus((prev) => ({ ...prev, playback: 'paused' }))
+      addLogRef.current('INFO', 'Set playback status to paused', 'HealthMonitor')
+    } else {
+      setHealthStatus((prev) => ({ ...prev, playback: 'stopped' }))
+      addLogRef.current('INFO', 'Set playback status to stopped', 'HealthMonitor')
+    }
+  }, [playbackState])
+
+  // Create a stable callback for the recovery system
+  const onHealthUpdate = useCallback(() => {
+    // Empty callback to avoid circular dependency
+  }, [])
+
+  // Use the unified recovery system with stable callback
   const { recover } = useRecoverySystem(
     deviceId,
     fixedPlaylistId,
-    useCallback((status) => {
-      setHealthStatus((prev) => ({
-        ...prev,
-        device: status.device
-      }))
-    }, []),
-    false,
-    () => {
-      lastRecoverySuccess.current = Date.now()
-    }
+    onHealthUpdate
   )
 
   // Device health check effect
@@ -154,7 +226,7 @@ export function useSpotifyHealthMonitor(fixedPlaylistId: string | null) {
     const intervalDeviceId = deviceId
     timeout = setTimeout(() => {
       const checkDeviceHealth = async (): Promise<void> => {
-        if (intervalDeviceId !== useSpotifyPlayer.getState().deviceId) {
+        if (intervalDeviceId !== spotifyPlayerStore.getState().deviceId) {
           return
         }
 
@@ -163,12 +235,14 @@ export function useSpotifyHealthMonitor(fixedPlaylistId: string | null) {
         const timeSinceLastRecovery = now - lastRecoverySuccess.current
 
         // Don't check health during grace periods
-        if (timeSinceDeviceChange < DEVICE_CHANGE_GRACE_PERIOD || 
-            timeSinceLastRecovery < RECOVERY_COOLDOWN) {
+        if (
+          timeSinceDeviceChange < DEVICE_CHANGE_GRACE_PERIOD ||
+          timeSinceLastRecovery < RECOVERY_COOLDOWN
+        ) {
           return
         }
 
-        const playbackState = useSpotifyPlayer.getState().playbackState
+        const playbackState = spotifyPlayerStore.getState().playbackState
         if (!playbackState) {
           return
         }
@@ -178,18 +252,103 @@ export function useSpotifyHealthMonitor(fixedPlaylistId: string | null) {
           return
         }
 
-        // Check for unexpected playback stops
+        // Check for unexpected playback stops (only automatic recovery trigger)
         if (wasPlayingRef.current && !playbackState.is_playing) {
-          addLogRef.current('WARN', 'Playback stopped unexpectedly', 'HealthMonitor', {
-            deviceId: intervalDeviceId,
-            timestamp: new Date().toISOString()
-          } as any)
-          setHealthStatus((prev) => ({ ...prev, device: 'unresponsive' }))
-          void recover()
-          return
+          const timeSinceManualPause = now - manualPauseTimestampRef.current
+          const wasRecentlyManuallyPaused = userManuallyPausedRef.current && timeSinceManualPause < 10000
+          
+          addLogRef.current(
+            'INFO',
+            `Playback stopped check: wasPlaying=${wasPlayingRef.current}, isPlaying=${playbackState.is_playing}, userManuallyPaused=${userManuallyPausedRef.current}, timeSinceManualPause=${timeSinceManualPause}ms, wasRecentlyManuallyPaused=${wasRecentlyManuallyPaused}`,
+            'HealthMonitor'
+          )
+          
+          // Only trigger recovery if the user didn't manually pause recently
+          if (!wasRecentlyManuallyPaused) {
+            addLogRef.current(
+              'WARN',
+              `Playback stopped unexpectedly (deviceId: ${intervalDeviceId})`,
+              'HealthMonitor'
+            )
+            setHealthStatus((prev) => ({ ...prev, device: 'unresponsive' }))
+            void recover()
+            return
+          } else {
+            addLogRef.current(
+              'INFO',
+              `Playback was manually paused by user recently, not triggering recovery`,
+              'HealthMonitor'
+            )
+            // Reset the manual pause flag since we've acknowledged it
+            userManuallyPausedRef.current = false
+            manualPauseTimestampRef.current = 0
+          }
         }
 
-        // Check for device mismatch
+        // Check if music is actually progressing when it should be playing
+        if (wasPlayingRef.current && playbackState.is_playing && !userManuallyPausedRef.current) {
+          const currentProgress = playbackState.progress_ms ?? 0
+          const timeSinceLastCheck = now - lastProgressCheckRef.current
+
+          // Check progress every 5 seconds
+          if (timeSinceLastCheck >= 5000) {
+            if (lastProgressMsRef.current > 0) {
+              const progressDiff = currentProgress - lastProgressMsRef.current
+              const expectedProgress = timeSinceLastCheck // timeSinceLastCheck is already in milliseconds
+              
+              addLogRef.current(
+                'INFO',
+                `Progress check: current=${currentProgress}, last=${lastProgressMsRef.current}, diff=${progressDiff}, expected=${expectedProgress}, threshold=${Math.round(expectedProgress * 0.8)}`,
+                'HealthMonitor'
+              )
+              
+              // If progress hasn't advanced by at least 80% of expected time, consider it stalled
+              if (progressDiff < expectedProgress * 0.8) {
+                const isNearEnd = playbackState.item?.duration_ms && 
+                  (playbackState.item.duration_ms - currentProgress) < 5000
+                
+                if (!isNearEnd) {
+                  progressStallCountRef.current += 1
+                  addLogRef.current(
+                    'WARN',
+                    `Playback progress stalled (attempt ${progressStallCountRef.current}/3) (deviceId: ${intervalDeviceId}, progress: ${currentProgress}, expected: ~${Math.round(expectedProgress * 1000)})`,
+                    'HealthMonitor'
+                  )
+                  
+                  // Only trigger recovery after 3 consecutive stalls
+                  if (progressStallCountRef.current >= 3) {
+                    addLogRef.current(
+                      'ERROR',
+                      `Playback progress stalled 3 times consecutively, triggering recovery`,
+                      'HealthMonitor'
+                    )
+                    setHealthStatus((prev) => ({ ...prev, device: 'unresponsive' }))
+                    void recover()
+                    progressStallCountRef.current = 0 // Reset counter after triggering recovery
+                    return
+                  }
+                } else {
+                  // Near end of track, reset stall count
+                  progressStallCountRef.current = 0
+                  addLogRef.current('INFO', 'Near end of track, resetting stall count', 'HealthMonitor')
+                }
+              } else {
+                // Progress is normal, reset stall count
+                if (progressStallCountRef.current > 0) {
+                  addLogRef.current('INFO', 'Progress is normal, resetting stall count', 'HealthMonitor')
+                }
+                progressStallCountRef.current = 0
+              }
+            } else {
+              addLogRef.current('INFO', 'First progress check, setting baseline', 'HealthMonitor')
+            }
+            
+            lastProgressMsRef.current = currentProgress
+            lastProgressCheckRef.current = now
+          }
+        }
+
+        // Monitor device status without triggering recovery
         try {
           const spotifyApi = SpotifyApiService.getInstance()
           const state = await spotifyApi.getPlaybackState()
@@ -197,22 +356,32 @@ export function useSpotifyHealthMonitor(fixedPlaylistId: string | null) {
           if (state?.device?.id && state.device.id !== intervalDeviceId) {
             deviceMismatchCountRef.current += 1
             if (deviceMismatchCountRef.current >= DEVICE_MISMATCH_THRESHOLD) {
-              addLogRef.current('WARN', 'Device mismatch detected', 'HealthMonitor', {
-                expectedDeviceId: intervalDeviceId,
-                actualDeviceId: state.device.id,
-                timestamp: new Date().toISOString()
-              } as any)
-              void recover()
+              addLogRef.current(
+                'WARN',
+                `Device mismatch detected (expected: ${intervalDeviceId}, actual: ${state.device.id})`,
+                'HealthMonitor'
+              )
+              // Only log the mismatch, don't trigger recovery automatically
+              setHealthStatus((prev) => ({ ...prev, device: 'disconnected' }))
               deviceMismatchCountRef.current = 0
             }
           } else {
             deviceMismatchCountRef.current = 0
+            // Device is working properly, set status to healthy
+            setHealthStatus((prev) => ({ ...prev, device: 'healthy' }))
           }
         } catch (error) {
           if (error instanceof Error) {
-            addLogRef.current('ERROR', 'Error checking device health', 'HealthMonitor', error)
+            addLogRef.current(
+              'ERROR',
+              `Error checking device health: ${error.message}`,
+              'HealthMonitor',
+              error
+            )
           }
         }
+
+        addLogRef.current('INFO', `Device health check: playbackState=${JSON.stringify(playbackState)}`, 'HealthMonitor')
       }
 
       checkDeviceHealth()
@@ -320,5 +489,19 @@ export function useSpotifyHealthMonitor(fixedPlaylistId: string | null) {
     }
   }, []) // Empty dependency array since we're using refs
 
-  return { healthStatus, setHealthStatus }
+  // Add function to signal manual pause/play actions
+  const signalManualPlaybackAction = useCallback((action: 'pause' | 'play') => {
+    addLogRef.current('INFO', `signalManualPlaybackAction called with action: ${action}`, 'HealthMonitor')
+    
+    if (action === 'pause') {
+      userManuallyPausedRef.current = true
+      manualPauseTimestampRef.current = Date.now()
+      addLogRef.current('INFO', 'User manually paused playback - flag set to true', 'HealthMonitor')
+    } else {
+      userManuallyPausedRef.current = false
+      addLogRef.current('INFO', 'User manually started playback - flag set to false', 'HealthMonitor')
+    }
+  }, [])
+
+  return { healthStatus, setHealthStatus, signalManualPlaybackAction }
 }

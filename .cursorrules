@@ -1,5 +1,9 @@
 # Cursor Rules for TypeScript, Next.js, and React Development
 
+# Generation of new code
+Always check if there is an existing utility function that can be reused before generating new code.
+
+
 ## Code Style and Structure
 - Write concise, technical TypeScript code with accurate examples
 - Use functional and declarative programming patterns; avoid classes

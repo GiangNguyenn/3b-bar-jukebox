@@ -37,24 +37,16 @@ export function StatusGrid({
 
       <StatusIndicator
         title='Playback State'
-        status={
-          playbackState?.is_playing
-            ? 'playing'
-            : playbackState?.item
-              ? 'paused'
-              : 'stopped'
-        }
+        status={healthStatus.playback}
         colorMap={{
           playing: 'bg-green-500',
           paused: 'bg-yellow-500',
-          stopped: 'bg-red-500'
+          stopped: 'bg-red-500',
+          error: 'bg-red-500',
+          unknown: 'bg-gray-500'
         }}
         label={
-          playbackState?.is_playing
-            ? 'Playing'
-            : playbackState?.item
-              ? 'Paused'
-              : 'Stopped'
+          healthStatus.playback.charAt(0).toUpperCase() + healthStatus.playback.slice(1)
         }
         subtitle={
           playbackState?.item?.name ? `- ${playbackState.item.name}` : undefined

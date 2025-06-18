@@ -15,7 +15,7 @@ export function ConsoleLogs({ logs }: ConsoleLogsProps): JSX.Element {
           <p className='text-gray-500'>No logs available</p>
         ) : (
           <div className='space-y-1'>
-            {logs.slice(-10).map((log, index) => (
+            {logs.slice(0, 10).map((log, index) => (
               <div key={index} className='text-gray-300'>
                 <span className='text-gray-500'>[{log.timestamp}] </span>
                 <span

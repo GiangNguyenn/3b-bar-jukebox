@@ -157,16 +157,24 @@ async function processRequestQueue() {
         rateLimitState.requestCount++
         await request()
       } catch (error) {
-        console.error('[Rate Limit] Error processing queued request:', error)
+        if (addLog) {
+          addLog('ERROR', 'Error processing queued request', 'RateLimit', error as Error)
+        } else {
+          console.error('[Rate Limit] Error processing queued request:', error)
+        }
         if (error instanceof ApiError && error.status === 429) {
           // The error already has the retry-after value from the response
           const retryAfter = error.retryAfter || 5 // Default to 5 seconds if no Retry-After header
           rateLimitState.isRateLimited = true
           rateLimitState.resetTime = now + retryAfter * 1000
           rateLimitState.retryAfter = retryAfter
-          console.error(
-            `[Rate Limit] Rate limited by server. Retry after ${retryAfter}s`
-          )
+          if (addLog) {
+            addLog('ERROR', `Rate limited by server. Retry after ${retryAfter}s`, 'RateLimit')
+          } else {
+            console.error(
+              `[Rate Limit] Rate limited by server. Retry after ${retryAfter}s`
+            )
+          }
 
           // Add the request back to the front of the queue
           requestQueue.unshift(request)
@@ -186,6 +194,14 @@ const requestCache = new Map<
 >()
 
 import { tokenManager } from './token/tokenManager'
+
+// Add logging context
+let addLog: (level: 'LOG' | 'INFO' | 'WARN' | 'ERROR', message: string, context?: string, error?: Error) => void
+
+// Function to set the logging function
+export function setApiLogger(logger: typeof addLog) {
+  addLog = logger
+}
 
 export const sendApiRequest = async <T>({
   path,
@@ -208,7 +224,7 @@ export const sendApiRequest = async <T>({
 
   const makeRequest = async (retryCount = 0): Promise<T> => {
     try {
-      const baseUrl = isLocalApi ? '' : SPOTIFY_API_URL
+      const baseUrl = isLocalApi ? '/api' : SPOTIFY_API_URL
       const normalizedPath = path.startsWith('/') ? path : `/${path}`
       const url = `${baseUrl}${normalizedPath}`
 
@@ -255,9 +271,13 @@ export const sendApiRequest = async <T>({
           rateLimitState.resetTime = now + retryAfter * 1000
           rateLimitState.retryAfter = retryAfter
 
-          console.error(
-            `[Rate Limit] Rate limited by server. Retry after ${retryAfter}s`
-          )
+          if (addLog) {
+            addLog('ERROR', `Rate limited by server. Retry after ${retryAfter}s`, 'RateLimit')
+          } else {
+            console.error(
+              `[Rate Limit] Rate limited by server. Retry after ${retryAfter}s`
+            )
+          }
 
           // If we have a Retry-After header, use that value
           if (retryAfter > 0) {
@@ -279,9 +299,13 @@ export const sendApiRequest = async <T>({
               baseDelay * Math.pow(2, retryCount),
               maxDelay
             )
-            console.log(
-              `[Rate Limit] Retrying in ${delay}ms (attempt ${retryCount + 1}/${maxRetries})`
-            )
+            if (addLog) {
+              addLog('INFO', `Retrying in ${delay}ms (attempt ${retryCount + 1}/${maxRetries})`, 'RateLimit')
+            } else {
+              console.log(
+                `[Rate Limit] Retrying in ${delay}ms (attempt ${retryCount + 1}/${maxRetries})`
+              )
+            }
             await new Promise((resolve) => setTimeout(resolve, delay))
             return makeRequest(retryCount + 1)
           }

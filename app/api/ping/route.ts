@@ -1,9 +1,9 @@
 import { NextResponse } from 'next/server'
 
-export async function GET() {
+export function GET(): NextResponse {
   return new NextResponse(null, { status: 200 })
 }
 
-export async function HEAD() {
+export function HEAD(): NextResponse {
   return new NextResponse(null, { status: 200 })
 }

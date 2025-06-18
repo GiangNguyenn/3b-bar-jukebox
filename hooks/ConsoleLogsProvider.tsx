@@ -11,6 +11,7 @@ import {
   useMemo
 } from 'react'
 import * as Sentry from '@sentry/nextjs'
+import { initializeLoggers } from '@/shared/utils/logger'
 
 export type LogLevel = 'LOG' | 'INFO' | 'WARN' | 'ERROR'
 export type LogEntry = {
@@ -65,6 +66,11 @@ export function ConsoleLogsProvider({
     setLogsRef.current = setLogs
   }, [setLogs])
 
+  // Initialize service loggers
+  useEffect(() => {
+    initializeLoggers(addLog)
+  }, [])
+
   // Validate and sanitize message
   const validateMessage = useCallback(
     (message: string): string => {
@@ -116,16 +122,20 @@ export function ConsoleLogsProvider({
 
       // Use functional update to avoid stale state
       setLogsRef.current((prev) => {
-        const updatedLogs = [...prev, newLog]
-        return updatedLogs.slice(-maxLogs)
+        const updatedLogs = [newLog, ...prev]
+        return updatedLogs.slice(0, maxLogs)
       })
 
       // Log to browser console with appropriate console method
-      const consoleMethod = level.toLowerCase() as 'log' | 'info' | 'warn' | 'error'
-      const consoleArgs = context 
+      const consoleMethod = level.toLowerCase() as
+        | 'log'
+        | 'info'
+        | 'warn'
+        | 'error'
+      const consoleArgs = context
         ? [`[${context}]`, sanitizedMessage, error].filter(Boolean)
         : [sanitizedMessage, error].filter(Boolean)
-      
+
       switch (consoleMethod) {
         case 'log':
           console.log(...consoleArgs)
