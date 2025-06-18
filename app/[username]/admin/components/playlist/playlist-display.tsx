@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback } from 'react'
 import { sendApiRequest } from '@/shared/api'
-import { useSpotifyPlayer } from '@/hooks/useSpotifyPlayer'
+import { useSpotifyPlayerStore } from '@/hooks/useSpotifyPlayer'
 import { PlayIcon, TrashIcon } from '@heroicons/react/24/solid'
 
 interface SpotifyArtist {
@@ -40,8 +40,7 @@ export function PlaylistDisplay({
   const [error, setError] = useState<string | null>(null)
   const [loadingTrackId, setLoadingTrackId] = useState<string | null>(null)
   const [deletingTrackId, setDeletingTrackId] = useState<string | null>(null)
-  const playbackState = useSpotifyPlayer((state) => state.playbackState)
-  const deviceId = useSpotifyPlayer((state) => state.deviceId)
+  const { playbackState, deviceId } = useSpotifyPlayerStore()
 
   const fetchPlaylistTracks = useCallback(async (): Promise<void> => {
     try {

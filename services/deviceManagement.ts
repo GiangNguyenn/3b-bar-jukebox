@@ -3,6 +3,14 @@ import { SpotifyPlaybackState } from '@/shared/types'
 import { DeviceVerificationState } from '@/shared/types/recovery'
 import { VERIFICATION_TIMEOUT } from '@/shared/constants/recovery'
 
+// Add logging context
+let addLog: (level: 'LOG' | 'INFO' | 'WARN' | 'ERROR', message: string, context?: string, error?: Error) => void
+
+// Function to set the logging function
+export function setDeviceManagementLogger(logger: typeof addLog) {
+  addLog = logger
+}
+
 // Device verification state management
 const deviceVerificationState: DeviceVerificationState = {
   isVerifying: false,
@@ -28,7 +36,11 @@ function releaseVerificationLock(): void {
  */
 export async function verifyDeviceTransfer(deviceId: string): Promise<boolean> {
   if (!deviceId) {
-    console.error('[Device Management] No device ID provided for verification')
+    if (addLog) {
+      addLog('ERROR', 'No device ID provided for verification', 'DeviceManagement')
+    } else {
+      console.error('[Device Management] No device ID provided for verification')
+    }
     return false
   }
 
@@ -63,6 +75,26 @@ export async function verifyDeviceTransfer(deviceId: string): Promise<boolean> {
       const targetDevice = devicesResponse.devices.find(
         (d) => d.id === deviceId
       )
+
+      // If target device not found, try to find a Jukebox device
+      if (!targetDevice) {
+        const jukeboxDevice = devicesResponse.devices.find(
+          (d) => d.name.startsWith('Jukebox-')
+        )
+        if (jukeboxDevice) {
+          console.log('[Device Management] Found Jukebox device:', {
+            oldDeviceId: deviceId,
+            newDeviceId: jukeboxDevice.id,
+            name: jukeboxDevice.name
+          })
+          // Update the device ID in the player state
+          if (typeof window.spotifyPlayerInstance?.connect === 'function') {
+            await window.spotifyPlayerInstance.connect()
+          }
+          return true
+        }
+      }
+
       if (!targetDevice) {
         console.error('[Device Management] Target device not found:', {
           deviceId,
@@ -198,7 +230,7 @@ export async function checkDeviceExists(deviceId: string): Promise<boolean> {
 
     return deviceExists
   } catch (error) {
-    console.error('[Device Management] Error checking device existence:', error)
+    console.error('[Device Management] Device existence check failed:', error)
     return false
   }
 }
@@ -211,111 +243,128 @@ export async function transferPlaybackToDevice(
   maxAttempts: number = 3,
   delayBetweenAttempts: number = 1000
 ): Promise<boolean> {
-  // First check if device exists
-  const deviceExists = await checkDeviceExists(deviceId)
-  if (!deviceExists) {
-    console.error('[Device Transfer] Device does not exist:', deviceId)
+  if (!deviceId) {
+    console.error('[Device Transfer] No device ID provided')
     return false
   }
 
-  // Try to acquire lock
-  const hasLock = acquireVerificationLock()
-  if (!hasLock) {
-    console.log('[Device Transfer] Could not acquire lock, skipping')
-    return false
-  }
+  let attempts = 0
+  while (attempts < maxAttempts) {
+    try {
+      // Check if device exists
+      const exists = await checkDeviceExists(deviceId)
+      if (!exists) {
+        console.error('[Device Transfer] Device does not exist:', deviceId)
+        return false
+      }
 
-  try {
-    for (let attempt = 0; attempt < maxAttempts; attempt++) {
-      try {
-        // First check if device is already active
-        const currentState = await sendApiRequest<SpotifyPlaybackState>({
-          path: 'me/player',
-          method: 'GET'
+      // Transfer playback
+      await sendApiRequest({
+        path: 'me/player',
+        method: 'PUT',
+        body: JSON.stringify({
+          device_ids: [deviceId],
+          play: false
         })
+      })
 
-        if (
-          currentState?.device?.id === deviceId &&
-          currentState.device.is_active
-        ) {
-          console.log('[Device Transfer] Device already active')
-          return true
-        }
+      // Wait for transfer to complete
+      await new Promise((resolve) => setTimeout(resolve, 1000))
 
-        // Get device details before transfer
-        const devicesResponse = await sendApiRequest<{
-          devices: Array<{
-            id: string
-            is_active: boolean
-            is_restricted: boolean
-            type: string
-            name: string
-          }>
-        }>({
-          path: 'me/player/devices',
-          method: 'GET'
-        })
+      // Verify transfer
+      const state = await sendApiRequest<SpotifyPlaybackState>({
+        path: 'me/player',
+        method: 'GET'
+      })
 
-        const targetDevice = devicesResponse?.devices.find(
-          (d) => d.id === deviceId
-        )
-        if (!targetDevice) {
-          console.error(
-            '[Device Transfer] Target device not found in available devices'
+      if (!state?.device) {
+        console.error('[Device Transfer] No device in playback state')
+        attempts++
+        if (attempts < maxAttempts) {
+          await new Promise((resolve) =>
+            setTimeout(resolve, delayBetweenAttempts)
           )
-          continue
         }
+        continue
+      }
 
-        if (targetDevice.is_restricted) {
-          console.error('[Device Transfer] Device is restricted:', {
-            deviceId,
-            deviceName: targetDevice.name
-          })
-          continue
+      if (state.device.id !== deviceId) {
+        console.error('[Device Transfer] Target device not found in available devices')
+        attempts++
+        if (attempts < maxAttempts) {
+          await new Promise((resolve) =>
+            setTimeout(resolve, delayBetweenAttempts)
+          )
         }
+        continue
+      }
 
-        // Attempt transfer
-        await sendApiRequest({
-          path: 'me/player',
-          method: 'PUT',
-          body: {
-            device_ids: [deviceId],
-            play: false
-          }
-        })
+      console.log('[Device Transfer] Playback transferred successfully:', {
+        deviceId,
+        deviceName: state.device.name
+      })
 
-        // Wait for transfer to take effect
+      return true
+    } catch (error) {
+      console.error('[Device Transfer] Transfer failed:', error)
+      attempts++
+      if (attempts < maxAttempts) {
         await new Promise((resolve) =>
           setTimeout(resolve, delayBetweenAttempts)
         )
-
-        // Verify transfer
-        const isSuccessful = await verifyDeviceTransfer(deviceId)
-        if (isSuccessful) {
-          console.log('[Device Transfer] Transfer successful')
-          return true
-        }
-
-        if (attempt < maxAttempts - 1) {
-          console.log(
-            `[Device Transfer] Attempt ${attempt + 1} failed, retrying...`
-          )
-          await new Promise((resolve) =>
-            setTimeout(resolve, delayBetweenAttempts)
-          )
-        }
-      } catch (error) {
-        console.error(`[Device Transfer] Attempt ${attempt + 1} failed:`, error)
-        if (attempt < maxAttempts - 1) {
-          await new Promise((resolve) =>
-            setTimeout(resolve, delayBetweenAttempts)
-          )
-        }
       }
     }
+  }
+
+  return false
+}
+
+/**
+ * Cleans up other devices by transferring playback to the target device
+ */
+export async function cleanupOtherDevices(
+  targetDeviceId: string
+): Promise<boolean> {
+  try {
+    // Get all available devices
+    const response = await sendApiRequest<{
+      devices: Array<{
+        id: string
+        is_active: boolean
+        name: string
+      }>
+    }>({
+      path: 'me/player/devices',
+      method: 'GET'
+    })
+
+    if (!response?.devices) {
+      console.error('[Device Cleanup] No devices found')
+      return false
+    }
+
+    // Find other active devices
+    const otherDevices = response.devices.filter(
+      (device) => device.id !== targetDeviceId && device.is_active
+    )
+
+    if (otherDevices.length > 0) {
+      console.log('[Device Cleanup] Found other devices:', {
+        otherDevices
+      })
+
+      // Transfer playback to target device
+      const transferSuccessful = await transferPlaybackToDevice(targetDeviceId)
+      if (!transferSuccessful) {
+        console.error('[Device Cleanup] Failed to transfer playback to target device')
+        return false
+      }
+    }
+
+    return true
+  } catch (error) {
+    console.error('[Device Cleanup] Cleanup failed:', error)
     return false
-  } finally {
-    releaseVerificationLock()
   }
 }
 
@@ -328,18 +377,17 @@ export function validateDeviceState(
 ): { isValid: boolean; errors: string[] } {
   const errors: string[] = []
 
+  if (!deviceId) {
+    errors.push('No device ID provided')
+  }
+
   if (!state) {
     errors.push('No playback state available')
     return { isValid: false, errors }
   }
 
   if (!state.device) {
-    errors.push('No device information available')
-    return { isValid: false, errors }
-  }
-
-  if (!deviceId) {
-    errors.push('No target device ID provided')
+    errors.push('No device information in playback state')
     return { isValid: false, errors }
   }
 
@@ -351,26 +399,12 @@ export function validateDeviceState(
     errors.push('Device is not active')
   }
 
-  // Enhanced checks
-  if (state.device.volume_percent === undefined) {
-    errors.push('Device volume not set')
-  }
-
   if (state.device.is_restricted) {
     errors.push('Device is restricted')
   }
 
-  // Only allow certain device types (customize as needed)
-  if (state.device.type !== 'Computer' && state.device.type !== 'Smartphone') {
-    errors.push(`Device type not supported: ${state.device.type}`)
-  }
-
-  // If your API provides this property, check playback support
-  if (
-    typeof (state.device as any).supports_playback === 'boolean' &&
-    !(state.device as any).supports_playback
-  ) {
-    errors.push('Device does not support playback')
+  if (typeof state.device.volume_percent !== 'number') {
+    errors.push('Device does not support volume control')
   }
 
   return {
@@ -392,29 +426,23 @@ export async function checkDeviceHealth(deviceId: string): Promise<{
       method: 'GET'
     })
 
-    const validation = validateDeviceState(deviceId, state)
-    if (!validation.isValid) {
-      return {
-        isHealthy: false,
-        errors: validation.errors
-      }
-    }
+    const { isValid, errors } = validateDeviceState(deviceId, state)
 
     return {
-      isHealthy: true,
-      errors: []
+      isHealthy: isValid,
+      errors
     }
   } catch (error) {
-    console.error('[Device Health Check] Error:', error)
+    console.error('[Device Health] Health check failed:', error)
     return {
       isHealthy: false,
-      errors: ['Failed to check device health']
+      errors: ['Failed to get device state']
     }
   }
 }
 
 /**
- * Comprehensive device health check that combines all device validation steps
+ * Ensures a device is healthy and ready for playback
  */
 export async function ensureDeviceHealth(
   deviceId: string,
@@ -440,203 +468,87 @@ export async function ensureDeviceHealth(
     requireActive = true
   } = options
 
-  try {
-    // First do a quick health check
-    const healthCheck = await checkDeviceHealth(deviceId)
-    if (!healthCheck.isHealthy) {
+  let attempts = 0
+  const errors: string[] = []
+
+  while (attempts < maxAttempts) {
+    try {
+      const state = await sendApiRequest<SpotifyPlaybackState>({
+        path: 'me/player',
+        method: 'GET'
+      })
+
+      if (!state?.device) {
+        errors.push('No device information available')
+        attempts++
+        if (attempts < maxAttempts) {
+          await new Promise((resolve) =>
+            setTimeout(resolve, delayBetweenAttempts)
+          )
+        }
+        continue
+      }
+
+      const { isValid, errors: validationErrors } = validateDeviceState(
+        deviceId,
+        state
+      )
+
+      if (!isValid) {
+        errors.push(...validationErrors)
+        attempts++
+        if (attempts < maxAttempts) {
+          await new Promise((resolve) =>
+            setTimeout(resolve, delayBetweenAttempts)
+          )
+        }
+        continue
+      }
+
+      const isActive = state.device.is_active
+      if (requireActive && !isActive) {
+        errors.push('Device is not active')
+        attempts++
+        if (attempts < maxAttempts) {
+          await new Promise((resolve) =>
+            setTimeout(resolve, delayBetweenAttempts)
+          )
+        }
+        continue
+      }
+
       return {
-        isHealthy: false,
-        isActive: false,
-        errors: healthCheck.errors,
+        isHealthy: true,
+        isActive,
+        errors: [],
         details: {
-          deviceId: null,
-          isActive: false,
-          volume: null,
+          deviceId: state.device.id,
+          isActive: state.device.is_active,
+          volume: state.device.volume_percent,
           timestamp: Date.now()
         }
       }
-    }
-
-    // Get current state for details
-    const state = await sendApiRequest<SpotifyPlaybackState>({
-      path: 'me/player',
-      method: 'GET'
-    })
-
-    const details = {
-      deviceId: state?.device?.id ?? null,
-      isActive: state?.device?.is_active ?? false,
-      volume: state?.device?.volume_percent ?? null,
-      timestamp: Date.now()
-    }
-
-    // If we don't require active state, return early
-    if (!requireActive) {
-      return {
-        isHealthy: true,
-        isActive: details.isActive,
-        errors: [],
-        details
-      }
-    }
-
-    // Verify device is ready for playback
-    const isActive = await verifyDeviceTransfer(deviceId)
-    if (!isActive) {
-      return {
-        isHealthy: false,
-        isActive: false,
-        errors: ['Device is not active or ready for playback'],
-        details
-      }
-    }
-
-    return {
-      isHealthy: true,
-      isActive: true,
-      errors: [],
-      details
-    }
-  } catch (error) {
-    console.error('[Device Health] Error checking device:', error)
-    return {
-      isHealthy: false,
-      isActive: false,
-      errors: ['Failed to check device health'],
-      details: {
-        deviceId: null,
-        isActive: false,
-        volume: null,
-        timestamp: Date.now()
+    } catch (error) {
+      console.error('[Device Health] Health check failed:', error)
+      errors.push('Failed to get device state')
+      attempts++
+      if (attempts < maxAttempts) {
+        await new Promise((resolve) =>
+          setTimeout(resolve, delayBetweenAttempts)
+        )
       }
     }
   }
-}
 
-/**
- * Cleans up other devices and ensures only our target device remains active
- */
-export async function cleanupOtherDevices(
-  targetDeviceId: string
-): Promise<boolean> {
-  try {
-    // Get all available devices
-    const devicesResponse = await sendApiRequest<{
-      devices: Array<{
-        id: string
-        is_active: boolean
-        is_restricted: boolean
-        type: string
-        name: string
-      }>
-    }>({
-      path: 'me/player/devices',
-      method: 'GET'
-    })
-
-    if (!devicesResponse?.devices) {
-      console.error('[Device Cleanup] Failed to get devices list')
-      return false
+  return {
+    isHealthy: false,
+    isActive: false,
+    errors,
+    details: {
+      deviceId: null,
+      isActive: false,
+      volume: null,
+      timestamp: Date.now()
     }
-
-    // Find our target device
-    const targetDevice = devicesResponse.devices.find(
-      (d) => d.id === targetDeviceId
-    )
-    if (!targetDevice) {
-      console.error('[Device Cleanup] Target device not found:', {
-        targetDeviceId,
-        availableDevices: devicesResponse.devices.map((d) => ({
-          id: d.id,
-          name: d.name
-        }))
-      })
-      return false
-    }
-
-    // Get all other devices (both active and inactive)
-    const otherDevices = devicesResponse.devices.filter(
-      (d) => d.id !== targetDeviceId
-    )
-
-    if (otherDevices.length === 0) {
-      console.log('[Device Cleanup] No other devices found')
-      return true
-    }
-
-    console.log('[Device Cleanup] Found other devices:', {
-      otherDevices: otherDevices.map((d) => ({
-        id: d.id,
-        name: d.name,
-        isActive: d.is_active
-      }))
-    })
-
-    // First, ensure our target device is active
-    const transferSuccessful = await transferPlaybackToDevice(targetDeviceId)
-    if (!transferSuccessful) {
-      console.error(
-        '[Device Cleanup] Failed to transfer playback to target device'
-      )
-      return false
-    }
-
-    // Verify transfer was successful
-    const isActive = await verifyDeviceTransfer(targetDeviceId)
-    if (!isActive) {
-      console.error('[Device Cleanup] Failed to verify device transfer')
-      return false
-    }
-
-    // For each other device, attempt to deactivate it
-    for (const device of otherDevices) {
-      try {
-        // Skip restricted devices as they can't be controlled
-        if (device.is_restricted) {
-          console.log('[Device Cleanup] Skipping restricted device:', {
-            id: device.id,
-            name: device.name
-          })
-          continue
-        }
-
-        // If the device is active, try to transfer playback away from it
-        if (device.is_active) {
-          await sendApiRequest({
-            path: 'me/player',
-            method: 'PUT',
-            body: {
-              device_ids: [targetDeviceId],
-              play: false
-            }
-          })
-        }
-
-        // Wait a moment for the transfer to take effect
-        await new Promise((resolve) => setTimeout(resolve, 1000))
-
-        // Verify our target device is still active
-        const verification = await verifyDeviceTransfer(targetDeviceId)
-        if (!verification) {
-          console.error(
-            '[Device Cleanup] Lost control of target device during cleanup'
-          )
-          return false
-        }
-      } catch (error) {
-        console.warn('[Device Cleanup] Error handling device:', {
-          deviceId: device.id,
-          deviceName: device.name,
-          error: error instanceof Error ? error.message : 'Unknown error'
-        })
-        // Continue with other devices even if one fails
-      }
-    }
-
-    console.log('[Device Cleanup] Successfully cleaned up other devices')
-    return true
-  } catch (error) {
-    console.error('[Device Cleanup] Error:', error)
-    return false
   }
 }

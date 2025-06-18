@@ -3,6 +3,9 @@ import { cookies } from 'next/headers'
 import { NextResponse } from 'next/server'
 import type { Database } from '@/types/supabase'
 
+// Configure the route to be dynamic
+export const dynamic = 'force-dynamic'
+
 interface UserMetadata {
   name?: string
   avatar_url?: string | null

@@ -1,5 +1,13 @@
 import { sendApiRequest } from '../api'
 
+// Add logging context
+let addLog: (level: 'LOG' | 'INFO' | 'WARN' | 'ERROR', message: string, context?: string, error?: Error) => void
+
+// Function to set the logging function
+export function setTokenManagerLogger(logger: typeof addLog) {
+  addLog = logger
+}
+
 // Token types
 export interface TokenResponse {
   access_token: string
@@ -85,17 +93,25 @@ class TokenManager {
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}))
-        console.error('[TokenManager] Failed to fetch token:', {
-          status: response.status,
-          statusText: response.statusText,
-          error: errorData
-        })
+        if (addLog) {
+          addLog('ERROR', 'Failed to fetch token', 'TokenManager', errorData)
+        } else {
+          console.error('[TokenManager] Failed to fetch token:', {
+            status: response.status,
+            statusText: response.statusText,
+            error: errorData
+          })
+        }
         throw new Error(errorData.error || 'Failed to fetch Spotify token')
       }
 
       const data = (await response.json()) as TokenResponse
       if (!data.access_token) {
-        console.error('[TokenManager] Invalid token response:', data)
+        if (addLog) {
+          addLog('ERROR', `Invalid token response: ${JSON.stringify(data)}`, 'TokenManager')
+        } else {
+          console.error('[TokenManager] Invalid token response:', data)
+        }
         throw new Error('Invalid token response')
       }
 
@@ -107,7 +123,11 @@ class TokenManager {
 
       return data.access_token
     } catch (error) {
-      console.error('[TokenManager] Error refreshing token:', error)
+      if (addLog) {
+        addLog('ERROR', 'Error refreshing token', 'TokenManager', error instanceof Error ? error : undefined)
+      } else {
+        console.error('[TokenManager] Error refreshing token:', error)
+      }
       throw error
     }
   }

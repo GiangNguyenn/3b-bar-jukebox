@@ -44,10 +44,15 @@ export function useConnectionMonitor() {
   const consecutiveFailuresRef = useRef(0)
 
   // Function to check connection using Network Information API
-  const checkNetworkInfo = (): Partial<ConnectionMetrics> => {
+  const checkNetworkInfo = (): ConnectionMetrics => {
     const connection = (navigator as { connection?: NetworkInformation })
       .connection
-    if (!connection) return { isOnline: navigator.onLine }
+    if (!connection) {
+      return {
+        status: 'unknown',
+        isOnline: navigator.onLine
+      }
+    }
 
     const { type, effectiveType, downlink, rtt, saveData } = connection
     let status: ConnectionStatus = 'unknown'
@@ -119,14 +124,15 @@ export function useConnectionMonitor() {
 
       // Update status based on both Network Info and ping results
       setMetrics((prev) => {
-        const newStatus: ConnectionStatus =
-          !navigator.onLine || consecutiveFailuresRef.current >= 3
-            ? 'poor'
-            : networkInfo.status === 'unknown'
-              ? pingSuccess
-                ? 'good'
-                : 'unstable'
-              : networkInfo.status
+        const newStatus: ConnectionStatus = (() => {
+          if (!navigator.onLine || consecutiveFailuresRef.current >= 3) {
+            return 'poor'
+          }
+          if (networkInfo.status === 'unknown') {
+            return pingSuccess ? 'good' : 'unstable'
+          }
+          return networkInfo.status
+        })()
 
         return {
           ...prev,
