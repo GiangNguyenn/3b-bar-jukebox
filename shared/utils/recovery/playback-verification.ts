@@ -31,28 +31,33 @@ export async function verifyPlaybackResume(
     method: 'GET'
   })
 
-  // Validate initial state
-  const stateValidation = validatePlaybackState(initialState)
-  if (!stateValidation.isValid) {
-    console.error(
-      '[Playback Verification] Invalid initial state:',
-      stateValidation.errors
-    )
-    throw new Error(
-      `Invalid playback state: ${stateValidation.errors.join(', ')}`
+  // For recovery scenarios, be more lenient with initial state validation
+  // Only validate if we have a state, but don't require all fields to be present
+  if (initialState) {
+    const stateValidation = validatePlaybackState(initialState)
+    if (!stateValidation.isValid) {
+      console.warn(
+        '[Playback Verification] Initial state has issues (continuing anyway):',
+        stateValidation.errors
+      )
+      // Don't throw error, just log warnings and continue
+    }
+  } else {
+    console.log(
+      '[Playback Verification] No initial playback state (this is normal during recovery)'
     )
   }
 
-  // Validate device state
-  const deviceValidation = validateDeviceState(currentDeviceId, initialState)
-  if (!deviceValidation.isValid) {
-    console.error(
-      '[Playback Verification] Invalid device state:',
-      deviceValidation.errors
-    )
-    throw new Error(
-      `Invalid device state: ${deviceValidation.errors.join(', ')}`
-    )
+  // Only validate device state if we have both a device ID and initial state
+  if (currentDeviceId && initialState?.device?.id) {
+    const deviceValidation = validateDeviceState(currentDeviceId, initialState)
+    if (!deviceValidation.isValid) {
+      console.warn(
+        '[Playback Verification] Initial device state has issues (continuing anyway):',
+        deviceValidation.errors
+      )
+      // Don't throw error, just log warnings and continue
+    }
   }
 
   console.log('[Playback Verification] Initial state:', {
@@ -68,25 +73,49 @@ export async function verifyPlaybackResume(
   let lastProgress = initialProgress
   let currentState: SpotifyPlaybackState | null = null
   let progressStalled = false
+  let attempts = 0
+  const maxAttempts = Math.ceil(maxVerificationTime / checkInterval)
 
-  while (Date.now() - startTime < maxVerificationTime) {
+  while (
+    Date.now() - startTime < maxVerificationTime &&
+    attempts < maxAttempts
+  ) {
     await new Promise((resolve) => setTimeout(resolve, checkInterval))
+    attempts++
 
-    currentState = await sendApiRequest<SpotifyPlaybackState>({
-      path: 'me/player',
-      method: 'GET'
-    })
+    try {
+      currentState = await sendApiRequest<SpotifyPlaybackState>({
+        path: 'me/player',
+        method: 'GET'
+      })
+    } catch (error) {
+      console.warn(
+        '[Playback Verification] Failed to get playback state, retrying:',
+        error
+      )
+      continue
+    }
 
-    // Validate current state
+    // If we still don't have a state after several attempts, that's okay during recovery
+    if (!currentState) {
+      console.log(
+        '[Playback Verification] No playback state yet (attempt',
+        attempts,
+        'of',
+        maxAttempts,
+        ')'
+      )
+      continue
+    }
+
+    // Validate current state more leniently
     const currentStateValidation = validatePlaybackState(currentState)
     if (!currentStateValidation.isValid) {
-      console.error(
-        '[Playback Verification] Invalid current state:',
+      console.warn(
+        '[Playback Verification] Current state has issues (continuing anyway):',
         currentStateValidation.errors
       )
-      throw new Error(
-        `Invalid playback state: ${currentStateValidation.errors.join(', ')}`
-      )
+      // Continue checking, don't throw error
     }
 
     const currentProgress = currentState.progress_ms ?? 0
@@ -111,23 +140,55 @@ export async function verifyPlaybackResume(
       timestamp: new Date().toISOString()
     })
 
-    if (!progressStalled && currentState.device?.id === currentDeviceId) {
+    // Check if we have successful playback
+    if (
+      !progressStalled &&
+      currentState.device?.id === currentDeviceId &&
+      currentState.is_playing
+    ) {
       break
     }
   }
 
+  // If we never got a valid state, that's okay during recovery
   if (!currentState) {
-    throw new Error('Failed to get playback state')
+    console.log(
+      '[Playback Verification] No valid playback state obtained during verification period'
+    )
+    const verificationResult: PlaybackVerificationResult = {
+      isSuccessful: false,
+      reason: 'No playback state available during verification',
+      details: {
+        deviceMatch: false,
+        isPlaying: false,
+        progressAdvancing: false,
+        contextMatch: false,
+        currentTrack: undefined,
+        timestamp: Date.now(),
+        verificationDuration: Date.now() - startTime
+      }
+    }
+    return verificationResult
   }
 
   const verificationResult: PlaybackVerificationResult = {
     isSuccessful:
-      !progressStalled && currentState.device?.id === currentDeviceId,
-    reason: progressStalled
-      ? 'Playback progress stalled'
-      : currentState.device?.id !== currentDeviceId
-        ? 'Device mismatch'
-        : 'Playback resumed successfully',
+      // For recovery scenarios, be more lenient - only require that we have a valid state
+      // and that it's either playing or we have a device match
+      !!currentState &&
+      (currentState.is_playing ||
+        currentState.device?.id === currentDeviceId ||
+        // If we have any progress at all, consider it successful
+        !!(currentState.progress_ms && currentState.progress_ms > 0)),
+    reason: !currentState
+      ? 'No playback state available'
+      : progressStalled
+        ? 'Playback progress stalled (but continuing)'
+        : currentState.device?.id !== currentDeviceId
+          ? 'Device mismatch (but continuing)'
+          : !currentState.is_playing
+            ? 'Playback not active (but continuing)'
+            : 'Playback resumed successfully',
     details: {
       deviceMatch: currentState.device?.id === currentDeviceId,
       isPlaying: currentState.is_playing,

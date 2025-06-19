@@ -7,6 +7,8 @@ declare global {
     refreshSpotifyPlayer: () => Promise<void>
     spotifySDKLoading: boolean
     initializeSpotifyPlayer: () => Promise<void>
+    onSpotifyWebPlaybackSDKReady: () => void
+    onSpotifyWebPlaybackSDKError: (error: any) => void
   }
 }
 

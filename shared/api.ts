@@ -158,7 +158,12 @@ async function processRequestQueue() {
         await request()
       } catch (error) {
         if (addLog) {
-          addLog('ERROR', 'Error processing queued request', 'RateLimit', error as Error)
+          addLog(
+            'ERROR',
+            'Error processing queued request',
+            'RateLimit',
+            error as Error
+          )
         } else {
           console.error('[Rate Limit] Error processing queued request:', error)
         }
@@ -169,7 +174,11 @@ async function processRequestQueue() {
           rateLimitState.resetTime = now + retryAfter * 1000
           rateLimitState.retryAfter = retryAfter
           if (addLog) {
-            addLog('ERROR', `Rate limited by server. Retry after ${retryAfter}s`, 'RateLimit')
+            addLog(
+              'ERROR',
+              `Rate limited by server. Retry after ${retryAfter}s`,
+              'RateLimit'
+            )
           } else {
             console.error(
               `[Rate Limit] Rate limited by server. Retry after ${retryAfter}s`
@@ -196,7 +205,12 @@ const requestCache = new Map<
 import { tokenManager } from './token/tokenManager'
 
 // Add logging context
-let addLog: (level: 'LOG' | 'INFO' | 'WARN' | 'ERROR', message: string, context?: string, error?: Error) => void
+let addLog: (
+  level: 'LOG' | 'INFO' | 'WARN' | 'ERROR',
+  message: string,
+  context?: string,
+  error?: Error
+) => void
 
 // Function to set the logging function
 export function setApiLogger(logger: typeof addLog) {
@@ -272,7 +286,11 @@ export const sendApiRequest = async <T>({
           rateLimitState.retryAfter = retryAfter
 
           if (addLog) {
-            addLog('ERROR', `Rate limited by server. Retry after ${retryAfter}s`, 'RateLimit')
+            addLog(
+              'ERROR',
+              `Rate limited by server. Retry after ${retryAfter}s`,
+              'RateLimit'
+            )
           } else {
             console.error(
               `[Rate Limit] Rate limited by server. Retry after ${retryAfter}s`
@@ -300,7 +318,11 @@ export const sendApiRequest = async <T>({
               maxDelay
             )
             if (addLog) {
-              addLog('INFO', `Retrying in ${delay}ms (attempt ${retryCount + 1}/${maxRetries})`, 'RateLimit')
+              addLog(
+                'INFO',
+                `Retrying in ${delay}ms (attempt ${retryCount + 1}/${maxRetries})`,
+                'RateLimit'
+              )
             } else {
               console.log(
                 `[Rate Limit] Retrying in ${delay}ms (attempt ${retryCount + 1}/${maxRetries})`

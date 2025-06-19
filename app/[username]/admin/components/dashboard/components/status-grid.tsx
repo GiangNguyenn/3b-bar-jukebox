@@ -46,7 +46,8 @@ export function StatusGrid({
           unknown: 'bg-gray-500'
         }}
         label={
-          healthStatus.playback.charAt(0).toUpperCase() + healthStatus.playback.slice(1)
+          healthStatus.playback.charAt(0).toUpperCase() +
+          healthStatus.playback.slice(1)
         }
         subtitle={
           playbackState?.item?.name ? `- ${playbackState.item.name}` : undefined

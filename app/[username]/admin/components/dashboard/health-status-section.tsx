@@ -13,11 +13,25 @@ interface HealthStatusSectionProps {
   } | null
   formatTime: (ms: number) => string
   isReady: boolean
+  playerStatus?: string
 }
 
 const playerColorMap: Record<string, string> = {
   ready: 'bg-green-500',
-  initializing: 'bg-yellow-500'
+  initializing: 'bg-yellow-500',
+  reconnecting: 'bg-orange-500',
+  error: 'bg-red-500',
+  disconnected: 'bg-gray-500',
+  verifying: 'bg-blue-500'
+}
+
+const playerLabelMap: Record<string, string> = {
+  ready: 'Player Ready',
+  initializing: 'Player Initializing...',
+  reconnecting: 'Reconnecting...',
+  error: 'Player Error',
+  disconnected: 'Player Disconnected',
+  verifying: 'Verifying Device...'
 }
 
 const deviceColorMap: Record<string, string> = {
@@ -58,16 +72,19 @@ export function HealthStatusSection({
   healthStatus,
   playbackInfo,
   formatTime,
-  isReady
+  isReady,
+  playerStatus
 }: HealthStatusSectionProps): JSX.Element {
   return (
     <div className='rounded-lg border border-gray-800 bg-gray-900/50 p-4'>
       <div className='space-y-2'>
         <StatusIndicator
           title='Player Status'
-          status={isReady ? 'ready' : 'initializing'}
+          status={playerStatus ?? (isReady ? 'ready' : 'initializing')}
           colorMap={playerColorMap}
-          label={isReady ? 'Player Ready' : 'Player Initializing...'}
+          label={
+            playerLabelMap[playerStatus ?? (isReady ? 'ready' : 'initializing')]
+          }
         />
 
         <StatusIndicator

@@ -6,6 +6,11 @@ import { useConsoleLogsContext } from './ConsoleLogsProvider'
 import { useRecoverySystem } from './recovery/useRecoverySystem'
 import { SpotifyApiService } from '@/services/spotifyApi'
 import { useFixedPlaylist } from './useFixedPlaylist'
+import {
+  checkDeviceHealth as checkDeviceHealthService,
+  setDeviceManagementLogger,
+  validateDeviceStateIntelligent
+} from '@/services/deviceManagement'
 
 // Network Information API types
 interface NetworkInformation extends EventTarget {
@@ -66,6 +71,7 @@ const MIN_STALLS_BEFORE_RECOVERY = 3
 const DEVICE_MISMATCH_THRESHOLD = 3
 const DEVICE_CHANGE_GRACE_PERIOD = 10000 // 10 seconds
 const RECOVERY_COOLDOWN = 30000 // 30 seconds
+const DEVICE_CHECK_DEBOUNCE = 2000 // 2 seconds debounce for device checks
 
 const RECOVERY_STEPS = [
   { message: 'Refreshing player state...', weight: 0.2 },
@@ -77,23 +83,22 @@ const RECOVERY_STEPS = [
 const MAX_RECOVERY_ATTEMPTS = 5
 const BASE_DELAY = 2000 // 2 seconds
 
-export function useSpotifyHealthMonitor(fixedPlaylistId: string | null) {
+export function useSpotifyHealthMonitor(
+  fixedPlaylistId: string | null,
+  isFixedPlaylistLoading?: boolean,
+  fixedPlaylistError?: Error | null
+) {
   const [healthStatus, setHealthStatus] = useState<HealthStatus>({
     device: 'unknown',
     playback: 'unknown',
-    token: 'valid',
+    token: 'unknown',
     connection: 'unknown',
     tokenExpiringSoon: false,
-    fixedPlaylist: 'unknown',
-    recovery: 'idle',
-    recoveryMessage: '',
-    recoveryProgress: 0,
-    recoveryCurrentStep: ''
+    fixedPlaylist: 'unknown'
   })
 
   const { deviceId, isReady, playbackState } = useSpotifyPlayerStore()
   const { addLog } = useConsoleLogsContext()
-  const { error: fixedPlaylistError, isLoading: isFixedPlaylistLoading, isInitialFetchComplete } = useFixedPlaylist()
 
   // Refs for tracking state
   const deviceCheckInterval = useRef<NodeJS.Timeout | null>(null)
@@ -103,18 +108,9 @@ export function useSpotifyHealthMonitor(fixedPlaylistId: string | null) {
   const lastConnectionStatus = useRef<string>('unknown')
   const addLogRef = useRef(addLog)
   const wasPlayingRef = useRef(false)
-  const lastPlaybackCheckRef = useRef<number>(Date.now())
-  const lastStallCheckRef = useRef<{ timestamp: number; count: number }>({
-    timestamp: 0,
-    count: 0
-  })
   const deviceMismatchCountRef = useRef(0)
   const isInitialStateRef = useRef(true)
-  const lastProgressMsRef = useRef<number>(0)
-  const lastProgressCheckRef = useRef<number>(Date.now())
-  const progressStallCountRef = useRef(0)
-  const userManuallyPausedRef = useRef(false)
-  const manualPauseTimestampRef = useRef<number>(0)
+  const lastDeviceHealthCheckRef = useRef<number>(0)
 
   // Update ref when addLog changes
   useEffect(() => {
@@ -146,14 +142,8 @@ export function useSpotifyHealthMonitor(fixedPlaylistId: string | null) {
     }
   }, [isReady, deviceId])
 
-  // Update playlist status based on fixed playlist hook
+  // Update playlist status based on fixed playlist parameter
   useEffect(() => {
-    if (!isInitialFetchComplete) {
-      // Still loading
-      setHealthStatus((prev) => ({ ...prev, fixedPlaylist: 'unknown' }))
-      return
-    }
-
     if (isFixedPlaylistLoading) {
       // Still loading
       setHealthStatus((prev) => ({ ...prev, fixedPlaylist: 'unknown' }))
@@ -163,39 +153,125 @@ export function useSpotifyHealthMonitor(fixedPlaylistId: string | null) {
     if (fixedPlaylistError) {
       // Error occurred
       setHealthStatus((prev) => ({ ...prev, fixedPlaylist: 'error' }))
-      addLogRef.current('ERROR', `Fixed playlist error: ${fixedPlaylistError.message}`, 'HealthMonitor')
+      addLogRef.current(
+        'ERROR',
+        `Fixed playlist error: ${fixedPlaylistError.message}`,
+        'HealthMonitor'
+      )
       return
     }
 
     if (fixedPlaylistId) {
       // Playlist found
       setHealthStatus((prev) => ({ ...prev, fixedPlaylist: 'found' }))
-      addLogRef.current('INFO', `Fixed playlist found: ${fixedPlaylistId}`, 'HealthMonitor')
+      addLogRef.current(
+        'INFO',
+        `Fixed playlist found: ${fixedPlaylistId}`,
+        'HealthMonitor'
+      )
     } else {
       // No playlist found
       setHealthStatus((prev) => ({ ...prev, fixedPlaylist: 'not_found' }))
       addLogRef.current('WARN', 'No fixed playlist found', 'HealthMonitor')
     }
-  }, [isInitialFetchComplete, isFixedPlaylistLoading, fixedPlaylistError, fixedPlaylistId])
+  }, [fixedPlaylistId, isFixedPlaylistLoading, fixedPlaylistError])
+
+  // Token validation effect
+  useEffect(() => {
+    const checkTokenStatus = async (): Promise<void> => {
+      try {
+        const response = await fetch('/api/token', {
+          method: 'GET',
+          cache: 'no-cache'
+        })
+
+        if (!response.ok) {
+          addLogRef.current(
+            'ERROR',
+            `Token validation failed: ${response.status} ${response.statusText}`,
+            'HealthMonitor'
+          )
+          setHealthStatus((prev) => ({ ...prev, token: 'error' }))
+          return
+        }
+
+        const data = await response.json()
+        const expiresSoonThreshold = 300 // 5 minutes
+
+        if (data.expiresIn && data.expiresIn < expiresSoonThreshold) {
+          setHealthStatus((prev) => ({
+            ...prev,
+            token: 'valid',
+            tokenExpiringSoon: true
+          }))
+          addLogRef.current(
+            'WARN',
+            `Token expiring soon: ${data.expiresIn}s remaining`,
+            'HealthMonitor'
+          )
+        } else {
+          setHealthStatus((prev) => ({
+            ...prev,
+            token: 'valid',
+            tokenExpiringSoon: false
+          }))
+        }
+      } catch (error) {
+        addLogRef.current(
+          'ERROR',
+          'Token validation error',
+          'HealthMonitor',
+          error instanceof Error ? error : undefined
+        )
+        setHealthStatus((prev) => ({ ...prev, token: 'error' }))
+      }
+    }
+
+    // Check token status immediately and then every 30 seconds
+    void checkTokenStatus()
+    const interval = setInterval(checkTokenStatus, 30000)
+
+    return () => clearInterval(interval)
+  }, [])
 
   // Update playback status based on playback state
   useEffect(() => {
-    addLogRef.current('INFO', `Playback status effect: playbackState=${JSON.stringify(playbackState)}`, 'HealthMonitor')
+    addLogRef.current(
+      'INFO',
+      `Playback status effect: playbackState=${JSON.stringify(playbackState)}`,
+      'HealthMonitor'
+    )
     if (!playbackState) {
       setHealthStatus((prev) => ({ ...prev, playback: 'unknown' }))
-      addLogRef.current('INFO', 'Set playback status to unknown', 'HealthMonitor')
+      addLogRef.current(
+        'INFO',
+        'Set playback status to unknown',
+        'HealthMonitor'
+      )
       return
     }
 
     if (playbackState.is_playing) {
       setHealthStatus((prev) => ({ ...prev, playback: 'playing' }))
-      addLogRef.current('INFO', 'Set playback status to playing', 'HealthMonitor')
+      addLogRef.current(
+        'INFO',
+        'Set playback status to playing',
+        'HealthMonitor'
+      )
     } else if (playbackState.item) {
       setHealthStatus((prev) => ({ ...prev, playback: 'paused' }))
-      addLogRef.current('INFO', 'Set playback status to paused', 'HealthMonitor')
+      addLogRef.current(
+        'INFO',
+        'Set playback status to paused',
+        'HealthMonitor'
+      )
     } else {
       setHealthStatus((prev) => ({ ...prev, playback: 'stopped' }))
-      addLogRef.current('INFO', 'Set playback status to stopped', 'HealthMonitor')
+      addLogRef.current(
+        'INFO',
+        'Set playback status to stopped',
+        'HealthMonitor'
+      )
     }
   }, [playbackState])
 
@@ -211,154 +287,70 @@ export function useSpotifyHealthMonitor(fixedPlaylistId: string | null) {
     onHealthUpdate
   )
 
-  // Device health check effect
+  // Device health monitoring effect
   useEffect(() => {
+    if (!deviceId) {
+      return
+    }
+
     let interval: NodeJS.Timeout | null = null
-    let timeout: NodeJS.Timeout | null = null
 
-    if (deviceCheckInterval.current) {
-      clearInterval(deviceCheckInterval.current)
-    }
-    if (timeout) {
-      clearTimeout(timeout)
-    }
-
-    const intervalDeviceId = deviceId
-    timeout = setTimeout(() => {
+    const timeout = setTimeout(() => {
       const checkDeviceHealth = async (): Promise<void> => {
-        if (intervalDeviceId !== spotifyPlayerStore.getState().deviceId) {
-          return
-        }
+        const intervalDeviceId = deviceId
 
-        const now = Date.now()
-        const timeSinceDeviceChange = now - lastDeviceIdChange.current
-        const timeSinceLastRecovery = now - lastRecoverySuccess.current
-
-        // Don't check health during grace periods
-        if (
-          timeSinceDeviceChange < DEVICE_CHANGE_GRACE_PERIOD ||
-          timeSinceLastRecovery < RECOVERY_COOLDOWN
-        ) {
-          return
-        }
-
-        const playbackState = spotifyPlayerStore.getState().playbackState
-        if (!playbackState) {
-          return
-        }
-
-        // Don't trigger recovery during initial state
-        if (isInitialStateRef.current) {
-          return
-        }
-
-        // Check for unexpected playback stops (only automatic recovery trigger)
-        if (wasPlayingRef.current && !playbackState.is_playing) {
-          const timeSinceManualPause = now - manualPauseTimestampRef.current
-          const wasRecentlyManuallyPaused = userManuallyPausedRef.current && timeSinceManualPause < 10000
-          
-          addLogRef.current(
-            'INFO',
-            `Playback stopped check: wasPlaying=${wasPlayingRef.current}, isPlaying=${playbackState.is_playing}, userManuallyPaused=${userManuallyPausedRef.current}, timeSinceManualPause=${timeSinceManualPause}ms, wasRecentlyManuallyPaused=${wasRecentlyManuallyPaused}`,
-            'HealthMonitor'
-          )
-          
-          // Only trigger recovery if the user didn't manually pause recently
-          if (!wasRecentlyManuallyPaused) {
+        // Monitor device status using centralized device management
+        try {
+          if (!intervalDeviceId) {
             addLogRef.current(
               'WARN',
-              `Playback stopped unexpectedly (deviceId: ${intervalDeviceId})`,
+              'No device ID available for health check',
               'HealthMonitor'
             )
-            setHealthStatus((prev) => ({ ...prev, device: 'unresponsive' }))
-            void recover()
             return
-          } else {
+          }
+
+          // Debounce device health checks to prevent rapid error accumulation
+          const now = Date.now()
+          const timeSinceLastCheck = now - lastDeviceHealthCheckRef.current
+          if (timeSinceLastCheck < DEVICE_CHECK_DEBOUNCE) {
+            return
+          }
+          lastDeviceHealthCheckRef.current = now
+
+          // Get current playback state for intelligent validation
+          const state = await sendApiRequest<SpotifyPlaybackState>({
+            path: 'me/player',
+            method: 'GET'
+          })
+
+          // Use intelligent validation with context
+          const validation = validateDeviceStateIntelligent(
+            intervalDeviceId,
+            state,
+            {
+              isInitialSetup: isInitialStateRef.current,
+              allowInactive: true,
+              gracePeriodMs: DEVICE_CHANGE_GRACE_PERIOD,
+              lastDeviceChange: lastDeviceIdChange.current
+            }
+          )
+
+          // Log warnings but don't count them as errors
+          if (validation.warnings.length > 0) {
             addLogRef.current(
-              'INFO',
-              `Playback was manually paused by user recently, not triggering recovery`,
+              'WARN',
+              `Device warnings: ${validation.warnings.join(', ')}`,
               'HealthMonitor'
             )
-            // Reset the manual pause flag since we've acknowledged it
-            userManuallyPausedRef.current = false
-            manualPauseTimestampRef.current = 0
           }
-        }
 
-        // Check if music is actually progressing when it should be playing
-        if (wasPlayingRef.current && playbackState.is_playing && !userManuallyPausedRef.current) {
-          const currentProgress = playbackState.progress_ms ?? 0
-          const timeSinceLastCheck = now - lastProgressCheckRef.current
-
-          // Check progress every 5 seconds
-          if (timeSinceLastCheck >= 5000) {
-            if (lastProgressMsRef.current > 0) {
-              const progressDiff = currentProgress - lastProgressMsRef.current
-              const expectedProgress = timeSinceLastCheck // timeSinceLastCheck is already in milliseconds
-              
-              addLogRef.current(
-                'INFO',
-                `Progress check: current=${currentProgress}, last=${lastProgressMsRef.current}, diff=${progressDiff}, expected=${expectedProgress}, threshold=${Math.round(expectedProgress * 0.8)}`,
-                'HealthMonitor'
-              )
-              
-              // If progress hasn't advanced by at least 80% of expected time, consider it stalled
-              if (progressDiff < expectedProgress * 0.8) {
-                const isNearEnd = playbackState.item?.duration_ms && 
-                  (playbackState.item.duration_ms - currentProgress) < 5000
-                
-                if (!isNearEnd) {
-                  progressStallCountRef.current += 1
-                  addLogRef.current(
-                    'WARN',
-                    `Playback progress stalled (attempt ${progressStallCountRef.current}/3) (deviceId: ${intervalDeviceId}, progress: ${currentProgress}, expected: ~${Math.round(expectedProgress * 1000)})`,
-                    'HealthMonitor'
-                  )
-                  
-                  // Only trigger recovery after 3 consecutive stalls
-                  if (progressStallCountRef.current >= 3) {
-                    addLogRef.current(
-                      'ERROR',
-                      `Playback progress stalled 3 times consecutively, triggering recovery`,
-                      'HealthMonitor'
-                    )
-                    setHealthStatus((prev) => ({ ...prev, device: 'unresponsive' }))
-                    void recover()
-                    progressStallCountRef.current = 0 // Reset counter after triggering recovery
-                    return
-                  }
-                } else {
-                  // Near end of track, reset stall count
-                  progressStallCountRef.current = 0
-                  addLogRef.current('INFO', 'Near end of track, resetting stall count', 'HealthMonitor')
-                }
-              } else {
-                // Progress is normal, reset stall count
-                if (progressStallCountRef.current > 0) {
-                  addLogRef.current('INFO', 'Progress is normal, resetting stall count', 'HealthMonitor')
-                }
-                progressStallCountRef.current = 0
-              }
-            } else {
-              addLogRef.current('INFO', 'First progress check, setting baseline', 'HealthMonitor')
-            }
-            
-            lastProgressMsRef.current = currentProgress
-            lastProgressCheckRef.current = now
-          }
-        }
-
-        // Monitor device status without triggering recovery
-        try {
-          const spotifyApi = SpotifyApiService.getInstance()
-          const state = await spotifyApi.getPlaybackState()
-
-          if (state?.device?.id && state.device.id !== intervalDeviceId) {
+          if (!validation.isValid) {
             deviceMismatchCountRef.current += 1
             if (deviceMismatchCountRef.current >= DEVICE_MISMATCH_THRESHOLD) {
               addLogRef.current(
-                'WARN',
-                `Device mismatch detected (expected: ${intervalDeviceId}, actual: ${state.device.id})`,
+                'ERROR',
+                `Device health check failed: ${validation.errors.join(', ')}`,
                 'HealthMonitor'
               )
               // Only log the mismatch, don't trigger recovery automatically
@@ -369,6 +361,14 @@ export function useSpotifyHealthMonitor(fixedPlaylistId: string | null) {
             deviceMismatchCountRef.current = 0
             // Device is working properly, set status to healthy
             setHealthStatus((prev) => ({ ...prev, device: 'healthy' }))
+          }
+
+          // If validation suggests retry, reduce the mismatch count to give more time
+          if (validation.shouldRetry) {
+            deviceMismatchCountRef.current = Math.max(
+              0,
+              deviceMismatchCountRef.current - 1
+            )
           }
         } catch (error) {
           if (error instanceof Error) {
@@ -381,7 +381,11 @@ export function useSpotifyHealthMonitor(fixedPlaylistId: string | null) {
           }
         }
 
-        addLogRef.current('INFO', `Device health check: playbackState=${JSON.stringify(playbackState)}`, 'HealthMonitor')
+        addLogRef.current(
+          'INFO',
+          `Device health check: playbackState=${JSON.stringify(playbackState)}`,
+          'HealthMonitor'
+        )
       }
 
       checkDeviceHealth()
@@ -409,7 +413,37 @@ export function useSpotifyHealthMonitor(fixedPlaylistId: string | null) {
 
   // Monitor connection quality
   useEffect(() => {
-    const updateConnectionStatus = (): void => {
+    // Simple connection test function
+    const testConnection = async (): Promise<boolean> => {
+      try {
+        const startTime = Date.now()
+        const response = await fetch('/api/ping', {
+          method: 'GET',
+          cache: 'no-cache',
+          signal: AbortSignal.timeout(8000) // Increased timeout to 8 seconds
+        })
+        const endTime = Date.now()
+        const responseTime = endTime - startTime
+
+        addLogRef.current(
+          'INFO',
+          `Connection test: ${response.ok ? 'success' : 'failed'} (${responseTime}ms)`,
+          '[Connection]'
+        )
+
+        // More lenient timeout - consider good if < 5 seconds (increased from 3)
+        return response.ok && responseTime < 5000
+      } catch (error) {
+        addLogRef.current(
+          'WARN',
+          `Connection test failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
+          '[Connection]'
+        )
+        return false
+      }
+    }
+
+    const updateConnectionStatus = async (): Promise<void> => {
       if (!navigator.onLine) {
         if (lastConnectionStatus.current !== 'poor') {
           addLogRef.current('INFO', 'Device is offline', '[Connection]')
@@ -421,87 +455,190 @@ export function useSpotifyHealthMonitor(fixedPlaylistId: string | null) {
 
       const connection = (navigator as { connection?: NetworkInformation })
         .connection
+
+      // Log connection information for debugging
+      const connectionInfo = {
+        type: connection?.type || 'unknown',
+        effectiveType: connection?.effectiveType || 'unknown',
+        downlink: connection?.downlink || 'unknown',
+        rtt: connection?.rtt || 'unknown',
+        saveData: connection?.saveData || false
+      }
+
+      addLogRef.current(
+        'INFO',
+        `Connection info: ${JSON.stringify(connectionInfo)}`,
+        '[Connection]'
+      )
+
+      let newStatus: 'good' | 'unstable' | 'poor' = 'good'
+
       if (connection) {
         const { effectiveType, downlink, rtt } = connection
-        let newStatus: 'good' | 'unstable' | 'poor' = 'good'
 
+        // Ethernet and WiFi are always considered good
         if (connection.type === 'ethernet' || connection.type === 'wifi') {
           newStatus = 'good'
-        } else if (
-          effectiveType === '4g' &&
-          downlink &&
-          downlink >= 2 &&
-          rtt &&
-          rtt < 100
+        }
+        // 4G connections with reasonable performance
+        else if (effectiveType && effectiveType.includes('4g')) {
+          // More lenient 4G requirements
+          const hasGoodDownlink = !downlink || downlink >= 1 // Reduced from 2 to 1 Mbps
+          const hasGoodRTT = !rtt || rtt < 200 // Increased from 100 to 200ms
+
+          if (hasGoodDownlink && hasGoodRTT) {
+            newStatus = 'good'
+          } else if (downlink && downlink >= 0.5) {
+            // Very lenient downlink
+            newStatus = 'unstable'
+          } else {
+            newStatus = 'poor'
+          }
+        }
+        // 3G connections
+        else if (effectiveType && effectiveType.includes('3g')) {
+          if (downlink && downlink >= 0.5) {
+            newStatus = 'unstable'
+          } else {
+            newStatus = 'poor'
+          }
+        }
+        // 2G or slower connections
+        else if (
+          effectiveType &&
+          (effectiveType.includes('2g') || effectiveType.includes('slow-2g'))
         ) {
-          newStatus = 'good'
-        } else if (effectiveType === '3g' && downlink && downlink >= 1) {
-          newStatus = 'unstable'
-        } else {
           newStatus = 'poor'
         }
+        // Unknown effective type but we have connection info
+        else if (effectiveType) {
+          // We have an effective type, but it's not one we explicitly handle
+          // Assume good connection since we have connection information
+          newStatus = 'good'
+        }
+        // No effective type but we have other connection info
+        else if (downlink || rtt) {
+          // If we have performance metrics, use them to determine quality
+          const hasReasonableDownlink = !downlink || downlink >= 0.5
+          const hasReasonableRTT = !rtt || rtt < 300
 
-        if (newStatus !== lastConnectionStatus.current) {
-          addLogRef.current(
-            'INFO',
-            `Connection status changed to ${newStatus}`,
-            '[Connection]'
-          )
-          setHealthStatus((prev) => ({ ...prev, connection: newStatus }))
-          lastConnectionStatus.current = newStatus
+          if (hasReasonableDownlink && hasReasonableRTT) {
+            newStatus = 'good'
+          } else if (hasReasonableDownlink || hasReasonableRTT) {
+            newStatus = 'unstable'
+          } else {
+            newStatus = 'poor'
+          }
+        }
+        // No connection info available
+        else {
+          // If we're online but have no connection info, assume good
+          // This is common in browsers that don't support NetworkInformation API
+          newStatus = 'good'
         }
       } else {
-        const newStatus = navigator.onLine ? 'good' : 'poor'
-        if (newStatus !== lastConnectionStatus.current) {
+        // No NetworkInformation API available, but we're online
+        // Assume good connection since we're online
+        newStatus = 'good'
+      }
+
+      // If we determined the connection should be good based on browser APIs,
+      // verify it with an actual connection test
+      if (newStatus === 'good') {
+        // Only run connection test if this is not the initial check
+        // This prevents blocking during initialization
+        const isInitialCheck = lastConnectionStatus.current === 'unknown'
+
+        if (!isInitialCheck) {
+          const connectionTestPassed = await testConnection()
+          if (!connectionTestPassed) {
+            // If we have good connection metrics but the API test is slow,
+            // only downgrade to unstable if we don't have strong connection indicators
+            const hasStrongConnectionIndicators =
+              connection?.type === 'ethernet' ||
+              connection?.type === 'wifi' ||
+              (connection?.effectiveType?.includes('4g') &&
+                connection?.downlink &&
+                connection.downlink >= 1.5)
+
+            if (!hasStrongConnectionIndicators) {
+              newStatus = 'unstable'
+              addLogRef.current(
+                'WARN',
+                'Connection test failed and no strong connection indicators, downgrading to unstable',
+                '[Connection]'
+              )
+            } else {
+              addLogRef.current(
+                'INFO',
+                'Connection test slow but strong connection indicators present, keeping status as good',
+                '[Connection]'
+              )
+            }
+          }
+        } else {
           addLogRef.current(
             'INFO',
-            `Connection status changed to ${newStatus}`,
+            'Skipping connection test during initial check to avoid blocking initialization',
             '[Connection]'
           )
-          setHealthStatus((prev) => ({
-            ...prev,
-            connection: newStatus
-          }))
-          lastConnectionStatus.current = newStatus
         }
+      }
+
+      if (newStatus !== lastConnectionStatus.current) {
+        addLogRef.current(
+          'INFO',
+          `Connection status changed to ${newStatus} (type: ${connectionInfo.type}, effectiveType: ${connectionInfo.effectiveType})`,
+          '[Connection]'
+        )
+        setHealthStatus((prev) => ({ ...prev, connection: newStatus }))
+        lastConnectionStatus.current = newStatus
       }
     }
 
     // Initial check
     updateConnectionStatus()
 
+    // Create stable function references for event listeners
+    const handleOnline = () => void updateConnectionStatus()
+    const handleOffline = () => void updateConnectionStatus()
+    const handleConnectionChange = () => void updateConnectionStatus()
+
     // Set up event listeners
-    window.addEventListener('online', updateConnectionStatus)
-    window.addEventListener('offline', updateConnectionStatus)
+    window.addEventListener('online', handleOnline)
+    window.addEventListener('offline', handleOffline)
 
     const connection = (navigator as { connection?: NetworkInformation })
       .connection
     if (connection) {
-      connection.addEventListener('change', updateConnectionStatus)
+      connection.addEventListener('change', handleConnectionChange)
     }
 
+    // Set up periodic connection test (every 30 seconds) - but delay the first one
+    const connectionTestInterval = setInterval(() => {
+      void updateConnectionStatus()
+    }, 30000)
+
+    // Run an initial connection test after a delay to avoid blocking initialization
+    const initialConnectionTest = setTimeout(() => {
+      void updateConnectionStatus()
+    }, 5000) // Wait 5 seconds before first connection test
+
     return () => {
-      window.removeEventListener('online', updateConnectionStatus)
-      window.removeEventListener('offline', updateConnectionStatus)
+      window.removeEventListener('online', handleOnline)
+      window.removeEventListener('offline', handleOffline)
       if (connection) {
-        connection.removeEventListener('change', updateConnectionStatus)
+        connection.removeEventListener('change', handleConnectionChange)
       }
+      clearInterval(connectionTestInterval)
+      clearTimeout(initialConnectionTest)
     }
   }, []) // Empty dependency array since we're using refs
 
-  // Add function to signal manual pause/play actions
-  const signalManualPlaybackAction = useCallback((action: 'pause' | 'play') => {
-    addLogRef.current('INFO', `signalManualPlaybackAction called with action: ${action}`, 'HealthMonitor')
-    
-    if (action === 'pause') {
-      userManuallyPausedRef.current = true
-      manualPauseTimestampRef.current = Date.now()
-      addLogRef.current('INFO', 'User manually paused playback - flag set to true', 'HealthMonitor')
-    } else {
-      userManuallyPausedRef.current = false
-      addLogRef.current('INFO', 'User manually started playback - flag set to false', 'HealthMonitor')
-    }
-  }, [])
+  // Set up device management logger
+  useEffect(() => {
+    setDeviceManagementLogger(addLog)
+  }, [addLog])
 
-  return { healthStatus, setHealthStatus, signalManualPlaybackAction }
+  return { healthStatus, setHealthStatus }
 }

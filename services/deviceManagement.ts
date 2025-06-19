@@ -4,7 +4,12 @@ import { DeviceVerificationState } from '@/shared/types/recovery'
 import { VERIFICATION_TIMEOUT } from '@/shared/constants/recovery'
 
 // Add logging context
-let addLog: (level: 'LOG' | 'INFO' | 'WARN' | 'ERROR', message: string, context?: string, error?: Error) => void
+let addLog: (
+  level: 'LOG' | 'INFO' | 'WARN' | 'ERROR',
+  message: string,
+  context?: string,
+  error?: Error
+) => void
 
 // Function to set the logging function
 export function setDeviceManagementLogger(logger: typeof addLog) {
@@ -32,14 +37,151 @@ function releaseVerificationLock(): void {
 }
 
 /**
+ * Verifies if a device is ready for initial setup (more lenient than verifyDeviceTransfer)
+ */
+export async function verifyDeviceSetup(deviceId: string): Promise<boolean> {
+  if (!deviceId) {
+    if (addLog) {
+      addLog(
+        'ERROR',
+        'No device ID provided for setup verification',
+        'DeviceManagement'
+      )
+    } else {
+      console.error(
+        '[Device Management] No device ID provided for setup verification'
+      )
+    }
+    return false
+  }
+
+  try {
+    // Get all available devices first
+    const devicesResponse = await sendApiRequest<{
+      devices: Array<{
+        id: string
+        is_active: boolean
+        is_restricted: boolean
+        type: string
+        name: string
+      }>
+    }>({
+      path: 'me/player/devices',
+      method: 'GET'
+    })
+
+    if (!devicesResponse?.devices) {
+      if (addLog) {
+        addLog('ERROR', 'Failed to get devices list', 'DeviceManagement')
+      } else {
+        console.error('[Device Management] Failed to get devices list')
+      }
+      return false
+    }
+
+    // Find our target device
+    const targetDevice = devicesResponse.devices.find((d) => d.id === deviceId)
+
+    if (!targetDevice) {
+      if (addLog) {
+        addLog(
+          'ERROR',
+          'Target device not found in available devices',
+          'DeviceManagement'
+        )
+      } else {
+        console.error('[Device Management] Target device not found:', {
+          deviceId,
+          availableDevices: devicesResponse.devices.map((d) => ({
+            id: d.id,
+            name: d.name
+          }))
+        })
+      }
+      return false
+    }
+
+    // Check device state
+    const deviceState = {
+      isActive: targetDevice.is_active,
+      isRestricted: targetDevice.is_restricted,
+      type: targetDevice.type,
+      name: targetDevice.name
+    }
+
+    if (addLog) {
+      addLog(
+        'INFO',
+        `Device setup state: ${JSON.stringify(deviceState)}`,
+        'DeviceManagement'
+      )
+    } else {
+      console.log('[Device Management] Device setup state:', {
+        deviceId,
+        ...deviceState,
+        timestamp: new Date().toISOString()
+      })
+    }
+
+    // For initial setup, we only care that the device exists and is not restricted
+    // We don't require it to be active yet (that will happen when we transfer playback)
+    if (deviceState.isRestricted) {
+      if (addLog) {
+        addLog(
+          'ERROR',
+          'Device is restricted and cannot be used',
+          'DeviceManagement'
+        )
+      } else {
+        console.error('[Device Management] Device is restricted:', {
+          deviceId,
+          deviceState
+        })
+      }
+      return false
+    }
+
+    if (addLog) {
+      addLog('INFO', 'Device setup verification successful', 'DeviceManagement')
+    } else {
+      console.log('[Device Management] Device setup verification successful:', {
+        deviceId,
+        deviceName: deviceState.name,
+        timestamp: new Date().toISOString()
+      })
+    }
+
+    return true
+  } catch (error) {
+    if (addLog) {
+      addLog(
+        'ERROR',
+        `Device setup verification error: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        'DeviceManagement',
+        error instanceof Error ? error : undefined
+      )
+    } else {
+      console.error('[Device Management] Setup verification error:', error)
+    }
+    return false
+  }
+}
+
+/**
  * Verifies if a device is active and ready for playback
  */
 export async function verifyDeviceTransfer(deviceId: string): Promise<boolean> {
   if (!deviceId) {
     if (addLog) {
-      addLog('ERROR', 'No device ID provided for verification', 'DeviceManagement')
+      addLog(
+        'ERROR',
+        'No device ID provided for verification',
+        'DeviceManagement'
+      )
     } else {
-      console.error('[Device Management] No device ID provided for verification')
+      console.error(
+        '[Device Management] No device ID provided for verification'
+      )
     }
     return false
   }
@@ -78,8 +220,8 @@ export async function verifyDeviceTransfer(deviceId: string): Promise<boolean> {
 
       // If target device not found, try to find a Jukebox device
       if (!targetDevice) {
-        const jukeboxDevice = devicesResponse.devices.find(
-          (d) => d.name.startsWith('Jukebox-')
+        const jukeboxDevice = devicesResponse.devices.find((d) =>
+          d.name.startsWith('Jukebox-')
         )
         if (jukeboxDevice) {
           console.log('[Device Management] Found Jukebox device:', {
@@ -262,10 +404,10 @@ export async function transferPlaybackToDevice(
       await sendApiRequest({
         path: 'me/player',
         method: 'PUT',
-        body: JSON.stringify({
+        body: {
           device_ids: [deviceId],
           play: false
-        })
+        }
       })
 
       // Wait for transfer to complete
@@ -289,7 +431,9 @@ export async function transferPlaybackToDevice(
       }
 
       if (state.device.id !== deviceId) {
-        console.error('[Device Transfer] Target device not found in available devices')
+        console.error(
+          '[Device Transfer] Target device not found in available devices'
+        )
         attempts++
         if (attempts < maxAttempts) {
           await new Promise((resolve) =>
@@ -356,7 +500,9 @@ export async function cleanupOtherDevices(
       // Transfer playback to target device
       const transferSuccessful = await transferPlaybackToDevice(targetDeviceId)
       if (!transferSuccessful) {
-        console.error('[Device Cleanup] Failed to transfer playback to target device')
+        console.error(
+          '[Device Cleanup] Failed to transfer playback to target device'
+        )
         return false
       }
     }
@@ -369,13 +515,14 @@ export async function cleanupOtherDevices(
 }
 
 /**
- * Validates the current device state
+ * Validates the current device state with more nuanced error handling
  */
 export function validateDeviceState(
   deviceId: string | null,
   state: SpotifyPlaybackState | null
-): { isValid: boolean; errors: string[] } {
+): { isValid: boolean; errors: string[]; warnings: string[] } {
   const errors: string[] = []
+  const warnings: string[] = []
 
   if (!deviceId) {
     errors.push('No device ID provided')
@@ -383,33 +530,124 @@ export function validateDeviceState(
 
   if (!state) {
     errors.push('No playback state available')
-    return { isValid: false, errors }
+    return { isValid: false, errors, warnings }
   }
 
   if (!state.device) {
     errors.push('No device information in playback state')
-    return { isValid: false, errors }
+    return { isValid: false, errors, warnings }
   }
 
+  // Critical errors that prevent playback
   if (state.device.id !== deviceId) {
     errors.push('Device ID mismatch')
-  }
-
-  if (!state.device.is_active) {
-    errors.push('Device is not active')
   }
 
   if (state.device.is_restricted) {
     errors.push('Device is restricted')
   }
 
+  // Warnings that don't prevent playback but indicate potential issues
+  if (!state.device.is_active) {
+    warnings.push('Device is not active')
+  }
+
   if (typeof state.device.volume_percent !== 'number') {
-    errors.push('Device does not support volume control')
+    warnings.push('Device does not support volume control')
   }
 
   return {
     isValid: errors.length === 0,
-    errors
+    errors,
+    warnings
+  }
+}
+
+/**
+ * Intelligent device validation that considers timing and context
+ */
+export function validateDeviceStateIntelligent(
+  deviceId: string | null,
+  state: SpotifyPlaybackState | null,
+  options: {
+    isInitialSetup?: boolean
+    allowInactive?: boolean
+    gracePeriodMs?: number
+    lastDeviceChange?: number
+  } = {}
+): {
+  isValid: boolean
+  errors: string[]
+  warnings: string[]
+  shouldRetry: boolean
+} {
+  const {
+    isInitialSetup = false,
+    allowInactive = true,
+    gracePeriodMs = 10000, // 10 second grace period
+    lastDeviceChange = 0
+  } = options
+
+  const errors: string[] = []
+  const warnings: string[] = []
+  let shouldRetry = false
+
+  if (!deviceId) {
+    errors.push('No device ID provided')
+    return { isValid: false, errors, warnings, shouldRetry }
+  }
+
+  if (!state) {
+    errors.push('No playback state available')
+    return { isValid: false, errors, warnings, shouldRetry }
+  }
+
+  if (!state.device) {
+    errors.push('No device information in playback state')
+    return { isValid: false, errors, warnings, shouldRetry }
+  }
+
+  // Check if we're in a grace period after device changes
+  const timeSinceDeviceChange = Date.now() - lastDeviceChange
+  const inGracePeriod = timeSinceDeviceChange < gracePeriodMs
+
+  // Critical errors that prevent playback
+  if (state.device.id !== deviceId) {
+    if (inGracePeriod) {
+      warnings.push('Device ID mismatch (in grace period)')
+      shouldRetry = true
+    } else {
+      errors.push('Device ID mismatch')
+    }
+  }
+
+  if (state.device.is_restricted) {
+    if (inGracePeriod) {
+      warnings.push('Device is restricted (in grace period)')
+      shouldRetry = true
+    } else {
+      errors.push('Device is restricted')
+    }
+  }
+
+  // Warnings that don't prevent playback but indicate potential issues
+  if (!state.device.is_active) {
+    if (isInitialSetup || allowInactive) {
+      warnings.push('Device is not active')
+    } else {
+      errors.push('Device is not active')
+    }
+  }
+
+  if (typeof state.device.volume_percent !== 'number') {
+    warnings.push('Device does not support volume control')
+  }
+
+  return {
+    isValid: errors.length === 0,
+    errors,
+    warnings,
+    shouldRetry
   }
 }
 
@@ -419,6 +657,7 @@ export function validateDeviceState(
 export async function checkDeviceHealth(deviceId: string): Promise<{
   isHealthy: boolean
   errors: string[]
+  warnings: string[]
 }> {
   try {
     const state = await sendApiRequest<SpotifyPlaybackState>({
@@ -426,17 +665,19 @@ export async function checkDeviceHealth(deviceId: string): Promise<{
       method: 'GET'
     })
 
-    const { isValid, errors } = validateDeviceState(deviceId, state)
+    const { isValid, errors, warnings } = validateDeviceState(deviceId, state)
 
     return {
       isHealthy: isValid,
-      errors
+      errors,
+      warnings
     }
   } catch (error) {
     console.error('[Device Health] Health check failed:', error)
     return {
       isHealthy: false,
-      errors: ['Failed to get device state']
+      errors: ['Failed to get device state'],
+      warnings: []
     }
   }
 }
@@ -455,6 +696,7 @@ export async function ensureDeviceHealth(
   isHealthy: boolean
   isActive: boolean
   errors: string[]
+  warnings: string[]
   details: {
     deviceId: string | null
     isActive: boolean
@@ -465,11 +707,12 @@ export async function ensureDeviceHealth(
   const {
     maxAttempts = 3,
     delayBetweenAttempts = 1000,
-    requireActive = true
+    requireActive = false
   } = options
 
   let attempts = 0
   const errors: string[] = []
+  const warnings: string[] = []
 
   while (attempts < maxAttempts) {
     try {
@@ -489,13 +732,15 @@ export async function ensureDeviceHealth(
         continue
       }
 
-      const { isValid, errors: validationErrors } = validateDeviceState(
-        deviceId,
-        state
-      )
+      const {
+        isValid,
+        errors: validationErrors,
+        warnings: validationWarnings
+      } = validateDeviceState(deviceId, state)
 
       if (!isValid) {
         errors.push(...validationErrors)
+        warnings.push(...validationWarnings)
         attempts++
         if (attempts < maxAttempts) {
           await new Promise((resolve) =>
@@ -504,6 +749,9 @@ export async function ensureDeviceHealth(
         }
         continue
       }
+
+      // Add validation warnings to our warnings list
+      warnings.push(...validationWarnings)
 
       const isActive = state.device.is_active
       if (requireActive && !isActive) {
@@ -521,6 +769,7 @@ export async function ensureDeviceHealth(
         isHealthy: true,
         isActive,
         errors: [],
+        warnings,
         details: {
           deviceId: state.device.id,
           isActive: state.device.is_active,
@@ -544,6 +793,7 @@ export async function ensureDeviceHealth(
     isHealthy: false,
     isActive: false,
     errors,
+    warnings,
     details: {
       deviceId: null,
       isActive: false,

@@ -3,7 +3,12 @@ import { setTokenManagerLogger } from '../token/tokenManager'
 import { setSpotifyApiLogger } from '../../services/spotifyApi'
 import { setDeviceManagementLogger } from '../../services/deviceManagement'
 
-export type LogFunction = (level: 'LOG' | 'INFO' | 'WARN' | 'ERROR', message: string, context?: string, error?: Error) => void
+export type LogFunction = (
+  level: 'LOG' | 'INFO' | 'WARN' | 'ERROR',
+  message: string,
+  context?: string,
+  error?: Error
+) => void
 
 export function initializeLoggers(addLog: LogFunction): void {
   // Initialize all service loggers
@@ -11,4 +16,4 @@ export function initializeLoggers(addLog: LogFunction): void {
   setTokenManagerLogger(addLog)
   setSpotifyApiLogger(addLog)
   setDeviceManagementLogger(addLog)
-} 
+}

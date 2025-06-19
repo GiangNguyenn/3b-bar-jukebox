@@ -1,7 +1,12 @@
 import { sendApiRequest } from '../api'
 
 // Add logging context
-let addLog: (level: 'LOG' | 'INFO' | 'WARN' | 'ERROR', message: string, context?: string, error?: Error) => void
+let addLog: (
+  level: 'LOG' | 'INFO' | 'WARN' | 'ERROR',
+  message: string,
+  context?: string,
+  error?: Error
+) => void
 
 // Function to set the logging function
 export function setTokenManagerLogger(logger: typeof addLog) {
@@ -108,7 +113,11 @@ class TokenManager {
       const data = (await response.json()) as TokenResponse
       if (!data.access_token) {
         if (addLog) {
-          addLog('ERROR', `Invalid token response: ${JSON.stringify(data)}`, 'TokenManager')
+          addLog(
+            'ERROR',
+            `Invalid token response: ${JSON.stringify(data)}`,
+            'TokenManager'
+          )
         } else {
           console.error('[TokenManager] Invalid token response:', data)
         }
@@ -124,7 +133,12 @@ class TokenManager {
       return data.access_token
     } catch (error) {
       if (addLog) {
-        addLog('ERROR', 'Error refreshing token', 'TokenManager', error instanceof Error ? error : undefined)
+        addLog(
+          'ERROR',
+          'Error refreshing token',
+          'TokenManager',
+          error instanceof Error ? error : undefined
+        )
       } else {
         console.error('[TokenManager] Error refreshing token:', error)
       }

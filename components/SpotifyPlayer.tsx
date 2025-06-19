@@ -8,7 +8,11 @@ export function SpotifyPlayer(): JSX.Element {
   const [error, setError] = useState<string | null>(null)
 
   // Hooks
-  const { deviceId, isReady, playbackState: _playbackState } = useSpotifyPlayerStore()
+  const {
+    deviceId,
+    isReady,
+    playbackState: _playbackState
+  } = useSpotifyPlayerStore()
 
   // Refs
   const localPlaylistRefreshInterval = useRef<NodeJS.Timeout | null>(null)
@@ -58,11 +62,17 @@ export function SpotifyPlayer(): JSX.Element {
 
   // Add event listeners
   useEffect(() => {
-    window.addEventListener('playbackUpdate', handlePlaybackUpdate as EventListener)
+    window.addEventListener(
+      'playbackUpdate',
+      handlePlaybackUpdate as EventListener
+    )
     window.addEventListener('error', handleError)
 
     return (): void => {
-      window.removeEventListener('playbackUpdate', handlePlaybackUpdate as EventListener)
+      window.removeEventListener(
+        'playbackUpdate',
+        handlePlaybackUpdate as EventListener
+      )
       window.removeEventListener('error', handleError)
     }
   }, [handlePlaybackUpdate, handleError])
@@ -77,9 +87,9 @@ export function SpotifyPlayer(): JSX.Element {
 
   return (
     <div className='text-white'>
-      <div className='flex items-center justify-between p-4 bg-gray-800 rounded-lg'>
+      <div className='flex items-center justify-between rounded-lg bg-gray-800 p-4'>
         <div className='flex items-center space-x-4'>
-          <div className='w-12 h-12 bg-green-500 rounded-full flex items-center justify-center'>
+          <div className='flex h-12 w-12 items-center justify-center rounded-full bg-green-500'>
             <span className='text-lg font-bold'>S</span>
           </div>
           <div>

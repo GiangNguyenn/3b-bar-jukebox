@@ -60,40 +60,6 @@ export interface PlaylistRefreshService {
     preview_url: string | null
     genres: string[]
   } | null
-  refreshTrackSuggestions(params: {
-    genres: Genre[]
-    yearRange: [number, number]
-    popularity: number
-    allowExplicit: boolean
-    maxSongLength: number
-    songsBetweenRepeats: number
-    maxOffset: number
-  }): Promise<{
-    success: boolean
-    message: string
-    searchDetails?: {
-      attempts: number
-      totalTracksFound: number
-      excludedTrackIds: string[]
-      minPopularity: number
-      genresTried: string[]
-      trackDetails: Array<{
-        name: string
-        popularity: number
-        isExcluded: boolean
-        isPlayable: boolean
-        duration_ms: number
-        explicit: boolean
-      }>
-    }
-    diagnosticInfo?: {
-      playlistLength: number
-      upcomingTracksCount: number
-      currentTrackId: string | null
-      genresUsed: string[]
-      timestamp: string
-    }
-  }>
 }
 
 export class PlaylistRefreshServiceImpl implements PlaylistRefreshService {
@@ -615,18 +581,39 @@ export class PlaylistRefreshServiceImpl implements PlaylistRefreshService {
       )
 
       if (!result.success) {
-        Sentry.logger.error('[PlaylistRefresh] Failed to add track', {
-          error: result.error,
-          diagnosticInfo,
-          params,
-          timestamp: new Date().toISOString()
-        })
-        console.error('[PlaylistRefresh] Failed to add track:', {
-          error: result.error,
-          diagnosticInfo,
-          params,
-          timestamp: new Date().toISOString()
-        })
+        if (result.error === 'Enough tracks remaining') {
+          Sentry.logger.info(
+            '[PlaylistRefresh] Enough tracks remaining, no action needed',
+            {
+              error: result.error,
+              diagnosticInfo,
+              params,
+              timestamp: new Date().toISOString()
+            }
+          )
+          console.info(
+            '[PlaylistRefresh] Enough tracks remaining, no action needed:',
+            {
+              error: result.error,
+              diagnosticInfo,
+              params,
+              timestamp: new Date().toISOString()
+            }
+          )
+        } else {
+          Sentry.logger.error('[PlaylistRefresh] Failed to add track', {
+            error: result.error,
+            diagnosticInfo,
+            params,
+            timestamp: new Date().toISOString()
+          })
+          console.error('[PlaylistRefresh] Failed to add track:', {
+            error: result.error,
+            diagnosticInfo,
+            params,
+            timestamp: new Date().toISOString()
+          })
+        }
         return {
           success: false,
           message:
@@ -699,157 +686,5 @@ export class PlaylistRefreshServiceImpl implements PlaylistRefreshService {
     }
 
     return this.lastSuggestedTrack
-  }
-
-  async refreshTrackSuggestions(params: {
-    genres: Genre[]
-    yearRange: [number, number]
-    popularity: number
-    allowExplicit: boolean
-    maxSongLength: number
-    songsBetweenRepeats: number
-    maxOffset: number
-  }): Promise<{
-    success: boolean
-    message: string
-    searchDetails?: {
-      attempts: number
-      totalTracksFound: number
-      excludedTrackIds: string[]
-      minPopularity: number
-      genresTried: string[]
-      trackDetails: Array<{
-        name: string
-        popularity: number
-        isExcluded: boolean
-        isPlayable: boolean
-        duration_ms: number
-        explicit: boolean
-      }>
-    }
-    diagnosticInfo?: {
-      playlistLength: number
-      upcomingTracksCount: number
-      currentTrackId: string | null
-      genresUsed: string[]
-      timestamp: string
-    }
-  }> {
-    if (this.isRefreshing) {
-      return {
-        success: false,
-        message: 'Refresh operation already in progress'
-      }
-    }
-
-    try {
-      this.isRefreshing = true
-
-      const { playlist } = await this.getFixedPlaylist()
-      if (!playlist) {
-        return {
-          success: false,
-          message: `No playlist found with name: ${this.FIXED_PLAYLIST_NAME}`
-        }
-      }
-
-      const { id: currentTrackId } = await this.getCurrentlyPlaying()
-      const upcomingTracks = this.getUpcomingTracks(playlist, currentTrackId)
-      const allPlaylistTracks = playlist.tracks.items
-
-      // Add track removal step
-      const playbackState = await this.spotifyApi.getPlaybackState()
-      const removedTrack = await this.autoRemoveFinishedTrack({
-        playlistId: playlist.id,
-        currentTrackId,
-        playlistTracks: allPlaylistTracks,
-        playbackState,
-        songsBetweenRepeats: params.songsBetweenRepeats
-      })
-
-      const result = await this.addSuggestedTrackToPlaylist(
-        upcomingTracks,
-        playlist.id,
-        currentTrackId,
-        allPlaylistTracks,
-        {
-          genres: params.genres,
-          yearRange: params.yearRange,
-          popularity: params.popularity,
-          allowExplicit: params.allowExplicit,
-          maxSongLength: params.maxSongLength,
-          songsBetweenRepeats: params.songsBetweenRepeats,
-          maxOffset: params.maxOffset
-        }
-      )
-
-      if (!result.success) {
-        return {
-          success: false,
-          message: result.error || 'Failed to refresh track suggestions',
-          searchDetails: result.searchDetails as {
-            attempts: number
-            totalTracksFound: number
-            excludedTrackIds: string[]
-            minPopularity: number
-            genresTried: string[]
-            trackDetails: Array<{
-              name: string
-              popularity: number
-              isExcluded: boolean
-              isPlayable: boolean
-              duration_ms: number
-              explicit: boolean
-            }>
-          },
-          diagnosticInfo: {
-            playlistLength: allPlaylistTracks.length,
-            upcomingTracksCount: upcomingTracks.length,
-            currentTrackId,
-            genresUsed: params.genres,
-            timestamp: new Date().toISOString()
-          }
-        }
-      }
-
-      return {
-        success: true,
-        message: 'Track suggestions refreshed successfully',
-        searchDetails: result.searchDetails as {
-          attempts: number
-          totalTracksFound: number
-          excludedTrackIds: string[]
-          minPopularity: number
-          genresTried: string[]
-          trackDetails: Array<{
-            name: string
-            popularity: number
-            isExcluded: boolean
-            isPlayable: boolean
-            duration_ms: number
-            explicit: boolean
-          }>
-        },
-        diagnosticInfo: {
-          playlistLength: allPlaylistTracks.length,
-          upcomingTracksCount: upcomingTracks.length,
-          currentTrackId,
-          genresUsed: params.genres,
-          timestamp: new Date().toISOString()
-        }
-      }
-    } catch (error) {
-      console.error(
-        '[PlaylistRefresh] Error in refreshTrackSuggestions:',
-        error
-      )
-      return {
-        success: false,
-        message:
-          error instanceof Error ? error.message : 'Unknown error occurred'
-      }
-    } finally {
-      this.isRefreshing = false
-    }
   }
 }

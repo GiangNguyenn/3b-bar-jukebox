@@ -1,5 +1,4 @@
 import { useState, useCallback, useEffect, useRef } from 'react'
-import { usePlaybackManager } from './usePlaybackManager'
 import { useDeviceHealth, DeviceHealthStatus } from './useDeviceHealth'
 import {
   cleanupOtherDevices,
@@ -7,9 +6,11 @@ import {
   transferPlaybackToDevice
 } from '@/services/deviceManagement'
 import { sendApiRequest } from '@/shared/api'
-import { useSpotifyPlayerHook } from '../useSpotifyPlayer'
 import { useConsoleLogsContext } from '../ConsoleLogsProvider'
 import { useCircuitBreaker } from './useCircuitBreaker'
+import { playerLifecycleService } from '@/services/playerLifecycle'
+import { spotifyPlayerStore } from '../useSpotifyPlayer'
+import { SpotifyApiService } from '@/services/spotifyApi'
 
 // Recovery system constants
 export const MAX_RECOVERY_RETRIES = 3
@@ -24,14 +25,14 @@ const RECOVERY_STATE_KEY = 'spotify_recovery_state'
 const DEVICE_REGISTRATION_TIMEOUT = 15000 // 15 seconds
 const DEVICE_ACTIVATION_TIMEOUT = 15000 // 15 seconds
 
-// Update RecoveryPhase type to include all possible phases
+// Updated RecoveryPhase type with logical order
 type RecoveryPhase =
   | 'idle'
-  | 'starting'
-  | 'device_check'
-  | 'device_registration'
-  | 'device_activation'
-  | 'playback_resume'
+  | 'destroying_everything' // NEW: Complete destruction first
+  | 'reloading_sdk' // NEW: Reload Spotify SDK for fresh environment
+  | 'creating_player' // NEW: Fresh player creation
+  | 'registering_device' // NEW: Device registration after player
+  | 'restoring_playback' // NEW: Playback restoration
   | 'success'
   | 'error'
 
@@ -47,6 +48,8 @@ export interface RecoveryState {
     timestamp: number
     count: number
   }
+  // NEW: Track which resume strategy was used
+  resumeStrategy?: 'current_state' | 'last_known' | 'fresh_start'
 }
 
 // Add helper to poll for device registration
@@ -122,22 +125,33 @@ export function useRecoverySystem(
   onHealthUpdateRef.current = onHealthUpdate
 
   const { updateHealth, currentStatus } = useDeviceHealth()
-  const { state: playbackState, resumePlayback, reset: resetPlayback } = usePlaybackManager(playlistId)
-  const { isCircuitOpen, recordFailure, recordSuccess, reset: resetCircuit } = useCircuitBreaker(3, 30000)
-  const { destroyPlayer, createPlayer } = useSpotifyPlayerHook()
+  const {
+    isCircuitOpen,
+    recordFailure,
+    recordSuccess,
+    reset: resetCircuit
+  } = useCircuitBreaker(3, 30000)
+  const { addLog } = useConsoleLogsContext()
+
+  // Set up logger for player lifecycle service
+  useEffect(() => {
+    playerLifecycleService.setLogger(addLog)
+  }, [addLog])
 
   const [state, setState] = useState<RecoveryState>(() => {
     // Try to restore state from persistence
     const persistedState = restoreRecoveryState()
-    return persistedState ?? {
-      phase: 'idle',
-      attempts: 0,
-      error: null,
-      isRecovering: false,
-      message: '',
-      progress: 0,
-      currentStep: ''
-    }
+    return (
+      persistedState ?? {
+        phase: 'idle',
+        attempts: 0,
+        error: null,
+        isRecovering: false,
+        message: '',
+        progress: 0,
+        currentStep: ''
+      }
+    )
   })
 
   const isRecoveringRef = useRef(false)
@@ -150,10 +164,9 @@ export function useRecoverySystem(
     }
   }, [currentStatus])
 
-  // Add proper cleanup function
+  // Complete cleanup function - now destroys everything
   const cleanup = useCallback(async (): Promise<void> => {
     try {
-      await destroyPlayer()
       // Reset all states
       setState({
         phase: 'idle',
@@ -170,17 +183,16 @@ export function useRecoverySystem(
     } catch (error) {
       console.error('Cleanup failed:', error)
     }
-  }, [destroyPlayer, updateHealth])
+  }, [updateHealth])
 
   const reset = useCallback((): void => {
     if (recoveryTimeoutRef.current) {
       clearTimeout(recoveryTimeoutRef.current)
       recoveryTimeoutRef.current = null
     }
-    resetPlayback()
     resetCircuit()
     void cleanup()
-  }, [resetPlayback, resetCircuit, cleanup])
+  }, [resetCircuit, cleanup])
 
   // Update state with persistence
   const updateState = useCallback((newState: Partial<RecoveryState>): void => {
@@ -205,7 +217,7 @@ export function useRecoverySystem(
     try {
       isRecoveringRef.current = true
       updateState({
-        phase: 'starting',
+        phase: 'destroying_everything',
         attempts: state.attempts + 1,
         error: null,
         isRecovering: true,
@@ -216,79 +228,180 @@ export function useRecoverySystem(
 
       // Check if we've exceeded max retries
       if (state.attempts >= MAX_RECOVERY_RETRIES) {
-        console.error('[Recovery] Max recovery attempts reached, performing full reset')
+        console.error(
+          '[Recovery] Max recovery attempts reached, performing full reset'
+        )
         await cleanup()
-        // Instead of reloading, perform a full reset
         reset()
         return
       }
 
-      // Step 1: Check device
+      // Step 1: Complete Destruction (0% - 30%)
       updateState({
-        phase: 'device_check',
-        message: 'Checking device status...',
-        progress: 0.2,
-        currentStep: 'device_check'
+        phase: 'destroying_everything',
+        message: 'Destroying existing player and clearing state...',
+        progress: 0.15,
+        currentStep: 'destroying_player'
       })
 
-      const deviceOk = await verifyDeviceTransfer(deviceId ?? '')
-      if (!deviceOk) {
-        throw new Error('Device check failed')
+      // Destroy existing player completely
+      playerLifecycleService.destroyPlayer()
+
+      // Clear global references
+      if (typeof window !== 'undefined') {
+        window.spotifyPlayerInstance = null
       }
 
-      // Step 2: Wait for device registration with increased timeout
+      // Reset player store state
+      spotifyPlayerStore.getState().setStatus('initializing')
+      spotifyPlayerStore.getState().setDeviceId(null)
+      spotifyPlayerStore.getState().setPlaybackState(null)
+
+      // Clear any cached state that might be corrupted
+      localStorage.removeItem('spotify_last_playback')
+
+      // Step 2: Reload Spotify SDK (30% - 40%)
       updateState({
-        phase: 'device_registration',
-        message: 'Waiting for device registration...',
+        phase: 'reloading_sdk',
+        message: 'Reloading Spotify SDK...',
         progress: 0.4,
-        currentStep: 'device_registration'
+        currentStep: 'reloading_sdk'
       })
 
-      const found = await waitForDevice(deviceId ?? '', DEVICE_REGISTRATION_TIMEOUT)
-      if (!found) {
+      // Reload Spotify SDK
+      await playerLifecycleService.reloadSDK()
+
+      // Step 3: Fresh Player Creation (40% - 60%)
+      updateState({
+        phase: 'creating_player',
+        message: 'Creating new Spotify player...',
+        progress: 0.6,
+        currentStep: 'creating_player'
+      })
+
+      // Create fresh player
+      const newDeviceId = await playerLifecycleService.createPlayer(
+        (status, error) => {
+          addLog(
+            'INFO',
+            `Player status: ${status}${error ? ` (${error})` : ''}`,
+            'RecoverySystem'
+          )
+        },
+        (deviceId) => {
+          addLog('INFO', `Device ID set: ${deviceId}`, 'RecoverySystem')
+        },
+        (state) => {
+          addLog(
+            'INFO',
+            `Playback state updated: ${state.is_playing ? 'playing' : 'paused'}`,
+            'RecoverySystem'
+          )
+        }
+      )
+
+      // createPlayer returns null on success - the device ID comes from the 'ready' event
+      // Wait a moment for the player to initialize and get the device ID from the store
+      await new Promise((resolve) => setTimeout(resolve, 2000))
+
+      const currentDeviceId = spotifyPlayerStore.getState().deviceId
+      const currentStatus = spotifyPlayerStore.getState().status
+
+      if (!currentDeviceId || currentStatus !== 'ready') {
+        addLog(
+          'ERROR',
+          `Player creation failed. Status: ${currentStatus}, Device ID: ${currentDeviceId}`,
+          'RecoverySystem'
+        )
+        throw new Error('Failed to create new player')
+      }
+
+      addLog(
+        'INFO',
+        `Player created successfully with device ID: ${currentDeviceId}`,
+        'RecoverySystem'
+      )
+
+      // Step 4: Device Registration (60% - 80%)
+      updateState({
+        phase: 'registering_device',
+        message: 'Registering device with Spotify...',
+        progress: 0.8,
+        currentStep: 'registering_device'
+      })
+
+      // Wait for device to appear in Spotify's device list
+      const deviceRegistered = await waitForDevice(
+        currentDeviceId,
+        DEVICE_REGISTRATION_TIMEOUT
+      )
+      if (!deviceRegistered) {
         throw new Error('Device registration timeout')
       }
 
-      // Step 3: Wait for device activation with increased timeout
-      updateState({
-        phase: 'device_activation',
-        message: 'Waiting for device activation...',
-        progress: 0.6,
-        currentStep: 'device_activation'
-      })
+      // Transfer playback to the new device
+      await transferPlaybackToDevice(currentDeviceId)
 
-      const activated = await waitForDeviceActive(deviceId ?? '', DEVICE_ACTIVATION_TIMEOUT)
-      if (!activated) {
+      // Wait for device to become active
+      const deviceActive = await waitForDeviceActive(
+        currentDeviceId,
+        DEVICE_ACTIVATION_TIMEOUT
+      )
+      if (!deviceActive) {
         throw new Error('Device activation timeout')
       }
 
-      // Step 4: Resume playback
+      // Step 5: Playback Restoration (80% - 100%)
       updateState({
-        phase: 'playback_resume',
-        message: 'Resuming playback...',
-        progress: 0.8,
-        currentStep: 'playback_resume'
+        phase: 'restoring_playback',
+        message: 'Restoring playback from last position...',
+        progress: 1,
+        currentStep: 'restoring_playback'
       })
 
-      const playbackOk = await resumePlayback(deviceId ?? '', `spotify:playlist:${playlistId}`)
-      if (!playbackOk) {
-        throw new Error('Playback resume failed')
+      // Use SpotifyApiService to restore from last position
+      const spotifyApi = SpotifyApiService.getInstance()
+      const resumeResult = await spotifyApi.resumePlayback()
+
+      if (!resumeResult.success) {
+        throw new Error('Failed to restore playback')
       }
+
+      // Determine which resume strategy was used
+      let resumeStrategy: 'current_state' | 'last_known' | 'fresh_start' =
+        'fresh_start'
+      if (resumeResult.resumedFrom) {
+        resumeStrategy = 'current_state'
+      }
+
+      addLog(
+        'INFO',
+        `Playback restored successfully: ${resumeResult.resumedFrom ? `from ${resumeResult.resumedFrom.trackUri} at ${resumeResult.resumedFrom.position}ms` : 'fresh start'}`,
+        'RecoverySystem'
+      )
 
       // Success
       updateState({
         phase: 'success',
         message: 'Recovery completed successfully',
         progress: 1,
-        currentStep: 'complete'
+        currentStep: 'complete',
+        isRecovering: false,
+        resumeStrategy
       })
       recordSuccess()
 
-      // Schedule cleanup after success
+      // Schedule cleanup after success to clear the success message
       recoveryTimeoutRef.current = setTimeout(() => {
-        reset()
-      }, 5000)
-
+        updateState({
+          phase: 'idle',
+          message: '',
+          progress: 0,
+          currentStep: '',
+          isRecovering: false,
+          resumeStrategy: undefined
+        })
+      }, 3000) // Clear after 3 seconds
     } catch (error) {
       console.error('[Recovery] Recovery failed:', error)
       recordFailure()
@@ -297,14 +410,21 @@ export function useRecoverySystem(
         error: error instanceof Error ? error.message : 'Unknown error',
         message: 'Recovery failed',
         progress: 0,
-        currentStep: 'error'
+        currentStep: 'error',
+        isRecovering: false
       })
 
-      // Schedule cleanup after error
+      // Schedule cleanup after error to clear the error message
       recoveryTimeoutRef.current = setTimeout(() => {
-        reset()
-      }, 5000)
-
+        updateState({
+          phase: 'idle',
+          message: '',
+          progress: 0,
+          currentStep: '',
+          isRecovering: false,
+          error: null
+        })
+      }, 5000) // Clear after 5 seconds for errors
     } finally {
       isRecoveringRef.current = false
     }
@@ -313,11 +433,10 @@ export function useRecoverySystem(
     playlistId,
     state.attempts,
     updateState,
-    verifyDeviceTransfer,
-    resumePlayback,
     recordSuccess,
     recordFailure,
-    reset
+    reset,
+    addLog
   ])
 
   // Cleanup on unmount
