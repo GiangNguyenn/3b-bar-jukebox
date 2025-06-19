@@ -22,6 +22,7 @@ import { type PlaybackInfo } from './components/dashboard/types'
 import { type HealthStatus } from '@/shared/types'
 import { type TrackSuggestionsState } from '@/shared/types/trackSuggestions'
 import { useRecoverySystem } from '@/hooks/recovery'
+import { ErrorMessage } from '@/components/ui/error-message'
 
 export default function AdminPage(): JSX.Element {
   // State
@@ -390,9 +391,11 @@ export default function AdminPage(): JSX.Element {
 
           <TabsContent value='dashboard'>
             {error && (
-              <div className='mb-4 rounded border border-red-500 bg-red-900/50 p-4 text-red-100'>
-                {error}
-              </div>
+              <ErrorMessage
+                message={error}
+                onDismiss={() => setError(null)}
+                className='mb-4'
+              />
             )}
 
             <HealthStatusSection

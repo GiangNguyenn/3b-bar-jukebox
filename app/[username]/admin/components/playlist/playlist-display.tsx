@@ -3,7 +3,8 @@
 import { useEffect, useState, useCallback } from 'react'
 import { sendApiRequest } from '@/shared/api'
 import { useSpotifyPlayerStore } from '@/hooks/useSpotifyPlayer'
-import { PlayIcon, TrashIcon } from '@heroicons/react/24/solid'
+import { PlayIcon, TrashIcon } from '@heroicons/react/24/outline'
+import { ErrorMessage } from '@/components/ui/error-message'
 
 interface SpotifyArtist {
   name: string
@@ -135,9 +136,10 @@ export function PlaylistDisplay({
 
   if (error) {
     return (
-      <div className='rounded-lg border border-red-500 bg-red-900/50 p-4 text-red-100'>
-        {error}
-      </div>
+      <ErrorMessage
+        message={error}
+        onDismiss={() => setError(null)}
+      />
     )
   }
 
