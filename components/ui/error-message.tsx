@@ -44,7 +44,7 @@ export function ErrorMessage({
     >
       <button
         onClick={handleDismiss}
-        className='absolute right-2 top-2 text-red-300 hover:text-red-100 transition-colors'
+        className='absolute right-2 top-2 text-red-300 transition-colors hover:text-red-100'
         aria-label='Dismiss error'
       >
         <X size={16} />
@@ -52,4 +52,4 @@ export function ErrorMessage({
       <div className='pr-8'>{message}</div>
     </div>
   )
-} 
+}

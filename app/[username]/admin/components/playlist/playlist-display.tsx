@@ -135,12 +135,7 @@ export function PlaylistDisplay({
   }
 
   if (error) {
-    return (
-      <ErrorMessage
-        message={error}
-        onDismiss={() => setError(null)}
-      />
-    )
+    return <ErrorMessage message={error} onDismiss={() => setError(null)} />
   }
 
   if (tracks.length === 0) {

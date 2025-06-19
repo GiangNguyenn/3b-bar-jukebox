@@ -106,7 +106,9 @@ export const usePlaylist = (
         if (result.message === 'Enough tracks remaining') {
           console.log('[Playlist] Enough tracks remaining, no action needed')
         } else if (result.message === 'Refresh operation already in progress') {
-          console.log('[Playlist] Refresh operation already in progress, skipping')
+          console.log(
+            '[Playlist] Refresh operation already in progress, skipping'
+          )
         } else {
           throw new Error(result.message)
         }
