@@ -55,9 +55,8 @@ const tokenColorMap: Record<string, string> = {
 }
 
 const connectionColorMap: Record<string, string> = {
-  good: 'bg-green-500',
-  unstable: 'bg-yellow-500',
-  poor: 'bg-red-500',
+  connected: 'bg-green-500',
+  disconnected: 'bg-red-500',
   unknown: 'bg-gray-500'
 }
 
@@ -146,13 +145,11 @@ export function HealthStatusSection({
           status={healthStatus.connection}
           colorMap={connectionColorMap}
           label={
-            healthStatus.connection === 'good'
-              ? 'Connection Good'
-              : healthStatus.connection === 'unstable'
-                ? 'Connection Unstable'
-                : healthStatus.connection === 'poor'
-                  ? 'Connection Poor'
-                  : 'Connection Status Unknown'
+            healthStatus.connection === 'connected'
+              ? 'Connected'
+              : healthStatus.connection === 'disconnected'
+                ? 'Disconnected'
+                : 'Connection Status Unknown'
           }
         />
 

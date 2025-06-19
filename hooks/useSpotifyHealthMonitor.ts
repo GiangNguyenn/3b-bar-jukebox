@@ -34,7 +34,7 @@ interface HealthStatus {
   device: 'healthy' | 'unresponsive' | 'disconnected' | 'unknown'
   playback: 'playing' | 'paused' | 'stopped' | 'error' | 'unknown'
   token: 'valid' | 'expired' | 'error' | 'unknown'
-  connection: 'good' | 'unstable' | 'poor' | 'unknown'
+  connection: 'connected' | 'disconnected' | 'unknown'
   tokenExpiringSoon: boolean
   fixedPlaylist: 'found' | 'not_found' | 'error' | 'unknown'
   recovery?: 'idle' | 'recovering' | 'completed' | 'failed'
@@ -413,182 +413,32 @@ export function useSpotifyHealthMonitor(
 
   // Monitor connection quality
   useEffect(() => {
-    // Simple connection test function
     const testConnection = async (): Promise<boolean> => {
       try {
-        const startTime = Date.now()
+        const controller = new AbortController()
+        const timeoutId = setTimeout(() => controller.abort(), 3000) // 3 second timeout
+
         const response = await fetch('/api/ping', {
-          method: 'GET',
-          cache: 'no-cache',
-          signal: AbortSignal.timeout(8000) // Increased timeout to 8 seconds
+          method: 'HEAD',
+          signal: controller.signal,
+          cache: 'no-store'
         })
-        const endTime = Date.now()
-        const responseTime = endTime - startTime
 
-        addLogRef.current(
-          'INFO',
-          `Connection test: ${response.ok ? 'success' : 'failed'} (${responseTime}ms)`,
-          '[Connection]'
-        )
-
-        // More lenient timeout - consider good if < 5 seconds (increased from 3)
-        return response.ok && responseTime < 5000
+        clearTimeout(timeoutId)
+        return response.ok
       } catch (error) {
-        addLogRef.current(
-          'WARN',
-          `Connection test failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
-          '[Connection]'
-        )
         return false
       }
     }
 
     const updateConnectionStatus = async (): Promise<void> => {
-      if (!navigator.onLine) {
-        if (lastConnectionStatus.current !== 'poor') {
-          addLogRef.current('INFO', 'Device is offline', '[Connection]')
-          setHealthStatus((prev) => ({ ...prev, connection: 'poor' }))
-          lastConnectionStatus.current = 'poor'
-        }
-        return
-      }
-
-      const connection = (navigator as { connection?: NetworkInformation })
-        .connection
-
-      // Log connection information for debugging
-      const connectionInfo = {
-        type: connection?.type || 'unknown',
-        effectiveType: connection?.effectiveType || 'unknown',
-        downlink: connection?.downlink || 'unknown',
-        rtt: connection?.rtt || 'unknown',
-        saveData: connection?.saveData || false
-      }
-
-      addLogRef.current(
-        'INFO',
-        `Connection info: ${JSON.stringify(connectionInfo)}`,
-        '[Connection]'
-      )
-
-      let newStatus: 'good' | 'unstable' | 'poor' = 'good'
-
-      if (connection) {
-        const { effectiveType, downlink, rtt } = connection
-
-        // Ethernet and WiFi are always considered good
-        if (connection.type === 'ethernet' || connection.type === 'wifi') {
-          newStatus = 'good'
-        }
-        // 4G connections with reasonable performance
-        else if (effectiveType && effectiveType.includes('4g')) {
-          // More lenient 4G requirements
-          const hasGoodDownlink = !downlink || downlink >= 1 // Reduced from 2 to 1 Mbps
-          const hasGoodRTT = !rtt || rtt < 200 // Increased from 100 to 200ms
-
-          if (hasGoodDownlink && hasGoodRTT) {
-            newStatus = 'good'
-          } else if (downlink && downlink >= 0.5) {
-            // Very lenient downlink
-            newStatus = 'unstable'
-          } else {
-            newStatus = 'poor'
-          }
-        }
-        // 3G connections
-        else if (effectiveType && effectiveType.includes('3g')) {
-          if (downlink && downlink >= 0.5) {
-            newStatus = 'unstable'
-          } else {
-            newStatus = 'poor'
-          }
-        }
-        // 2G or slower connections
-        else if (
-          effectiveType &&
-          (effectiveType.includes('2g') || effectiveType.includes('slow-2g'))
-        ) {
-          newStatus = 'poor'
-        }
-        // Unknown effective type but we have connection info
-        else if (effectiveType) {
-          // We have an effective type, but it's not one we explicitly handle
-          // Assume good connection since we have connection information
-          newStatus = 'good'
-        }
-        // No effective type but we have other connection info
-        else if (downlink || rtt) {
-          // If we have performance metrics, use them to determine quality
-          const hasReasonableDownlink = !downlink || downlink >= 0.5
-          const hasReasonableRTT = !rtt || rtt < 300
-
-          if (hasReasonableDownlink && hasReasonableRTT) {
-            newStatus = 'good'
-          } else if (hasReasonableDownlink || hasReasonableRTT) {
-            newStatus = 'unstable'
-          } else {
-            newStatus = 'poor'
-          }
-        }
-        // No connection info available
-        else {
-          // If we're online but have no connection info, assume good
-          // This is common in browsers that don't support NetworkInformation API
-          newStatus = 'good'
-        }
-      } else {
-        // No NetworkInformation API available, but we're online
-        // Assume good connection since we're online
-        newStatus = 'good'
-      }
-
-      // If we determined the connection should be good based on browser APIs,
-      // verify it with an actual connection test
-      if (newStatus === 'good') {
-        // Only run connection test if this is not the initial check
-        // This prevents blocking during initialization
-        const isInitialCheck = lastConnectionStatus.current === 'unknown'
-
-        if (!isInitialCheck) {
-          const connectionTestPassed = await testConnection()
-          if (!connectionTestPassed) {
-            // If we have good connection metrics but the API test is slow,
-            // only downgrade to unstable if we don't have strong connection indicators
-            const hasStrongConnectionIndicators =
-              connection?.type === 'ethernet' ||
-              connection?.type === 'wifi' ||
-              (connection?.effectiveType?.includes('4g') &&
-                connection?.downlink &&
-                connection.downlink >= 1.5)
-
-            if (!hasStrongConnectionIndicators) {
-              newStatus = 'unstable'
-              addLogRef.current(
-                'WARN',
-                'Connection test failed and no strong connection indicators, downgrading to unstable',
-                '[Connection]'
-              )
-            } else {
-              addLogRef.current(
-                'INFO',
-                'Connection test slow but strong connection indicators present, keeping status as good',
-                '[Connection]'
-              )
-            }
-          }
-        } else {
-          addLogRef.current(
-            'INFO',
-            'Skipping connection test during initial check to avoid blocking initialization',
-            '[Connection]'
-          )
-        }
-      }
+      const isConnected = await testConnection()
+      const newStatus: 'connected' | 'disconnected' = isConnected ? 'connected' : 'disconnected'
 
       if (newStatus !== lastConnectionStatus.current) {
         addLogRef.current(
           'INFO',
-          `Connection status changed to ${newStatus} (type: ${connectionInfo.type}, effectiveType: ${connectionInfo.effectiveType})`,
+          `Connection status changed to ${newStatus}`,
           '[Connection]'
         )
         setHealthStatus((prev) => ({ ...prev, connection: newStatus }))
@@ -599,39 +449,13 @@ export function useSpotifyHealthMonitor(
     // Initial check
     updateConnectionStatus()
 
-    // Create stable function references for event listeners
-    const handleOnline = () => void updateConnectionStatus()
-    const handleOffline = () => void updateConnectionStatus()
-    const handleConnectionChange = () => void updateConnectionStatus()
-
-    // Set up event listeners
-    window.addEventListener('online', handleOnline)
-    window.addEventListener('offline', handleOffline)
-
-    const connection = (navigator as { connection?: NetworkInformation })
-      .connection
-    if (connection) {
-      connection.addEventListener('change', handleConnectionChange)
-    }
-
-    // Set up periodic connection test (every 30 seconds) - but delay the first one
+    // Set up periodic connection test (every 30 seconds)
     const connectionTestInterval = setInterval(() => {
       void updateConnectionStatus()
     }, 30000)
 
-    // Run an initial connection test after a delay to avoid blocking initialization
-    const initialConnectionTest = setTimeout(() => {
-      void updateConnectionStatus()
-    }, 5000) // Wait 5 seconds before first connection test
-
     return () => {
-      window.removeEventListener('online', handleOnline)
-      window.removeEventListener('offline', handleOffline)
-      if (connection) {
-        connection.removeEventListener('change', handleConnectionChange)
-      }
       clearInterval(connectionTestInterval)
-      clearTimeout(initialConnectionTest)
     }
   }, []) // Empty dependency array since we're using refs
 
