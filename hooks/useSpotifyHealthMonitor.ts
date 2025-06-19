@@ -433,7 +433,9 @@ export function useSpotifyHealthMonitor(
 
     const updateConnectionStatus = async (): Promise<void> => {
       const isConnected = await testConnection()
-      const newStatus: 'connected' | 'disconnected' = isConnected ? 'connected' : 'disconnected'
+      const newStatus: 'connected' | 'disconnected' = isConnected
+        ? 'connected'
+        : 'disconnected'
 
       if (newStatus !== lastConnectionStatus.current) {
         addLogRef.current(
