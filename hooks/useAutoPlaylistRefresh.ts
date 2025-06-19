@@ -46,7 +46,9 @@ export function useAutoPlaylistRefresh({
             'Auto-playlist refresh: Enough tracks remaining, no action needed',
             'AutoPlaylistRefresh'
           )
-        } else if (errorMessage.includes('Refresh operation already in progress')) {
+        } else if (
+          errorMessage.includes('Refresh operation already in progress')
+        ) {
           addLog(
             'INFO',
             'Auto-playlist refresh: Refresh operation already in progress, skipping',
