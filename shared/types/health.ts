@@ -4,6 +4,6 @@ export interface HealthStatus {
   playback: 'playing' | 'paused' | 'stopped' | 'unknown' | 'error'
   token: 'valid' | 'expired' | 'error' | 'unknown'
   tokenExpiringSoon: boolean
-  connection: 'good' | 'poor' | 'unstable' | 'error' | 'unknown'
+  connection: 'connected' | 'disconnected' | 'unknown'
   fixedPlaylist: 'found' | 'not_found' | 'error' | 'unknown'
 }
