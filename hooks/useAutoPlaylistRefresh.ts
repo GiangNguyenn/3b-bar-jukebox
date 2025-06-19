@@ -37,13 +37,19 @@ export function useAutoPlaylistRefresh({
           'AutoPlaylistRefresh'
         )
       } catch (error) {
-        // Check if the error is "Enough tracks remaining" which is expected behavior
+        // Check if the error is an expected behavior
         const errorMessage =
           error instanceof Error ? error.message : String(error)
         if (errorMessage.includes('Enough tracks remaining')) {
           addLog(
             'INFO',
             'Auto-playlist refresh: Enough tracks remaining, no action needed',
+            'AutoPlaylistRefresh'
+          )
+        } else if (errorMessage.includes('Refresh operation already in progress')) {
+          addLog(
+            'INFO',
+            'Auto-playlist refresh: Refresh operation already in progress, skipping',
             'AutoPlaylistRefresh'
           )
         } else {

@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState, useCallback } from 'react'
 import { useSpotifyPlayerStore } from '@/hooks/useSpotifyPlayer'
+import { ErrorMessage } from '@/components/ui/error-message'
 
 export function SpotifyPlayer(): JSX.Element {
   // State
@@ -79,9 +80,10 @@ export function SpotifyPlayer(): JSX.Element {
 
   if (error) {
     return (
-      <div className='p-4 text-red-500'>
-        <p>Error: {error}</p>
-      </div>
+      <ErrorMessage
+        message={`Error: ${error}`}
+        onDismiss={() => setError(null)}
+      />
     )
   }
 

@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { TrackDetails } from '@/shared/types'
 import { handleApiError } from '@/shared/utils/errorHandling'
+import { ErrorMessage } from '@/components/ui/error-message'
 import Image from 'next/image'
 
 interface SearchInputProps {
@@ -91,7 +92,13 @@ export default function SearchInput({
         </button>
       </div>
 
-      {error && <div className='mt-2 text-red-500'>{error}</div>}
+      {error && (
+        <ErrorMessage
+          message={error}
+          onDismiss={() => setError(null)}
+          className='mt-2'
+        />
+      )}
 
       {searchResults.length > 0 && (
         <div className='mt-4 max-h-96 overflow-y-auto rounded-lg border border-gray-200'>
