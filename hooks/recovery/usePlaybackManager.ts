@@ -124,13 +124,27 @@ export function usePlaybackManager(playlistId: string | null) {
           await spotifyApi.resumePlayback()
         }
 
+        // Add a small delay to allow playback state to settle
+        await new Promise((resolve) => setTimeout(resolve, 2000))
+
         // Verify playback resumed correctly
         const verificationResult = await verifyPlaybackResume(
           `spotify:playlist:${playlistId}`,
           deviceId
         )
 
+        console.log(
+          '[PlaybackManager] Verification result:',
+          verificationResult
+        )
+
         if (!verificationResult.isSuccessful) {
+          console.error('[PlaybackManager] Verification failed:', {
+            reason: verificationResult.reason,
+            details: verificationResult.details,
+            deviceId,
+            playlistId
+          })
           throw new Error(verificationResult.reason)
         }
 

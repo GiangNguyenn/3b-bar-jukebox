@@ -46,7 +46,7 @@ export async function handleErrorRecovery(
     // Basic error recovery without using hooks
     // This function should be called from within a React component that has access to hooks
     console.log('[Error Recovery] Attempting basic error recovery')
-    
+
     // For now, just log the error and return false
     // The actual recovery should be handled by the component that calls this function
     console.error('[Error Recovery] Error occurred:', error)

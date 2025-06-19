@@ -1,13 +1,17 @@
 /* eslint-disable @typescript-eslint/no-unsafe-assignment */
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
-import { useSpotifyPlayerStore, useSpotifyPlayerHook } from '@/hooks/useSpotifyPlayer'
+import { useCallback, useEffect, useState, useRef } from 'react'
+import {
+  useSpotifyPlayerStore,
+  useAdminSpotifyPlayerHook
+} from '@/hooks/useSpotifyPlayer'
 import { useFixedPlaylist } from '@/hooks/useFixedPlaylist'
 import { useConsoleLogsContext } from '@/hooks/ConsoleLogsProvider'
 import { usePlaylist } from '@/hooks/usePlaylist'
 import { useTrackSuggestions } from './components/track-suggestions/hooks/useTrackSuggestions'
 import { useSpotifyHealthMonitor } from '@/hooks/useSpotifyHealthMonitor'
+import { useAutoPlaylistRefresh } from '@/hooks/useAutoPlaylistRefresh'
 import { SpotifyApiService } from '@/services/spotifyApi'
 import { RecoveryStatus } from '@/components/ui/recovery-status'
 import { HealthStatusSection } from './components/dashboard/health-status-section'
@@ -17,27 +21,33 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { type PlaybackInfo } from './components/dashboard/types'
 import { type HealthStatus } from '@/shared/types'
 import { type TrackSuggestionsState } from '@/shared/types/trackSuggestions'
+import { useRecoverySystem } from '@/hooks/recovery'
 
 export default function AdminPage(): JSX.Element {
   // State
   const [isLoading, setIsLoading] = useState(false)
+  const [isRefreshing, setIsRefreshing] = useState(false)
   const [playbackInfo, setPlaybackInfo] = useState<PlaybackInfo | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [activeTab, setActiveTab] = useState<
     'dashboard' | 'playlist' | 'settings' | 'logs'
   >('dashboard')
-  const [lastProgressCheck, setLastProgressCheck] = useState<number>(0)
-  const [lastProgressMs, setLastProgressMs] = useState<number>(0)
+  const initializationAttemptedRef = useRef(false)
 
   // Hooks
-  const { deviceId, isReady, playbackState } = useSpotifyPlayerStore()
-  const { createPlayer } = useSpotifyPlayerHook()
+  const {
+    deviceId,
+    isReady,
+    playbackState,
+    status: playerStatus
+  } = useSpotifyPlayerStore()
+  const { createPlayer } = useAdminSpotifyPlayerHook()
   const {
     fixedPlaylistId,
     isLoading: isFixedPlaylistLoading,
     error: fixedPlaylistError
   } = useFixedPlaylist()
-  const { logs: consoleLogs, addLog } = useConsoleLogsContext()
+  const { addLog } = useConsoleLogsContext()
 
   // Use the playlist hook
   const playlistHookResult = usePlaylist(fixedPlaylistId ?? '')
@@ -51,36 +61,77 @@ export default function AdminPage(): JSX.Element {
   const updateTrackSuggestionsState = trackSuggestions.updateState
 
   // First, use the health monitor hook
-  const { healthStatus, setHealthStatus, signalManualPlaybackAction } = useSpotifyHealthMonitor(fixedPlaylistId)
+  const { healthStatus, setHealthStatus } = useSpotifyHealthMonitor(
+    fixedPlaylistId,
+    isFixedPlaylistLoading,
+    fixedPlaylistError
+  )
+
+  // Get recovery system for manual recovery
+  const { state: recoveryState, recover } = useRecoverySystem(
+    deviceId,
+    fixedPlaylistId,
+    undefined // No callback needed for admin page
+  )
+
+  // Enable automatic playlist refresh every 3 minutes
+  useAutoPlaylistRefresh({
+    isEnabled: isReady && !!fixedPlaylistId,
+    trackSuggestionsState,
+    refreshPlaylist
+  })
 
   // Create a more reliable playback state indicator
   const getIsActuallyPlaying = useCallback(() => {
     if (!playbackState) return false
-    
+
     // If the SDK says it's not playing, it's not playing
     if (!playbackState.is_playing) return false
-    
+
     // If we have a track and it's supposed to be playing, trust the SDK state
-    // The health monitor will handle detecting stalled progress
     return true
   }, [playbackState])
 
   // Initialize the player when the component mounts
   useEffect(() => {
     const initializePlayer = async (): Promise<void> => {
-      if (!isReady && typeof window !== 'undefined' && window.Spotify) {
+      // Only initialize if not ready, SDK is available, and we haven't attempted initialization yet
+      if (
+        playerStatus === 'initializing' &&
+        typeof window !== 'undefined' &&
+        window.Spotify &&
+        !initializationAttemptedRef.current
+      ) {
         try {
-          addLog('INFO', 'Initializing Spotify player...', 'AdminPage')
+          initializationAttemptedRef.current = true
+          addLog(
+            'INFO',
+            `Initializing Spotify player... (status: ${playerStatus})`,
+            'AdminPage'
+          )
           await createPlayer()
-          addLog('INFO', 'Spotify player initialized successfully', 'AdminPage')
+          addLog('INFO', 'Spotify player initialization completed', 'AdminPage')
         } catch (error) {
-          addLog('ERROR', 'Failed to initialize Spotify player', 'AdminPage', error)
+          addLog(
+            'ERROR',
+            'Failed to initialize Spotify player',
+            'AdminPage',
+            error instanceof Error ? error : undefined
+          )
+          // Reset the flag on error so we can retry
+          initializationAttemptedRef.current = false
         }
+      } else {
+        addLog(
+          'INFO',
+          `Skipping player initialization - status: ${playerStatus}, SDK available: ${typeof window !== 'undefined' && !!window.Spotify}, already attempted: ${initializationAttemptedRef.current}`,
+          'AdminPage'
+        )
       }
     }
 
     void initializePlayer()
-  }, [isReady, createPlayer, addLog])
+  }, [playerStatus, addLog, createPlayer])
 
   // Update health status when device ID or fixed playlist changes
   useEffect(() => {
@@ -103,7 +154,6 @@ export default function AdminPage(): JSX.Element {
 
       if (getIsActuallyPlaying()) {
         // If currently playing, pause playback
-        signalManualPlaybackAction('pause')
         const result = await spotifyApi.pausePlayback(deviceId)
         if (result.success) {
           setPlaybackInfo((prev: PlaybackInfo | null) =>
@@ -123,7 +173,6 @@ export default function AdminPage(): JSX.Element {
         }
       } else {
         // If not playing, resume playback
-        signalManualPlaybackAction('play')
         const result = await spotifyApi.resumePlayback()
         if (result.success) {
           setPlaybackInfo((prev: PlaybackInfo | null) =>
@@ -183,53 +232,71 @@ export default function AdminPage(): JSX.Element {
     } finally {
       setIsLoading(false)
     }
-  }, [deviceId, getIsActuallyPlaying, addLog, setHealthStatus, signalManualPlaybackAction])
+  }, [deviceId, getIsActuallyPlaying, addLog, setHealthStatus])
 
   // Manual recovery trigger for user-initiated recovery (e.g., device mismatch, connection issues)
   const handleForceRecovery = useCallback(async (): Promise<void> => {
     try {
       setIsLoading(true)
       addLog('INFO', 'Manual recovery triggered by user', 'AdminPage')
-      
-      // Update health status to indicate recovery is in progress
-      setHealthStatus((prev: HealthStatus) => ({
-        ...prev,
-        recovery: 'recovering',
-        recoveryMessage: 'Manual recovery in progress...',
-        recoveryProgress: 0,
-        recoveryCurrentStep: 'manual_trigger'
-      }))
-      
-      // Note: The actual recovery logic is handled by the health monitor
-      // This button is for manual recovery when automatic recovery hasn't triggered
-      // but the user wants to force a recovery (e.g., for device mismatch issues)
-      
+
+      // Trigger the recovery system
+      await recover()
+
+      addLog('INFO', 'Manual recovery completed', 'AdminPage')
     } catch (error) {
       addLog(
         'ERROR',
         `Manual recovery failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
         'AdminPage',
-        error
+        error instanceof Error ? error : undefined
       )
-      setError(error instanceof Error ? error.message : 'Manual recovery failed')
+      setError(
+        error instanceof Error ? error.message : 'Manual recovery failed'
+      )
     } finally {
       setIsLoading(false)
     }
-  }, [addLog, setHealthStatus])
+  }, [addLog, recover])
 
   // Create a wrapper for the force recovery handler
   const handleForceRecoveryClick = useCallback((): void => {
     void handleForceRecovery()
   }, [handleForceRecovery])
 
+  // Handle refresh playlist with loading state
+  const handleRefreshPlaylist = useCallback(async (): Promise<void> => {
+    try {
+      setIsRefreshing(true)
+      addLog('INFO', 'Refreshing playlist...', 'AdminPage')
+      await refreshPlaylist(trackSuggestionsState)
+      addLog('INFO', 'Playlist refreshed successfully', 'AdminPage')
+    } catch (error) {
+      addLog(
+        'ERROR',
+        'Failed to refresh playlist',
+        'AdminPage',
+        error instanceof Error ? error : undefined
+      )
+      setError(
+        error instanceof Error ? error.message : 'Failed to refresh playlist'
+      )
+    } finally {
+      setIsRefreshing(false)
+    }
+  }, [refreshPlaylist, trackSuggestionsState, addLog])
+
   // Add missing functions
   const handleTabChange = useCallback((value: string): void => {
     setActiveTab(value as 'dashboard' | 'playlist' | 'settings' | 'logs')
   }, [])
 
-  const handleTrackSuggestionsStateChange = useCallback((state: TrackSuggestionsState): void => {
-    updateTrackSuggestionsState(state)
-  }, [updateTrackSuggestionsState])
+  const handleTrackSuggestionsStateChange = useCallback(
+    (state: TrackSuggestionsState): void => {
+      updateTrackSuggestionsState(state)
+    },
+    [updateTrackSuggestionsState]
+  )
 
   const formatTime = useCallback((ms: number): string => {
     const seconds = Math.floor(ms / 1000)
@@ -239,14 +306,23 @@ export default function AdminPage(): JSX.Element {
   }, [])
 
   useEffect(() => {
-    addLog('INFO', `AdminPage render: playbackState=${JSON.stringify(playbackState)}, healthStatus.playback=${healthStatus.playback}`, 'AdminPage')
-  }, [playbackState, healthStatus.playback])
+    addLog(
+      'INFO',
+      `AdminPage render: playbackState=${JSON.stringify(playbackState)}, healthStatus.playback=${healthStatus.playback}`,
+      'AdminPage'
+    )
+  }, [playbackState, healthStatus.playback, addLog])
 
   // Update error handling
   if (fixedPlaylistError) {
     return (
       <div className='p-4 text-red-500'>
-        <p>Error loading playlist: {fixedPlaylistError.message}</p>
+        <p>
+          Error loading playlist:{' '}
+          {fixedPlaylistError instanceof Error
+            ? fixedPlaylistError.message
+            : String(fixedPlaylistError)}
+        </p>
       </div>
     )
   }
@@ -262,7 +338,12 @@ export default function AdminPage(): JSX.Element {
   if (playlistRefreshError) {
     return (
       <div className='p-4 text-red-500'>
-        <p>Error refreshing playlist: {playlistRefreshError}</p>
+        <p>
+          Error refreshing playlist:{' '}
+          {playlistRefreshError instanceof Error
+            ? playlistRefreshError.message
+            : String(playlistRefreshError)}
+        </p>
       </div>
     )
   }
@@ -270,10 +351,10 @@ export default function AdminPage(): JSX.Element {
   return (
     <div className='text-white min-h-screen bg-black p-4'>
       <RecoveryStatus
-        isRecovering={healthStatus.recovery === 'recovering'}
-        message={healthStatus.recoveryMessage}
-        progress={healthStatus.recoveryProgress}
-        currentStep={healthStatus.recoveryCurrentStep}
+        isRecovering={recoveryState.isRecovering}
+        message={recoveryState.message}
+        progress={recoveryState.progress}
+        currentStep={recoveryState.currentStep}
       />
 
       <div className='mx-auto max-w-xl space-y-4'>
@@ -326,11 +407,7 @@ export default function AdminPage(): JSX.Element {
               <div className='flex gap-4'>
                 <button
                   onClick={() => void handlePlayPause()}
-                  disabled={
-                    !isReady ||
-                    isLoading ||
-                    healthStatus.recovery === 'recovering'
-                  }
+                  disabled={!isReady || isLoading || recoveryState.isRecovering}
                   className={`text-white flex-1 rounded-lg px-4 py-2 font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
                     getIsActuallyPlaying()
                       ? 'bg-blue-600 hover:bg-blue-700'
@@ -341,26 +418,24 @@ export default function AdminPage(): JSX.Element {
                     ? 'Loading...'
                     : !isReady
                       ? 'Initializing...'
-                      : healthStatus.recovery === 'recovering'
+                      : recoveryState.isRecovering
                         ? 'Recovering...'
                         : getIsActuallyPlaying()
                           ? 'Pause'
                           : 'Play'}
                 </button>
                 <button
-                  onClick={() => void refreshPlaylist(trackSuggestionsState)}
+                  onClick={() => void handleRefreshPlaylist()}
                   disabled={
-                    !isReady ||
-                    isLoading ||
-                    healthStatus.recovery === 'recovering'
+                    !isReady || isRefreshing || recoveryState.isRecovering
                   }
                   className='text-white flex-1 rounded-lg bg-purple-600 px-4 py-2 font-medium transition-colors hover:bg-purple-700 disabled:cursor-not-allowed disabled:opacity-50'
                 >
-                  {isLoading
-                    ? 'Loading...'
+                  {isRefreshing
+                    ? 'Refreshing...'
                     : !isReady
                       ? 'Initializing...'
-                      : healthStatus.recovery === 'recovering'
+                      : recoveryState.isRecovering
                         ? 'Recovering...'
                         : 'Refresh Playlist'}
                 </button>
@@ -371,7 +446,7 @@ export default function AdminPage(): JSX.Element {
                 >
                   {isLoading
                     ? 'Loading...'
-                    : healthStatus.recovery === 'recovering'
+                    : recoveryState.isRecovering
                       ? 'Recovering...'
                       : 'Manual Recovery'}
                 </button>
@@ -389,47 +464,7 @@ export default function AdminPage(): JSX.Element {
             <PlaylistDisplay playlistId={fixedPlaylistId ?? ''} />
           </TabsContent>
         </Tabs>
-
-        <div className='mt-8'>
-          <h2 className='mb-4 text-xl font-semibold'>Console Logs</h2>
-          <div className='max-h-96 space-y-2 overflow-y-auto rounded-lg bg-gray-800/50 p-4'>
-            {consoleLogs.map((log, index) => (
-              <div
-                key={index}
-                className={`rounded p-2 ${
-                  log.level === 'ERROR'
-                    ? 'bg-red-900/50'
-                    : log.level === 'WARN'
-                      ? 'bg-yellow-900/50'
-                      : 'bg-gray-700/50'
-                }`}
-              >
-                <div className='flex items-center justify-between'>
-                  <span className='font-mono text-sm'>{log.timestamp}</span>
-                  <span
-                    className={`rounded px-2 py-1 text-xs ${
-                      log.level === 'ERROR'
-                        ? 'bg-red-500'
-                        : log.level === 'WARN'
-                          ? 'bg-yellow-500'
-                          : 'bg-blue-500'
-                    }`}
-                  >
-                    {log.level}
-                  </span>
-                </div>
-                <p className='mt-1'>{log.message}</p>
-                {log.error && (
-                  <pre className='mt-2 overflow-x-auto rounded bg-gray-900/50 p-2 text-xs'>
-                    {JSON.stringify(log.error, null, 2)}
-                  </pre>
-                )}
-              </div>
-            ))}
-          </div>
-        </div>
       </div>
     </div>
   )
 }
-

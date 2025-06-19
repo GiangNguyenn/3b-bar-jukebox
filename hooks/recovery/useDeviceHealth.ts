@@ -9,14 +9,11 @@ export type DeviceHealthStatus =
 export function useDeviceHealth() {
   const currentStatusRef = useRef<DeviceHealthStatus>('unknown')
 
-  const updateHealth = useCallback(
-    (status: DeviceHealthStatus) => {
-      if (status !== currentStatusRef.current) {
-        currentStatusRef.current = status
-      }
-    },
-    []
-  )
+  const updateHealth = useCallback((status: DeviceHealthStatus) => {
+    if (status !== currentStatusRef.current) {
+      currentStatusRef.current = status
+    }
+  }, [])
 
   const reset = useCallback(() => {
     updateHealth('unknown')
@@ -27,4 +24,4 @@ export function useDeviceHealth() {
     reset,
     currentStatus: currentStatusRef.current
   }
-} 
+}

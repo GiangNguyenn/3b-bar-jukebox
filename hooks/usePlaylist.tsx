@@ -96,24 +96,21 @@ export const usePlaylist = (
   ) => {
     try {
       const playlistRefreshService = PlaylistRefreshServiceImpl.getInstance()
+      const result = await playlistRefreshService.refreshPlaylist(
+        false,
+        trackSuggestionsState
+      )
 
-      if (trackSuggestionsState) {
-        const result = await playlistRefreshService.refreshTrackSuggestions({
-          genres: trackSuggestionsState.genres,
-          yearRange: trackSuggestionsState.yearRange,
-          popularity: trackSuggestionsState.popularity,
-          allowExplicit: trackSuggestionsState.allowExplicit,
-          maxSongLength: trackSuggestionsState.maxSongLength,
-          songsBetweenRepeats: trackSuggestionsState.songsBetweenRepeats,
-          maxOffset: trackSuggestionsState.maxOffset
-        })
-
-        if (!result.success) {
+      if (!result.success) {
+        // Don't throw for "Enough tracks remaining" as it's expected behavior
+        if (result.message === 'Enough tracks remaining') {
+          console.log('[Playlist] Enough tracks remaining, no action needed')
+        } else {
           throw new Error(result.message)
         }
       }
 
-      // Force a revalidation with fresh data
+      // Force a revalidation with fresh data to update UI
       await refreshPlaylist(
         async () => {
           const response = await sendApiRequest<SpotifyPlaylistObjectFull>({

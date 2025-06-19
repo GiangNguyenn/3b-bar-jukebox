@@ -1,7 +1,7 @@
 import { SpotifyPlaylistItem, SpotifyPlaylists } from '@/shared/types'
 import { sendApiRequest } from '../shared/api'
 import { useMyPlaylists } from './useMyPlaylists'
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { ERROR_MESSAGES, ErrorMessage } from '@/shared/constants/errors'
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs'
 import { useParams, usePathname } from 'next/navigation'
@@ -13,13 +13,20 @@ export function useFixedPlaylist() {
   const params = useParams()
   const pathname = usePathname()
   const displayName = params?.username as string | undefined
-  const supabase = createClientComponentClient()
+  const supabaseRef = useRef(createClientComponentClient())
   const [fixedPlaylistId, setFixedPlaylistId] = useState<string | null>(null)
   const [error, setError] = useState<Error | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [isInitialFetchComplete, setIsInitialFetchComplete] = useState(false)
 
   useEffect(() => {
+    console.log(
+      '[FixedPlaylist] Effect triggered with displayName:',
+      displayName,
+      'pathname:',
+      pathname
+    )
+
     // Reset state when displayName changes
     setFixedPlaylistId(null)
     setError(null)
@@ -50,7 +57,7 @@ export function useFixedPlaylist() {
           displayName
         )
         // Get the user's profile ID using their display_name
-        const { data: profile, error: profileError } = await supabase
+        const { data: profile, error: profileError } = await supabaseRef.current
           .from('profiles')
           .select('id, spotify_access_token')
           .eq('display_name', displayName)
@@ -73,11 +80,12 @@ export function useFixedPlaylist() {
 
         // Get their playlist ID
         console.log('[FixedPlaylist] Fetching playlist for user:', profile.id)
-        const { data: playlist, error: playlistError } = await supabase
-          .from('playlists')
-          .select('spotify_playlist_id')
-          .eq('user_id', profile.id)
-          .single()
+        const { data: playlist, error: playlistError } =
+          await supabaseRef.current
+            .from('playlists')
+            .select('spotify_playlist_id')
+            .eq('user_id', profile.id)
+            .single()
 
         if (playlistError) {
           console.error(
@@ -112,7 +120,7 @@ export function useFixedPlaylist() {
     }
 
     void fetchPlaylistId()
-  }, [displayName, supabase, pathname])
+  }, [displayName, pathname])
 
   return {
     fixedPlaylistId,

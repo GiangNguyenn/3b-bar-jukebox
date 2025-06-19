@@ -1,5 +1,5 @@
 import React from 'react'
-import { type RecoveryState } from '@/hooks/recovery/useRecoverySystem'
+import { type RecoveryState } from '@/hooks/recovery'
 
 interface RecoveryStatusProps {
   state: RecoveryState

@@ -8,7 +8,12 @@ import { handleOperationError } from '@/shared/utils/errorHandling'
 import { useFixedPlaylist } from '@/hooks/useFixedPlaylist'
 
 // Add logging context
-let addLog: (level: 'LOG' | 'INFO' | 'WARN' | 'ERROR', message: string, context?: string, error?: Error) => void
+let addLog: (
+  level: 'LOG' | 'INFO' | 'WARN' | 'ERROR',
+  message: string,
+  context?: string,
+  error?: Error
+) => void
 
 // Function to set the logging function
 export function setSpotifyApiLogger(logger: typeof addLog) {
@@ -62,9 +67,17 @@ export class SpotifyApiService implements SpotifyApiClient {
       }
     } catch (error) {
       if (addLog) {
-        addLog('ERROR', 'Error loading cached playback state', 'SpotifyApi', error instanceof Error ? error : undefined)
+        addLog(
+          'ERROR',
+          'Error loading cached playback state',
+          'SpotifyApi',
+          error instanceof Error ? error : undefined
+        )
       } else {
-        console.error('[SpotifyApi] Error loading cached playback state:', error)
+        console.error(
+          '[SpotifyApi] Error loading cached playback state:',
+          error
+        )
       }
     }
   }
@@ -82,7 +95,12 @@ export class SpotifyApiService implements SpotifyApiClient {
       )
     } catch (error) {
       if (addLog) {
-        addLog('ERROR', 'Error saving playback state', 'SpotifyApi', error instanceof Error ? error : undefined)
+        addLog(
+          'ERROR',
+          'Error saving playback state',
+          'SpotifyApi',
+          error instanceof Error ? error : undefined
+        )
       } else {
         console.error('[SpotifyApi] Error saving playback state:', error)
       }
@@ -293,7 +311,12 @@ export class SpotifyApiService implements SpotifyApiClient {
             }
           } catch (error) {
             if (addLog) {
-              addLog('WARN', 'Failed to resume from current state', 'SpotifyApi', error instanceof Error ? error : undefined)
+              addLog(
+                'WARN',
+                'Failed to resume from current state',
+                'SpotifyApi',
+                error instanceof Error ? error : undefined
+              )
             } else {
               console.warn(
                 '[SpotifyApi] Failed to resume from current state:',
@@ -330,7 +353,12 @@ export class SpotifyApiService implements SpotifyApiClient {
             }
           } catch (error) {
             if (addLog) {
-              addLog('WARN', 'Failed to resume from last known position', 'SpotifyApi', error instanceof Error ? error : undefined)
+              addLog(
+                'WARN',
+                'Failed to resume from last known position',
+                'SpotifyApi',
+                error instanceof Error ? error : undefined
+              )
             } else {
               console.warn(
                 '[SpotifyApi] Failed to resume from last known position:',
@@ -365,7 +393,12 @@ export class SpotifyApiService implements SpotifyApiClient {
         }
       } catch (error) {
         if (addLog) {
-          addLog('ERROR', 'Error in resumePlayback', 'SpotifyApi', error instanceof Error ? error : undefined)
+          addLog(
+            'ERROR',
+            'Error in resumePlayback',
+            'SpotifyApi',
+            error instanceof Error ? error : undefined
+          )
         } else {
           console.error('[SpotifyApi] Error in resumePlayback:', error)
         }
@@ -422,7 +455,12 @@ export class SpotifyApiService implements SpotifyApiClient {
       return activeDevice.id
     } catch (error) {
       if (addLog) {
-        addLog('ERROR', 'Error ensuring active device', 'SpotifyApi', error instanceof Error ? error : undefined)
+        addLog(
+          'ERROR',
+          'Error ensuring active device',
+          'SpotifyApi',
+          error instanceof Error ? error : undefined
+        )
       } else {
         console.error('[SpotifyApi] Error ensuring active device:', error)
       }
@@ -442,7 +480,12 @@ export class SpotifyApiService implements SpotifyApiClient {
         return { success: true }
       } catch (error) {
         if (addLog) {
-          addLog('ERROR', 'Error in pausePlayback', 'SpotifyApi', error instanceof Error ? error : undefined)
+          addLog(
+            'ERROR',
+            'Error in pausePlayback',
+            'SpotifyApi',
+            error instanceof Error ? error : undefined
+          )
         } else {
           console.error('[SpotifyApi] Error in pausePlayback:', error)
         }
