@@ -353,16 +353,16 @@ export function useSpotifyHealthMonitor(
                 `Device health check failed: ${validation.errors.join(', ')}`,
                 'HealthMonitor'
               )
-              
+
               // Check if this is a device ID mismatch to provide better status
-              const hasDeviceMismatch = validation.errors.some(error => 
+              const hasDeviceMismatch = validation.errors.some((error) =>
                 error.includes('Device ID mismatch')
               )
-              
+
               if (hasDeviceMismatch) {
                 // More descriptive status for device ID mismatch
-                setHealthStatus((prev: HealthStatus) => ({ 
-                  ...prev, 
+                setHealthStatus((prev: HealthStatus) => ({
+                  ...prev,
                   device: 'unresponsive' // Use 'unresponsive' to indicate another device is active
                 }))
                 addLogRef.current(
@@ -372,15 +372,21 @@ export function useSpotifyHealthMonitor(
                 )
               } else {
                 // For other types of errors, use disconnected status
-                setHealthStatus((prev: HealthStatus) => ({ ...prev, device: 'disconnected' }))
+                setHealthStatus((prev: HealthStatus) => ({
+                  ...prev,
+                  device: 'disconnected'
+                }))
               }
-              
+
               deviceMismatchCountRef.current = 0
             }
           } else {
             deviceMismatchCountRef.current = 0
             // Device is working properly, set status to healthy
-            setHealthStatus((prev: HealthStatus) => ({ ...prev, device: 'healthy' }))
+            setHealthStatus((prev: HealthStatus) => ({
+              ...prev,
+              device: 'healthy'
+            }))
           }
 
           // If validation suggests retry, reduce the mismatch count to give more time
