@@ -47,4 +47,4 @@ export function getSiteUrl(): string {
 
   // Fallback to dynamic URL
   return getBaseUrl()
-} 
+}
