@@ -63,12 +63,33 @@ export async function middleware(request: NextRequest) {
       if (premiumResponse.ok) {
         const premiumData = await premiumResponse.json()
         if (!premiumData.isPremium) {
+          console.log(
+            'Non-premium user accessing admin route, redirecting to premium required page'
+          )
           // Non-premium user, redirect to premium required page
           const redirectUrl = new URL('/premium-required', request.url)
           return NextResponse.redirect(redirectUrl)
         }
       } else {
-        // Premium verification failed, redirect to premium required page
+        // Premium verification failed, check if it's a token issue
+        const errorData = await premiumResponse.json().catch(() => ({}))
+        console.error('Premium verification failed in middleware:', {
+          status: premiumResponse.status,
+          error: errorData
+        })
+
+        // If it's a token issue, redirect to sign in
+        if (
+          premiumResponse.status === 401 ||
+          errorData.code === 'NO_SPOTIFY_TOKEN' ||
+          errorData.code === 'INVALID_SPOTIFY_TOKEN'
+        ) {
+          console.log('Token issue detected, redirecting to sign in')
+          const redirectUrl = new URL('/auth/signin', request.url)
+          return NextResponse.redirect(redirectUrl)
+        }
+
+        // Other errors, redirect to premium required page
         const redirectUrl = new URL('/premium-required', request.url)
         return NextResponse.redirect(redirectUrl)
       }
@@ -91,12 +112,8 @@ export async function middleware(request: NextRequest) {
 export const config = {
   matcher: [
     /*
-     * Match all request paths except for the ones starting with:
-     * - api (API routes)
-     * - _next/static (static files)
-     * - _next/image (image optimization files)
-     * - favicon.ico (favicon file)
+     * Only match admin routes to prevent interference with OAuth flow
      */
-    '/((?!api|_next/static|_next/image|favicon.ico).*)'
+    '/:username/admin/:path*'
   ]
 }

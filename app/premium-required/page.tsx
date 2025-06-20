@@ -9,13 +9,15 @@ import { usePremiumStatus } from '@/hooks/usePremiumStatus'
 
 export default function PremiumRequiredPage(): JSX.Element {
   const router = useRouter()
-  const [isLoading, setIsLoading] = useState(true)
+  const [isSigningOut, setIsSigningOut] = useState(false)
+  const [isSigningInAgain, setIsSigningInAgain] = useState(false)
   const {
     isPremium: usePremiumStatusPremium,
     productType,
     isLoading: isPremiumLoading,
     error: premiumError,
-    refreshPremiumStatus
+    refreshPremiumStatus,
+    forceRefreshPremiumStatus
   } = usePremiumStatus()
 
   const supabase = createBrowserClient<Database>(
@@ -65,20 +67,78 @@ export default function PremiumRequiredPage(): JSX.Element {
   }
 
   const handleSignOut = async (): Promise<void> => {
-    setIsLoading(true)
+    setIsSigningOut(true)
     try {
       await supabase.auth.signOut()
       router.push('/')
     } catch (error) {
       console.error('Error signing out:', error)
     } finally {
-      setIsLoading(false)
+      setIsSigningOut(false)
     }
   }
 
   const handleRefreshStatus = async (): Promise<void> => {
     await refreshPremiumStatus()
   }
+
+  const handleForceRefresh = async (): Promise<void> => {
+    try {
+      // Clear the premium verification cache by updating the verified_at timestamp
+      const {
+        data: { user }
+      } = await supabase.auth.getUser()
+      if (user) {
+        await supabase
+          .from('profiles')
+          .update({ premium_verified_at: null })
+          .eq('id', user.id)
+        console.log('[PremiumRequired] Cleared premium verification cache')
+      }
+
+      // Now refresh the status with force parameter
+      await forceRefreshPremiumStatus()
+    } catch (error) {
+      console.error('Error force refreshing:', error)
+    }
+  }
+
+  const handleSignInAgain = async (): Promise<void> => {
+    setIsSigningInAgain(true)
+    try {
+      // Clear the user's profile data to ensure fresh start
+      const {
+        data: { user }
+      } = await supabase.auth.getUser()
+      if (user) {
+        try {
+          await supabase.from('profiles').delete().eq('id', user.id)
+          console.log('[PremiumRequired] Cleared user profile data')
+        } catch (error) {
+          console.error('[PremiumRequired] Error clearing profile:', error)
+        }
+      }
+
+      await supabase.auth.signOut()
+      // Redirect to sign in page
+      router.push('/auth/signin')
+
+      // Add a timeout to reset the loading state if redirect doesn't happen immediately
+      setTimeout(() => {
+        setIsSigningInAgain(false)
+      }, 3000)
+    } catch (error) {
+      console.error('Error signing out:', error)
+      setIsSigningInAgain(false)
+    }
+  }
+
+  // Check if the error suggests re-authentication is needed
+  const needsReAuth = premiumError
+    ? premiumError.includes('sign in again') ||
+      premiumError.includes('invalid') ||
+      premiumError.includes('No Spotify access token')
+    : false
 
   return (
     <div className='text-white min-h-screen bg-gradient-to-br from-purple-900 via-blue-900 to-black'>
@@ -103,9 +163,17 @@ export default function PremiumRequiredPage(): JSX.Element {
                   <strong>Current Account:</strong> {productType || 'Unknown'}
                 </p>
                 {premiumError && (
-                  <p className='mt-2 text-sm text-red-400'>
-                    Error: {premiumError}
-                  </p>
+                  <div className='mt-2'>
+                    <p className='text-sm text-red-400'>
+                      Error: {premiumError}
+                    </p>
+                    {needsReAuth && (
+                      <p className='mt-1 text-sm text-yellow-400'>
+                        Your Spotify connection may have expired. Try signing in
+                        again.
+                      </p>
+                    )}
+                  </div>
                 )}
               </div>
             )}
@@ -212,11 +280,29 @@ export default function PremiumRequiredPage(): JSX.Element {
               {isPremiumLoading ? 'Checking...' : 'Refresh Status'}
             </button>
             <button
+              onClick={() => void handleForceRefresh()}
+              disabled={isPremiumLoading}
+              className='text-white flex items-center justify-center gap-2 rounded-lg bg-purple-600 px-6 py-3 font-semibold transition-colors hover:bg-purple-700 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-offset-2 focus:ring-offset-black disabled:cursor-not-allowed disabled:opacity-50'
+            >
+              <FaSync className='h-5 w-5' />
+              Force Refresh
+            </button>
+            {needsReAuth && (
+              <button
+                onClick={() => void handleSignInAgain()}
+                disabled={isSigningInAgain}
+                className='text-white flex items-center justify-center gap-2 rounded-lg bg-orange-600 px-6 py-3 font-semibold transition-colors hover:bg-orange-700 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:ring-offset-2 focus:ring-offset-black disabled:cursor-not-allowed disabled:opacity-50'
+              >
+                <FaSync className='h-5 w-5' />
+                {isSigningInAgain ? 'Signing Out...' : 'Sign In Again'}
+              </button>
+            )}
+            <button
               onClick={() => void handleSignOut()}
-              disabled={isLoading}
+              disabled={isSigningOut}
               className='text-white hover:bg-white/10 focus:ring-white flex items-center justify-center gap-2 rounded-lg border border-gray-600 bg-transparent px-6 py-3 font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-black disabled:cursor-not-allowed disabled:opacity-50'
             >
-              {isLoading ? 'Signing Out...' : 'Sign Out'}
+              {isSigningOut ? 'Signing Out...' : 'Sign Out'}
             </button>
           </div>
 

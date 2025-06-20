@@ -24,7 +24,7 @@ interface TokenResponse {
   expires_at: number
 }
 
-interface AdminProfile {
+interface UserProfile {
   id: string
   spotify_access_token: string
   spotify_refresh_token: string
@@ -80,29 +80,47 @@ export async function GET(): Promise<
       }
     )
 
-    // Get admin profile from database
-    const { data: adminProfile, error: profileError } = await supabase
+    // Get the current user's session
+    const {
+      data: { user },
+      error: userError
+    } = await supabase.auth.getUser()
+
+    if (userError || !user) {
+      console.error('[Token] Error getting current user:', userError)
+      return NextResponse.json(
+        {
+          error: 'User not authenticated',
+          code: 'NOT_AUTHENTICATED',
+          status: 401
+        },
+        { status: 401 }
+      )
+    }
+
+    // Get the current user's profile from database
+    const { data: userProfile, error: profileError } = await supabase
       .from('profiles')
       .select(
         'id, spotify_access_token, spotify_refresh_token, spotify_token_expires_at'
       )
-      .limit(1)
+      .eq('id', user.id)
       .single()
 
-    if (profileError || !adminProfile) {
-      console.error('[Token] Error fetching admin profile:', profileError)
+    if (profileError || !userProfile) {
+      console.error('[Token] Error fetching user profile:', profileError)
       return NextResponse.json(
         {
-          error: 'Failed to get admin credentials',
-          code: 'ADMIN_PROFILE_ERROR',
+          error: 'Failed to get user credentials',
+          code: 'USER_PROFILE_ERROR',
           status: 500
         },
         { status: 500 }
       )
     }
 
-    // Type guard to ensure adminProfile has required fields
-    const typedProfile = adminProfile as AdminProfile
+    // Type guard to ensure userProfile has required fields
+    const typedProfile = userProfile as UserProfile
     if (
       !typedProfile.spotify_access_token ||
       !typedProfile.spotify_refresh_token ||
@@ -110,7 +128,7 @@ export async function GET(): Promise<
     ) {
       return NextResponse.json(
         {
-          error: 'Invalid admin profile data',
+          error: 'Invalid user profile data - missing Spotify credentials',
           code: 'INVALID_PROFILE_DATA',
           status: 500
         },
@@ -161,7 +179,7 @@ export async function GET(): Promise<
           spotify_token_expires_at:
             Math.floor(Date.now() / 1000) + tokenData.expires_in
         })
-        .eq('id', adminProfile.id)
+        .eq('id', userProfile.id)
 
       if (updateError) {
         console.error('[Token] Error updating token:', updateError)
