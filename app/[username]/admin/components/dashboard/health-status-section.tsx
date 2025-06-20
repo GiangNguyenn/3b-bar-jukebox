@@ -94,8 +94,15 @@ export function HealthStatusSection({
             healthStatus.device === 'healthy'
               ? 'Device Connected'
               : healthStatus.device === 'unresponsive'
-                ? 'Device Unresponsive'
-                : 'Device Status Unknown'
+                ? 'Another Device Active'
+                : healthStatus.device === 'disconnected'
+                  ? 'Device Disconnected'
+                  : 'Device Status Unknown'
+          }
+          subtitle={
+            healthStatus.device === 'unresponsive'
+              ? 'Press play to transfer to jukebox'
+              : undefined
           }
         />
 
