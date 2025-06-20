@@ -22,14 +22,10 @@ export default function PlaylistPage({
 }: PlaylistPageProps): JSX.Element {
   const { username } = params
   const {
-    data: profile,
+    profile,
     error: profileError,
-    isLoading: isProfileLoading
-  } = useGetProfile(username) as {
-    data: { username: string } | null
-    error: Error | null
-    isLoading: boolean
-  }
+    loading: isProfileLoading
+  } = useGetProfile()
   const { fixedPlaylistId, isLoading: isPlaylistIdLoading } = useFixedPlaylist()
   const {
     data: playlist,
@@ -73,8 +69,8 @@ export default function PlaylistPage({
     }
   }
 
-  if (profileError instanceof Error) {
-    return <div>Error loading profile: {profileError.message}</div>
+  if (profileError) {
+    return <div>Error loading profile: {profileError}</div>
   }
 
   if (playlistError instanceof Error) {

@@ -2,135 +2,106 @@
 
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs'
-import { FaSpotify } from 'react-icons/fa'
+import { createBrowserClient } from '@supabase/ssr'
+import { usePremiumStatus } from '@/hooks/usePremiumStatus'
+import type { Database } from '@/types/supabase'
 
-const Home = (): JSX.Element => {
+export default function Home() {
+  const [user, setUser] = useState<any>(null)
+  const [loading, setLoading] = useState(true)
   const router = useRouter()
-  const supabase = createClientComponentClient()
-  const [isLoading, setIsLoading] = useState(false)
+  const { isPremium, isLoading: isPremiumLoading, error: premiumError } = usePremiumStatus()
+
+  const supabase = createBrowserClient<Database>(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  )
 
   useEffect(() => {
-    const checkUser = async (): Promise<void> => {
-      const {
-        data: { user }
-      } = await supabase.auth.getUser()
-      if (user) {
-        // Get the user's profile to get their display_name
-        const { data: profile } = await supabase
-          .from('profiles')
-          .select('display_name')
-          .eq('id', user.id)
-          .single()
-
-        if (profile?.display_name) {
-          // If user is logged in, redirect to their admin page using display_name
-          router.push(`/${profile.display_name}/admin`)
-        }
-      }
+    const getUser = async () => {
+      const { data: { user } } = await supabase.auth.getUser()
+      setUser(user)
+      setLoading(false)
     }
 
-    void checkUser()
-  }, [router, supabase])
+    getUser()
+  }, [supabase])
 
-  const handleLogin = async (): Promise<void> => {
-    try {
-      setIsLoading(true)
-      const { data, error } = await supabase.auth.signInWithOAuth({
-        provider: 'spotify',
-        options: {
-          redirectTo: `${window.location.origin}/api/auth/callback/supabase`,
-          scopes: [
-            'user-read-email',
-            'playlist-modify-public',
-            'playlist-modify-private',
-            'playlist-read-private',
-            'user-read-playback-state',
-            'user-modify-playback-state',
-            'user-read-private',
-            'playlist-read-collaborative',
-            'user-library-read',
-            'user-library-modify'
-          ].join(' ')
-        }
-      })
-
-      if (error) {
-        console.error('Error signing in:', error)
-        return
-      }
-
-      if (data?.url) {
-        window.location.href = data.url
-      }
-    } catch (error) {
-      console.error('Error in handleLogin:', error)
-    } finally {
-      setIsLoading(false)
+  // Redirect non-premium users to premium-required page
+  useEffect(() => {
+    console.log('[RootPage] Premium status check:', {
+      user: !!user,
+      isPremium,
+      isPremiumLoading,
+      premiumError
+    })
+    
+    if (user && !isPremiumLoading && !isPremium) {
+      console.log('[RootPage] Redirecting non-premium user to /premium-required')
+      router.push('/premium-required')
     }
+  }, [user, isPremium, isPremiumLoading, router, premiumError])
+
+  if (loading || isPremiumLoading) {
+    return <div>Loading...</div>
   }
 
-  const handleSignOut = async (): Promise<void> => {
-    try {
-      setIsLoading(true)
-      const { error } = await supabase.auth.signOut()
-      if (error) {
-        console.error('Error signing out:', error)
-      } else {
-        router.refresh()
-      }
-    } catch (error) {
-      console.error('Error in handleSignOut:', error)
-    } finally {
-      setIsLoading(false)
-    }
+  if (!user) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-center">
+          <h1 className="text-center font-[family-name:var(--font-belgrano)] text-4xl leading-tight text-primary-100 mb-4">
+            Welcome to 3B Saigon Jukebox
+          </h1>
+          <p className="text-gray-400 mb-8">
+            Please sign in to continue
+          </p>
+          <a
+            href="/auth/signin"
+            className="bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-4 rounded"
+          >
+            Sign In
+          </a>
+        </div>
+      </div>
+    )
   }
 
-  const onLoginClick = (e: React.MouseEvent<HTMLButtonElement>): void => {
-    e.preventDefault()
-    void handleLogin()
-  }
-
-  const onSignOutClick = (e: React.MouseEvent<HTMLButtonElement>): void => {
-    e.preventDefault()
-    void handleSignOut()
-  }
-
-  return (
-    <div className='flex min-h-screen flex-col items-center justify-center bg-black'>
-      <div className='w-full max-w-md space-y-8 rounded-lg bg-gray-900 p-8 shadow-lg'>
-        <div className='text-center'>
-          <h2 className='text-white mt-6 text-3xl font-bold tracking-tight'>
-            Welcome to JM Bar Jukebox
-          </h2>
-          <p className='mt-2 text-sm text-gray-400'>
-            Sign in with your Spotify account to continue
+  // Don't show admin button if user is not premium
+  if (!isPremium) {
+    console.log('[RootPage] User is not premium, showing redirect message')
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-center">
+          <h1 className="text-center font-[family-name:var(--font-belgrano)] text-4xl leading-tight text-primary-100 mb-4">
+            Redirecting...
+          </h1>
+          <p className="text-gray-400">
+            Please wait while we redirect you to the premium requirements page.
           </p>
         </div>
+      </div>
+    )
+  }
 
-        <div className='mt-8 space-y-4'>
-          <button
-            onClick={onLoginClick}
-            disabled={isLoading}
-            className='text-white group relative flex w-full justify-center rounded-md bg-[#1DB954] px-3 py-3 text-sm font-semibold hover:bg-[#1ed760] focus:outline-none focus:ring-2 focus:ring-[#1DB954] focus:ring-offset-2 disabled:opacity-50'
-          >
-            <span className='absolute inset-y-0 left-0 flex items-center pl-3'>
-              <FaSpotify className='h-5 w-5' />
-            </span>
-            {isLoading ? 'Loading...' : 'Sign in with Spotify'}
-          </button>
-
-          <button
-            onClick={onSignOutClick}
-            disabled={isLoading}
-            className='text-white group relative flex w-full justify-center rounded-md bg-gray-700 px-3 py-3 text-sm font-semibold hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2 disabled:opacity-50'
-          >
-            Sign Out
-          </button>
-        </div>
+  // Only show admin button for premium users
+  console.log('[RootPage] User is premium, showing admin button')
+  return (
+    <div className="min-h-screen flex items-center justify-center">
+      <div className="text-center">
+        <h1 className="text-center font-[family-name:var(--font-belgrano)] text-4xl leading-tight text-primary-100 mb-4">
+          Welcome, {user.email}!
+        </h1>
+        <p className="text-gray-400 mb-8">
+          You are signed in successfully.
+        </p>
+        <a
+          href={`/${user.user_metadata?.full_name || user.email?.split('@')[0] || 'user'}/admin`}
+          className="bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded"
+        >
+          Go to Admin
+        </a>
       </div>
     </div>
   )
 }
-
-export default Home

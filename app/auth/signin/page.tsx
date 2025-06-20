@@ -1,36 +1,55 @@
 'use client'
 
-import { signIn } from 'next-auth/react'
-import { FaSpotify } from 'react-icons/fa'
+import { createBrowserClient } from '@supabase/ssr'
+import { useRouter } from 'next/navigation'
+import { useEffect } from 'react'
+import type { Database } from '@/types/supabase'
 
-export default function SignIn(): JSX.Element {
-  const handleSignIn = (): void => {
-    void signIn('spotify', { callbackUrl: '/' })
-  }
+export default function SignIn() {
+  const router = useRouter()
+  
+  const supabase = createBrowserClient<Database>(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  )
+
+  useEffect(() => {
+    const signInWithSpotify = async () => {
+      console.log('[SignIn] Starting Spotify OAuth flow')
+      
+      const { data, error } = await supabase.auth.signInWithOAuth({
+        provider: 'spotify',
+        options: {
+          redirectTo: `${window.location.origin}/api/auth/callback/supabase`
+        }
+      })
+
+      if (error) {
+        console.error('[SignIn] Error signing in:', {
+          error,
+          errorMessage: error.message,
+          status: error.status,
+          name: error.name
+        })
+        // Show error to user
+        alert(`Login error: ${error.message}`)
+      } else {
+        console.log('[SignIn] OAuth flow initiated successfully:', data)
+      }
+    }
+
+    signInWithSpotify()
+  }, [supabase])
 
   return (
-    <div className='flex min-h-screen flex-col items-center justify-center bg-black'>
-      <div className='w-full max-w-md space-y-8 rounded-lg bg-gray-900 p-8 shadow-lg'>
-        <div className='text-center'>
-          <h2 className='text-white mt-6 text-3xl font-bold tracking-tight'>
-            Welcome to JM Bar Jukebox
-          </h2>
-          <p className='mt-2 text-sm text-gray-400'>
-            Sign in with your Spotify account to continue
-          </p>
-        </div>
-
-        <div className='mt-8'>
-          <button
-            onClick={handleSignIn}
-            className='text-white group relative flex w-full justify-center rounded-md bg-[#1DB954] px-3 py-3 text-sm font-semibold hover:bg-[#1ed760] focus:outline-none focus:ring-2 focus:ring-[#1DB954] focus:ring-offset-2'
-          >
-            <span className='absolute inset-y-0 left-0 flex items-center pl-3'>
-              <FaSpotify className='h-5 w-5' />
-            </span>
-            Sign in with Spotify
-          </button>
-        </div>
+    <div className="min-h-screen flex items-center justify-center">
+      <div className="text-center">
+        <h1 className="text-center font-[family-name:var(--font-belgrano)] text-4xl leading-tight text-primary-100 mb-4">
+          Redirecting to Spotify...
+        </h1>
+        <p className="text-gray-400">
+          Please wait while we redirect you to Spotify for authentication.
+        </p>
       </div>
     </div>
   )

@@ -3,21 +3,27 @@ import { sendApiRequest } from '../shared/api'
 import { useMyPlaylists } from './useMyPlaylists'
 import { useEffect, useState, useRef } from 'react'
 import { ERROR_MESSAGES, ErrorMessage } from '@/shared/constants/errors'
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs'
-import { useParams, usePathname } from 'next/navigation'
+import { createBrowserClient } from '@supabase/ssr'
+import type { Database } from '@/types/supabase'
+import { useParams, usePathname, useRouter } from 'next/navigation'
 
 const MAX_RETRIES = 3
 const RETRY_DELAY = 1000 // 1 second
 
 export function useFixedPlaylist() {
+  const router = useRouter()
   const params = useParams()
   const pathname = usePathname()
   const displayName = params?.username as string | undefined
-  const supabaseRef = useRef(createClientComponentClient())
   const [fixedPlaylistId, setFixedPlaylistId] = useState<string | null>(null)
   const [error, setError] = useState<Error | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [isInitialFetchComplete, setIsInitialFetchComplete] = useState(false)
+
+  const supabase = createBrowserClient<Database>(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  )
 
   useEffect(() => {
     console.log(
@@ -57,7 +63,7 @@ export function useFixedPlaylist() {
           displayName
         )
         // Get the user's profile ID using their display_name
-        const { data: profile, error: profileError } = await supabaseRef.current
+        const { data: profile, error: profileError } = await supabase
           .from('profiles')
           .select('id, spotify_access_token')
           .eq('display_name', displayName)
@@ -81,7 +87,7 @@ export function useFixedPlaylist() {
         // Get their playlist ID
         console.log('[FixedPlaylist] Fetching playlist for user:', profile.id)
         const { data: playlist, error: playlistError } =
-          await supabaseRef.current
+          await supabase
             .from('playlists')
             .select('spotify_playlist_id')
             .eq('user_id', profile.id)
