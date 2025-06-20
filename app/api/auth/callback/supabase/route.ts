@@ -3,6 +3,7 @@ import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
 import { NextResponse } from 'next/server'
 import type { Database } from '@/types/supabase'
+import { getBaseUrl } from '@/shared/utils/domain'
 
 // Validate environment variables
 function validateEnv(): void {
@@ -114,10 +115,14 @@ export async function GET(request: Request): Promise<NextResponse> {
 
     console.log('[Callback] Session exchange successful, redirecting to admin')
 
+    // Use the domain utility to get the correct base URL for redirects
+    const baseUrl = getBaseUrl()
+    console.log('[Callback] Using base URL for redirect:', baseUrl)
+
     // Redirect to admin page
     const redirectUrl = new URL(
       `/${session.user.user_metadata?.name ?? 'admin'}/admin`,
-      requestUrl.origin
+      baseUrl
     )
     return NextResponse.redirect(redirectUrl)
   } catch (error) {
