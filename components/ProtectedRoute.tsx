@@ -11,7 +11,6 @@ export function ProtectedRoute({
   children: React.ReactNode
 }): JSX.Element {
   const router = useRouter()
-  const [isPremium, setIsPremium] = useState<boolean | null>(null)
   const [isLoading, setIsLoading] = useState(true)
 
   const supabase = createBrowserClient<Database>(

@@ -6,8 +6,8 @@ import type { Database } from '@/types/supabase'
 export async function middleware(request: NextRequest) {
   let response = NextResponse.next({
     request: {
-      headers: request.headers,
-    },
+      headers: request.headers
+    }
   })
 
   const supabase = createServerClient<Database>(
@@ -19,18 +19,22 @@ export async function middleware(request: NextRequest) {
           return request.cookies.getAll()
         },
         setAll(cookiesToSet) {
-          cookiesToSet.forEach(({ name, value, options }) => request.cookies.set(name, value))
+          cookiesToSet.forEach(({ name, value, options }) =>
+            request.cookies.set(name, value)
+          )
           response = NextResponse.next({
             request: {
-              headers: request.headers,
-            },
+              headers: request.headers
+            }
           })
-          cookiesToSet.forEach(({ name, value, options }) => response.cookies.set(name, value, options))
-        },
-      },
+          cookiesToSet.forEach(({ name, value, options }) =>
+            response.cookies.set(name, value, options)
+          )
+        }
+      }
     }
   )
-  
+
   // Check if this is an admin route
   const isAdminRoute = request.nextUrl.pathname.includes('/admin')
 
@@ -47,11 +51,14 @@ export async function middleware(request: NextRequest) {
 
     // Check premium status for admin routes
     try {
-      const premiumResponse = await fetch(`${request.nextUrl.origin}/api/auth/verify-premium`, {
-        headers: {
-          'Cookie': request.headers.get('cookie') || ''
+      const premiumResponse = await fetch(
+        `${request.nextUrl.origin}/api/auth/verify-premium`,
+        {
+          headers: {
+            Cookie: request.headers.get('cookie') || ''
+          }
         }
-      })
+      )
 
       if (premiumResponse.ok) {
         const premiumData = await premiumResponse.json()
@@ -72,7 +79,10 @@ export async function middleware(request: NextRequest) {
       return NextResponse.redirect(redirectUrl)
     }
 
-    console.log('Admin route accessed by authenticated premium user:', request.nextUrl.pathname)
+    console.log(
+      'Admin route accessed by authenticated premium user:',
+      request.nextUrl.pathname
+    )
   }
 
   return response

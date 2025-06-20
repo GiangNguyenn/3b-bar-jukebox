@@ -60,7 +60,7 @@ export function usePremiumStatus(): PremiumStatus & {
   const checkPremiumStatus = useCallback(async (): Promise<void> => {
     try {
       console.log('[usePremiumStatus] Starting premium status check')
-      setStatus(prev => ({ ...prev, isLoading: true, error: null }))
+      setStatus((prev) => ({ ...prev, isLoading: true, error: null }))
 
       // Check if user is authenticated
       const {
@@ -78,7 +78,9 @@ export function usePremiumStatus(): PremiumStatus & {
         return
       }
 
-      console.log('[usePremiumStatus] Session found, calling premium verification API')
+      console.log(
+        '[usePremiumStatus] Session found, calling premium verification API'
+      )
 
       // Call the premium verification API
       const response = await fetch('/api/auth/verify-premium', {
@@ -131,4 +133,4 @@ export function usePremiumStatus(): PremiumStatus & {
     ...status,
     refreshPremiumStatus
   }
-} 
+}
