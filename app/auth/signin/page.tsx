@@ -3,6 +3,7 @@
 import { createBrowserClient } from '@supabase/ssr'
 import { useEffect } from 'react'
 import type { Database } from '@/types/supabase'
+import { getOAuthRedirectUrl } from '@/shared/utils/domain'
 
 export default function SignIn(): JSX.Element {
   const supabase = createBrowserClient<Database>(
@@ -13,11 +14,15 @@ export default function SignIn(): JSX.Element {
   useEffect(() => {
     const signInWithSpotify = async (): Promise<void> => {
       console.log('[SignIn] Starting Spotify OAuth flow')
+      
+      const redirectUrl = getOAuthRedirectUrl()
+      console.log('[SignIn] Window location origin:', window.location.origin)
+      console.log('[SignIn] Full redirect URL:', redirectUrl)
 
       const { data, error } = await supabase.auth.signInWithOAuth({
         provider: 'spotify',
         options: {
-          redirectTo: `${window.location.origin}/api/auth/callback/supabase`
+          redirectTo: redirectUrl
         }
       })
 

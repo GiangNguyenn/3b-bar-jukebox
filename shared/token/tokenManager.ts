@@ -1,4 +1,5 @@
 import { sendApiRequest } from '../api'
+import { getBaseUrl } from '@/shared/utils/domain'
 
 // Add logging context
 let addLog: (
@@ -165,12 +166,7 @@ class TokenManager {
 
 // Export a singleton instance
 export const tokenManager = TokenManager.getInstance({
-  baseUrl:
-    typeof window !== 'undefined'
-      ? window.location.origin
-      : process.env.VERCEL_URL
-        ? `https://${process.env.VERCEL_URL}`
-        : process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'
+  baseUrl: getBaseUrl()
 })
 
 // Export types
