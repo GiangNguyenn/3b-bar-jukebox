@@ -20,6 +20,9 @@ export interface Database {
           spotify_access_token: string | null
           spotify_refresh_token: string | null
           spotify_token_expires_at: number | null
+          spotify_provider_id: string | null
+          spotify_product_type: string | null
+          is_premium: boolean | null
         }
         Insert: {
           id: string
@@ -31,6 +34,9 @@ export interface Database {
           spotify_access_token?: string | null
           spotify_refresh_token?: string | null
           spotify_token_expires_at?: number | null
+          spotify_provider_id?: string | null
+          spotify_product_type?: string | null
+          is_premium?: boolean | null
         }
         Update: {
           id?: string
@@ -42,6 +48,9 @@ export interface Database {
           spotify_access_token?: string | null
           spotify_refresh_token?: string | null
           spotify_token_expires_at?: number | null
+          spotify_provider_id?: string | null
+          spotify_product_type?: string | null
+          is_premium?: boolean | null
         }
       }
       playlists: {

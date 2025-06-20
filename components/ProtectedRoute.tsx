@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs'
+import { createBrowserClient } from '@supabase/ssr'
+import type { Database } from '@/types/supabase'
 
 export function ProtectedRoute({
   children
@@ -10,8 +11,13 @@ export function ProtectedRoute({
   children: React.ReactNode
 }): JSX.Element {
   const router = useRouter()
+  const [isPremium, setIsPremium] = useState<boolean | null>(null)
   const [isLoading, setIsLoading] = useState(true)
-  const supabase = createClientComponentClient()
+
+  const supabase = createBrowserClient<Database>(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  )
 
   useEffect(() => {
     const checkSession = async (): Promise<void> => {
@@ -20,13 +26,13 @@ export function ProtectedRoute({
           data: { session }
         } = await supabase.auth.getSession()
         if (!session) {
-          router.push('/login')
+          router.push('/auth/signin')
           return
         }
         setIsLoading(false)
       } catch (error) {
         console.error('Error checking session:', error)
-        router.push('/login')
+        router.push('/auth/signin')
       }
     }
 

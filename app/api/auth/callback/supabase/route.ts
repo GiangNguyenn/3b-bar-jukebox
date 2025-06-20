@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-unsafe-assignment */
-import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs'
+import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
 import { NextResponse } from 'next/server'
 import type { Database } from '@/types/supabase'
@@ -28,7 +28,8 @@ const ERROR_MESSAGES = {
   RATE_LIMIT_EXCEEDED: 'Too many requests, please try again later',
   INVALID_CODE: 'Invalid authorization code',
   MISSING_ENV_VARS: 'Missing required environment variables',
-  MISSING_PROVIDER_TOKENS: 'Missing provider tokens'
+  MISSING_PROVIDER_TOKENS: 'Missing provider tokens',
+  PREMIUM_REQUIRED: 'Spotify Premium account required'
 } as const
 
 // Types
@@ -46,6 +47,35 @@ interface ProfileData {
   spotify_provider_id: string
   display_name: string
   avatar_url?: string | null
+  spotify_product_type?: string
+  is_premium?: boolean
+}
+
+interface SpotifyUserProfile {
+  id: string
+  display_name: string
+  email: string
+  product: string // 'premium', 'free', 'open', 'premium_duo', 'premium_family', etc.
+  type: string
+  uri: string
+  href: string
+  images?: Array<{
+    url: string
+    height: number
+    width: number
+  }>
+  external_urls: {
+    spotify: string
+  }
+  followers: {
+    href: string | null
+    total: number
+  }
+  country: string
+  explicit_content: {
+    filter_enabled: boolean
+    filter_locked: boolean
+  }
 }
 
 interface ErrorResponse {
@@ -68,7 +98,18 @@ interface SessionWithProviderTokens
 
 // Validate environment variables
 function validateEnv(): void {
-  // No environment variables needed for this route
+  const requiredEnvVars = {
+    NEXT_PUBLIC_SUPABASE_URL: process.env.NEXT_PUBLIC_SUPABASE_URL,
+    NEXT_PUBLIC_SUPABASE_ANON_KEY: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+  }
+
+  const missingVars = Object.entries(requiredEnvVars)
+    .filter(([_, value]) => !value)
+    .map(([key]) => key)
+
+  if (missingVars.length > 0) {
+    throw new Error(`Missing required environment variables: ${missingVars.join(', ')}`)
+  }
 }
 
 // Validate authorization code
@@ -111,92 +152,154 @@ function checkRateLimit(key: string): boolean {
   return true
 }
 
-export async function GET(
-  request: Request
-): Promise<NextResponse<ErrorResponse | null>> {
-  validateEnv()
-
-  const requestUrl = new URL(request.url)
-  const code = requestUrl.searchParams.get('code')
-  const error = requestUrl.searchParams.get('error')
-  const error_description = requestUrl.searchParams.get('error_description')
-
-  console.log('[Callback] Starting callback handler:', {
-    hasCode: !!code,
-    error,
-    error_description,
-    url: requestUrl.toString()
+// Verify premium status with Spotify API
+async function verifyPremiumStatus(accessToken: string): Promise<{
+  isPremium: boolean
+  productType: string
+  userProfile: SpotifyUserProfile
+}> {
+  console.log('[verifyPremiumStatus] Starting premium verification with access token:', {
+    hasToken: !!accessToken,
+    tokenLength: accessToken?.length
   })
 
-  // Check rate limit
-  const clientIp = request.headers.get('x-forwarded-for') ?? 'unknown'
-  if (!checkRateLimit(clientIp)) {
-    console.log('[Callback] Rate limit exceeded for IP:', clientIp)
-    return NextResponse.json(
-      {
-        error: ERROR_MESSAGES.RATE_LIMIT_EXCEEDED,
-        code: 'RATE_LIMIT_EXCEEDED',
-        status: 429
-      },
-      { status: 429 }
-    )
-  }
-
-  if (error) {
-    console.error('[Callback] Auth error from provider:', {
-      error,
-      error_description
-    })
-    return NextResponse.json(
-      {
-        error: error_description ?? error,
-        code: 'AUTH_ERROR',
-        status: 400
-      },
-      { status: 400 }
-    )
-  }
-
-  if (!validateCode(code)) {
-    console.error('[Callback] Invalid authorization code:', {
-      codeLength: (code as string | null)?.length ?? 0
-    })
-    return NextResponse.json(
-      {
-        error: ERROR_MESSAGES.INVALID_CODE,
-        code: 'INVALID_CODE',
-        status: 400
-      },
-      { status: 400 }
-    )
-  }
-
-  const supabase = createRouteHandlerClient<Database>({ cookies })
-
   try {
-    console.log('[Callback] Attempting to exchange code for session')
-    // Exchange the code for a session
-    const {
-      data: { session },
-      error: sessionError
-    } = await supabase.auth.exchangeCodeForSession(code)
+    const spotifyResponse = await fetch('https://api.spotify.com/v1/me', {
+      headers: {
+        Authorization: `Bearer ${accessToken}`
+      }
+    })
 
-    if (sessionError || !session) {
-      console.error('[Callback] Session exchange failed:', {
-        error: sessionError,
-        hasSession: !!session,
-        sessionData: session
-          ? {
-              user: session.user?.id,
-              expiresAt: session.expires_at,
-              hasAccessToken: !!session.access_token,
-              hasRefreshToken: !!session.refresh_token
-            }
-          : null
+    console.log('[verifyPremiumStatus] Spotify API response:', {
+      status: spotifyResponse.status,
+      statusText: spotifyResponse.statusText,
+      ok: spotifyResponse.ok
+    })
+
+    if (!spotifyResponse.ok) {
+      const errorText = await spotifyResponse.text()
+      console.error('[verifyPremiumStatus] Spotify API error response:', {
+        status: spotifyResponse.status,
+        statusText: spotifyResponse.statusText,
+        errorText
       })
+      throw new Error(`Error getting user profile from external provider: ${spotifyResponse.status} ${spotifyResponse.statusText}`)
+    }
+
+    const userProfile = (await spotifyResponse.json()) as SpotifyUserProfile
+
+    console.log('[verifyPremiumStatus] Successfully retrieved user profile:', {
+      userId: userProfile.id,
+      displayName: userProfile.display_name,
+      product: userProfile.product,
+      email: userProfile.email
+    })
+
+    // Check if user has premium
+    const isPremium = userProfile.product === 'premium' || 
+                     userProfile.product === 'premium_duo' || 
+                     userProfile.product === 'premium_family' ||
+                     userProfile.product === 'premium_student'
+
+    console.log('[verifyPremiumStatus] Premium status determined:', {
+      isPremium,
+      productType: userProfile.product
+    })
+
+    return {
+      isPremium,
+      productType: userProfile.product,
+      userProfile
+    }
+  } catch (error) {
+    console.error('[verifyPremiumStatus] Error in premium verification:', {
+      error,
+      errorMessage: error instanceof Error ? error.message : 'Unknown error',
+      stack: error instanceof Error ? error.stack : undefined
+    })
+    throw error
+  }
+}
+
+export async function GET(
+  request: Request
+): Promise<NextResponse> {
+  console.log('[Callback] Starting callback handler')
+  console.log('[Callback] Request URL:', request.url)
+  console.log('[Callback] Request headers:', Object.fromEntries(request.headers.entries()))
+  
+  try {
+    validateEnv()
+
+    const requestUrl = new URL(request.url)
+    const code = requestUrl.searchParams.get('code')
+    const error = requestUrl.searchParams.get('error')
+    const error_description = requestUrl.searchParams.get('error_description')
+
+    console.log('[Callback] URL parameters:', {
+      hasCode: !!code,
+      error,
+      error_description,
+      url: requestUrl.toString()
+    })
+
+    // Handle OAuth errors
+    if (error) {
+      console.log('[Callback] OAuth error:', { error, error_description })
       return NextResponse.json(
         {
-          error: sessionError?.message ?? ERROR_MESSAGES.NO_SESSION,
+          error: error_description || error,
+          code: 'OAUTH_ERROR',
+          status: 400
+        },
+        { status: 400 }
+      )
+    }
+
+    if (!code) {
+      console.log('[Callback] No authorization code')
+      return NextResponse.json(
+        {
+          error: 'No authorization code',
+          code: 'NO_CODE',
+          status: 400
+        },
+        { status: 400 }
+      )
+    }
+
+    const cookieStore = await cookies()
+    const supabase = createServerClient<Database>(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      {
+        cookies: {
+          getAll() {
+            return cookieStore.getAll()
+          },
+          setAll(cookiesToSet) {
+            try {
+              cookiesToSet.forEach(({ name, value, options }) =>
+                cookieStore.set(name, value, options)
+              )
+            } catch {
+              // The `setAll` method was called from a Server Component.
+              // This can be ignored if you have middleware refreshing
+              // user sessions.
+            }
+          },
+        },
+      }
+    )
+
+    console.log('[Callback] Exchanging code for session')
+    const { data: { session }, error: sessionError } = await supabase.auth.exchangeCodeForSession(code)
+
+    if (sessionError || !session) {
+      console.error('[Callback] Session exchange failed:', sessionError)
+      return NextResponse.json(
+        {
+          error: sessionError?.message || 'Failed to exchange code for session',
           code: 'SESSION_ERROR',
           status: 401
         },
@@ -204,240 +307,18 @@ export async function GET(
       )
     }
 
-    console.log('[Callback] Session exchange successful:', {
-      userId: session.user?.id,
-      expiresAt: session.expires_at,
-      hasAccessToken: !!session.access_token,
-      hasRefreshToken: !!session.refresh_token
-    })
-
-    // Set the session cookie
-    console.log('[Callback] Setting session cookie')
-    const response = NextResponse.redirect(requestUrl.origin)
-    const { error: setSessionError } = await supabase.auth.setSession({
-      access_token: session.access_token,
-      refresh_token: session.refresh_token
-    })
-
-    if (setSessionError) {
-      console.error('[Callback] Error setting session cookie:', {
-        error: setSessionError,
-        sessionData: {
-          userId: session.user?.id,
-          expiresAt: session.expires_at
-        }
-      })
-      return NextResponse.json(
-        {
-          error: 'Failed to set session',
-          code: 'SESSION_SET_ERROR',
-          status: 500,
-          severity: 'error'
-        },
-        { status: 500 }
-      )
-    }
-
-    console.log('[Callback] Session cookie set successfully')
-
-    // Get tokens from Supabase session
-    const sessionWithTokens = session as SessionWithProviderTokens
-    const providerToken = sessionWithTokens.provider_token
-    const providerRefreshToken = sessionWithTokens.provider_refresh_token
-    const providerTokenExpiresAt =
-      sessionWithTokens.provider_token_expires_at ??
-      Math.floor(Date.now() / 1000) + 3600
-
-    console.log('[Callback] Provider tokens status:', {
-      hasProviderToken: !!providerToken,
-      hasProviderRefreshToken: !!providerRefreshToken,
-      providerTokenExpiresAt,
-      userId: session.user?.id
-    })
-
-    if (!providerToken || !providerRefreshToken) {
-      console.error('[Callback] Missing provider tokens:', {
-        token: !!providerToken,
-        refreshToken: !!providerRefreshToken,
-        expiresAt: !!providerTokenExpiresAt,
-        userId: session.user?.id
-      })
-      return NextResponse.json(
-        {
-          error: ERROR_MESSAGES.MISSING_PROVIDER_TOKENS,
-          code: 'MISSING_PROVIDER_TOKENS',
-          status: 500,
-          severity: 'error'
-        },
-        { status: 500 }
-      )
-    }
-
-    // Validate user metadata
-    const userMetadata = session.user.user_metadata as UserMetadata
-    console.log('[Callback] User metadata validation:', {
-      hasProviderId: !!userMetadata.provider_id,
-      hasName: !!userMetadata.name,
-      hasAvatarUrl: !!userMetadata.avatar_url,
-      userId: session.user?.id
-    })
-
-    if (!userMetadata.provider_id || !userMetadata.name) {
-      console.error('[Callback] Invalid user metadata:', {
-        metadata: userMetadata,
-        userId: session.user?.id
-      })
-      return NextResponse.json(
-        {
-          error: ERROR_MESSAGES.INVALID_USER_METADATA,
-          code: 'INVALID_METADATA',
-          status: 400
-        },
-        { status: 400 }
-      )
-    }
-
-    // Debug log the session data
-    console.log(
-      '[Callback] Full session data:',
-      JSON.stringify(session, null, 2)
-    )
-    console.log(
-      '[Callback] User metadata:',
-      JSON.stringify(userMetadata, null, 2)
-    )
-    console.log(
-      '[Callback] Raw user data:',
-      JSON.stringify(session.user, null, 2)
-    )
-
-    // Create or update profile with tokens from Supabase session
-    const profileData: ProfileData = {
-      id: session.user.id,
-      spotify_access_token: providerToken,
-      spotify_refresh_token: providerRefreshToken,
-      spotify_token_expires_at: providerTokenExpiresAt,
-      spotify_provider_id: userMetadata.provider_id,
-      display_name: userMetadata.name,
-      avatar_url: userMetadata.avatar_url ?? null
-    }
-
-    console.log('[Callback] Attempting to fetch profile:', {
-      userId: session.user.id,
-      hasProfileData: !!profileData
-    })
-
-    const { data: profile, error: profileError } = await supabase
-      .from('profiles')
-      .select('*')
-      .eq('id', session.user.id)
-      .single()
-
-    if (profileError) {
-      console.error('[Callback] Error fetching profile:', {
-        error: profileError,
-        userId: session.user.id
-      })
-      return NextResponse.json(
-        {
-          error: 'Failed to fetch profile',
-          code: 'PROFILE_FETCH_ERROR',
-          status: 500,
-          severity: 'error'
-        },
-        { status: 500 }
-      )
-    }
-
-    if (!profile) {
-      console.error('[Callback] No profile found for user:', {
-        userId: session.user.id
-      })
-      return NextResponse.json(
-        {
-          error: 'Profile not found',
-          code: 'PROFILE_NOT_FOUND',
-          status: 404,
-          severity: 'error'
-        },
-        { status: 404 }
-      )
-    }
-
-    // Type guard to ensure profile has required fields
-    const typedProfile = profile as ProfileData
-    console.log('[Callback] Profile validation:', {
-      hasAccessToken: !!typedProfile.spotify_access_token,
-      hasRefreshToken: !!typedProfile.spotify_refresh_token,
-      hasExpiresAt: !!typedProfile.spotify_token_expires_at,
-      userId: session.user.id
-    })
-
-    if (
-      !typedProfile.spotify_access_token ||
-      !typedProfile.spotify_refresh_token ||
-      !typedProfile.spotify_token_expires_at
-    ) {
-      console.error('[Callback] Invalid profile data:', {
-        profile: typedProfile,
-        userId: session.user.id
-      })
-      return NextResponse.json(
-        {
-          error: 'Invalid profile data',
-          code: 'INVALID_PROFILE_DATA',
-          status: 500,
-          severity: 'error'
-        },
-        { status: 500 }
-      )
-    }
-
-    // Verify profile update
-    console.log('[Callback] Verifying profile update')
-    const verifyProfileUpdate = async (): Promise<void> => {
-      try {
-        const { data: profile } = await supabase
-          .from('profiles')
-          .select('*')
-          .eq('id', session.user.id)
-          .single()
-
-        if (!profile) {
-          console.error(
-            '[Callback] Profile verification failed: Profile not found after update'
-          )
-          throw new Error('Profile not found after update')
-        }
-        console.log('[Callback] Profile verification successful:', {
-          userId: session.user.id,
-          hasProfile: !!profile
-        })
-      } catch (error) {
-        console.error('[Callback] Error verifying profile update:', {
-          error,
-          userId: session.user.id
-        })
-        throw error
-      }
-    }
-
-    await verifyProfileUpdate()
-    console.log('[Callback] Authentication flow completed successfully')
-
-    // Redirect after successful authentication
-    return response as NextResponse<ErrorResponse | null>
+    console.log('[Callback] Session exchange successful, redirecting to admin')
+    
+    // Redirect to admin page
+    const redirectUrl = new URL(`/${session.user.user_metadata?.name || 'admin'}/admin`, requestUrl.origin)
+    return NextResponse.redirect(redirectUrl)
+    
   } catch (error) {
-    console.error('[Callback] Unhandled error in callback:', {
-      error,
-      errorMessage: error instanceof Error ? error.message : 'Unknown error',
-      stack: error instanceof Error ? error.stack : undefined
-    })
+    console.error('[Callback] Unexpected error:', error)
     return NextResponse.json(
       {
-        error: ERROR_MESSAGES.UNKNOWN_ERROR,
-        details: error instanceof Error ? error.message : undefined,
-        code: 'UNKNOWN_ERROR',
+        error: 'Unexpected error during authentication',
+        code: 'UNEXPECTED_ERROR',
         status: 500
       },
       { status: 500 }

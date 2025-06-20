@@ -1,12 +1,36 @@
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
-import { createMiddlewareClient } from '@supabase/auth-helpers-nextjs'
+import { createServerClient } from '@supabase/ssr'
 import type { Database } from '@/types/supabase'
 
 export async function middleware(request: NextRequest) {
-  const res = NextResponse.next()
-  const supabase = createMiddlewareClient<Database>({ req: request, res })
+  let response = NextResponse.next({
+    request: {
+      headers: request.headers,
+    },
+  })
 
+  const supabase = createServerClient<Database>(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        getAll() {
+          return request.cookies.getAll()
+        },
+        setAll(cookiesToSet) {
+          cookiesToSet.forEach(({ name, value, options }) => request.cookies.set(name, value))
+          response = NextResponse.next({
+            request: {
+              headers: request.headers,
+            },
+          })
+          cookiesToSet.forEach(({ name, value, options }) => response.cookies.set(name, value, options))
+        },
+      },
+    }
+  )
+  
   // Check if this is an admin route
   const isAdminRoute = request.nextUrl.pathname.includes('/admin')
 
@@ -17,54 +41,41 @@ export async function middleware(request: NextRequest) {
 
     // If no session, redirect to login
     if (!session) {
-      const redirectUrl = new URL('/login', request.url)
+      const redirectUrl = new URL('/auth/signin', request.url)
       return NextResponse.redirect(redirectUrl)
     }
 
-    // Get the username from the URL
-    const username = request.nextUrl.pathname.split('/')[1]
+    // Check premium status for admin routes
+    try {
+      const premiumResponse = await fetch(`${request.nextUrl.origin}/api/auth/verify-premium`, {
+        headers: {
+          'Cookie': request.headers.get('cookie') || ''
+        }
+      })
 
-    // Get the user's profile
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('display_name')
-      .eq('id', session.user.id)
-      .single()
-
-    // If the username in the URL doesn't match the user's display_name, redirect to their admin page
-    if (profile?.display_name && profile.display_name !== username) {
-      const redirectUrl = new URL(`/${profile.display_name}/admin`, request.url)
-      return NextResponse.redirect(redirectUrl)
-    }
-  }
-
-  // Only run profile check on the first request to the app
-  if (request.cookies.has('profile_checked')) {
-    return res
-  }
-
-  try {
-    // Call the profile setup endpoint
-    const response = await fetch(`${request.nextUrl.origin}/api/auth/profile`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
+      if (premiumResponse.ok) {
+        const premiumData = await premiumResponse.json()
+        if (!premiumData.isPremium) {
+          // Non-premium user, redirect to premium required page
+          const redirectUrl = new URL('/premium-required', request.url)
+          return NextResponse.redirect(redirectUrl)
+        }
+      } else {
+        // Premium verification failed, redirect to premium required page
+        const redirectUrl = new URL('/premium-required', request.url)
+        return NextResponse.redirect(redirectUrl)
       }
-    })
-
-    if (!response.ok) {
-      console.error('Failed to setup profile:', await response.text())
+    } catch (error) {
+      console.error('Error verifying premium status in middleware:', error)
+      // Error in premium verification, redirect to premium required page
+      const redirectUrl = new URL('/premium-required', request.url)
+      return NextResponse.redirect(redirectUrl)
     }
-  } catch (error) {
-    console.error('Error setting up profile:', error)
+
+    console.log('Admin route accessed by authenticated premium user:', request.nextUrl.pathname)
   }
 
-  // Set a cookie to indicate we've checked for the profile
-  res.cookies.set('profile_checked', 'true', {
-    maxAge: 60 * 60 * 24 // 24 hours
-  })
-
-  return res
+  return response
 }
 
 export const config = {

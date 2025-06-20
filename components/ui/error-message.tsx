@@ -27,6 +27,7 @@ export function ErrorMessage({
 
       return () => clearTimeout(timer)
     }
+    return undefined
   }, [autoDismissMs, onDismiss])
 
   const handleDismiss = (): void => {
