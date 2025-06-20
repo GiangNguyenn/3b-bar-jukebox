@@ -11,16 +11,7 @@ import Playlist from '@/components/Playlist/Playlist'
 import { handleApiError } from '@/shared/utils/errorHandling'
 import { AppError } from '@/shared/utils/errorHandling'
 
-interface PlaylistPageProps {
-  params: {
-    username: string
-  }
-}
-
-export default function PlaylistPage({
-  params
-}: PlaylistPageProps): JSX.Element {
-  const { username } = params
+export default function PlaylistPage(): JSX.Element {
   const {
     profile,
     error: profileError,

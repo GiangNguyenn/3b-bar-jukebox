@@ -1,46 +1,11 @@
+/* eslint-disable @typescript-eslint/no-unsafe-assignment */
 import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
 import { NextResponse } from 'next/server'
 import type { Database } from '@/types/supabase'
 
-interface ProfileData {
-  id: string
-  spotify_user_id: string
-  display_name: string
-  avatar_url?: string
-  spotify_access_token?: string
-  spotify_refresh_token?: string
-  spotify_token_expires_at?: number
-}
-
-interface UserResponse {
-  data: {
-    user: {
-      id: string
-      email?: string
-      user_metadata: {
-        provider_id: string
-        name: string
-        avatar_url?: string
-        provider_token?: string
-        provider_refresh_token?: string
-        provider_token_expires_at?: number
-      }
-    } | null
-  }
-  error: Error | null
-}
-
-interface ProfileResponse {
-  data: ProfileData | null
-  error: {
-    code: string
-    message: string
-  } | null
-}
-
 export async function POST(): Promise<NextResponse> {
-  const cookieStore = await cookies()
+  const cookieStore = cookies()
 
   const supabase = createServerClient<Database>(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -60,8 +25,8 @@ export async function POST(): Promise<NextResponse> {
             // This can be ignored if you have middleware refreshing
             // user sessions.
           }
-        },
-      },
+        }
+      }
     }
   )
 
@@ -85,22 +50,24 @@ export async function POST(): Promise<NextResponse> {
   }
 
   // Create profile
-  const { error } = await supabase
-    .from('profiles')
-    .insert([
-      {
-        id: user.id,
-        email: user.email,
-        display_name: user.user_metadata?.full_name || user.email?.split('@')[0] || 'user',
-        avatar_url: user.user_metadata?.avatar_url,
-        is_premium: false, // Default to false, will be updated by premium verification
-        premium_verified_at: null
-      }
-    ])
+  const { error } = await supabase.from('profiles').insert([
+    {
+      id: user.id,
+      email: user.email,
+      display_name:
+        user.user_metadata?.full_name ?? user.email?.split('@')[0] ?? 'user',
+      avatar_url: user.user_metadata?.avatar_url,
+      is_premium: false, // Default to false, will be updated by premium verification
+      premium_verified_at: null
+    }
+  ])
 
   if (error) {
     console.error('Error creating profile:', error)
-    return NextResponse.json({ error: 'Failed to create profile' }, { status: 500 })
+    return NextResponse.json(
+      { error: 'Failed to create profile' },
+      { status: 500 }
+    )
   }
 
   return NextResponse.json({ message: 'Profile created successfully' })

@@ -86,12 +86,11 @@ export function useFixedPlaylist() {
 
         // Get their playlist ID
         console.log('[FixedPlaylist] Fetching playlist for user:', profile.id)
-        const { data: playlist, error: playlistError } =
-          await supabase
-            .from('playlists')
-            .select('spotify_playlist_id')
-            .eq('user_id', profile.id)
-            .single()
+        const { data: playlist, error: playlistError } = await supabase
+          .from('playlists')
+          .select('spotify_playlist_id')
+          .eq('user_id', profile.id)
+          .single()
 
         if (playlistError) {
           console.error(

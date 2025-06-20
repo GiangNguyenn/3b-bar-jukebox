@@ -36,7 +36,9 @@ export function ProtectedRoute({
         })
 
         if (premiumResponse.ok) {
-          const premiumData = await premiumResponse.json()
+          const premiumData = (await premiumResponse.json()) as {
+            isPremium: boolean
+          }
           if (!premiumData.isPremium) {
             // Non-premium user, redirect to premium required page
             router.push('/premium-required')
@@ -72,7 +74,7 @@ export function ProtectedRoute({
     return (
       <div className='flex min-h-screen items-center justify-center'>
         <div className='text-center'>
-          <h1 className='text-center font-[family-name:var(--font-belgrano)] text-4xl leading-tight text-primary-100 mb-4'>
+          <h1 className='mb-4 text-center font-[family-name:var(--font-belgrano)] text-4xl leading-tight text-primary-100'>
             Redirecting...
           </h1>
           <p className='text-gray-400'>

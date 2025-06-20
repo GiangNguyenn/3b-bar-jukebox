@@ -18,7 +18,7 @@ export function ErrorMessage({
 }: ErrorMessageProps): JSX.Element | null {
   const [isVisible, setIsVisible] = useState(true)
 
-  useEffect(() => {
+  useEffect((): (() => void) | undefined => {
     if (autoDismissMs > 0) {
       const timer = setTimeout(() => {
         setIsVisible(false)

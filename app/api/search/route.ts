@@ -69,7 +69,7 @@ export async function GET(
   }
 
   try {
-    const cookieStore = await cookies()
+    const cookieStore = cookies()
 
     const supabase = createServerClient<Database>(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -89,8 +89,8 @@ export async function GET(
               // This can be ignored if you have middleware refreshing
               // user sessions.
             }
-          },
-        },
+          }
+        }
       }
     )
 

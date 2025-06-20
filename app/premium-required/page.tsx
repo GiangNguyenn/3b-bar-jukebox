@@ -9,9 +9,14 @@ import { usePremiumStatus } from '@/hooks/usePremiumStatus'
 
 export default function PremiumRequiredPage(): JSX.Element {
   const router = useRouter()
-  const [isPremium, setIsPremium] = useState<boolean | null>(null)
   const [isLoading, setIsLoading] = useState(true)
-  const { isPremium: usePremiumStatusPremium, productType, isLoading: isPremiumLoading, error: premiumError, refreshPremiumStatus } = usePremiumStatus()
+  const {
+    isPremium: usePremiumStatusPremium,
+    productType,
+    isLoading: isPremiumLoading,
+    error: premiumError,
+    refreshPremiumStatus
+  } = usePremiumStatus()
 
   const supabase = createBrowserClient<Database>(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -45,7 +50,7 @@ export default function PremiumRequiredPage(): JSX.Element {
             .select('display_name')
             .eq('id', user.id)
             .single()
-          
+
           if (profile?.display_name) {
             router.push(`/${profile.display_name}/admin`)
           }
@@ -76,24 +81,24 @@ export default function PremiumRequiredPage(): JSX.Element {
   }
 
   return (
-    <div className='min-h-screen bg-gradient-to-br from-purple-900 via-blue-900 to-black text-white'>
+    <div className='text-white min-h-screen bg-gradient-to-br from-purple-900 via-blue-900 to-black'>
       <div className='container mx-auto px-4 py-16'>
         <div className='mx-auto max-w-2xl text-center'>
           {/* Header */}
           <div className='mb-8'>
             <div className='mb-4 flex justify-center'>
               <div className='flex h-20 w-20 items-center justify-center rounded-full bg-green-500'>
-                <FaSpotify className='h-12 w-12 text-white' />
+                <FaSpotify className='text-white h-12 w-12' />
               </div>
             </div>
             <h1 className='mb-4 text-4xl font-bold'>Premium Required</h1>
             <p className='text-xl text-gray-300'>
               This jukebox requires a Spotify Premium account
             </p>
-            
+
             {/* Current Account Status */}
             {!isPremiumLoading && (
-              <div className='mt-4 rounded-lg bg-white/10 p-4 backdrop-blur-sm'>
+              <div className='bg-white/10 mt-4 rounded-lg p-4 backdrop-blur-sm'>
                 <p className='text-sm text-gray-300'>
                   <strong>Current Account:</strong> {productType || 'Unknown'}
                 </p>
@@ -108,17 +113,18 @@ export default function PremiumRequiredPage(): JSX.Element {
 
           {/* Features Grid */}
           <div className='mb-8 grid gap-6 md:grid-cols-2'>
-            <div className='rounded-lg bg-white/10 p-6 backdrop-blur-sm'>
+            <div className='bg-white/10 rounded-lg p-6 backdrop-blur-sm'>
               <div className='mb-3 flex justify-center'>
                 <FaCrown className='h-8 w-8 text-yellow-400' />
               </div>
               <h3 className='mb-2 text-lg font-semibold'>Premium Features</h3>
               <p className='text-sm text-gray-300'>
-                Control playback, manage devices, and access advanced jukebox features
+                Control playback, manage devices, and access advanced jukebox
+                features
               </p>
             </div>
 
-            <div className='rounded-lg bg-white/10 p-6 backdrop-blur-sm'>
+            <div className='bg-white/10 rounded-lg p-6 backdrop-blur-sm'>
               <div className='mb-3 flex justify-center'>
                 <FaMusic className='h-8 w-8 text-green-400' />
               </div>
@@ -128,7 +134,7 @@ export default function PremiumRequiredPage(): JSX.Element {
               </p>
             </div>
 
-            <div className='rounded-lg bg-white/10 p-6 backdrop-blur-sm'>
+            <div className='bg-white/10 rounded-lg p-6 backdrop-blur-sm'>
               <div className='mb-3 flex justify-center'>
                 <FaPlay className='h-8 w-8 text-blue-400' />
               </div>
@@ -138,43 +144,49 @@ export default function PremiumRequiredPage(): JSX.Element {
               </p>
             </div>
 
-            <div className='rounded-lg bg-white/10 p-6 backdrop-blur-sm'>
+            <div className='bg-white/10 rounded-lg p-6 backdrop-blur-sm'>
               <div className='mb-3 flex justify-center'>
                 <FaSpotify className='h-8 w-8 text-green-400' />
               </div>
-              <h3 className='mb-2 text-lg font-semibold'>Spotify Integration</h3>
+              <h3 className='mb-2 text-lg font-semibold'>
+                Spotify Integration
+              </h3>
               <p className='text-sm text-gray-300'>
-                Full access to Spotify's premium API features
+                Full access to Spotify&apos;s premium API features
               </p>
             </div>
           </div>
 
           {/* Why Premium */}
-          <div className='mb-8 rounded-lg bg-white/5 p-6 backdrop-blur-sm'>
+          <div className='bg-white/5 mb-8 rounded-lg p-6 backdrop-blur-sm'>
             <h2 className='mb-4 text-2xl font-semibold'>Why Premium?</h2>
             <div className='space-y-3 text-left'>
               <div className='flex items-start gap-3'>
                 <div className='mt-1 h-2 w-2 rounded-full bg-green-400'></div>
                 <p className='text-sm text-gray-300'>
-                  <strong>Playback Control:</strong> Premium accounts can control playback, pause, resume, and skip tracks
+                  <strong>Playback Control:</strong> Premium accounts can
+                  control playback, pause, resume, and skip tracks
                 </p>
               </div>
               <div className='flex items-start gap-3'>
                 <div className='mt-1 h-2 w-2 rounded-full bg-green-400'></div>
                 <p className='text-sm text-gray-300'>
-                  <strong>Device Management:</strong> Premium accounts can manage and transfer playback between devices
+                  <strong>Device Management:</strong> Premium accounts can
+                  manage and transfer playback between devices
                 </p>
               </div>
               <div className='flex items-start gap-3'>
                 <div className='mt-1 h-2 w-2 rounded-full bg-green-400'></div>
                 <p className='text-sm text-gray-300'>
-                  <strong>Queue Management:</strong> Premium accounts can view and modify the playback queue
+                  <strong>Queue Management:</strong> Premium accounts can view
+                  and modify the playback queue
                 </p>
               </div>
               <div className='flex items-start gap-3'>
                 <div className='mt-1 h-2 w-2 rounded-full bg-green-400'></div>
                 <p className='text-sm text-gray-300'>
-                  <strong>Real-time State:</strong> Premium accounts can access real-time playback state information
+                  <strong>Real-time State:</strong> Premium accounts can access
+                  real-time playback state information
                 </p>
               </div>
             </div>
@@ -184,7 +196,7 @@ export default function PremiumRequiredPage(): JSX.Element {
           <div className='flex flex-col gap-4 sm:flex-row sm:justify-center'>
             <button
               onClick={handleUpgradeSpotify}
-              className='flex items-center justify-center gap-2 rounded-lg bg-green-600 px-6 py-3 font-semibold text-white transition-colors hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 focus:ring-offset-black'
+              className='text-white flex items-center justify-center gap-2 rounded-lg bg-green-600 px-6 py-3 font-semibold transition-colors hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 focus:ring-offset-black'
             >
               <FaSpotify className='h-5 w-5' />
               Upgrade to Spotify Premium
@@ -192,15 +204,17 @@ export default function PremiumRequiredPage(): JSX.Element {
             <button
               onClick={() => void handleRefreshStatus()}
               disabled={isPremiumLoading}
-              className='flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-6 py-3 font-semibold text-white transition-colors hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:ring-offset-black disabled:cursor-not-allowed disabled:opacity-50'
+              className='text-white flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-6 py-3 font-semibold transition-colors hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:ring-offset-black disabled:cursor-not-allowed disabled:opacity-50'
             >
-              <FaSync className={`h-5 w-5 ${isPremiumLoading ? 'animate-spin' : ''}`} />
+              <FaSync
+                className={`h-5 w-5 ${isPremiumLoading ? 'animate-spin' : ''}`}
+              />
               {isPremiumLoading ? 'Checking...' : 'Refresh Status'}
             </button>
             <button
               onClick={() => void handleSignOut()}
               disabled={isLoading}
-              className='flex items-center justify-center gap-2 rounded-lg border border-gray-600 bg-transparent px-6 py-3 font-semibold text-white transition-colors hover:bg-white/10 focus:outline-none focus:ring-2 focus:ring-white focus:ring-offset-2 focus:ring-offset-black disabled:cursor-not-allowed disabled:opacity-50'
+              className='text-white hover:bg-white/10 focus:ring-white flex items-center justify-center gap-2 rounded-lg border border-gray-600 bg-transparent px-6 py-3 font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-black disabled:cursor-not-allowed disabled:opacity-50'
             >
               {isLoading ? 'Signing Out...' : 'Sign Out'}
             </button>
@@ -223,4 +237,4 @@ export default function PremiumRequiredPage(): JSX.Element {
       </div>
     </div>
   )
-} 
+}
