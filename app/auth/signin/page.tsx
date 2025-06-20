@@ -14,7 +14,7 @@ export default function SignIn(): JSX.Element {
   useEffect(() => {
     const signInWithSpotify = async (): Promise<void> => {
       console.log('[SignIn] Starting Spotify OAuth flow')
-      
+
       const redirectUrl = getOAuthRedirectUrl()
       console.log('[SignIn] Window location origin:', window.location.origin)
       console.log('[SignIn] Full redirect URL:', redirectUrl)
