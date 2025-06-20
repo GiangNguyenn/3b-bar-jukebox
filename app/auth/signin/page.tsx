@@ -22,7 +22,9 @@ export default function SignIn(): JSX.Element {
       const { data, error } = await supabase.auth.signInWithOAuth({
         provider: 'spotify',
         options: {
-          redirectTo: redirectUrl
+          redirectTo: redirectUrl,
+          scopes:
+            'user-read-email user-read-private user-read-currently-playing user-read-playback-state user-modify-playback-state streaming playlist-modify-public playlist-modify-private'
         }
       })
 

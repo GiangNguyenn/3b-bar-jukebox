@@ -44,10 +44,19 @@ interface ErrorResponse {
   status: number
 }
 
-export async function GET(): Promise<
-  NextResponse<PremiumVerificationResponse | ErrorResponse>
-> {
+export async function GET(
+  request: Request
+): Promise<NextResponse<PremiumVerificationResponse | ErrorResponse>> {
   console.log('[verify-premium] Starting premium verification')
+
+  // Check for force refresh parameter
+  const url = new URL(request.url)
+  const forceRefresh = url.searchParams.get('force') === 'true'
+
+  if (forceRefresh) {
+    console.log('[verify-premium] Force refresh requested, bypassing cache')
+  }
+
   const cookieStore = cookies()
 
   const supabase = createServerClient<Database>(
@@ -95,14 +104,18 @@ export async function GET(): Promise<
     // Get user's profile to check if premium status is already verified
     const { data: profile } = await supabase
       .from('profiles')
-      .select('is_premium, premium_verified_at')
+      .select('is_premium, premium_verified_at, spotify_product_type')
       .eq('id', user.id)
       .single()
 
-    console.log('[verify-premium] Profile data:', profile)
+    console.log('[verify-premium] Profile data:', {
+      is_premium: profile?.is_premium,
+      premium_verified_at: profile?.premium_verified_at,
+      spotify_product_type: profile?.spotify_product_type
+    })
 
     // If premium status was verified recently (within 24 hours), return cached result
-    if (profile?.premium_verified_at) {
+    if (profile?.premium_verified_at && !forceRefresh) {
       const verifiedAt = new Date(profile.premium_verified_at as string)
       const now = new Date()
       const hoursSinceVerification =
@@ -116,11 +129,15 @@ export async function GET(): Promise<
       if (hoursSinceVerification < 24) {
         console.log(
           '[verify-premium] Using cached premium status:',
-          profile.is_premium
+          profile.is_premium,
+          'Product type:',
+          profile.spotify_product_type
         )
         return NextResponse.json({
           isPremium: profile.is_premium ?? false,
-          productType: profile.is_premium ? 'premium' : 'free',
+          productType:
+            profile.spotify_product_type ||
+            (profile.is_premium ? 'premium' : 'free'),
           cached: true
         })
       }
@@ -141,7 +158,7 @@ export async function GET(): Promise<
         console.error('[verify-premium] No Spotify access token found for user')
         return NextResponse.json(
           {
-            error: 'No Spotify access token found',
+            error: 'No Spotify access token found. Please sign in again.',
             code: 'NO_SPOTIFY_TOKEN',
             status: 400
           },
@@ -150,17 +167,43 @@ export async function GET(): Promise<
       }
 
       // Call Spotify API directly with user's access token
+      console.log('[verify-premium] Making Spotify API call to /me endpoint')
       const spotifyResponse = await fetch('https://api.spotify.com/v1/me', {
         headers: {
           Authorization: `Bearer ${userProfile.spotify_access_token}`
         }
       })
 
+      console.log(
+        '[verify-premium] Spotify API response status:',
+        spotifyResponse.status
+      )
+      console.log(
+        '[verify-premium] Spotify API response headers:',
+        Object.fromEntries(spotifyResponse.headers.entries())
+      )
+
       if (!spotifyResponse.ok) {
+        const errorText = await spotifyResponse.text()
         console.error(
           '[verify-premium] Spotify API error:',
-          spotifyResponse.status
+          spotifyResponse.status,
+          spotifyResponse.statusText,
+          errorText
         )
+
+        // If token is invalid (401), suggest re-authentication
+        if (spotifyResponse.status === 401) {
+          return NextResponse.json(
+            {
+              error: 'Spotify access token is invalid. Please sign in again.',
+              code: 'INVALID_SPOTIFY_TOKEN',
+              status: 401
+            },
+            { status: 401 }
+          )
+        }
+
         return NextResponse.json(
           {
             error: 'Failed to verify premium status with Spotify',
@@ -171,10 +214,16 @@ export async function GET(): Promise<
         )
       }
 
-      const userData: SpotifyUserProfile = await spotifyResponse.json()
-      console.log('[verify-premium] Spotify API response:', {
+      const responseText = await spotifyResponse.text()
+      console.log('[verify-premium] Raw Spotify API response:', responseText)
+
+      const userData: SpotifyUserProfile = JSON.parse(responseText)
+      console.log('[verify-premium] Parsed Spotify API response:', {
         product: userData.product,
-        display_name: userData.display_name
+        display_name: userData.display_name,
+        id: userData.id,
+        email: userData.email,
+        hasProduct: 'product' in userData
       })
 
       // Check if user has premium (including all premium variants)
@@ -188,7 +237,9 @@ export async function GET(): Promise<
         '[verify-premium] Premium status determined:',
         isPremium,
         'for product type:',
-        userData.product
+        userData.product,
+        'Premium variants checked:',
+        ['premium', 'premium_duo', 'premium_family', 'premium_student']
       )
 
       // Update profile with premium status
@@ -196,6 +247,7 @@ export async function GET(): Promise<
         .from('profiles')
         .update({
           is_premium: isPremium,
+          spotify_product_type: userData.product,
           premium_verified_at: new Date().toISOString()
         })
         .eq('id', user.id)
@@ -208,6 +260,14 @@ export async function GET(): Promise<
       } else {
         console.log('[verify-premium] Premium status updated in database')
       }
+
+      console.log('[verify-premium] Final response data:', {
+        isPremium,
+        productType: userData.product,
+        userProfileProduct: userData.product,
+        userProfileDisplayName: userData.display_name,
+        cached: false
+      })
 
       return NextResponse.json({
         isPremium,
