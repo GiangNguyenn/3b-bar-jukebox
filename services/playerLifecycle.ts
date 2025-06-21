@@ -113,6 +113,7 @@ declare global {
   interface Window {
     Spotify: typeof Spotify
     spotifyPlayerInstance: any // Use any to avoid type conflicts
+    onSpotifyWebPlaybackSDKError?: (error: any) => void // Added for local error handler
   }
 }
 
