@@ -1,3 +1,5 @@
+// Only non-Spotify types should remain in this file.
+
 export type SpotifyPlaylists = {
   href: string
   limit: number
@@ -252,13 +254,4 @@ export interface TokenInfo {
   type: string
   lastActualRefresh: number
   expiryTime: number
-}
-
-export interface HealthStatus {
-  device: 'healthy' | 'unresponsive' | 'disconnected' | 'unknown'
-  playback: 'playing' | 'paused' | 'stopped' | 'error' | 'unknown'
-  token: 'valid' | 'expired' | 'error' | 'unknown'
-  connection: 'connected' | 'disconnected' | 'unknown'
-  tokenExpiringSoon: boolean
-  fixedPlaylist: 'found' | 'not_found' | 'error' | 'unknown'
 }

@@ -1,4 +1,4 @@
-import { TrackItem } from '@/shared/types'
+import { TrackItem } from '@/shared/types/spotify'
 import { sendApiRequest } from '@/shared/api'
 import { useFixedPlaylist } from './useFixedPlaylist'
 import { useGetPlaylist } from './useGetPlaylist'

@@ -1,4 +1,4 @@
-import { TrackItem, SpotifyPlaybackState } from '@/shared/types'
+import { TrackItem, SpotifyPlaybackState } from '@/shared/types/spotify'
 import { sendApiRequest } from '@/shared/api'
 import { handleOperationError } from './errorHandling'
 

@@ -1,7 +1,7 @@
 import { useState, useCallback } from 'react'
 import { sendApiRequest } from '@/shared/api'
 import { SpotifyApiService } from '@/services/spotifyApi'
-import { SpotifyPlaybackState } from '@/shared/types'
+import { SpotifyPlaybackState } from '@/shared/types/spotify'
 import { verifyPlaybackResume } from '@/shared/utils/recovery/playback-verification'
 import { validatePlaybackStateWithDetails } from '@/shared/utils/recovery/validation'
 

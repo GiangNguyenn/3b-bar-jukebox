@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { sendApiRequest } from '@/shared/api'
-import { SpotifyPlaybackState } from '@/shared/types'
+import { SpotifyPlaybackState } from '@/shared/types/spotify'
 import {
   transferPlaybackToDevice,
   ensureDeviceHealth

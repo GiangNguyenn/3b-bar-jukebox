@@ -1,6 +1,6 @@
 import useSWR from 'swr'
 import { sendApiRequest } from '../shared/api'
-import { SpotifyPlaylists } from '@/shared/types'
+import { SpotifyPlaylists } from '@/shared/types/spotify'
 
 export const useMyPlaylists = () => {
   const fetcher = async () => {

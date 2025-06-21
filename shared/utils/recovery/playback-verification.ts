@@ -1,5 +1,5 @@
 import { sendApiRequest } from '@/shared/api'
-import { SpotifyPlaybackState } from '@/shared/types'
+import { SpotifyPlaybackState } from '@/shared/types/spotify'
 import { PlaybackVerificationResult } from '@/shared/types/recovery'
 import {
   PLAYBACK_VERIFICATION_TIMEOUT,

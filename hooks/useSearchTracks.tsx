@@ -1,5 +1,5 @@
 import { useCallback, useState } from 'react'
-import { TrackDetails } from '@/shared/types'
+import { TrackDetails } from '@/shared/types/spotify'
 import { ERROR_MESSAGES } from '@/shared/constants/errors'
 import {
   handleApiError,

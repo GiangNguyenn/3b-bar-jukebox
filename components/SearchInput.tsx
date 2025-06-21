@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { TrackDetails } from '@/shared/types'
+import { TrackDetails } from '@/shared/types/spotify'
 import { handleApiError } from '@/shared/utils/errorHandling'
 import { ErrorMessage } from '@/components/ui/error-message'
 import Image from 'next/image'

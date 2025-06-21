@@ -1,7 +1,7 @@
 'use client'
 
 import { useUserQueue } from '@/hooks/useUserQueue'
-import type { UserQueue } from '@/shared/types'
+import type { UserQueue } from '@/shared/types/spotify'
 
 export function QueueDisplay(): JSX.Element {
   const { data: queue } = useUserQueue('')

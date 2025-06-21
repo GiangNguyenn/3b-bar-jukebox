@@ -1,7 +1,7 @@
 import { useState, useCallback, useRef, useEffect } from 'react'
 import { useSpotifyPlayerStore, spotifyPlayerStore } from './useSpotifyPlayer'
 import { sendApiRequest } from '@/shared/api'
-import { SpotifyPlaybackState } from '@/shared/types'
+import { SpotifyPlaybackState } from '@/shared/types/spotify'
 import { useConsoleLogsContext } from './ConsoleLogsProvider'
 import { useRecoverySystem } from './recovery/useRecoverySystem'
 import { SpotifyApiService } from '@/services/spotifyApi'
@@ -11,6 +11,7 @@ import {
   setDeviceManagementLogger,
   validateDeviceStateIntelligent
 } from '@/services/deviceManagement'
+import { HealthStatus } from '@/shared/types/health'
 
 // Network Information API types
 interface NetworkInformation extends EventTarget {
@@ -28,19 +29,6 @@ interface NetworkInformation extends EventTarget {
   readonly rtt?: number
   readonly saveData?: boolean
   onchange?: (this: NetworkInformation, ev: Event) => void
-}
-
-interface HealthStatus {
-  device: 'healthy' | 'unresponsive' | 'disconnected' | 'unknown'
-  playback: 'playing' | 'paused' | 'stopped' | 'error' | 'unknown'
-  token: 'valid' | 'expired' | 'error' | 'unknown'
-  connection: 'connected' | 'disconnected' | 'unknown'
-  tokenExpiringSoon: boolean
-  fixedPlaylist: 'found' | 'not_found' | 'error' | 'unknown'
-  recovery?: 'idle' | 'recovering' | 'completed' | 'failed'
-  recoveryMessage?: string
-  recoveryProgress?: number
-  recoveryCurrentStep?: string
 }
 
 interface RecoveryState {
@@ -89,6 +77,7 @@ export function useSpotifyHealthMonitor(
   fixedPlaylistError?: Error | null
 ) {
   const [healthStatus, setHealthStatus] = useState<HealthStatus>({
+    deviceId: null,
     device: 'unknown',
     playback: 'unknown',
     token: 'unknown',

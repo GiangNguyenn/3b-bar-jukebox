@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { sendApiRequest } from '@/shared/api'
-import { SpotifyPlaylists } from '@/shared/types'
+import { SpotifyPlaylists } from '@/shared/types/spotify'
 
 // Configure the route to be dynamic
 export const dynamic = 'force-dynamic'

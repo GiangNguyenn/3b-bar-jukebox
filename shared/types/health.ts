@@ -1,9 +1,34 @@
 export interface HealthStatus {
   deviceId: string | null
   device: 'healthy' | 'unresponsive' | 'disconnected' | 'unknown' | 'error'
-  playback: 'playing' | 'paused' | 'stopped' | 'unknown' | 'error'
+  playback: 'playing' | 'paused' | 'stopped' | 'error' | 'unknown'
   token: 'valid' | 'expired' | 'error' | 'unknown'
   tokenExpiringSoon: boolean
-  connection: 'connected' | 'disconnected' | 'unknown'
+  connection:
+    | 'connected'
+    | 'disconnected'
+    | 'good'
+    | 'poor'
+    | 'unstable'
+    | 'unknown'
   fixedPlaylist: 'found' | 'not_found' | 'error' | 'unknown'
+  // Optional recovery fields for components that need them
+  recovery?: 'idle' | 'recovering' | 'completed' | 'failed'
+  recoveryMessage?: string
+  recoveryProgress?: number
+  recoveryCurrentStep?: string
 }
+
+// Additional health-related types
+export interface PlaybackInfo {
+  isPlaying: boolean
+  currentTrack: string
+  progress: number
+}
+
+export type DeviceHealthStatus =
+  | 'healthy'
+  | 'unresponsive'
+  | 'disconnected'
+  | 'unknown'
+  | 'error'

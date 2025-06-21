@@ -1,4 +1,4 @@
-import { SpotifyPlaybackState } from '@/shared/types'
+import { SpotifyPlaybackState } from '@/shared/types/spotify'
 import { ValidationResult } from '@/shared/types/recovery'
 import { sendApiRequest } from '@/shared/api'
 

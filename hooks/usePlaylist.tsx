@@ -3,7 +3,7 @@ import {
   SpotifyPlaylistItem,
   TrackItem,
   SpotifyPlaybackState
-} from '@/shared/types'
+} from '@/shared/types/spotify'
 import { ERROR_MESSAGES } from '@/shared/constants/errors'
 import { filterUpcomingTracks } from '@/lib/utils'
 import useSWR from 'swr'

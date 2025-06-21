@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useRef } from 'react'
-import { TrackItem } from '@/shared/types'
+import { TrackItem } from '@/shared/types/spotify'
 import QueueItem from './QueueItem'
 import NowPlaying from './NowPlaying'
 import useNowPlayingTrack from '@/hooks/useNowPlayingTrack'
