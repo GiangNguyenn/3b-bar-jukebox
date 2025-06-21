@@ -2,7 +2,7 @@
 
 import { StatusIndicator } from './components/status-indicator'
 import { PlaybackProgress } from './components/playback-progress'
-import { HealthStatus } from '@/shared/types'
+import { HealthStatus } from '@/shared/types/health'
 
 interface HealthStatusSectionProps {
   healthStatus: HealthStatus

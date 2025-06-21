@@ -1,7 +1,7 @@
 'use client'
 
 import { StatusIndicator } from './status-indicator'
-import { HealthStatus } from '../types'
+import { HealthStatus } from '@/shared/types/health'
 import { SpotifyPlaybackState } from '@/shared/types/spotify'
 
 interface StatusGridProps {

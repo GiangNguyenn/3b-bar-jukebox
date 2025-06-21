@@ -2,7 +2,7 @@
 
 import { createContext, useContext, useState, ReactNode } from 'react'
 import { ERROR_MESSAGES, ErrorMessage } from '@/shared/constants/errors'
-import { SpotifyPlaylistItem } from '@/shared/types'
+import { SpotifyPlaylistItem } from '@/shared/types/spotify'
 
 interface PlaylistContextType {
   currentPlaylist: SpotifyPlaylistItem | null

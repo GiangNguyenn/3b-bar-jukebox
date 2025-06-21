@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react'
 import { useRemoveTrackFromPlaylist } from './useRemoveTrackFromPlaylist'
-import { TrackItem, SpotifyPlaybackState } from '@/shared/types'
+import { TrackItem, SpotifyPlaybackState } from '@/shared/types/spotify'
 import { autoRemoveTrack } from '@/shared/utils/autoRemoveTrack'
 
 interface UseAutoRemoveFinishedTrackProps {

@@ -1,5 +1,5 @@
 import { sendApiRequest } from '@/shared/api'
-import { SpotifyPlaybackState } from '@/shared/types'
+import { SpotifyPlaybackState } from '@/shared/types/spotify'
 import { handleOperationError, AppError } from '@/shared/utils/errorHandling'
 import React, { useEffect, useRef } from 'react'
 import useSWR from 'swr'
@@ -43,7 +43,7 @@ const useNowPlayingTrack = () => {
             trackName: response?.item?.name,
             trackId: currentTrackId
           })
-          lastTrackId.current = currentTrackId
+          lastTrackId.current = currentTrackId ?? null
         }
 
         return response

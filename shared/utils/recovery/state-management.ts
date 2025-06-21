@@ -1,7 +1,7 @@
 import { sendApiRequest } from '@/shared/api'
 import { RecoveryState, RecoveryStatus } from '@/shared/types/recovery'
 import { RECOVERY_STEPS } from '@/shared/constants/recovery'
-import { SpotifyPlaybackState } from '@/shared/types'
+import { SpotifyPlaybackState } from '@/shared/types/spotify'
 
 export function createRecoveryState(): RecoveryState {
   return {

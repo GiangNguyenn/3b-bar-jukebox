@@ -2,7 +2,7 @@ import {
   SpotifyPlaylistItem,
   SpotifyPlaybackState,
   TrackItem
-} from '@/shared/types'
+} from '@/shared/types/spotify'
 import { sendApiRequest } from '@/shared/api'
 import { handleOperationError } from '@/shared/utils/errorHandling'
 import { useFixedPlaylist } from '@/hooks/useFixedPlaylist'

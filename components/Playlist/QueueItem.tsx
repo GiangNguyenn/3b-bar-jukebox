@@ -1,4 +1,4 @@
-import { TrackItem } from '@/shared/types'
+import { TrackItem } from '@/shared/types/spotify'
 import React from 'react'
 import Image from 'next/image'
 

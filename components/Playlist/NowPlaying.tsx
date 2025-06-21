@@ -1,6 +1,6 @@
 import React, { memo } from 'react'
 import VinylSpinningAnimation from './VinylSpinningAnimation'
-import { SpotifyPlaybackState } from '@/shared/types'
+import { SpotifyPlaybackState } from '@/shared/types/spotify'
 
 interface INowPlayingProps {
   nowPlaying?: SpotifyPlaybackState

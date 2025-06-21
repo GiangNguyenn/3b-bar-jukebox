@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { TrackItem, SpotifyPlaylistItem } from '@/shared/types'
+import { TrackItem, SpotifyPlaylistItem } from '@/shared/types/spotify'
 import { ERROR_MESSAGES } from '@/shared/constants/errors'
 import { sendApiRequest } from '@/shared/api'
 import { handleOperationError, AppError } from '@/shared/utils/errorHandling'

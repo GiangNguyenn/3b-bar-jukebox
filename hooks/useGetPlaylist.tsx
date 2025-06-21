@@ -1,4 +1,4 @@
-import { SpotifyPlaylistItem } from '@/shared/types'
+import { SpotifyPlaylistItem } from '@/shared/types/spotify'
 import { sendApiRequest } from '@/shared/api'
 import { ERROR_MESSAGES, ErrorMessage } from '@/shared/constants/errors'
 import useSWR from 'swr'

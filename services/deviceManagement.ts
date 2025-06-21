@@ -1,5 +1,5 @@
 import { sendApiRequest } from '@/shared/api'
-import { SpotifyPlaybackState } from '@/shared/types'
+import { SpotifyPlaybackState } from '@/shared/types/spotify'
 import { DeviceVerificationState } from '@/shared/types/recovery'
 import { VERIFICATION_TIMEOUT } from '@/shared/constants/recovery'
 

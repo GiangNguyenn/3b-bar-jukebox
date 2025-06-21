@@ -1,4 +1,4 @@
-import { TrackDetails } from '@/shared/types'
+import { TrackDetails } from '@/shared/types/spotify'
 import { sendApiRequest } from '@/shared/api'
 import {
   FALLBACK_GENRES,

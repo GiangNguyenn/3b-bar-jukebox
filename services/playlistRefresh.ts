@@ -2,7 +2,7 @@ import {
   SpotifyPlaylistItem,
   TrackItem,
   SpotifyPlaybackState
-} from '@/shared/types'
+} from '@/shared/types/spotify'
 import { SpotifyApiClient, SpotifyApiService } from './spotifyApi'
 import {
   MAX_PLAYLIST_LENGTH,
