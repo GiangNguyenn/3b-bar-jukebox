@@ -35,6 +35,7 @@ export default function Home(): JSX.Element {
   }, [supabase])
 
   // Redirect non-premium users to premium-required page
+  // Only redirect if there's no error and user is confirmed to be non-premium
   useEffect(() => {
     console.log('[RootPage] Premium status check:', {
       user: !!user,
@@ -43,7 +44,7 @@ export default function Home(): JSX.Element {
       premiumError
     })
 
-    if (user && !isPremiumLoading && !isPremium) {
+    if (user && !isPremiumLoading && !isPremium && !premiumError) {
       console.log(
         '[RootPage] Redirecting non-premium user to /premium-required'
       )
@@ -68,6 +69,29 @@ export default function Home(): JSX.Element {
             className='text-white rounded bg-green-500 px-4 py-2 font-bold hover:bg-green-600'
           >
             Sign In
+          </a>
+        </div>
+      </div>
+    )
+  }
+
+  // If there's a premium error (like token issues), show login button
+  if (premiumError) {
+    console.log('[RootPage] Premium error detected, showing re-authentication option')
+    return (
+      <div className='flex min-h-screen items-center justify-center'>
+        <div className='text-center'>
+          <h1 className='mb-4 text-center font-[family-name:var(--font-belgrano)] text-4xl leading-tight text-primary-100'>
+            Authentication Issue
+          </h1>
+          <p className='mb-8 text-gray-400'>
+            There was an issue with your Spotify connection. Please sign in again.
+          </p>
+          <a
+            href='/auth/signin'
+            className='text-white rounded bg-green-500 px-4 py-2 font-bold hover:bg-green-600'
+          >
+            Sign In Again
           </a>
         </div>
       </div>
