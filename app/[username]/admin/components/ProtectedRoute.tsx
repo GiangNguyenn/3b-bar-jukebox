@@ -46,15 +46,17 @@ export function ProtectedRoute({
           }
           setIsPremium(true)
         } else {
-          // Premium verification failed, redirect to premium required page
-          router.push('/premium-required')
+          // Premium verification failed, redirect to root page
+          // This allows users to re-authenticate with Spotify
+          router.push('/')
           return
         }
 
         setIsLoading(false)
       } catch (error) {
         console.error('Error checking session or premium status:', error)
-        router.push('/auth/signin')
+        // For any errors, redirect to root page to allow re-authentication
+        router.push('/')
       }
     }
 
@@ -78,7 +80,7 @@ export function ProtectedRoute({
             Redirecting...
           </h1>
           <p className='text-gray-400'>
-            Please wait while we redirect you to the premium requirements page.
+            Please wait while we redirect you to the appropriate page.
           </p>
         </div>
       </div>

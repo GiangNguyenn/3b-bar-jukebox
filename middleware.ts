@@ -78,25 +78,16 @@ export async function middleware(request: NextRequest) {
           error: errorData
         })
 
-        // If it's a token issue, redirect to sign in
-        if (
-          premiumResponse.status === 401 ||
-          errorData.code === 'NO_SPOTIFY_TOKEN' ||
-          errorData.code === 'INVALID_SPOTIFY_TOKEN'
-        ) {
-          console.log('Token issue detected, redirecting to sign in')
-          const redirectUrl = new URL('/auth/signin', request.url)
-          return NextResponse.redirect(redirectUrl)
-        }
-
-        // Other errors, redirect to premium required page
-        const redirectUrl = new URL('/premium-required', request.url)
+        // For all errors (including token issues), redirect to root page
+        // This allows users to re-authenticate with Spotify
+        console.log('Premium verification error detected, redirecting to root page')
+        const redirectUrl = new URL('/', request.url)
         return NextResponse.redirect(redirectUrl)
       }
     } catch (error) {
       console.error('Error verifying premium status in middleware:', error)
-      // Error in premium verification, redirect to premium required page
-      const redirectUrl = new URL('/premium-required', request.url)
+      // Error in premium verification, redirect to root page
+      const redirectUrl = new URL('/', request.url)
       return NextResponse.redirect(redirectUrl)
     }
 

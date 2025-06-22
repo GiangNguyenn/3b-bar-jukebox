@@ -157,13 +157,16 @@ export async function findSuggestedTrack(
     const genre = getRandomGenre(genres)
     genresTried.push(genre)
 
-    console.log(`[TrackSuggestion] Attempt ${attempts + 1}/${MAX_GENRE_ATTEMPTS}: Searching genre "${genre}"`, {
-      attempt: attempts + 1,
-      maxAttempts: MAX_GENRE_ATTEMPTS,
-      genre,
-      genresTried,
-      timestamp: new Date().toISOString()
-    })
+    console.log(
+      `[TrackSuggestion] Attempt ${attempts + 1}/${MAX_GENRE_ATTEMPTS}: Searching genre "${genre}"`,
+      {
+        attempt: attempts + 1,
+        maxAttempts: MAX_GENRE_ATTEMPTS,
+        genre,
+        genresTried,
+        timestamp: new Date().toISOString()
+      }
+    )
 
     try {
       const searchStartTime = Date.now()
@@ -176,13 +179,16 @@ export async function findSuggestedTrack(
       )
       const searchDuration = Date.now() - searchStartTime
 
-      console.log(`[TrackSuggestion] Found ${tracks.length} tracks for genre "${genre}" in ${searchDuration}ms`, {
-        attempt: attempts + 1,
-        genre,
-        tracksFound: tracks.length,
-        searchDuration,
-        timestamp: new Date().toISOString()
-      })
+      console.log(
+        `[TrackSuggestion] Found ${tracks.length} tracks for genre "${genre}" in ${searchDuration}ms`,
+        {
+          attempt: attempts + 1,
+          genre,
+          tracksFound: tracks.length,
+          searchDuration,
+          timestamp: new Date().toISOString()
+        }
+      )
 
       // Log details about the tracks we found
       const trackDetails = tracks.map((t) => ({
@@ -206,11 +212,19 @@ export async function findSuggestedTrack(
       const selectionDuration = Date.now() - selectionStartTime
 
       // Count how many tracks meet each criteria
-      const playableCount = tracks.filter(t => t.is_playable === true).length
-      const popularityCount = tracks.filter(t => t.popularity >= minPopularity).length
-      const lengthCount = tracks.filter(t => t.duration_ms <= maxSongLength * 60 * 1000).length
-      const explicitCount = tracks.filter(t => allowExplicit || !t.explicit).length
-      const excludedCount = tracks.filter(t => allExcludedIds.includes(t.id)).length
+      const playableCount = tracks.filter((t) => t.is_playable === true).length
+      const popularityCount = tracks.filter(
+        (t) => t.popularity >= minPopularity
+      ).length
+      const lengthCount = tracks.filter(
+        (t) => t.duration_ms <= maxSongLength * 60 * 1000
+      ).length
+      const explicitCount = tracks.filter(
+        (t) => allowExplicit || !t.explicit
+      ).length
+      const excludedCount = tracks.filter((t) =>
+        allExcludedIds.includes(t.id)
+      ).length
 
       console.log(`[TrackSuggestion] Track selection results for "${genre}":`, {
         attempt: attempts + 1,
@@ -221,27 +235,36 @@ export async function findSuggestedTrack(
         lengthCount,
         explicitCount,
         excludedCount,
-        selectedTrack: selectedTrack ? {
-          name: selectedTrack.name,
-          artist: selectedTrack.artists[0]?.name,
-          popularity: selectedTrack.popularity,
-          duration: Math.round(selectedTrack.duration_ms / 1000 / 60 * 10) / 10 + 'min'
-        } : null,
+        selectedTrack: selectedTrack
+          ? {
+              name: selectedTrack.name,
+              artist: selectedTrack.artists[0]?.name,
+              popularity: selectedTrack.popularity,
+              duration:
+                Math.round((selectedTrack.duration_ms / 1000 / 60) * 10) / 10 +
+                'min'
+            }
+          : null,
         selectionDuration,
         timestamp: new Date().toISOString()
       })
 
       if (selectedTrack) {
-        console.log(`[TrackSuggestion] Successfully found track after ${attempts + 1} attempts:`, {
-          trackName: selectedTrack.name,
-          artist: selectedTrack.artists[0]?.name,
-          album: selectedTrack.album?.name,
-          popularity: selectedTrack.popularity,
-          duration: Math.round(selectedTrack.duration_ms / 1000 / 60 * 10) / 10 + 'min',
-          genresTried,
-          totalTracksSearched: allTrackDetails.length,
-          timestamp: new Date().toISOString()
-        })
+        console.log(
+          `[TrackSuggestion] Successfully found track after ${attempts + 1} attempts:`,
+          {
+            trackName: selectedTrack.name,
+            artist: selectedTrack.artists[0]?.name,
+            album: selectedTrack.album?.name,
+            popularity: selectedTrack.popularity,
+            duration:
+              Math.round((selectedTrack.duration_ms / 1000 / 60) * 10) / 10 +
+              'min',
+            genresTried,
+            totalTracksSearched: allTrackDetails.length,
+            timestamp: new Date().toISOString()
+          }
+        )
 
         return {
           track: selectedTrack,
@@ -258,11 +281,14 @@ export async function findSuggestedTrack(
 
       attempts++
       if (attempts < MAX_GENRE_ATTEMPTS) {
-        console.log(`[TrackSuggestion] No suitable track found for "${genre}", waiting 1s before next attempt`, {
-          attempt: attempts,
-          nextAttempt: attempts + 1,
-          timestamp: new Date().toISOString()
-        })
+        console.log(
+          `[TrackSuggestion] No suitable track found for "${genre}", waiting 1s before next attempt`,
+          {
+            attempt: attempts,
+            nextAttempt: attempts + 1,
+            timestamp: new Date().toISOString()
+          }
+        )
         // Add a small delay between attempts
         await new Promise((resolve) => setTimeout(resolve, 1000))
       }
@@ -283,13 +309,16 @@ export async function findSuggestedTrack(
     }
   }
 
-  console.log(`[TrackSuggestion] Failed to find suitable track after ${MAX_GENRE_ATTEMPTS} attempts`, {
-    totalAttempts: attempts,
-    genresTried,
-    totalTracksSearched: allTrackDetails.length,
-    excludedTrackIds: allExcludedIds.length,
-    timestamp: new Date().toISOString()
-  })
+  console.log(
+    `[TrackSuggestion] Failed to find suitable track after ${MAX_GENRE_ATTEMPTS} attempts`,
+    {
+      totalAttempts: attempts,
+      genresTried,
+      totalTracksSearched: allTrackDetails.length,
+      excludedTrackIds: allExcludedIds.length,
+      timestamp: new Date().toISOString()
+    }
+  )
 
   return {
     track: null,
