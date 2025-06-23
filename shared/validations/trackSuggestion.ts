@@ -70,13 +70,21 @@ export function validateTrackSuggestionParams(
   if (params.popularity !== undefined) {
     if (typeof params.popularity !== 'number') {
       errors.push('Popularity must be a number')
-    } else if (params.popularity < MIN_POPULARITY || params.popularity > MAX_POPULARITY) {
-      errors.push(`Popularity must be between ${MIN_POPULARITY} and ${MAX_POPULARITY}`)
+    } else if (
+      params.popularity < MIN_POPULARITY ||
+      params.popularity > MAX_POPULARITY
+    ) {
+      errors.push(
+        `Popularity must be between ${MIN_POPULARITY} and ${MAX_POPULARITY}`
+      )
     }
   }
 
   // Validate allowExplicit
-  if (params.allowExplicit !== undefined && typeof params.allowExplicit !== 'boolean') {
+  if (
+    params.allowExplicit !== undefined &&
+    typeof params.allowExplicit !== 'boolean'
+  ) {
     errors.push('Allow explicit must be a boolean')
   }
 
@@ -84,8 +92,13 @@ export function validateTrackSuggestionParams(
   if (params.maxSongLength !== undefined) {
     if (typeof params.maxSongLength !== 'number') {
       errors.push('Max song length must be a number')
-    } else if (params.maxSongLength < MIN_SONG_LENGTH_MINUTES || params.maxSongLength > MAX_SONG_LENGTH_MINUTES) {
-      errors.push(`Max song length must be between ${MIN_SONG_LENGTH_MINUTES} and ${MAX_SONG_LENGTH_MINUTES} minutes`)
+    } else if (
+      params.maxSongLength < MIN_SONG_LENGTH_MINUTES ||
+      params.maxSongLength > MAX_SONG_LENGTH_MINUTES
+    ) {
+      errors.push(
+        `Max song length must be between ${MIN_SONG_LENGTH_MINUTES} and ${MAX_SONG_LENGTH_MINUTES} minutes`
+      )
     }
   }
 
@@ -113,7 +126,9 @@ export function validateTrackSuggestionParams(
   }
 }
 
-export function validateExcludedTrackIds(excludedTrackIds: string[]): ValidationResult {
+export function validateExcludedTrackIds(
+  excludedTrackIds: string[]
+): ValidationResult {
   const errors: string[] = []
 
   if (!Array.isArray(excludedTrackIds)) {
@@ -131,4 +146,4 @@ export function validateExcludedTrackIds(excludedTrackIds: string[]): Validation
     isValid: errors.length === 0,
     errors
   }
-} 
+}

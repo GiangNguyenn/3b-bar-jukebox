@@ -4,7 +4,7 @@ import { Suspense } from 'react'
 import { useGetProfile } from '@/hooks/useGetProfile'
 import { useGetPlaylist } from '@/hooks/useGetPlaylist'
 import { useFixedPlaylist } from '@/hooks/useFixedPlaylist'
-import { useAddTrackToPlaylist } from '@/hooks/useAddTrackToPlaylist'
+import { useTrackOperations } from '@/hooks/useTrackOperations'
 import { TrackDetails, TrackItem } from '@/shared/types/spotify'
 import SearchInput from '@/components/SearchInput'
 import Playlist from '@/components/Playlist/Playlist'
@@ -27,7 +27,7 @@ export default function PlaylistPage(): JSX.Element {
     error: Error | null
     isLoading: boolean
   }
-  const { addTrack, optimisticTrack } = useAddTrackToPlaylist({
+  const { addTrack, optimisticTrack } = useTrackOperations({
     playlistId: fixedPlaylistId ?? ''
   }) as {
     addTrack: (track: TrackItem) => Promise<void>

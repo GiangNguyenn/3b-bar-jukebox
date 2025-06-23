@@ -12,9 +12,9 @@ export const DEBOUNCE_MS = 10000
 export const MIN_TRACK_POPULARITY = 50
 
 // Alternative popularity thresholds for different use cases
-export const MIN_TRACK_POPULARITY_INCLUSIVE = 30  // Include mid-tier tracks
-export const MIN_TRACK_POPULARITY_VERY_INCLUSIVE = 20  // Include most tracks except very obscure
-export const MIN_TRACK_POPULARITY_OBSCURE = 0  // Include all tracks
+export const MIN_TRACK_POPULARITY_INCLUSIVE = 30 // Include mid-tier tracks
+export const MIN_TRACK_POPULARITY_VERY_INCLUSIVE = 20 // Include most tracks except very obscure
+export const MIN_TRACK_POPULARITY_OBSCURE = 0 // Include all tracks
 
 // Default market for track search (Australia)
 export const DEFAULT_MARKET = 'AU'
@@ -1443,7 +1443,10 @@ export const TRACK_SEARCH_LIMIT = 50
 export const DEFAULT_MAX_SONG_LENGTH_MINUTES = 3
 export const DEFAULT_MAX_OFFSET = 1000
 export const DEFAULT_MAX_GENRE_ATTEMPTS = 20
-export const DEFAULT_YEAR_RANGE: [number, number] = [1950, new Date().getFullYear()]
+export const DEFAULT_YEAR_RANGE: [number, number] = [
+  1950,
+  new Date().getFullYear()
+]
 export const DEFAULT_SONGS_BETWEEN_REPEATS = 5
 
 // Validation limits
