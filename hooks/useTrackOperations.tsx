@@ -17,9 +17,7 @@ interface TrackOperationsState {
   optimisticTrack: TrackItem | null
 }
 
-export const useTrackOperations = ({
-  playlistId
-}: UseTrackOperationsProps) => {
+export const useTrackOperations = ({ playlistId }: UseTrackOperationsProps) => {
   const {
     isError: playlistError,
     refetchPlaylist,
@@ -53,7 +51,9 @@ export const useTrackOperations = ({
   }
 
   // Helper function to create optimistic playlist for add operation
-  const createOptimisticAddPlaylist = (track: TrackItem): SpotifyPlaylistItem => ({
+  const createOptimisticAddPlaylist = (
+    track: TrackItem
+  ): SpotifyPlaylistItem => ({
     ...playlist!,
     tracks: {
       ...playlist!.tracks,
@@ -77,7 +77,9 @@ export const useTrackOperations = ({
   })
 
   // Helper function to create optimistic playlist for remove operation
-  const createOptimisticRemovePlaylist = (track: TrackItem): SpotifyPlaylistItem => ({
+  const createOptimisticRemovePlaylist = (
+    track: TrackItem
+  ): SpotifyPlaylistItem => ({
     ...playlist!,
     tracks: {
       ...playlist!.tracks,
@@ -95,7 +97,9 @@ export const useTrackOperations = ({
     errorMessage: string,
     operationName: string
   ): Promise<void> => {
-    const operationWithOptimisticUpdates = async (track: TrackItem): Promise<void> => {
+    const operationWithOptimisticUpdates = async (
+      track: TrackItem
+    ): Promise<void> => {
       // Set optimistic state
       setOptimisticState(track)
 
@@ -177,4 +181,4 @@ export const useTrackOperations = ({
     pendingTracks: Array.from(pendingTracks),
     optimisticTrack
   }
-} 
+}

@@ -8,7 +8,6 @@ import {
   XMarkIcon
 } from '@heroicons/react/20/solid'
 import {
-  FALLBACK_GENRES,
   ALL_SPOTIFY_GENRES,
   type Genre
 } from '@/shared/constants/trackSuggestion'

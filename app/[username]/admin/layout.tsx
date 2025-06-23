@@ -1,5 +1,4 @@
 import { Metadata } from 'next'
-import Script from 'next/script'
 import { ConsoleLogsProvider } from '@/hooks/ConsoleLogsProvider'
 import { ProtectedRoute } from './components/ProtectedRoute'
 

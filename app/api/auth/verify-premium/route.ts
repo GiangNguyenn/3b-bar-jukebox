@@ -136,7 +136,7 @@ export async function GET(
         return NextResponse.json({
           isPremium: profile.is_premium ?? false,
           productType:
-            profile.spotify_product_type ||
+            profile.spotify_product_type ??
             (profile.is_premium ? 'premium' : 'free'),
           cached: true
         })

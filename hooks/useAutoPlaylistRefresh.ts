@@ -54,7 +54,9 @@ export function useAutoPlaylistRefresh({
             'Auto-playlist refresh: Refresh operation already in progress, skipping',
             'AutoPlaylistRefresh'
           )
-        } else if (errorMessage.includes('Playlist has reached maximum length')) {
+        } else if (
+          errorMessage.includes('Playlist has reached maximum length')
+        ) {
           addLog(
             'INFO',
             'Auto-playlist refresh: Playlist at maximum length, no new tracks needed',

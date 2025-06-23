@@ -1,5 +1,4 @@
 import { useState, useCallback, useEffect, useRef } from 'react'
-import { useDeviceHealth, DeviceHealthStatus } from './useDeviceHealth'
 import {
   cleanupOtherDevices,
   verifyDeviceTransfer,
@@ -7,7 +6,6 @@ import {
 } from '@/services/deviceManagement'
 import { sendApiRequest } from '@/shared/api'
 import { useConsoleLogsContext } from '../ConsoleLogsProvider'
-import { useCircuitBreaker } from './useCircuitBreaker'
 import { playerLifecycleService } from '@/services/playerLifecycle'
 import { spotifyPlayerStore } from '../useSpotifyPlayer'
 import { SpotifyApiService } from '@/services/spotifyApi'
@@ -24,6 +22,20 @@ export const PROGRESS_TOLERANCE = 100 // Allow 100ms difference in progress
 const RECOVERY_STATE_KEY = 'spotify_recovery_state'
 const DEVICE_REGISTRATION_TIMEOUT = 15000 // 15 seconds
 const DEVICE_ACTIVATION_TIMEOUT = 15000 // 15 seconds
+
+// Device health status type
+export type DeviceHealthStatus =
+  | 'healthy'
+  | 'unresponsive'
+  | 'disconnected'
+  | 'unknown'
+
+// Circuit breaker state interface
+interface CircuitBreakerState {
+  consecutiveFailures: number
+  lastFailureTime: number
+  isOpen: boolean
+}
 
 // Updated RecoveryPhase type with logical order
 type RecoveryPhase =
@@ -124,14 +136,72 @@ export function useRecoverySystem(
   const onHealthUpdateRef = useRef(onHealthUpdate)
   onHealthUpdateRef.current = onHealthUpdate
 
-  const { updateHealth, currentStatus } = useDeviceHealth()
-  const {
-    isCircuitOpen,
-    recordFailure,
-    recordSuccess,
-    reset: resetCircuit
-  } = useCircuitBreaker(3, 30000)
   const { addLog } = useConsoleLogsContext()
+
+  // Internal circuit breaker state
+  const circuitBreakerState = useRef<CircuitBreakerState>({
+    consecutiveFailures: 0,
+    lastFailureTime: 0,
+    isOpen: false
+  })
+
+  // Internal device health state
+  const deviceHealthStatusRef = useRef<DeviceHealthStatus>('unknown')
+
+  // Circuit breaker functions
+  const isCircuitOpen = useCallback((): boolean => {
+    const { consecutiveFailures, lastFailureTime, isOpen } =
+      circuitBreakerState.current
+    const threshold = 3
+    const timeout = 30000
+
+    if (consecutiveFailures >= threshold) {
+      const timeSinceLastFailure = Date.now() - lastFailureTime
+      if (timeSinceLastFailure < timeout) {
+        return true
+      }
+      // Reset if timeout has passed
+      circuitBreakerState.current = {
+        consecutiveFailures: 0,
+        lastFailureTime: 0,
+        isOpen: false
+      }
+    }
+    return false
+  }, [])
+
+  const recordFailure = useCallback(() => {
+    circuitBreakerState.current.consecutiveFailures++
+    circuitBreakerState.current.lastFailureTime = Date.now()
+    circuitBreakerState.current.isOpen = true
+  }, [])
+
+  const recordSuccess = useCallback(() => {
+    circuitBreakerState.current = {
+      consecutiveFailures: 0,
+      lastFailureTime: 0,
+      isOpen: false
+    }
+  }, [])
+
+  const resetCircuit = useCallback(() => {
+    circuitBreakerState.current = {
+      consecutiveFailures: 0,
+      lastFailureTime: 0,
+      isOpen: false
+    }
+  }, [])
+
+  // Device health functions
+  const updateHealth = useCallback((status: DeviceHealthStatus) => {
+    if (status !== deviceHealthStatusRef.current) {
+      deviceHealthStatusRef.current = status
+    }
+  }, [])
+
+  const resetHealth = useCallback(() => {
+    updateHealth('unknown')
+  }, [updateHealth])
 
   // Set up logger for player lifecycle service
   useEffect(() => {
@@ -160,9 +230,9 @@ export function useRecoverySystem(
   // Update parent when health status changes (only if callback is provided)
   useEffect(() => {
     if (onHealthUpdateRef.current) {
-      onHealthUpdateRef.current({ device: currentStatus })
+      onHealthUpdateRef.current({ device: deviceHealthStatusRef.current })
     }
-  }, [currentStatus])
+  }, [])
 
   // Complete cleanup function - now destroys everything
   const cleanup = useCallback(async (): Promise<void> => {
@@ -177,13 +247,13 @@ export function useRecoverySystem(
         progress: 0,
         currentStep: ''
       })
-      updateHealth('unknown')
+      resetHealth()
       // Clear persisted state
       localStorage.removeItem(RECOVERY_STATE_KEY)
     } catch (error) {
       console.error('Cleanup failed:', error)
     }
-  }, [updateHealth])
+  }, [resetHealth])
 
   const reset = useCallback((): void => {
     if (recoveryTimeoutRef.current) {
