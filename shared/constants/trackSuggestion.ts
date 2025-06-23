@@ -11,30 +11,28 @@ export const DEBOUNCE_MS = 10000
 // 90–100: Global megahits
 export const MIN_TRACK_POPULARITY = 50
 
+// Alternative popularity thresholds for different use cases
+export const MIN_TRACK_POPULARITY_INCLUSIVE = 30  // Include mid-tier tracks
+export const MIN_TRACK_POPULARITY_VERY_INCLUSIVE = 20  // Include most tracks except very obscure
+export const MIN_TRACK_POPULARITY_OBSCURE = 0  // Include all tracks
+
 // Default market for track search (Australia)
 export const DEFAULT_MARKET = 'AU'
 
 // API endpoints
 export const SPOTIFY_SEARCH_ENDPOINT = 'search'
 
-// Genre options
+// Genre options - only includes genres that exist in ALL_SPOTIFY_GENRES
 export const FALLBACK_GENRES = [
   'Australian Alternative Rock',
-  'Australian Rock',
   'Australian Indie',
   'Australian Pop',
-  'Australian Punk',
-  'Australian Blues',
-  'Australian Soul',
   'Pub Rock',
   'Vietnamese Pop',
-  'Vietnamese Rock',
-  'Vietnamese Indie',
   'Grunge',
   'Grunge Pop',
   'Alternative Rock',
   'Alternative Pop',
-  'Vietnamese R&B',
   'Nerdcore',
   'Blues-rock',
   'Contemporary Jazz',
@@ -1434,9 +1432,24 @@ export const ALL_SPOTIFY_GENRES = [
   'Zydeco'
 ] as const
 
-export type Genre = (typeof FALLBACK_GENRES)[number]
-export type SpotifyGenre = (typeof ALL_SPOTIFY_GENRES)[number]
+// Genre type represents any valid Spotify genre
+export type Genre = (typeof ALL_SPOTIFY_GENRES)[number]
 
 // Configuration
 export const MAX_PLAYLIST_LENGTH = 3
 export const TRACK_SEARCH_LIMIT = 50
+
+// Track suggestion defaults
+export const DEFAULT_MAX_SONG_LENGTH_MINUTES = 3
+export const DEFAULT_MAX_OFFSET = 1000
+export const DEFAULT_MAX_GENRE_ATTEMPTS = 20
+export const DEFAULT_YEAR_RANGE: [number, number] = [1950, new Date().getFullYear()]
+export const DEFAULT_SONGS_BETWEEN_REPEATS = 5
+
+// Validation limits
+export const MIN_POPULARITY = 0
+export const MAX_POPULARITY = 100
+export const MIN_SONG_LENGTH_MINUTES = 0.1
+export const MAX_SONG_LENGTH_MINUTES = 60
+export const MIN_YEAR = 1900
+export const MAX_YEAR = new Date().getFullYear() + 1

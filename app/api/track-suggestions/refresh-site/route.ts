@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import { songsBetweenRepeatsSchema } from '@/app/[username]/admin/components/track-suggestions/validations/trackSuggestions'
 import { PlaylistRefreshServiceImpl } from '@/services/playlistRefresh'
+import { type Genre } from '@/shared/constants/trackSuggestion'
 
 export const runtime = 'nodejs'
 
@@ -12,7 +13,7 @@ export const maxDuration = 60 // 60 seconds
 let serviceInstance: PlaylistRefreshServiceImpl | null = null
 
 const refreshRequestSchema = z.object({
-  genres: z.array(z.string()).min(1).max(10),
+  genres: z.array(z.string() as z.ZodType<Genre>).min(1).max(10),
   yearRange: z.tuple([
     z.number().min(1900),
     z.number().max(new Date().getFullYear())
@@ -57,10 +58,7 @@ export async function POST(
 
     // Use the cached instance if available, otherwise create a new one
     if (!serviceInstance) {
-      console.log('[API Refresh Site] Creating new service instance')
       serviceInstance = PlaylistRefreshServiceImpl.getInstance()
-    } else {
-      console.log('[API Refresh Site] Using cached service instance')
     }
 
     const result = await serviceInstance.refreshPlaylist(true, {
@@ -71,12 +69,6 @@ export async function POST(
       maxSongLength: validatedData.maxSongLength,
       songsBetweenRepeats: validatedData.songsBetweenRepeats,
       maxOffset: validatedData.maxOffset
-    })
-
-    console.log('[API Refresh Site] Result:', {
-      timestamp: new Date().toISOString(),
-      result,
-      serviceInstance: serviceInstance ? 'exists' : 'null'
     })
 
     if (!result.success) {

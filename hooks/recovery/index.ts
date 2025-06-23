@@ -1,5 +1,4 @@
 export { useRecoverySystem } from './useRecoverySystem'
-export { usePlaybackManager } from './usePlaybackManager'
 export { useCircuitBreaker } from './useCircuitBreaker'
 export { useDeviceHealth } from './useDeviceHealth'
 export type { DeviceHealthStatus } from './useDeviceHealth'

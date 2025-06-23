@@ -80,7 +80,9 @@ export async function middleware(request: NextRequest) {
 
         // For all errors (including token issues), redirect to root page
         // This allows users to re-authenticate with Spotify
-        console.log('Premium verification error detected, redirecting to root page')
+        console.log(
+          'Premium verification error detected, redirecting to root page'
+        )
         const redirectUrl = new URL('/', request.url)
         return NextResponse.redirect(redirectUrl)
       }

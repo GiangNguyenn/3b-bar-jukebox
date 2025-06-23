@@ -6,9 +6,10 @@ import {
 import { SpotifyApiClient, SpotifyApiService } from './spotifyApi'
 import {
   MAX_PLAYLIST_LENGTH,
-  FALLBACK_GENRES
+  FALLBACK_GENRES,
+  type Genre
 } from '@/shared/constants/trackSuggestion'
-import { findSuggestedTrack, Genre } from '@/services/trackSuggestion'
+import { findSuggestedTrack } from '@/services/trackSuggestion'
 import { filterUpcomingTracks } from '@/lib/utils'
 import { autoRemoveTrack } from '@/shared/utils/autoRemoveTrack'
 import { handleOperationError } from '@/shared/utils/errorHandling'
@@ -584,15 +585,6 @@ export class PlaylistRefreshServiceImpl implements PlaylistRefreshService {
         if (result.error === 'Enough tracks remaining') {
           Sentry.logger.info(
             '[PlaylistRefresh] Enough tracks remaining, no action needed',
-            {
-              error: result.error,
-              diagnosticInfo,
-              params,
-              timestamp: new Date().toISOString()
-            }
-          )
-          console.info(
-            '[PlaylistRefresh] Enough tracks remaining, no action needed:',
             {
               error: result.error,
               diagnosticInfo,

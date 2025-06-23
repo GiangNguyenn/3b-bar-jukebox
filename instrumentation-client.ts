@@ -10,7 +10,7 @@ Sentry.init({
   // Add optional integrations for additional features
   integrations: [
     Sentry.replayIntegration(),
-    Sentry.consoleLoggingIntegration({ levels: ['log', 'error', 'warn'] })
+    Sentry.consoleLoggingIntegration({ levels: ['error', 'warn'] })
   ],
 
   // Define how likely traces are sampled. Adjust this value in production, or use tracesSampler for greater control.
@@ -25,9 +25,7 @@ Sentry.init({
   replaysOnErrorSampleRate: 1.0,
 
   // Setting this option to true will print useful information to the console while you're setting up Sentry.
-  debug: false,
-
-  _experiments: { enableLogs: true }
+  debug: false
 })
 
 export const onRouterTransitionStart = Sentry.captureRouterTransitionStart
