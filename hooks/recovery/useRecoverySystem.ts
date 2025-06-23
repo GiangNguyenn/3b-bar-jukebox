@@ -9,6 +9,7 @@ import { useConsoleLogsContext } from '../ConsoleLogsProvider'
 import { playerLifecycleService } from '@/services/playerLifecycle'
 import { spotifyPlayerStore } from '../useSpotifyPlayer'
 import { SpotifyApiService } from '@/services/spotifyApi'
+import { useCircuitBreaker } from './useCircuitBreaker'
 
 // Recovery system constants
 export const MAX_RECOVERY_RETRIES = 3
@@ -29,13 +30,6 @@ export type DeviceHealthStatus =
   | 'unresponsive'
   | 'disconnected'
   | 'unknown'
-
-// Circuit breaker state interface
-interface CircuitBreakerState {
-  consecutiveFailures: number
-  lastFailureTime: number
-  isOpen: boolean
-}
 
 // Updated RecoveryPhase type with logical order
 type RecoveryPhase =
@@ -138,59 +132,11 @@ export function useRecoverySystem(
 
   const { addLog } = useConsoleLogsContext()
 
-  // Internal circuit breaker state
-  const circuitBreakerState = useRef<CircuitBreakerState>({
-    consecutiveFailures: 0,
-    lastFailureTime: 0,
-    isOpen: false
-  })
+  // Use the existing circuit breaker hook instead of duplicating logic
+  const circuitBreaker = useCircuitBreaker(3, 30000) // threshold: 3, timeout: 30s
 
   // Internal device health state
   const deviceHealthStatusRef = useRef<DeviceHealthStatus>('unknown')
-
-  // Circuit breaker functions
-  const isCircuitOpen = useCallback((): boolean => {
-    const { consecutiveFailures, lastFailureTime, isOpen } =
-      circuitBreakerState.current
-    const threshold = 3
-    const timeout = 30000
-
-    if (consecutiveFailures >= threshold) {
-      const timeSinceLastFailure = Date.now() - lastFailureTime
-      if (timeSinceLastFailure < timeout) {
-        return true
-      }
-      // Reset if timeout has passed
-      circuitBreakerState.current = {
-        consecutiveFailures: 0,
-        lastFailureTime: 0,
-        isOpen: false
-      }
-    }
-    return false
-  }, [])
-
-  const recordFailure = useCallback(() => {
-    circuitBreakerState.current.consecutiveFailures++
-    circuitBreakerState.current.lastFailureTime = Date.now()
-    circuitBreakerState.current.isOpen = true
-  }, [])
-
-  const recordSuccess = useCallback(() => {
-    circuitBreakerState.current = {
-      consecutiveFailures: 0,
-      lastFailureTime: 0,
-      isOpen: false
-    }
-  }, [])
-
-  const resetCircuit = useCallback(() => {
-    circuitBreakerState.current = {
-      consecutiveFailures: 0,
-      lastFailureTime: 0,
-      isOpen: false
-    }
-  }, [])
 
   // Device health functions
   const updateHealth = useCallback((status: DeviceHealthStatus) => {
@@ -260,9 +206,9 @@ export function useRecoverySystem(
       clearTimeout(recoveryTimeoutRef.current)
       recoveryTimeoutRef.current = null
     }
-    resetCircuit()
+    circuitBreaker.reset()
     void cleanup()
-  }, [resetCircuit, cleanup])
+  }, [circuitBreaker.reset, cleanup])
 
   // Update state with persistence
   const updateState = useCallback((newState: Partial<RecoveryState>): void => {
@@ -279,7 +225,7 @@ export function useRecoverySystem(
       return
     }
 
-    if (isCircuitOpen()) {
+    if (circuitBreaker.isCircuitOpen()) {
       console.log('[Recovery] Circuit breaker is open, skipping recovery')
       return
     }
@@ -459,7 +405,7 @@ export function useRecoverySystem(
         isRecovering: false,
         resumeStrategy
       })
-      recordSuccess()
+      circuitBreaker.recordSuccess()
 
       // Schedule cleanup after success to clear the success message
       recoveryTimeoutRef.current = setTimeout(() => {
@@ -474,7 +420,7 @@ export function useRecoverySystem(
       }, 3000) // Clear after 3 seconds
     } catch (error) {
       console.error('[Recovery] Recovery failed:', error)
-      recordFailure()
+      circuitBreaker.recordFailure()
       updateState({
         phase: 'error',
         error: error instanceof Error ? error.message : 'Unknown error',
@@ -503,8 +449,9 @@ export function useRecoverySystem(
     playlistId,
     state.attempts,
     updateState,
-    recordSuccess,
-    recordFailure,
+    circuitBreaker.recordSuccess,
+    circuitBreaker.recordFailure,
+    circuitBreaker.isCircuitOpen,
     reset,
     addLog
   ])
