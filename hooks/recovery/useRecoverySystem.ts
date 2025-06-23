@@ -1,7 +1,7 @@
 import { useState, useCallback, useEffect, useRef } from 'react'
 import {
   cleanupOtherDevices,
-  verifyDeviceTransfer,
+  validateDevice,
   transferPlaybackToDevice
 } from '@/services/deviceManagement'
 import { sendApiRequest } from '@/shared/api'

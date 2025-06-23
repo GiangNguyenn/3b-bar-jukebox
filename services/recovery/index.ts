@@ -1,7 +1,7 @@
 import { sendApiRequest } from '@/shared/api'
 import {
   cleanupOtherDevices,
-  verifyDeviceTransfer
+  validateDevice
 } from '@/services/deviceManagement'
 import * as Sentry from '@sentry/nextjs'
 
@@ -84,7 +84,9 @@ export async function recoverDevice(
 
     // Step 6: Verify device transfer
     console.log('[Recovery] Verifying device transfer')
-    const transferOk = await verifyDeviceTransfer(deviceId)
+    const deviceValidation = await validateDevice(deviceId)
+    const transferOk =
+      deviceValidation.isValid && (deviceValidation.device?.isActive ?? false)
     if (!transferOk) {
       throw new Error('Device transfer verification failed')
     }

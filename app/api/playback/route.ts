@@ -3,7 +3,7 @@ import { sendApiRequest } from '@/shared/api'
 import { SpotifyPlaybackState } from '@/shared/types/spotify'
 import {
   transferPlaybackToDevice,
-  ensureDeviceHealth
+  validateDevice
 } from '@/services/deviceManagement'
 import { verifyPlaybackResume } from '@/shared/utils/recovery/playback-verification'
 
@@ -35,13 +35,12 @@ export async function POST(request: Request): Promise<NextResponse> {
     }
 
     // First ensure device is healthy
-    const health = await ensureDeviceHealth(deviceId, {
-      requireActive: true
-    })
-
-    if (!health.isHealthy) {
+    const deviceValidation = await validateDevice(deviceId)
+    if (!deviceValidation.isValid || !deviceValidation.device?.isActive) {
       return NextResponse.json(
-        { error: `Device is not healthy: ${health.errors.join(', ')}` },
+        {
+          error: `Device is not healthy: ${deviceValidation.errors.join(', ')}`
+        },
         { status: 400 }
       )
     }

@@ -339,22 +339,8 @@ export class PlaylistRefreshServiceImpl implements PlaylistRefreshService {
             this.saveLastSuggestedTrack()
           }
 
-          // Get current playback state to resume at the same position
-          const playbackState = await this.spotifyApi.getPlaybackState()
-          if (playbackState?.context?.uri && playbackState?.item?.uri) {
-            // Resume playback at the exact same track and position
-            await sendApiRequest({
-              path: `me/player/play?device_id=${playbackState.device.id}`,
-              method: 'PUT',
-              body: {
-                context_uri: playbackState.context.uri,
-                offset: { uri: playbackState.item.uri },
-                position_ms: playbackState.progress_ms ?? 0
-              },
-              retryConfig: this.retryConfig,
-              debounceTime: 60000 // 1 minute debounce
-            })
-          }
+          // Track that a track was successfully added (will trigger playback resumption)
+          success = true
         } else {
           retryCount++
           await new Promise((resolve) =>
@@ -442,6 +428,35 @@ export class PlaylistRefreshServiceImpl implements PlaylistRefreshService {
     return Promise.race([promise, timeoutPromise])
   }
 
+  private async resumePlaybackIfPlaying(): Promise<void> {
+    try {
+      const playbackState = await this.spotifyApi.getPlaybackState()
+      if (
+        playbackState?.context?.uri &&
+        playbackState?.item?.uri &&
+        playbackState.is_playing
+      ) {
+        // Resume playback at the exact same track and position
+        await sendApiRequest({
+          path: `me/player/play?device_id=${playbackState.device.id}`,
+          method: 'PUT',
+          body: {
+            context_uri: playbackState.context.uri,
+            offset: { uri: playbackState.item.uri },
+            position_ms: playbackState.progress_ms ?? 0
+          },
+          retryConfig: this.retryConfig,
+          debounceTime: 60000 // 1 minute debounce
+        })
+      }
+    } catch (error) {
+      console.error('[PlaylistRefresh] Failed to resume playback:', {
+        error: error instanceof Error ? error.message : 'Unknown error',
+        timestamp: new Date().toISOString()
+      })
+    }
+  }
+
   async refreshPlaylist(
     force = false,
     params?: {
@@ -520,24 +535,8 @@ export class PlaylistRefreshServiceImpl implements PlaylistRefreshService {
         this.TIMEOUT_MS
       )
 
-      // Resume playback if the playlist has changed
-      if (
-        hasPlaylistChanged &&
-        playbackState?.context?.uri &&
-        playbackState?.item?.uri
-      ) {
-        try {
-          await this.withTimeout(
-            this.spotifyApi.resumePlayback(),
-            this.TIMEOUT_MS
-          )
-        } catch (error) {
-          console.error('[PlaylistRefresh] Failed to resume playback:', {
-            error: error instanceof Error ? error.message : 'Unknown error',
-            timestamp: new Date().toISOString()
-          })
-        }
-      }
+      // Track whether we need to resume playback
+      let shouldResumePlayback = hasPlaylistChanged && playbackState?.is_playing
 
       const diagnosticInfo = {
         currentTrackId,
@@ -603,6 +602,14 @@ export class PlaylistRefreshServiceImpl implements PlaylistRefreshService {
       }
 
       diagnosticInfo.addedTrack = true
+
+      // Resume playback if playlist changed OR track was successfully added
+      if (
+        shouldResumePlayback ||
+        (result.success && playbackState?.is_playing)
+      ) {
+        await this.resumePlaybackIfPlaying()
+      }
 
       return {
         success: true,

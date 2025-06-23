@@ -5,8 +5,7 @@ import { useConsoleLogsContext } from './ConsoleLogsProvider'
 import { sendApiRequest } from '@/shared/api'
 import { SpotifyPlaybackState } from '@/shared/types/spotify'
 import {
-  verifyDeviceSetup,
-  verifyDeviceTransfer,
+  validateDevice,
   transferPlaybackToDevice,
   cleanupOtherDevices,
   setDeviceManagementLogger
