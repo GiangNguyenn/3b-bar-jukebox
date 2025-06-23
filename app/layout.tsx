@@ -3,6 +3,7 @@ import { Belgrano } from 'next/font/google'
 import Script from 'next/script'
 import './globals.css'
 import Header from '@/components/Header'
+import { ConsoleLogsProvider } from '@/hooks/ConsoleLogsProvider'
 
 // const geistSans = localFont({
 //   src: "./fonts/GeistVF.woff",
@@ -93,8 +94,10 @@ export default function RootLayout({
         <Script src='/spotify-init.js' strategy='afterInteractive' />
       </head>
       <body className={`${belgrano.variable} min-h-screen antialiased`}>
-        <Header />
-        {children}
+        <ConsoleLogsProvider>
+          <Header />
+          {children}
+        </ConsoleLogsProvider>
       </body>
     </html>
   )

@@ -16,17 +16,14 @@ import {
   validateTrackSuggestionParams,
   validateExcludedTrackIds
 } from '@/shared/validations/trackSuggestion'
+import { createModuleLogger } from '@/shared/utils/logger'
 
-// Logger setup following project pattern
-let addLog: (
-  level: 'LOG' | 'INFO' | 'WARN' | 'ERROR',
-  message: string,
-  context?: string,
-  error?: Error
-) => void
+// Set up logger for this module
+const logger = createModuleLogger('TrackSuggestion')
 
-export function setTrackSuggestionLogger(logger: typeof addLog) {
-  addLog = logger
+// Function to set the logging function (for compatibility with existing pattern)
+export function setTrackSuggestionLogger(loggerFn: typeof logger) {
+  // This function is kept for compatibility but the logger is already set up
 }
 
 // Track filtering criteria interface
@@ -112,13 +109,10 @@ function filterTracksByCriteria(
 
     // Log invalid popularity values for debugging
     if (typeof track.popularity !== 'number' || isNaN(track.popularity)) {
-      if (addLog) {
-        addLog(
-          'WARN',
-          `Invalid popularity value for track ${track.name} (${track.id}): ${track.popularity}`,
-          'TrackSuggestion'
-        )
-      }
+      logger(
+        'WARN',
+        `Invalid popularity value for track ${track.name} (${track.id}): ${track.popularity}`
+      )
     }
 
     // Check popularity
@@ -171,19 +165,12 @@ export async function searchTracksByGenre(
 
     return tracks
   } catch (error) {
-    if (addLog) {
-      addLog(
-        'ERROR',
-        `Error searching tracks for genre ${genre}`,
-        'TrackSuggestion',
-        error instanceof Error ? error : new Error('Unknown error')
-      )
-    } else {
-      console.error(
-        `[TrackSuggestion] Error searching tracks for genre ${genre}:`,
-        error
-      )
-    }
+    logger(
+      'ERROR',
+      `Error searching tracks for genre ${genre}`,
+      undefined,
+      error instanceof Error ? error : new Error('Unknown error')
+    )
     throw error
   }
 }
@@ -284,14 +271,6 @@ export async function findSuggestedTrack(
     const genre = getUntriedGenre(genres, genresTried) ?? getRandomGenre(genres)
     genresTried.push(genre)
 
-    if (addLog) {
-      addLog(
-        'INFO',
-        `Attempt ${attempts + 1}/${DEFAULT_MAX_GENRE_ATTEMPTS}: Searching genre "${genre}"`,
-        'TrackSuggestion'
-      )
-    }
-
     try {
       const tracks = await searchTracksByGenre(
         genre,
@@ -300,14 +279,6 @@ export async function findSuggestedTrack(
         minPopularity,
         maxOffset
       )
-
-      if (addLog) {
-        addLog(
-          'INFO',
-          `Found ${tracks.length} tracks for genre "${genre}"`,
-          'TrackSuggestion'
-        )
-      }
 
       // Log details about the tracks we found
       const trackDetails = tracks.map((t) => ({
@@ -340,14 +311,6 @@ export async function findSuggestedTrack(
       })
 
       if (selectedTrack) {
-        if (addLog) {
-          addLog(
-            'INFO',
-            `Successfully found track after ${attempts + 1} attempts`,
-            'TrackSuggestion'
-          )
-        }
-
         return {
           track: selectedTrack,
           searchDetails: {
@@ -362,43 +325,31 @@ export async function findSuggestedTrack(
       }
 
       // Log when no suitable track is found for this genre
-      if (addLog) {
-        // Calculate highest popularity found for this genre
-        const popularityValues = tracks.map((t) =>
-          typeof t.popularity === 'number' && !isNaN(t.popularity)
-            ? t.popularity
-            : 0
-        )
-        const highestPopularity =
-          tracks.length > 0 ? Math.max(...popularityValues) : 0
+      // Calculate highest popularity found for this genre
+      const popularityValues = tracks.map((t) =>
+        typeof t.popularity === 'number' && !isNaN(t.popularity)
+          ? t.popularity
+          : 0
+      )
+      const highestPopularity =
+        tracks.length > 0 ? Math.max(...popularityValues) : 0
 
-        addLog(
-          'WARN',
-          `No suitable track found for genre "${genre}" - ${filterResult.candidates.length} candidates out of ${tracks.length} total tracks (highest popularity: ${highestPopularity})`,
-          'TrackSuggestion'
-        )
-      }
+      logger(
+        'WARN',
+        `No suitable track found for genre "${genre}" - ${filterResult.candidates.length} candidates out of ${tracks.length} total tracks (highest popularity: ${highestPopularity})`
+      )
 
       attempts++
       if (attempts < DEFAULT_MAX_GENRE_ATTEMPTS) {
-        if (addLog) {
-          addLog(
-            'INFO',
-            `No suitable track found for "${genre}", waiting 1s before next attempt`,
-            'TrackSuggestion'
-          )
-        }
         await new Promise((resolve) => setTimeout(resolve, 1000))
       }
     } catch (error) {
-      if (addLog) {
-        addLog(
-          'ERROR',
-          `Error searching tracks for genre "${genre}"`,
-          'TrackSuggestion',
-          error instanceof Error ? error : new Error('Unknown error')
-        )
-      }
+      logger(
+        'ERROR',
+        `Error searching tracks for genre "${genre}"`,
+        undefined,
+        error instanceof Error ? error : new Error('Unknown error')
+      )
       attempts++
       if (attempts < DEFAULT_MAX_GENRE_ATTEMPTS) {
         await new Promise((resolve) => setTimeout(resolve, 1000))
@@ -406,13 +357,10 @@ export async function findSuggestedTrack(
     }
   }
 
-  if (addLog) {
-    addLog(
-      'ERROR',
-      `Failed to find suitable track after ${DEFAULT_MAX_GENRE_ATTEMPTS} attempts`,
-      'TrackSuggestion'
-    )
-  }
+  logger(
+    'ERROR',
+    `Failed to find suitable track after ${DEFAULT_MAX_GENRE_ATTEMPTS} attempts`
+  )
 
   return {
     track: null,

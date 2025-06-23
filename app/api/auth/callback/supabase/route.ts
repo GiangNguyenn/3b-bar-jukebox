@@ -4,6 +4,14 @@ import { cookies } from 'next/headers'
 import { NextResponse } from 'next/server'
 import type { Database } from '@/types/supabase'
 import { getBaseUrl } from '@/shared/utils/domain'
+import { createModuleLogger } from '@/shared/utils/logger'
+import { setApiLogger } from '@/shared/api'
+
+// Set up logger for this module
+const logger = createModuleLogger('Callback', setApiLogger)
+
+// Mark this route as dynamic since it uses request.url for OAuth callback
+export const dynamic = 'force-dynamic'
 
 // Validate environment variables
 function validateEnv(): void {
@@ -51,13 +59,6 @@ interface SpotifyUserProfile {
 }
 
 export async function GET(request: Request): Promise<NextResponse> {
-  console.log('[Callback] Starting callback handler')
-  console.log('[Callback] Request URL:', request.url)
-  console.log(
-    '[Callback] Request headers:',
-    Object.fromEntries(request.headers.entries())
-  )
-
   try {
     validateEnv()
 
@@ -66,16 +67,8 @@ export async function GET(request: Request): Promise<NextResponse> {
     const error = requestUrl.searchParams.get('error')
     const error_description = requestUrl.searchParams.get('error_description')
 
-    console.log('[Callback] URL parameters:', {
-      hasCode: !!code,
-      error,
-      error_description,
-      url: requestUrl.toString()
-    })
-
     // Handle OAuth errors
     if (error) {
-      console.log('[Callback] OAuth error:', { error, error_description })
       return NextResponse.json(
         {
           error: error_description ?? error,
@@ -87,7 +80,6 @@ export async function GET(request: Request): Promise<NextResponse> {
     }
 
     if (!code) {
-      console.log('[Callback] No authorization code')
       return NextResponse.json(
         {
           error: 'No authorization code',
@@ -122,14 +114,18 @@ export async function GET(request: Request): Promise<NextResponse> {
       }
     )
 
-    console.log('[Callback] Exchanging code for session')
     const {
       data: { session },
       error: sessionError
     } = await supabase.auth.exchangeCodeForSession(code)
 
     if (sessionError || !session) {
-      console.error('[Callback] Session exchange failed:', sessionError)
+      logger(
+        'ERROR',
+        'Session exchange failed:',
+        'Callback',
+        sessionError instanceof Error ? sessionError : undefined
+      )
       return NextResponse.json(
         {
           error: sessionError?.message ?? 'Failed to exchange code for session',
@@ -140,47 +136,21 @@ export async function GET(request: Request): Promise<NextResponse> {
       )
     }
 
-    console.log(
-      '[Callback] Session exchange successful, user:',
-      session.user.id
-    )
-
-    // Debug session data - comprehensive dump
-    console.log('[Callback] Full session data:', {
-      user: {
-        id: session.user.id,
-        email: session.user.email,
-        user_metadata: session.user.user_metadata,
-        app_metadata: session.user.app_metadata
-      },
-      session: {
-        access_token: session.access_token ? 'present' : 'missing',
-        refresh_token: session.refresh_token ? 'present' : 'missing',
-        provider_token: session.provider_token ? 'present' : 'missing',
-        provider_refresh_token: session.provider_refresh_token
-          ? 'present'
-          : 'missing',
-        expires_at: session.expires_at,
-        expires_in: session.expires_in,
-        token_type: session.token_type
-      },
-      providerTokenLength: session.provider_token?.length ?? 0,
-      providerRefreshTokenLength: session.provider_refresh_token?.length ?? 0
-    })
-
     // Get the user's Spotify access token from the session
     const spotifyAccessToken = session.provider_token
     const spotifyRefreshToken = session.provider_refresh_token
 
     if (!spotifyAccessToken) {
-      console.error('[Callback] No Spotify access token in session')
-      console.error(
-        '[Callback] Session provider_token:',
-        session.provider_token
+      logger('ERROR', 'No Spotify access token in session', 'Callback')
+      logger(
+        'ERROR',
+        `Session provider_token: ${session.provider_token}`,
+        'Callback'
       )
-      console.error(
-        '[Callback] Session provider_refresh_token:',
-        session.provider_refresh_token
+      logger(
+        'ERROR',
+        `Session provider_refresh_token: ${session.provider_refresh_token}`,
+        'Callback'
       )
 
       // Try multiple fallback methods to get the Spotify token
@@ -191,21 +161,9 @@ export async function GET(request: Request): Promise<NextResponse> {
         session.user.app_metadata?.spotify_access_token
       ]
 
-      console.log('[Callback] Trying fallback tokens:', {
-        userMetadataAccessToken: !!session.user.user_metadata?.access_token,
-        userMetadataSpotifyAccessToken:
-          !!session.user.user_metadata?.spotify_access_token,
-        appMetadataProviderToken: !!session.user.app_metadata?.provider_token,
-        appMetadataSpotifyAccessToken:
-          !!session.user.app_metadata?.spotify_access_token
-      })
-
       const metadataToken = possibleTokens.find((token) => !!token)
 
       if (metadataToken) {
-        console.log(
-          '[Callback] Found token in fallback location, using that instead'
-        )
         // Use the token from metadata
         const spotifyResponse = await fetch('https://api.spotify.com/v1/me', {
           headers: {
@@ -215,10 +173,6 @@ export async function GET(request: Request): Promise<NextResponse> {
 
         if (spotifyResponse.ok) {
           const userData: SpotifyUserProfile = await spotifyResponse.json()
-          console.log('[Callback] Spotify API response from fallback token:', {
-            product: userData.product,
-            display_name: userData.display_name
-          })
 
           // Check if user has premium (including all premium variants)
           const isPremium =
@@ -229,80 +183,53 @@ export async function GET(request: Request): Promise<NextResponse> {
 
           const productType = userData.product
 
-          console.log('[Callback] Premium check result from fallback token:', {
-            isPremium,
-            productType,
-            userProduct: userData.product
-          })
-
           // Store the user's profile with fallback token
           const { error: updateError } = await supabase
             .from('profiles')
             .upsert({
               id: session.user.id,
-              display_name:
-                session.user.user_metadata?.name ??
-                session.user.email ??
-                'Unknown',
-              spotify_user_id:
-                session.user.user_metadata?.sub ?? session.user.id,
-              spotify_access_token: metadataToken,
-              spotify_refresh_token:
-                session.user.user_metadata?.refresh_token ??
-                session.user.app_metadata?.provider_refresh_token,
-              spotify_token_expires_at: session.expires_at,
+              display_name: userData.display_name,
+              email: userData.email,
               is_premium: isPremium,
               spotify_product_type: productType,
+              spotify_access_token: metadataToken,
+              spotify_refresh_token: session.provider_refresh_token,
               premium_verified_at: new Date().toISOString()
             })
 
           if (updateError) {
-            console.error(
-              '[Callback] Error updating user profile:',
-              updateError
-            )
-          } else {
-            console.log(
-              '[Callback] User profile updated successfully with fallback token'
+            logger(
+              'ERROR',
+              `Error updating user profile: ${JSON.stringify(updateError)}`,
+              'Callback'
             )
           }
 
           // Redirect based on premium status
           const baseUrl = getBaseUrl()
           let redirectUrl: URL
+
           if (isPremium) {
-            redirectUrl = new URL(
-              `/${session.user.user_metadata?.name ?? 'admin'}/admin`,
-              baseUrl
-            )
-            console.log(
-              '[Callback] Redirecting premium user to admin:',
-              redirectUrl.toString()
-            )
+            redirectUrl = new URL(`/${userData.display_name}/admin`, baseUrl)
           } else {
             redirectUrl = new URL('/premium-required', baseUrl)
-            console.log(
-              '[Callback] Redirecting non-premium user to premium required page:',
-              redirectUrl.toString()
-            )
           }
 
           return NextResponse.redirect(redirectUrl)
         } else {
-          console.error(
-            '[Callback] Spotify API error with fallback token:',
-            spotifyResponse.status,
-            spotifyResponse.statusText
+          logger(
+            'ERROR',
+            `Spotify API error with fallback token: ${JSON.stringify({ status: spotifyResponse.status, statusText: spotifyResponse.statusText })}`,
+            'Callback'
           )
         }
       }
 
       // If we still don't have a token, redirect to sign in with an error
-      console.error('[Callback] No Spotify token found in any location')
+      logger('ERROR', `No Spotify token found in any location`, 'Callback')
       return NextResponse.json(
         {
-          error:
-            'No Spotify access token received. Please check your Supabase OAuth configuration.',
+          error: 'No Spotify access token found. Please sign in again.',
           code: 'NO_SPOTIFY_TOKEN',
           status: 400
         },
@@ -310,33 +237,19 @@ export async function GET(request: Request): Promise<NextResponse> {
       )
     }
 
-    console.log('[Callback] Got Spotify access token, verifying premium status')
-
     // Verify premium status using the user's Spotify access token
     let isPremium = false
-    let productType = 'unknown'
+    let productType = 'free'
 
     try {
-      console.log('[Callback] Making Spotify API call to /me endpoint')
       const spotifyResponse = await fetch('https://api.spotify.com/v1/me', {
         headers: {
           Authorization: `Bearer ${spotifyAccessToken}`
         }
       })
 
-      console.log(
-        '[Callback] Spotify API response status:',
-        spotifyResponse.status
-      )
-
       if (spotifyResponse.ok) {
         const userData: SpotifyUserProfile = await spotifyResponse.json()
-        console.log('[Callback] Spotify API response:', {
-          product: userData.product,
-          display_name: userData.display_name,
-          id: userData.id,
-          email: userData.email
-        })
 
         // Check if user has premium (including all premium variants)
         isPremium =
@@ -346,86 +259,71 @@ export async function GET(request: Request): Promise<NextResponse> {
           userData.product === 'premium_student'
 
         productType = userData.product
-
-        console.log(
-          '[Callback] Premium status determined:',
-          isPremium,
-          'for product type:',
-          userData.product,
-          'Premium variants checked:',
-          ['premium', 'premium_duo', 'premium_family', 'premium_student']
-        )
       } else {
         const errorText = await spotifyResponse.text()
-        console.error('[Callback] Spotify API error:', {
-          status: spotifyResponse.status,
-          statusText: spotifyResponse.statusText,
-          errorText
-        })
+        logger(
+          'ERROR',
+          `Spotify API error: ${JSON.stringify({ status: spotifyResponse.status, statusText: spotifyResponse.statusText, errorText })}`,
+          'Callback'
+        )
       }
     } catch (apiError) {
-      console.error('[Callback] Error calling Spotify API:', apiError)
+      logger(
+        'ERROR',
+        `Error calling Spotify API: ${JSON.stringify(apiError)}`,
+        'Callback'
+      )
     }
 
-    // Store the user's Spotify tokens and premium status in their profile
+    // Update user profile with Spotify information
     const { error: updateError } = await supabase.from('profiles').upsert({
       id: session.user.id,
       display_name:
         session.user.user_metadata?.name ?? session.user.email ?? 'Unknown',
-      spotify_user_id: session.user.user_metadata?.sub ?? session.user.id,
-      spotify_access_token: spotifyAccessToken,
-      spotify_refresh_token: spotifyRefreshToken,
-      spotify_token_expires_at: session.expires_at,
+      email: session.user.email ?? '',
       is_premium: isPremium,
       spotify_product_type: productType,
+      spotify_access_token: spotifyAccessToken,
+      spotify_refresh_token: spotifyRefreshToken,
       premium_verified_at: new Date().toISOString()
     })
 
     if (updateError) {
-      console.error('[Callback] Error updating user profile:', updateError)
-    } else {
-      console.log('[Callback] User profile updated successfully')
+      logger(
+        'ERROR',
+        `Error updating user profile: ${JSON.stringify(updateError)}`,
+        'Callback'
+      )
     }
 
     // Use the domain utility to get the correct base URL for redirects
     const baseUrl = getBaseUrl()
-    console.log('[Callback] Using base URL for redirect:', baseUrl)
 
     // Redirect based on premium status
     let redirectUrl: URL
-    console.log('[Callback] Final redirect decision:', {
-      isPremium,
-      productType,
-      userDisplayName:
-        session.user.user_metadata?.name ?? session.user.email ?? 'Unknown'
-    })
 
     if (isPremium) {
-      // Premium user - redirect to admin page
       redirectUrl = new URL(
-        `/${session.user.user_metadata?.name ?? 'admin'}/admin`,
+        `/${session.user.user_metadata?.name ?? session.user.email?.split('@')[0] ?? 'user'}/admin`,
         baseUrl
-      )
-      console.log(
-        '[Callback] Redirecting premium user to admin:',
-        redirectUrl.toString()
       )
     } else {
       // Non-premium user - redirect to premium required page
       redirectUrl = new URL('/premium-required', baseUrl)
-      console.log(
-        '[Callback] Redirecting non-premium user to premium required page:',
-        redirectUrl.toString()
-      )
     }
 
     return NextResponse.redirect(redirectUrl)
   } catch (error) {
-    console.error('[Callback] Unexpected error:', error)
+    logger(
+      'ERROR',
+      'Unexpected error:',
+      'Callback',
+      error instanceof Error ? error : undefined
+    )
     return NextResponse.json(
       {
-        error: 'Unexpected error during authentication',
-        code: 'UNEXPECTED_ERROR',
+        error: 'Internal server error',
+        code: 'INTERNAL_ERROR',
         status: 500
       },
       { status: 500 }

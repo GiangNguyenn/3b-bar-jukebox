@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { createBrowserClient } from '@supabase/ssr'
 import type { Database } from '@/types/supabase'
+import { useConsoleLogsContext } from '@/hooks/ConsoleLogsProvider'
 
 interface PremiumStatus {
   isPremium: boolean
@@ -47,6 +48,7 @@ export function usePremiumStatus(): PremiumStatus & {
   refreshPremiumStatus: () => Promise<void>
   forceRefreshPremiumStatus: () => Promise<void>
 } {
+  const { addLog } = useConsoleLogsContext()
   const [status, setStatus] = useState<PremiumStatus>({
     isPremium: false,
     productType: '',
@@ -62,10 +64,6 @@ export function usePremiumStatus(): PremiumStatus & {
   const checkPremiumStatus = useCallback(
     async (force = false): Promise<void> => {
       try {
-        console.log(
-          '[usePremiumStatus] Starting premium status check',
-          force ? '(force refresh)' : ''
-        )
         setStatus((prev) => ({ ...prev, isLoading: true, error: null }))
 
         // Check if user is authenticated
@@ -74,7 +72,6 @@ export function usePremiumStatus(): PremiumStatus & {
         } = await supabase.auth.getSession()
 
         if (!session) {
-          console.log('[usePremiumStatus] No session found')
           setStatus({
             isPremium: false,
             productType: '',
@@ -83,10 +80,6 @@ export function usePremiumStatus(): PremiumStatus & {
           })
           return
         }
-
-        console.log(
-          '[usePremiumStatus] Session found, calling premium verification API'
-        )
 
         // Call the premium verification API
         const apiUrl = force
@@ -97,28 +90,17 @@ export function usePremiumStatus(): PremiumStatus & {
           credentials: 'include'
         })
 
-        console.log('[usePremiumStatus] API response status:', response.status)
-
         if (!response.ok) {
           const errorData = await response.json()
-          console.error('[usePremiumStatus] API error:', errorData)
+          addLog(
+            'ERROR',
+            `API error: ${JSON.stringify(errorData)}`,
+            'usePremiumStatus'
+          )
           throw new Error(errorData.error || 'Failed to verify premium status')
         }
 
         const data = (await response.json()) as PremiumVerificationResponse
-        console.log('[usePremiumStatus] API response data:', data)
-        console.log('[usePremiumStatus] Detailed API response:', {
-          isPremium: data.isPremium,
-          productType: data.productType,
-          userProfile: data.userProfile
-            ? {
-                product: data.userProfile.product,
-                display_name: data.userProfile.display_name,
-                id: data.userProfile.id
-              }
-            : null,
-          cached: data.cached
-        })
 
         setStatus({
           isPremium: data.isPremium,
@@ -126,15 +108,12 @@ export function usePremiumStatus(): PremiumStatus & {
           isLoading: false,
           error: null
         })
-
-        console.log('[usePremiumStatus] Premium status set:', {
-          isPremium: data.isPremium,
-          productType: data.productType
-        })
       } catch (error) {
-        console.error(
-          '[usePremiumStatus] Error checking premium status:',
-          error
+        addLog(
+          'ERROR',
+          'Error checking premium status:',
+          'usePremiumStatus',
+          error instanceof Error ? error : undefined
         )
         setStatus({
           isPremium: false,
@@ -144,7 +123,7 @@ export function usePremiumStatus(): PremiumStatus & {
         })
       }
     },
-    [supabase]
+    [supabase, addLog]
   )
 
   const refreshPremiumStatus = useCallback(async (): Promise<void> => {

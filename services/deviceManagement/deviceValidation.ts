@@ -1,16 +1,12 @@
 import { getAvailableDevices, getPlaybackState, findDevice } from './deviceApi'
+import { createModuleLogger } from '@/shared/utils/logger'
 
-// Add logging context
-let addLog: (
-  level: 'LOG' | 'INFO' | 'WARN' | 'ERROR',
-  message: string,
-  context?: string,
-  error?: Error
-) => void
+// Set up logger for this module
+const logger = createModuleLogger('DeviceValidation')
 
-// Function to set the logging function
-export function setDeviceValidationLogger(logger: typeof addLog) {
-  addLog = logger
+// Function to set the logging function (for compatibility with existing pattern)
+export function setDeviceValidationLogger(loggerFn: typeof logger) {
+  // This function is kept for compatibility but the logger is already set up
 }
 
 interface DeviceValidationResult {
@@ -67,24 +63,6 @@ export async function validateDevice(
       }
     }
 
-    // Log validation result
-    if (addLog) {
-      addLog(
-        'INFO',
-        `Device validation result: ${errors.length} errors, ${warnings.length} warnings`,
-        'DeviceValidation'
-      )
-    } else {
-      console.log('[Device Validation] Validation result:', {
-        deviceId: targetDevice.id,
-        deviceName: targetDevice.name,
-        isValid: errors.length === 0,
-        errors,
-        warnings,
-        timestamp: new Date().toISOString()
-      })
-    }
-
     return {
       isValid: errors.length === 0,
       errors,
@@ -97,16 +75,12 @@ export async function validateDevice(
       }
     }
   } catch (error) {
-    if (addLog) {
-      addLog(
-        'ERROR',
-        'Device validation error',
-        'DeviceValidation',
-        error instanceof Error ? error : undefined
-      )
-    } else {
-      console.error('[Device Validation] Validation error:', error)
-    }
+    logger(
+      'ERROR',
+      'Device validation error',
+      undefined,
+      error instanceof Error ? error : undefined
+    )
 
     errors.push('Failed to validate device')
     return { isValid: false, errors, warnings }

@@ -3,6 +3,8 @@ import { NextResponse } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
 import type { Database } from '@/types/supabase'
+import { createModuleLogger } from '@/shared/utils/logger'
+import { setApiLogger } from '@/shared/api'
 
 interface SpotifyUserProfile {
   id: string
@@ -44,18 +46,15 @@ interface ErrorResponse {
   status: number
 }
 
+// Set up logger for this module
+const logger = createModuleLogger('verify-premium', setApiLogger)
+
 export async function GET(
   request: Request
 ): Promise<NextResponse<PremiumVerificationResponse | ErrorResponse>> {
-  console.log('[verify-premium] Starting premium verification')
-
   // Check for force refresh parameter
   const url = new URL(request.url)
   const forceRefresh = url.searchParams.get('force') === 'true'
-
-  if (forceRefresh) {
-    console.log('[verify-premium] Force refresh requested, bypassing cache')
-  }
 
   const cookieStore = cookies()
 
@@ -87,7 +86,6 @@ export async function GET(
   } = await supabase.auth.getUser()
 
   if (!user) {
-    console.log('[verify-premium] No user found')
     return NextResponse.json(
       {
         error: 'Not authenticated',
@@ -98,8 +96,6 @@ export async function GET(
     )
   }
 
-  console.log('[verify-premium] User found:', user.id)
-
   try {
     // Get user's profile to check if premium status is already verified
     const { data: profile } = await supabase
@@ -108,12 +104,6 @@ export async function GET(
       .eq('id', user.id)
       .single()
 
-    console.log('[verify-premium] Profile data:', {
-      is_premium: profile?.is_premium,
-      premium_verified_at: profile?.premium_verified_at,
-      spotify_product_type: profile?.spotify_product_type
-    })
-
     // If premium status was verified recently (within 24 hours), return cached result
     if (profile?.premium_verified_at && !forceRefresh) {
       const verifiedAt = new Date(profile.premium_verified_at as string)
@@ -121,18 +111,7 @@ export async function GET(
       const hoursSinceVerification =
         (now.getTime() - verifiedAt.getTime()) / (1000 * 60 * 60)
 
-      console.log(
-        '[verify-premium] Hours since verification:',
-        hoursSinceVerification
-      )
-
       if (hoursSinceVerification < 24) {
-        console.log(
-          '[verify-premium] Using cached premium status:',
-          profile.is_premium,
-          'Product type:',
-          profile.spotify_product_type
-        )
         return NextResponse.json({
           isPremium: profile.is_premium ?? false,
           productType:
@@ -142,8 +121,6 @@ export async function GET(
         })
       }
     }
-
-    console.log('[verify-premium] Calling Spotify API to verify premium status')
 
     // Call Spotify API to verify premium status
     try {
@@ -155,7 +132,11 @@ export async function GET(
         .single()
 
       if (!userProfile?.spotify_access_token) {
-        console.error('[verify-premium] No Spotify access token found for user')
+        logger(
+          'ERROR',
+          'No Spotify access token found for user',
+          'verify-premium'
+        )
         return NextResponse.json(
           {
             error: 'No Spotify access token found. Please sign in again.',
@@ -167,29 +148,18 @@ export async function GET(
       }
 
       // Call Spotify API directly with user's access token
-      console.log('[verify-premium] Making Spotify API call to /me endpoint')
       const spotifyResponse = await fetch('https://api.spotify.com/v1/me', {
         headers: {
           Authorization: `Bearer ${userProfile.spotify_access_token}`
         }
       })
 
-      console.log(
-        '[verify-premium] Spotify API response status:',
-        spotifyResponse.status
-      )
-      console.log(
-        '[verify-premium] Spotify API response headers:',
-        Object.fromEntries(spotifyResponse.headers.entries())
-      )
-
       if (!spotifyResponse.ok) {
         const errorText = await spotifyResponse.text()
-        console.error(
-          '[verify-premium] Spotify API error:',
-          spotifyResponse.status,
-          spotifyResponse.statusText,
-          errorText
+        logger(
+          'ERROR',
+          `Spotify API error: ${spotifyResponse.status} ${spotifyResponse.statusText} ${errorText}`,
+          'verify-premium'
         )
 
         // If token is invalid (401), suggest re-authentication
@@ -208,23 +178,15 @@ export async function GET(
           {
             error: 'Failed to verify premium status with Spotify',
             code: 'SPOTIFY_API_ERROR',
-            status: 500
+            status: spotifyResponse.status
           },
-          { status: 500 }
+          { status: spotifyResponse.status }
         )
       }
 
       const responseText = await spotifyResponse.text()
-      console.log('[verify-premium] Raw Spotify API response:', responseText)
 
       const userData: SpotifyUserProfile = JSON.parse(responseText)
-      console.log('[verify-premium] Parsed Spotify API response:', {
-        product: userData.product,
-        display_name: userData.display_name,
-        id: userData.id,
-        email: userData.email,
-        hasProduct: 'product' in userData
-      })
 
       // Check if user has premium (including all premium variants)
       const isPremium =
@@ -233,53 +195,42 @@ export async function GET(
         userData.product === 'premium_family' ||
         userData.product === 'premium_student'
 
-      console.log(
-        '[verify-premium] Premium status determined:',
-        isPremium,
-        'for product type:',
-        userData.product,
-        'Premium variants checked:',
-        ['premium', 'premium_duo', 'premium_family', 'premium_student']
-      )
+      const productType = userData.product
 
       // Update profile with premium status
       const { error: updateError } = await supabase
         .from('profiles')
         .update({
           is_premium: isPremium,
-          spotify_product_type: userData.product,
+          spotify_product_type: productType,
           premium_verified_at: new Date().toISOString()
         })
         .eq('id', user.id)
 
       if (updateError) {
-        console.error(
-          '[verify-premium] Error updating premium status:',
-          updateError
+        logger(
+          'ERROR',
+          `Error updating premium status: ${JSON.stringify(updateError)}`,
+          'verify-premium'
         )
-      } else {
-        console.log('[verify-premium] Premium status updated in database')
       }
-
-      console.log('[verify-premium] Final response data:', {
-        isPremium,
-        productType: userData.product,
-        userProfileProduct: userData.product,
-        userProfileDisplayName: userData.display_name,
-        cached: false
-      })
 
       return NextResponse.json({
         isPremium,
-        productType: userData.product,
+        productType,
         userProfile: userData,
         cached: false
       })
     } catch (apiError) {
-      console.error('[verify-premium] Error calling Spotify API:', apiError)
+      logger(
+        'ERROR',
+        'Error calling Spotify API:',
+        'verify-premium',
+        apiError instanceof Error ? apiError : undefined
+      )
       return NextResponse.json(
         {
-          error: 'Failed to verify premium status',
+          error: 'Failed to call Spotify API',
           code: 'SPOTIFY_API_ERROR',
           status: 500
         },
@@ -287,11 +238,16 @@ export async function GET(
       )
     }
   } catch (error) {
-    console.error('[verify-premium] Error verifying premium status:', error)
+    logger(
+      'ERROR',
+      'Error verifying premium status:',
+      'verify-premium',
+      error instanceof Error ? error : undefined
+    )
     return NextResponse.json(
       {
-        error: 'Failed to verify premium status',
-        code: 'VERIFICATION_ERROR',
+        error: 'Internal server error',
+        code: 'INTERNAL_ERROR',
         status: 500
       },
       { status: 500 }

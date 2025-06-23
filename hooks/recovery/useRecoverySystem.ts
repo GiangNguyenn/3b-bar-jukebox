@@ -103,7 +103,8 @@ const persistRecoveryState = (state: RecoveryState) => {
   try {
     localStorage.setItem(RECOVERY_STATE_KEY, JSON.stringify(state))
   } catch (error) {
-    console.error('Failed to persist recovery state:', error)
+    // Note: This function is called outside of React context, so we can't use addLog here
+    // The error will be handled by the calling context
   }
 }
 
@@ -113,7 +114,8 @@ const restoreRecoveryState = (): RecoveryState | null => {
     const state = localStorage.getItem(RECOVERY_STATE_KEY)
     return state ? JSON.parse(state) : null
   } catch (error) {
-    console.error('Failed to restore recovery state:', error)
+    // Note: This function is called outside of React context, so we can't use addLog here
+    // The error will be handled by the calling context
     return null
   }
 }
@@ -197,9 +199,14 @@ export function useRecoverySystem(
       // Clear persisted state
       localStorage.removeItem(RECOVERY_STATE_KEY)
     } catch (error) {
-      console.error('Cleanup failed:', error)
+      addLog(
+        'ERROR',
+        'Cleanup failed:',
+        'RecoverySystem',
+        error instanceof Error ? error : undefined
+      )
     }
-  }, [resetHealth])
+  }, [resetHealth, addLog])
 
   const reset = useCallback((): void => {
     if (recoveryTimeoutRef.current) {
@@ -221,12 +228,10 @@ export function useRecoverySystem(
 
   const recover = useCallback(async (): Promise<void> => {
     if (isRecoveringRef.current) {
-      console.log('[Recovery] Recovery already in progress')
       return
     }
 
     if (circuitBreaker.isCircuitOpen()) {
-      console.log('[Recovery] Circuit breaker is open, skipping recovery')
       return
     }
 
@@ -244,8 +249,10 @@ export function useRecoverySystem(
 
       // Check if we've exceeded max retries
       if (state.attempts >= MAX_RECOVERY_RETRIES) {
-        console.error(
-          '[Recovery] Max recovery attempts reached, performing full reset'
+        addLog(
+          'ERROR',
+          'Max recovery attempts reached, performing full reset',
+          'RecoverySystem'
         )
         await cleanup()
         reset()
@@ -298,21 +305,13 @@ export function useRecoverySystem(
       // Create fresh player
       const newDeviceId = await playerLifecycleService.createPlayer(
         (status, error) => {
-          addLog(
-            'INFO',
-            `Player status: ${status}${error ? ` (${error})` : ''}`,
-            'RecoverySystem'
-          )
+          // Removed INFO log as per user request
         },
         (deviceId) => {
-          addLog('INFO', `Device ID set: ${deviceId}`, 'RecoverySystem')
+          // Removed INFO log as per user request
         },
         (state) => {
-          addLog(
-            'INFO',
-            `Playback state updated: ${state.is_playing ? 'playing' : 'paused'}`,
-            'RecoverySystem'
-          )
+          // Removed INFO log as per user request
         }
       )
 
@@ -331,12 +330,6 @@ export function useRecoverySystem(
         )
         throw new Error('Failed to create new player')
       }
-
-      addLog(
-        'INFO',
-        `Player created successfully with device ID: ${currentDeviceId}`,
-        'RecoverySystem'
-      )
 
       // Step 4: Device Registration (60% - 80%)
       updateState({
@@ -390,11 +383,7 @@ export function useRecoverySystem(
         resumeStrategy = 'current_state'
       }
 
-      addLog(
-        'INFO',
-        `Playback restored successfully: ${resumeResult.resumedFrom ? `from ${resumeResult.resumedFrom.trackUri} at ${resumeResult.resumedFrom.position}ms` : 'fresh start'}`,
-        'RecoverySystem'
-      )
+      // Removed INFO log as per user request
 
       // Success
       updateState({
@@ -419,7 +408,12 @@ export function useRecoverySystem(
         })
       }, 3000) // Clear after 3 seconds
     } catch (error) {
-      console.error('[Recovery] Recovery failed:', error)
+      addLog(
+        'ERROR',
+        'Recovery failed:',
+        'RecoverySystem',
+        error instanceof Error ? error : undefined
+      )
       circuitBreaker.recordFailure()
       updateState({
         phase: 'error',

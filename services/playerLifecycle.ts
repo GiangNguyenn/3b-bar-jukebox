@@ -164,7 +164,13 @@ class PlayerLifecycleService {
         error instanceof Error ? error : undefined
       )
     } else {
-      console.log(`[PlayerLifecycle] ${level}: ${message}`, error)
+      // Fallback logging when logger is not set up
+      const logMessage = `[PlayerLifecycle] ${level}: ${message}`
+      if (error) {
+        console.error(logMessage, error)
+      } else {
+        console.log(logMessage)
+      }
     }
   }
 

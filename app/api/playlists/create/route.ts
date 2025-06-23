@@ -2,6 +2,10 @@ import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
 import { NextResponse } from 'next/server'
 import type { Database } from '@/types/supabase'
+import { createModuleLogger } from '@/shared/utils/logger'
+
+// Set up logger for this module
+const logger = createModuleLogger('PlaylistCreate')
 
 interface CreatePlaylistResponse {
   id: string
@@ -54,7 +58,7 @@ export async function POST(): Promise<NextResponse> {
     } = await supabase.auth.getUser()
 
     if (userError || !user) {
-      console.error('Auth error:', userError)
+      logger('ERROR', `Auth error: ${JSON.stringify(userError)}`)
       return NextResponse.json({ error: 'Not authenticated' }, { status: 401 })
     }
 
@@ -66,7 +70,7 @@ export async function POST(): Promise<NextResponse> {
       .single()
 
     if (profileError) {
-      console.error('Error fetching profile:', profileError)
+      logger('ERROR', `Error fetching profile: ${JSON.stringify(profileError)}`)
       return NextResponse.json(
         { error: 'Failed to fetch profile' },
         { status: 500 }
@@ -74,7 +78,7 @@ export async function POST(): Promise<NextResponse> {
     }
 
     if (!profile) {
-      console.error('Profile not found')
+      logger('ERROR', 'Profile not found')
       return NextResponse.json({ error: 'Profile not found' }, { status: 404 })
     }
 
@@ -86,7 +90,10 @@ export async function POST(): Promise<NextResponse> {
       .single()
 
     if (playlistError && playlistError.code !== 'PGRST116') {
-      console.error('Error checking existing playlist:', playlistError)
+      logger(
+        'ERROR',
+        `Error checking existing playlist: ${JSON.stringify(playlistError)}`
+      )
       return NextResponse.json(
         { error: 'Failed to check existing playlist' },
         { status: 500 }
@@ -94,7 +101,6 @@ export async function POST(): Promise<NextResponse> {
     }
 
     if (existingPlaylist) {
-      console.log('Playlist already exists:', existingPlaylist)
       return NextResponse.json({ message: 'Playlist already exists' })
     }
 
@@ -116,7 +122,7 @@ export async function POST(): Promise<NextResponse> {
       const errorData = (await response.json()) as {
         error: { message: string }
       }
-      console.error('Spotify API error:', errorData)
+      logger('ERROR', `Spotify API error: ${JSON.stringify(errorData)}`)
       return NextResponse.json(
         { error: errorData.error.message },
         { status: response.status }
@@ -132,7 +138,7 @@ export async function POST(): Promise<NextResponse> {
     })
 
     if (insertError) {
-      console.error('Error creating playlist:', insertError)
+      logger('ERROR', `Error creating playlist: ${JSON.stringify(insertError)}`)
       return NextResponse.json(
         {
           error: 'Failed to create playlist',
@@ -144,7 +150,12 @@ export async function POST(): Promise<NextResponse> {
 
     return NextResponse.json({ message: 'Playlist created successfully' })
   } catch (error) {
-    console.error('Error in playlist creation:', error)
+    logger(
+      'ERROR',
+      'Error in playlist creation:',
+      undefined,
+      error instanceof Error ? error : undefined
+    )
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }

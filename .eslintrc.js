@@ -1,4 +1,15 @@
 module.exports = {
+  ignorePatterns: [
+    '.eslintrc.js',
+    'next.config.mjs',
+    'postcss.config.mjs',
+    'tailwind.config.ts',
+    'instrumentation.ts',
+    'instrumentation-client.ts',
+    'node_modules/',
+    'public/',
+    'prisma/'
+  ],
   overrides: [
     {
       files: ['*.ts', '*.tsx'],
@@ -22,6 +33,13 @@ module.exports = {
             argsIgnorePattern: '^_'
           }
         ]
+      }
+    },
+    {
+      files: ['hooks/ConsoleLogsProvider.tsx', 'shared/utils/logger.ts'],
+      rules: {
+        'no-console': 'off',
+        'no-restricted-syntax': 'off'
       }
     }
   ],
@@ -55,6 +73,28 @@ module.exports = {
         varsIgnorePattern: '^_',
         args: 'after-used',
         argsIgnorePattern: '^_'
+      }
+    ],
+    // Enforce centralized logging system
+    'no-console': [
+      'error',
+      {
+        allow: ['warn', 'error']
+      }
+    ],
+    'no-restricted-syntax': [
+      'error',
+      {
+        selector:
+          "CallExpression[callee.object.name='console'][callee.property.name='log']",
+        message:
+          'Use the centralized logging system instead of console.log. For React components: import useConsoleLogsContext and use addLog(). For other files: import createModuleLogger from @/shared/utils/logger.'
+      },
+      {
+        selector:
+          "CallExpression[callee.object.name='console'][callee.property.name='info']",
+        message:
+          "Use the centralized logging system instead of console.info. For React components: import useConsoleLogsContext and use addLog('INFO', ...). For other files: import createModuleLogger from @/shared/utils/logger."
       }
     ]
   }

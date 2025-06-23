@@ -6,8 +6,10 @@ import { createBrowserClient } from '@supabase/ssr'
 import type { Database } from '@/types/supabase'
 import { FaSpotify, FaCrown, FaMusic, FaPlay, FaSync } from 'react-icons/fa'
 import { usePremiumStatus } from '@/hooks/usePremiumStatus'
+import { useConsoleLogsContext } from '@/hooks/ConsoleLogsProvider'
 
 export default function PremiumRequiredPage(): JSX.Element {
+  const { addLog } = useConsoleLogsContext()
   const router = useRouter()
   const [isSigningOut, setIsSigningOut] = useState(false)
   const [isSigningInAgain, setIsSigningInAgain] = useState(false)
@@ -72,7 +74,12 @@ export default function PremiumRequiredPage(): JSX.Element {
       await supabase.auth.signOut()
       router.push('/')
     } catch (error) {
-      console.error('Error signing out:', error)
+      addLog(
+        'ERROR',
+        'Error signing out:',
+        'PremiumRequired',
+        error instanceof Error ? error : undefined
+      )
     } finally {
       setIsSigningOut(false)
     }
@@ -93,13 +100,17 @@ export default function PremiumRequiredPage(): JSX.Element {
           .from('profiles')
           .update({ premium_verified_at: null })
           .eq('id', user.id)
-        console.log('[PremiumRequired] Cleared premium verification cache')
       }
 
       // Now refresh the status with force parameter
       await forceRefreshPremiumStatus()
     } catch (error) {
-      console.error('Error force refreshing:', error)
+      addLog(
+        'ERROR',
+        'Error force refreshing:',
+        'PremiumRequired',
+        error instanceof Error ? error : undefined
+      )
     }
   }
 
@@ -113,9 +124,13 @@ export default function PremiumRequiredPage(): JSX.Element {
       if (user) {
         try {
           await supabase.from('profiles').delete().eq('id', user.id)
-          console.log('[PremiumRequired] Cleared user profile data')
         } catch (error) {
-          console.error('[PremiumRequired] Error clearing profile:', error)
+          addLog(
+            'ERROR',
+            'Error clearing profile:',
+            'PremiumRequired',
+            error instanceof Error ? error : undefined
+          )
         }
       }
 
@@ -128,7 +143,12 @@ export default function PremiumRequiredPage(): JSX.Element {
         setIsSigningInAgain(false)
       }, 3000)
     } catch (error) {
-      console.error('Error signing out:', error)
+      addLog(
+        'ERROR',
+        'Error signing out:',
+        'PremiumRequired',
+        error instanceof Error ? error : undefined
+      )
       setIsSigningInAgain(false)
     }
   }

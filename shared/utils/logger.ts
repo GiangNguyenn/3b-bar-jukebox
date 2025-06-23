@@ -19,3 +19,33 @@ export function initializeLoggers(addLog: LogFunction): void {
   setDeviceManagementLogger(addLog)
   setTrackSuggestionLogger(addLog)
 }
+
+/**
+ * Creates a standardized logger for any module
+ * @param moduleName - The name of the module (used as context)
+ * @param setLoggerFn - Optional function to set the logger in a specific service
+ * @returns A logger function that can be used throughout the module
+ */
+export function createModuleLogger(
+  moduleName: string,
+  setLoggerFn?: (logger: LogFunction) => void
+): LogFunction {
+  // Create the logger function
+  const logger: LogFunction = (level, message, context, error) => {
+    const logContext = context || moduleName
+    if (level === 'ERROR') {
+      console.error(`[${logContext}] ${message}`, error)
+    } else if (level === 'WARN') {
+      console.warn(`[${logContext}] ${message}`, error)
+    } else {
+      console.log(`[${logContext}] ${message}`)
+    }
+  }
+
+  // Set up the logger in the API system if requested
+  if (setLoggerFn) {
+    setLoggerFn(logger)
+  }
+
+  return logger
+}

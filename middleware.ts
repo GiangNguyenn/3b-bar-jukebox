@@ -2,6 +2,10 @@ import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
 import type { Database } from '@/types/supabase'
+import { createModuleLogger } from '@/shared/utils/logger'
+
+// Set up logger for this module
+const logger = createModuleLogger('Middleware')
 
 export async function middleware(request: NextRequest) {
   let response = NextResponse.next({
@@ -63,9 +67,6 @@ export async function middleware(request: NextRequest) {
       if (premiumResponse.ok) {
         const premiumData = await premiumResponse.json()
         if (!premiumData.isPremium) {
-          console.log(
-            'Non-premium user accessing admin route, redirecting to premium required page'
-          )
           // Non-premium user, redirect to premium required page
           const redirectUrl = new URL('/premium-required', request.url)
           return NextResponse.redirect(redirectUrl)
@@ -73,30 +74,27 @@ export async function middleware(request: NextRequest) {
       } else {
         // Premium verification failed, check if it's a token issue
         const errorData = await premiumResponse.json().catch(() => ({}))
-        console.error('Premium verification failed in middleware:', {
-          status: premiumResponse.status,
-          error: errorData
-        })
+        logger(
+          'ERROR',
+          `Premium verification failed in middleware: ${JSON.stringify({ status: premiumResponse.status, error: errorData })}`
+        )
 
         // For all errors (including token issues), redirect to root page
         // This allows users to re-authenticate with Spotify
-        console.log(
-          'Premium verification error detected, redirecting to root page'
-        )
         const redirectUrl = new URL('/', request.url)
         return NextResponse.redirect(redirectUrl)
       }
     } catch (error) {
-      console.error('Error verifying premium status in middleware:', error)
+      logger(
+        'ERROR',
+        'Error verifying premium status in middleware:',
+        undefined,
+        error instanceof Error ? error : undefined
+      )
       // Error in premium verification, redirect to root page
       const redirectUrl = new URL('/', request.url)
       return NextResponse.redirect(redirectUrl)
     }
-
-    console.log(
-      'Admin route accessed by authenticated premium user:',
-      request.nextUrl.pathname
-    )
   }
 
   return response

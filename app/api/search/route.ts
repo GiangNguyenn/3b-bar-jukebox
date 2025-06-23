@@ -2,6 +2,10 @@ import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
 import { NextResponse } from 'next/server'
 import type { Database } from '@/types/supabase'
+import { createModuleLogger } from '@/shared/utils/logger'
+
+// Set up logger for this module
+const logger = createModuleLogger('Search')
 
 // Types
 interface SpotifyTokenResponse {
@@ -104,7 +108,10 @@ export async function GET(
       .single()
 
     if (profileError || !adminProfile) {
-      console.error('[Search] Error fetching admin profile:', profileError)
+      logger(
+        'ERROR',
+        `Error fetching admin profile: ${JSON.stringify(profileError)}`
+      )
       return NextResponse.json(
         {
           error: 'Failed to get admin credentials',
@@ -139,7 +146,7 @@ export async function GET(
       })
 
       if (!response.ok) {
-        console.error('[Search] Error refreshing token:', await response.text())
+        logger('ERROR', `Error refreshing token: ${await response.text()}`)
         return NextResponse.json(
           {
             error: 'Failed to refresh token',
@@ -165,7 +172,7 @@ export async function GET(
         .eq('display_name', '3B')
 
       if (updateError) {
-        console.error('[Search] Error updating token:', updateError)
+        logger('ERROR', `Error updating token: ${JSON.stringify(updateError)}`)
       }
     }
 
@@ -182,7 +189,7 @@ export async function GET(
     )
 
     if (!searchResponse.ok) {
-      console.error('[Search] Spotify API error:', await searchResponse.text())
+      logger('ERROR', `Spotify API error: ${await searchResponse.text()}`)
       return NextResponse.json(
         {
           error: 'Failed to search Spotify',
@@ -196,7 +203,12 @@ export async function GET(
     const searchData = (await searchResponse.json()) as SearchResponse
     return NextResponse.json(searchData)
   } catch (error) {
-    console.error('[Search] Error:', error)
+    logger(
+      'ERROR',
+      'Error in search route:',
+      undefined,
+      error instanceof Error ? error : undefined
+    )
     return NextResponse.json(
       {
         error: 'Internal server error',
