@@ -13,7 +13,10 @@ export const maxDuration = 60 // 60 seconds
 let serviceInstance: PlaylistRefreshServiceImpl | null = null
 
 const refreshRequestSchema = z.object({
-  genres: z.array(z.string() as z.ZodType<Genre>).min(1).max(10),
+  genres: z
+    .array(z.string() as z.ZodType<Genre>)
+    .min(1)
+    .max(10),
   yearRange: z.tuple([
     z.number().min(1900),
     z.number().max(new Date().getFullYear())

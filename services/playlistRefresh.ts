@@ -250,21 +250,40 @@ export class PlaylistRefreshServiceImpl implements PlaylistRefreshService {
       maxOffset: number
     }
   ): Promise<{ success: boolean; error?: string; searchDetails?: unknown }> {
-    // Find the current track's position in the playlist
-    const currentTrackIndex = currentTrackId
-      ? allPlaylistTracks.findIndex(
-          (track) => track.track.id === currentTrackId
-        )
-      : -1
+    // Get saved params from localStorage
+    const savedParams =
+      typeof window !== 'undefined'
+        ? (JSON.parse(
+            localStorage.getItem('track-suggestions-state') ?? '{}'
+          ) as {
+            genres: Genre[]
+            yearRange: [number, number]
+            popularity: number
+            allowExplicit: boolean
+            maxSongLength: number
+            songsBetweenRepeats: number
+            maxOffset: number
+          })
+        : null
 
-    // Calculate how many tracks are left after the current track
-    const tracksRemaining =
-      currentTrackIndex >= 0
-        ? allPlaylistTracks.length - (currentTrackIndex + 1)
-        : allPlaylistTracks.length
+    const mergedParams = {
+      genres:
+        params?.genres ??
+        savedParams?.genres ??
+        (Array.from(FALLBACK_GENRES) as Genre[]),
+      yearRange: params?.yearRange ??
+        savedParams?.yearRange ?? [1950, new Date().getFullYear()],
+      popularity: params?.popularity ?? savedParams?.popularity ?? 50,
+      allowExplicit:
+        params?.allowExplicit ?? savedParams?.allowExplicit ?? false,
+      maxSongLength: params?.maxSongLength ?? savedParams?.maxSongLength ?? 3,
+      songsBetweenRepeats:
+        params?.songsBetweenRepeats ?? savedParams?.songsBetweenRepeats ?? 5,
+      maxOffset: params?.maxOffset ?? savedParams?.maxOffset ?? 1000
+    }
 
-    // Check if we have 3 or fewer tracks remaining
-    if (tracksRemaining > 3) {
+    // Check if we have 3 or fewer upcoming tracks (need to add more)
+    if (upcomingTracks.length > 3) {
       return {
         success: false,
         error: 'Enough tracks remaining'
@@ -279,38 +298,6 @@ export class PlaylistRefreshServiceImpl implements PlaylistRefreshService {
       let retryCount = 0
       let success = false
       let searchDetails: unknown
-
-      // Get saved params from localStorage
-      const savedParams =
-        typeof window !== 'undefined'
-          ? (JSON.parse(
-              localStorage.getItem('track-suggestions-state') ?? '{}'
-            ) as {
-              genres: Genre[]
-              yearRange: [number, number]
-              popularity: number
-              allowExplicit: boolean
-              maxSongLength: number
-              songsBetweenRepeats: number
-              maxOffset: number
-            })
-          : null
-
-      const mergedParams = {
-        genres:
-          params?.genres ??
-          savedParams?.genres ??
-          (Array.from(FALLBACK_GENRES) as Genre[]),
-        yearRange: params?.yearRange ??
-          savedParams?.yearRange ?? [1950, new Date().getFullYear()],
-        popularity: params?.popularity ?? savedParams?.popularity ?? 50,
-        allowExplicit:
-          params?.allowExplicit ?? savedParams?.allowExplicit ?? false,
-        maxSongLength: params?.maxSongLength ?? savedParams?.maxSongLength ?? 3,
-        songsBetweenRepeats:
-          params?.songsBetweenRepeats ?? savedParams?.songsBetweenRepeats ?? 5,
-        maxOffset: params?.maxOffset ?? savedParams?.maxOffset ?? 1000
-      }
 
       while (!success && retryCount < this.retryConfig.maxRetries) {
         const result = await findSuggestedTrack(
@@ -608,10 +595,7 @@ export class PlaylistRefreshServiceImpl implements PlaylistRefreshService {
         }
         return {
           success: false,
-          message:
-            result.error === 'Playlist too long'
-              ? `Playlist has reached maximum length of ${MAX_PLAYLIST_LENGTH} tracks. No new tracks needed.`
-              : result.error || 'Failed to add track',
+          message: result.error || 'Failed to add track',
           timestamp: new Date().toISOString(),
           diagnosticInfo,
           forceRefresh: force

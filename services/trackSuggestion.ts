@@ -12,7 +12,10 @@ import {
   DEFAULT_YEAR_RANGE,
   type Genre
 } from '@/shared/constants/trackSuggestion'
-import { validateTrackSuggestionParams, validateExcludedTrackIds } from '@/shared/validations/trackSuggestion'
+import {
+  validateTrackSuggestionParams,
+  validateExcludedTrackIds
+} from '@/shared/validations/trackSuggestion'
 
 // Logger setup following project pattern
 let addLog: (
@@ -55,7 +58,7 @@ export function selectRandomTrack(
   allowExplicit: boolean
 ): TrackDetails | null {
   const maxDurationMs = maxSongLength * 60 * 1000 // Convert minutes to milliseconds
-  
+
   const filterResult = filterTracksByCriteria(tracks, {
     excludedIds,
     minPopularity,
@@ -76,8 +79,9 @@ function filterTracksByCriteria(
   tracks: TrackDetails[],
   criteria: TrackFilterCriteria
 ): TrackFilterResult {
-  const { excludedIds, minPopularity, maxSongLengthMs, allowExplicit } = criteria
-  
+  const { excludedIds, minPopularity, maxSongLengthMs, allowExplicit } =
+    criteria
+
   const candidates: TrackDetails[] = []
   const filteredOut = {
     excluded: 0,
@@ -101,14 +105,19 @@ function filterTracksByCriteria(
     }
 
     // Validate and handle popularity value
-    const trackPopularity = typeof track.popularity === 'number' && !isNaN(track.popularity) 
-      ? track.popularity 
-      : 0
+    const trackPopularity =
+      typeof track.popularity === 'number' && !isNaN(track.popularity)
+        ? track.popularity
+        : 0
 
     // Log invalid popularity values for debugging
     if (typeof track.popularity !== 'number' || isNaN(track.popularity)) {
       if (addLog) {
-        addLog('WARN', `Invalid popularity value for track ${track.name} (${track.id}): ${track.popularity}`, 'TrackSuggestion')
+        addLog(
+          'WARN',
+          `Invalid popularity value for track ${track.name} (${track.id}): ${track.popularity}`,
+          'TrackSuggestion'
+        )
       }
     }
 
@@ -188,7 +197,7 @@ export function getRandomGenre(genres: Genre[]): Genre {
 
 // Utility: Get a random genre that hasn't been tried yet
 function getUntriedGenre(genres: Genre[], triedGenres: string[]): Genre | null {
-  const untriedGenres = genres.filter(genre => !triedGenres.includes(genre))
+  const untriedGenres = genres.filter((genre) => !triedGenres.includes(genre))
   if (untriedGenres.length === 0) {
     return null
   }
@@ -231,13 +240,17 @@ export async function findSuggestedTrack(
   // Validate inputs
   const excludedValidation = validateExcludedTrackIds(excludedTrackIds)
   if (!excludedValidation.isValid) {
-    throw new Error(`Invalid excluded track IDs: ${excludedValidation.errors.join(', ')}`)
+    throw new Error(
+      `Invalid excluded track IDs: ${excludedValidation.errors.join(', ')}`
+    )
   }
 
   if (params) {
     const paramsValidation = validateTrackSuggestionParams(params)
     if (!paramsValidation.isValid) {
-      throw new Error(`Invalid parameters: ${paramsValidation.errors.join(', ')}`)
+      throw new Error(
+        `Invalid parameters: ${paramsValidation.errors.join(', ')}`
+      )
     }
   }
 
@@ -258,9 +271,7 @@ export async function findSuggestedTrack(
     : excludedTrackIds
 
   // Use provided genres or fallback to FALLBACK_GENRES
-  const genres = params?.genres?.length
-    ? params.genres
-    : [...FALLBACK_GENRES]
+  const genres = params?.genres?.length ? params.genres : [...FALLBACK_GENRES]
 
   const yearRange = params?.yearRange ?? DEFAULT_YEAR_RANGE
   const minPopularity = params?.popularity ?? MIN_TRACK_POPULARITY
@@ -301,7 +312,10 @@ export async function findSuggestedTrack(
       // Log details about the tracks we found
       const trackDetails = tracks.map((t) => ({
         name: t.name,
-        popularity: typeof t.popularity === 'number' && !isNaN(t.popularity) ? t.popularity : 0,
+        popularity:
+          typeof t.popularity === 'number' && !isNaN(t.popularity)
+            ? t.popularity
+            : 0,
         isExcluded: allExcludedIds.includes(t.id),
         isPlayable: t.is_playable,
         duration_ms: t.duration_ms,
@@ -350,8 +364,13 @@ export async function findSuggestedTrack(
       // Log when no suitable track is found for this genre
       if (addLog) {
         // Calculate highest popularity found for this genre
-        const popularityValues = tracks.map(t => typeof t.popularity === 'number' && !isNaN(t.popularity) ? t.popularity : 0)
-        const highestPopularity = tracks.length > 0 ? Math.max(...popularityValues) : 0
+        const popularityValues = tracks.map((t) =>
+          typeof t.popularity === 'number' && !isNaN(t.popularity)
+            ? t.popularity
+            : 0
+        )
+        const highestPopularity =
+          tracks.length > 0 ? Math.max(...popularityValues) : 0
 
         addLog(
           'WARN',

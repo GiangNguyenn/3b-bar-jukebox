@@ -109,6 +109,8 @@ export const usePlaylist = (
           console.log(
             '[Playlist] Refresh operation already in progress, skipping'
           )
+        } else if (result.message.includes('Playlist has reached maximum length')) {
+          console.log('[Playlist] Playlist at maximum length, no new tracks needed')
         } else {
           throw new Error(result.message)
         }
