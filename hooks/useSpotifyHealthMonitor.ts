@@ -80,7 +80,7 @@ export function useSpotifyHealthMonitor(
     device: 'unknown',
     playback: 'unknown',
     token: 'unknown',
-    connection: 'unknown',
+    connection: 'connected',
     tokenExpiringSoon: false,
     fixedPlaylist: 'unknown'
   })
