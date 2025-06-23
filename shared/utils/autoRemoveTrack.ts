@@ -37,7 +37,9 @@ export async function autoRemoveTrack({
 
   // Don't remove the track if it's currently playing
   if (currentTrackId && trackToRemove.track.id === currentTrackId) {
-    console.log('[Auto Remove] First track is currently playing, skipping removal')
+    console.log(
+      '[Auto Remove] First track is currently playing, skipping removal'
+    )
     return false
   }
 
@@ -51,7 +53,9 @@ export async function autoRemoveTrack({
             tracks: [{ uri: trackToRemove.track.uri }]
           }
         })
-        console.log(`[Auto Remove] Successfully removed track: ${trackToRemove.track.name}`)
+        console.log(
+          `[Auto Remove] Successfully removed track: ${trackToRemove.track.name}`
+        )
         onSuccess?.()
       },
       'AutoRemoveTrack',

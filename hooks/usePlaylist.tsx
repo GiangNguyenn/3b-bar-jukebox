@@ -9,7 +9,7 @@ import { filterUpcomingTracks } from '@/lib/utils'
 import useSWR from 'swr'
 import { sendApiRequest } from '@/shared/api'
 import { handleOperationError, AppError } from '@/shared/utils/errorHandling'
-import { Genre } from '@/services/trackSuggestion'
+import { type Genre } from '@/shared/constants/trackSuggestion'
 import { PlaylistRefreshServiceImpl } from '@/services/playlistRefresh'
 import { type TrackSuggestionsState } from '@/shared/types/trackSuggestions'
 
@@ -109,8 +109,12 @@ export const usePlaylist = (
           console.log(
             '[Playlist] Refresh operation already in progress, skipping'
           )
-        } else if (result.message.includes('Playlist has reached maximum length')) {
-          console.log('[Playlist] Playlist at maximum length, no new tracks needed')
+        } else if (
+          result.message.includes('Playlist has reached maximum length')
+        ) {
+          console.log(
+            '[Playlist] Playlist at maximum length, no new tracks needed'
+          )
         } else {
           throw new Error(result.message)
         }
