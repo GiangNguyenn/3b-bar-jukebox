@@ -5,11 +5,9 @@ import {
   PLAYBACK_VERIFICATION_TIMEOUT,
   PLAYBACK_CHECK_INTERVAL
 } from '@/shared/constants/recovery'
+import { validateDeviceState } from './validation'
 import { validatePlaybackState } from './validation'
-import {
-  validateDeviceState,
-  ensureDeviceHealth
-} from '@/services/deviceManagement'
+import { validateDevice } from '@/services/deviceManagement'
 
 export async function verifyPlaybackResume(
   expectedContextUri: string,
@@ -207,13 +205,12 @@ export async function verifyDevicePlaybackState(
   deviceId: string,
   state: SpotifyPlaybackState | null
 ): Promise<void> {
-  // First check device health
-  const health = await ensureDeviceHealth(deviceId, {
-    requireActive: true
-  })
-
-  if (!health.isHealthy) {
-    throw new Error(`Device health check failed: ${health.errors.join(', ')}`)
+  // Validate device using the new consolidated function
+  const deviceValidation = await validateDevice(deviceId)
+  if (!deviceValidation.isValid) {
+    throw new Error(
+      `Device validation failed: ${deviceValidation.errors.join(', ')}`
+    )
   }
 
   // Validate playback state
@@ -229,11 +226,8 @@ export async function verifyDevicePlaybackState(
     throw new Error('No playback context available')
   }
 
-  // Validate device state
-  const deviceValidation = validateDeviceState(deviceId, state)
-  if (!deviceValidation.isValid) {
-    throw new Error(
-      `Device validation failed: ${deviceValidation.errors.join(', ')}`
-    )
+  // Additional validation: check if device is active for playback
+  if (!deviceValidation.device?.isActive) {
+    throw new Error('Device is not active')
   }
 }

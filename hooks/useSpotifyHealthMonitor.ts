@@ -7,9 +7,8 @@ import { useRecoverySystem } from './recovery/useRecoverySystem'
 import { SpotifyApiService } from '@/services/spotifyApi'
 import { useFixedPlaylist } from './useFixedPlaylist'
 import {
-  checkDeviceHealth as checkDeviceHealthService,
   setDeviceManagementLogger,
-  validateDeviceStateIntelligent
+  validateDevice
 } from '@/services/deviceManagement'
 import { HealthStatus } from '@/shared/types/health'
 
@@ -314,45 +313,32 @@ export function useSpotifyHealthMonitor(
           })
 
           // Use intelligent validation with context
-          const validation = validateDeviceStateIntelligent(
-            intervalDeviceId,
-            state,
-            {
-              isInitialSetup: isInitialStateRef.current,
-              allowInactive: true,
-              gracePeriodMs: DEVICE_CHANGE_GRACE_PERIOD,
-              lastDeviceChange: lastDeviceIdChange.current
-            }
-          )
+          const validationResult = await validateDevice(intervalDeviceId)
 
           // Log warnings but don't count them as errors
-          if (validation.warnings.length > 0) {
+          if (validationResult.warnings.length > 0) {
             addLogRef.current(
               'WARN',
-              `Device warnings: ${validation.warnings.join(', ')}`,
+              `Device warnings: ${validationResult.warnings.join(', ')}`,
               'HealthMonitor'
             )
           }
 
-          if (!validation.isValid) {
+          if (!validationResult.isValid) {
             deviceMismatchCountRef.current += 1
             if (deviceMismatchCountRef.current >= DEVICE_MISMATCH_THRESHOLD) {
               addLogRef.current(
                 'ERROR',
-                `Device health check failed: ${validation.errors.join(', ')}`,
+                `Device health check failed: ${validationResult.errors.join(', ')}`,
                 'HealthMonitor'
               )
-
-              // Check if this is a device ID mismatch to provide better status
-              const hasDeviceMismatch = validation.errors.some((error) =>
+              const hasDeviceMismatch = validationResult.errors.some((error) =>
                 error.includes('Device ID mismatch')
               )
-
               if (hasDeviceMismatch) {
-                // More descriptive status for device ID mismatch
                 setHealthStatus((prev: HealthStatus) => ({
                   ...prev,
-                  device: 'unresponsive' // Use 'unresponsive' to indicate another device is active
+                  device: 'unresponsive'
                 }))
                 addLogRef.current(
                   'WARN',
@@ -360,13 +346,11 @@ export function useSpotifyHealthMonitor(
                   'HealthMonitor'
                 )
               } else {
-                // For other types of errors, use disconnected status
                 setHealthStatus((prev: HealthStatus) => ({
                   ...prev,
                   device: 'disconnected'
                 }))
               }
-
               deviceMismatchCountRef.current = 0
             }
           } else {
@@ -376,14 +360,6 @@ export function useSpotifyHealthMonitor(
               ...prev,
               device: 'healthy'
             }))
-          }
-
-          // If validation suggests retry, reduce the mismatch count to give more time
-          if (validation.shouldRetry) {
-            deviceMismatchCountRef.current = Math.max(
-              0,
-              deviceMismatchCountRef.current - 1
-            )
           }
         } catch (error) {
           if (error instanceof Error) {

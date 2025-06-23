@@ -1,7 +1,6 @@
 import { sendApiRequest } from '@/shared/api'
 import {
-  verifyDeviceSetup,
-  verifyDeviceTransfer,
+  validateDevice,
   transferPlaybackToDevice,
   cleanupOtherDevices,
   setDeviceManagementLogger
@@ -179,10 +178,10 @@ class PlayerLifecycleService {
 
       this.verificationTimeoutRef = timeout
 
-      verifyDeviceSetup(deviceId)
+      validateDevice(deviceId)
         .then((result) => {
           clearTimeout(timeout)
-          resolve(result)
+          resolve(result.isValid && !(result.device?.isRestricted ?? false))
         })
         .catch((error) => {
           clearTimeout(timeout)
