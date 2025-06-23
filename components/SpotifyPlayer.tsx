@@ -51,9 +51,9 @@ export function SpotifyPlayer(): JSX.Element {
   }, [])
 
   // Event handlers
-  const handlePlaybackUpdate = useCallback((event: CustomEvent): void => {
+  const handlePlaybackUpdate = useCallback((): void => {
     // Handle playback updates
-    console.log('Playback update:', event.detail)
+    // Removed INFO log as per user request
   }, [])
 
   const handleError = useCallback((event: Event): void => {

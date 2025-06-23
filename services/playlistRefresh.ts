@@ -17,8 +17,12 @@ import { DEFAULT_MARKET } from '@/shared/constants/trackSuggestion'
 import { sendApiRequest } from '@/shared/api'
 import { type TrackSuggestionsState } from '@/shared/types/trackSuggestions'
 import * as Sentry from '@sentry/nextjs'
+import { createModuleLogger } from '@/shared/utils/logger'
 
 const LAST_SUGGESTED_TRACK_KEY = 'last-suggested-track'
+
+// Set up logger for this module
+const logger = createModuleLogger('PlaylistRefresh')
 
 export interface PlaylistRefreshService {
   refreshPlaylist(
@@ -101,9 +105,11 @@ export class PlaylistRefreshServiceImpl implements PlaylistRefreshService {
         }
       }
     } catch (error) {
-      console.error(
-        '[PlaylistRefresh] Error loading last suggested track:',
-        error
+      logger(
+        'ERROR',
+        'Error loading last suggested track:',
+        undefined,
+        error instanceof Error ? error : undefined
       )
     }
   }
@@ -127,7 +133,12 @@ export class PlaylistRefreshServiceImpl implements PlaylistRefreshService {
         body: JSON.stringify(track)
       })
     } catch (error) {
-      console.error('[PlaylistRefresh] Error updating server cache:', error)
+      logger(
+        'ERROR',
+        'Error updating server cache:',
+        undefined,
+        error instanceof Error ? error : undefined
+      )
     }
   }
 
@@ -144,9 +155,11 @@ export class PlaylistRefreshServiceImpl implements PlaylistRefreshService {
         }
       }
     } catch (error) {
-      console.error(
-        '[PlaylistRefresh] Error saving last suggested track:',
-        error
+      logger(
+        'ERROR',
+        'Error saving last suggested track:',
+        undefined,
+        error instanceof Error ? error : undefined
       )
     }
   }
@@ -164,9 +177,11 @@ export class PlaylistRefreshServiceImpl implements PlaylistRefreshService {
               JSON.parse(savedTrack)
           }
         } catch (error) {
-          console.error(
-            '[PlaylistRefresh] Error loading from localStorage in getInstance:',
-            error
+          logger(
+            'ERROR',
+            'Error loading from localStorage in getInstance:',
+            undefined,
+            error instanceof Error ? error : undefined
           )
         }
       }

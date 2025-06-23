@@ -1,5 +1,4 @@
 import { Metadata } from 'next'
-import { ConsoleLogsProvider } from '@/hooks/ConsoleLogsProvider'
 import { ProtectedRoute } from './components/ProtectedRoute'
 
 export const metadata: Metadata = {
@@ -14,11 +13,9 @@ export default function AdminLayout({
 }>): JSX.Element {
   return (
     <ProtectedRoute>
-      <ConsoleLogsProvider>
-        <div className='min-h-screen bg-black'>
-          <main className='container mx-auto px-4 py-8'>{children}</main>
-        </div>
-      </ConsoleLogsProvider>
+      <div className='min-h-screen bg-black'>
+        <main className='container mx-auto px-4 py-8'>{children}</main>
+      </div>
     </ProtectedRoute>
   )
 }

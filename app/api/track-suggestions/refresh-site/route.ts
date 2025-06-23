@@ -60,9 +60,7 @@ export async function POST(
     const validatedData = refreshRequestSchema.parse(body)
 
     // Use the cached instance if available, otherwise create a new one
-    if (!serviceInstance) {
-      serviceInstance = PlaylistRefreshServiceImpl.getInstance()
-    }
+    serviceInstance ??= PlaylistRefreshServiceImpl.getInstance()
 
     const result = await serviceInstance.refreshPlaylist(true, {
       genres: validatedData.genres,

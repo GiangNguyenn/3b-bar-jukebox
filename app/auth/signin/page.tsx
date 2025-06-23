@@ -4,8 +4,10 @@ import { createBrowserClient } from '@supabase/ssr'
 import { useEffect } from 'react'
 import type { Database } from '@/types/supabase'
 import { getOAuthRedirectUrl } from '@/shared/utils/domain'
+import { useConsoleLogsContext } from '@/hooks/ConsoleLogsProvider'
 
 export default function SignIn(): JSX.Element {
+  const { addLog } = useConsoleLogsContext()
   const supabase = createBrowserClient<Database>(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
@@ -13,13 +15,9 @@ export default function SignIn(): JSX.Element {
 
   useEffect(() => {
     const signInWithSpotify = async (): Promise<void> => {
-      console.log('[SignIn] Starting Spotify OAuth flow')
-
       const redirectUrl = getOAuthRedirectUrl()
-      console.log('[SignIn] Window location origin:', window.location.origin)
-      console.log('[SignIn] Full redirect URL:', redirectUrl)
 
-      const { data, error } = await supabase.auth.signInWithOAuth({
+      const { error } = await supabase.auth.signInWithOAuth({
         provider: 'spotify',
         options: {
           redirectTo: redirectUrl,
@@ -29,21 +27,18 @@ export default function SignIn(): JSX.Element {
       })
 
       if (error) {
-        console.error('[SignIn] Error signing in:', {
-          error,
-          errorMessage: error.message,
-          status: error.status,
-          name: error.name
-        })
+        addLog(
+          'ERROR',
+          `Error signing in: ${JSON.stringify({ errorMessage: error.message, status: error.status, name: error.name })}`,
+          'SignIn'
+        )
         // Show error to user
         alert(`Login error: ${error.message}`)
-      } else {
-        console.log('[SignIn] OAuth flow initiated successfully:', data)
       }
     }
 
     void signInWithSpotify()
-  }, [supabase])
+  }, [supabase, addLog])
 
   return (
     <div className='flex min-h-screen items-center justify-center'>

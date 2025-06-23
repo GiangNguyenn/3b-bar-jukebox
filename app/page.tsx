@@ -6,6 +6,7 @@ import { createBrowserClient } from '@supabase/ssr'
 import { usePremiumStatus } from '@/hooks/usePremiumStatus'
 import type { Database } from '@/types/supabase'
 import type { User } from '@supabase/supabase-js'
+import { useConsoleLogsContext } from '@/hooks/ConsoleLogsProvider'
 
 export default function Home(): JSX.Element {
   const [user, setUser] = useState<User | null>(null)
@@ -16,6 +17,7 @@ export default function Home(): JSX.Element {
     isLoading: isPremiumLoading,
     error: premiumError
   } = usePremiumStatus()
+  const { addLog } = useConsoleLogsContext()
 
   const supabase = createBrowserClient<Database>(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -37,20 +39,17 @@ export default function Home(): JSX.Element {
   // Redirect non-premium users to premium-required page
   // Only redirect if there's no error and user is confirmed to be non-premium
   useEffect(() => {
-    console.log('[RootPage] Premium status check:', {
-      user: !!user,
-      isPremium,
-      isPremiumLoading,
-      premiumError
-    })
-
+    addLog('INFO', 'Premium status check', 'RootPage', undefined)
     if (user && !isPremiumLoading && !isPremium && !premiumError) {
-      console.log(
-        '[RootPage] Redirecting non-premium user to /premium-required'
+      addLog(
+        'INFO',
+        'Redirecting non-premium user to /premium-required',
+        'RootPage',
+        undefined
       )
       void router.push('/premium-required')
     }
-  }, [user, isPremium, isPremiumLoading, router, premiumError])
+  }, [user, isPremium, isPremiumLoading, router, premiumError, addLog])
 
   if (loading || isPremiumLoading) {
     return <div>Loading...</div>
@@ -77,8 +76,11 @@ export default function Home(): JSX.Element {
 
   // If there's a premium error (like token issues), show login button
   if (premiumError) {
-    console.log(
-      '[RootPage] Premium error detected, showing re-authentication option'
+    addLog(
+      'INFO',
+      'Premium error detected, showing re-authentication option',
+      'RootPage',
+      undefined
     )
     return (
       <div className='flex min-h-screen items-center justify-center'>
@@ -103,7 +105,12 @@ export default function Home(): JSX.Element {
 
   // Don't show admin button if user is not premium
   if (!isPremium) {
-    console.log('[RootPage] User is not premium, showing redirect message')
+    addLog(
+      'INFO',
+      'User is not premium, showing redirect message',
+      'RootPage',
+      undefined
+    )
     return (
       <div className='flex min-h-screen items-center justify-center'>
         <div className='text-center'>
@@ -119,7 +126,7 @@ export default function Home(): JSX.Element {
   }
 
   // Only show admin button for premium users
-  console.log('[RootPage] User is premium, showing admin button')
+  addLog('INFO', 'User is premium, showing admin button', 'RootPage', undefined)
   return (
     <div className='flex min-h-screen items-center justify-center'>
       <div className='text-center'>

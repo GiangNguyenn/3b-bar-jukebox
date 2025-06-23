@@ -6,6 +6,10 @@ import {
   validateDevice
 } from '@/services/deviceManagement'
 import { verifyPlaybackResume } from '@/shared/utils/recovery/playback-verification'
+import { createModuleLogger } from '@/shared/utils/logger'
+
+// Set up logger for this module
+const logger = createModuleLogger('PlaybackAPI')
 
 interface PlaybackRequest {
   action: 'play' | 'pause'
@@ -18,14 +22,6 @@ export async function POST(request: Request): Promise<NextResponse> {
   try {
     const { action, contextUri, deviceId, position_ms } =
       (await request.json()) as PlaybackRequest
-
-    console.log('[API Playback] Received request:', {
-      action,
-      contextUri,
-      deviceId,
-      position_ms,
-      timestamp: new Date().toISOString()
-    })
 
     if (!deviceId) {
       return NextResponse.json(
@@ -86,7 +82,12 @@ export async function POST(request: Request): Promise<NextResponse> {
 
     return NextResponse.json({ success: true })
   } catch (error) {
-    console.error('[Playback API] Error:', error)
+    logger(
+      'ERROR',
+      'Error in playback API:',
+      undefined,
+      error instanceof Error ? error : undefined
+    )
     return NextResponse.json(
       { error: error instanceof Error ? error.message : 'Unknown error' },
       { status: 500 }
