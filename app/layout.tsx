@@ -90,7 +90,7 @@ export default function RootLayout({
   return (
     <html lang='en' className=''>
       <head>
-        <Script src='/spotify-init.js' strategy='beforeInteractive' />
+        <Script src='/spotify-init.js' strategy='afterInteractive' />
       </head>
       <body className={`${belgrano.variable} min-h-screen antialiased`}>
         <Header />

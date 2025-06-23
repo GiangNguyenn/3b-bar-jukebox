@@ -77,7 +77,9 @@ export default function Home(): JSX.Element {
 
   // If there's a premium error (like token issues), show login button
   if (premiumError) {
-    console.log('[RootPage] Premium error detected, showing re-authentication option')
+    console.log(
+      '[RootPage] Premium error detected, showing re-authentication option'
+    )
     return (
       <div className='flex min-h-screen items-center justify-center'>
         <div className='text-center'>
@@ -85,7 +87,8 @@ export default function Home(): JSX.Element {
             Authentication Issue
           </h1>
           <p className='mb-8 text-gray-400'>
-            There was an issue with your Spotify connection. Please sign in again.
+            There was an issue with your Spotify connection. Please sign in
+            again.
           </p>
           <a
             href='/auth/signin'

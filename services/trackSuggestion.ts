@@ -5,10 +5,46 @@ import {
   MIN_TRACK_POPULARITY,
   SPOTIFY_SEARCH_ENDPOINT,
   TRACK_SEARCH_LIMIT,
-  DEFAULT_MARKET
+  DEFAULT_MARKET,
+  DEFAULT_MAX_SONG_LENGTH_MINUTES,
+  DEFAULT_MAX_OFFSET,
+  DEFAULT_MAX_GENRE_ATTEMPTS,
+  DEFAULT_YEAR_RANGE,
+  type Genre
 } from '@/shared/constants/trackSuggestion'
+import { validateTrackSuggestionParams, validateExcludedTrackIds } from '@/shared/validations/trackSuggestion'
 
-export type Genre = string
+// Logger setup following project pattern
+let addLog: (
+  level: 'LOG' | 'INFO' | 'WARN' | 'ERROR',
+  message: string,
+  context?: string,
+  error?: Error
+) => void
+
+export function setTrackSuggestionLogger(logger: typeof addLog) {
+  addLog = logger
+}
+
+// Track filtering criteria interface
+interface TrackFilterCriteria {
+  excludedIds: string[]
+  minPopularity: number
+  maxSongLengthMs: number
+  allowExplicit: boolean
+}
+
+// Track filtering result interface
+interface TrackFilterResult {
+  candidates: TrackDetails[]
+  filteredOut: {
+    excluded: number
+    lowPopularity: number
+    tooLong: number
+    explicit: number
+    unplayable: number
+  }
+}
 
 // Utility: Select a random track from a filtered list
 export function selectRandomTrack(
@@ -18,29 +54,87 @@ export function selectRandomTrack(
   maxSongLength: number, // maxSongLength is in minutes
   allowExplicit: boolean
 ): TrackDetails | null {
-  const candidates = tracks.filter((track) => {
-    const isExcluded = excludedIds.includes(track.id)
-    const meetsPopularity = track.popularity >= minPopularity
-    const isPlayable = track.is_playable === true
-    const maxDurationMs = maxSongLength * 60 * 1000 // Convert minutes to milliseconds
-    const meetsLength = track.duration_ms <= maxDurationMs
-    const meetsExplicit = allowExplicit || !track.explicit
-
-    return (
-      !isExcluded &&
-      meetsPopularity &&
-      isPlayable &&
-      meetsLength &&
-      meetsExplicit
-    )
+  const maxDurationMs = maxSongLength * 60 * 1000 // Convert minutes to milliseconds
+  
+  const filterResult = filterTracksByCriteria(tracks, {
+    excludedIds,
+    minPopularity,
+    maxSongLengthMs: maxDurationMs,
+    allowExplicit
   })
 
-  if (candidates.length === 0) {
+  if (filterResult.candidates.length === 0) {
     return null
   }
 
-  const randomIndex = Math.floor(Math.random() * candidates.length)
-  return candidates[randomIndex]
+  const randomIndex = Math.floor(Math.random() * filterResult.candidates.length)
+  return filterResult.candidates[randomIndex]
+}
+
+// Utility: Filter tracks by multiple criteria efficiently
+function filterTracksByCriteria(
+  tracks: TrackDetails[],
+  criteria: TrackFilterCriteria
+): TrackFilterResult {
+  const { excludedIds, minPopularity, maxSongLengthMs, allowExplicit } = criteria
+  
+  const candidates: TrackDetails[] = []
+  const filteredOut = {
+    excluded: 0,
+    lowPopularity: 0,
+    tooLong: 0,
+    explicit: 0,
+    unplayable: 0
+  }
+
+  for (const track of tracks) {
+    // Check exclusion first (most restrictive)
+    if (excludedIds.includes(track.id)) {
+      filteredOut.excluded++
+      continue
+    }
+
+    // Check playability
+    if (track.is_playable !== true) {
+      filteredOut.unplayable++
+      continue
+    }
+
+    // Validate and handle popularity value
+    const trackPopularity = typeof track.popularity === 'number' && !isNaN(track.popularity) 
+      ? track.popularity 
+      : 0
+
+    // Log invalid popularity values for debugging
+    if (typeof track.popularity !== 'number' || isNaN(track.popularity)) {
+      if (addLog) {
+        addLog('WARN', `Invalid popularity value for track ${track.name} (${track.id}): ${track.popularity}`, 'TrackSuggestion')
+      }
+    }
+
+    // Check popularity
+    if (trackPopularity < minPopularity) {
+      filteredOut.lowPopularity++
+      continue
+    }
+
+    // Check length
+    if (track.duration_ms > maxSongLengthMs) {
+      filteredOut.tooLong++
+      continue
+    }
+
+    // Check explicit content
+    if (!allowExplicit && track.explicit) {
+      filteredOut.explicit++
+      continue
+    }
+
+    // Track passes all criteria
+    candidates.push(track)
+  }
+
+  return { candidates, filteredOut }
 }
 
 export async function searchTracksByGenre(
@@ -48,7 +142,7 @@ export async function searchTracksByGenre(
   yearRange: [number, number],
   market: string = DEFAULT_MARKET,
   minPopularity: number = MIN_TRACK_POPULARITY,
-  maxOffset: number = 1000
+  maxOffset: number = DEFAULT_MAX_OFFSET
 ): Promise<TrackDetails[]> {
   try {
     const [startYear, endYear] = yearRange
@@ -68,16 +162,37 @@ export async function searchTracksByGenre(
 
     return tracks
   } catch (error) {
-    console.error(
-      `[TrackSuggestion] Error searching tracks for genre ${genre}:`,
-      error
-    )
+    if (addLog) {
+      addLog(
+        'ERROR',
+        `Error searching tracks for genre ${genre}`,
+        'TrackSuggestion',
+        error instanceof Error ? error : new Error('Unknown error')
+      )
+    } else {
+      console.error(
+        `[TrackSuggestion] Error searching tracks for genre ${genre}:`,
+        error
+      )
+    }
     throw error
   }
 }
 
 export function getRandomGenre(genres: Genre[]): Genre {
+  if (!Array.isArray(genres) || genres.length === 0) {
+    throw new Error('Genres array must be non-empty')
+  }
   return genres[Math.floor(Math.random() * genres.length)]
+}
+
+// Utility: Get a random genre that hasn't been tried yet
+function getUntriedGenre(genres: Genre[], triedGenres: string[]): Genre | null {
+  const untriedGenres = genres.filter(genre => !triedGenres.includes(genre))
+  if (untriedGenres.length === 0) {
+    return null
+  }
+  return getRandomGenre(untriedGenres)
 }
 
 export interface TrackSearchResult {
@@ -113,7 +228,19 @@ export async function findSuggestedTrack(
     maxOffset: number
   }
 ): Promise<TrackSearchResult> {
-  const MAX_GENRE_ATTEMPTS = 20
+  // Validate inputs
+  const excludedValidation = validateExcludedTrackIds(excludedTrackIds)
+  if (!excludedValidation.isValid) {
+    throw new Error(`Invalid excluded track IDs: ${excludedValidation.errors.join(', ')}`)
+  }
+
+  if (params) {
+    const paramsValidation = validateTrackSuggestionParams(params)
+    if (!paramsValidation.isValid) {
+      throw new Error(`Invalid parameters: ${paramsValidation.errors.join(', ')}`)
+    }
+  }
+
   let attempts = 0
   const genresTried: string[] = []
   const allTrackDetails: Array<{
@@ -133,43 +260,28 @@ export async function findSuggestedTrack(
   // Use provided genres or fallback to FALLBACK_GENRES
   const genres = params?.genres?.length
     ? params.genres
-    : Array.from(FALLBACK_GENRES)
+    : [...FALLBACK_GENRES]
 
-  const yearRange = params?.yearRange ?? [1950, new Date().getFullYear()]
+  const yearRange = params?.yearRange ?? DEFAULT_YEAR_RANGE
   const minPopularity = params?.popularity ?? MIN_TRACK_POPULARITY
   const allowExplicit = params?.allowExplicit ?? false
-  const maxSongLength = params?.maxSongLength ?? 3 // Default to 3 minutes
-  const maxOffset = params?.maxOffset ?? 1000 // Default to 1000
+  const maxSongLength = params?.maxSongLength ?? DEFAULT_MAX_SONG_LENGTH_MINUTES
+  const maxOffset = params?.maxOffset ?? DEFAULT_MAX_OFFSET
 
-  console.log('[TrackSuggestion] Starting track search with params:', {
-    excludedTrackIds: allExcludedIds.length,
-    currentTrackId,
-    genres: genres.length,
-    yearRange,
-    minPopularity,
-    allowExplicit,
-    maxSongLength,
-    maxOffset,
-    timestamp: new Date().toISOString()
-  })
-
-  while (attempts < MAX_GENRE_ATTEMPTS) {
-    const genre = getRandomGenre(genres)
+  while (attempts < DEFAULT_MAX_GENRE_ATTEMPTS) {
+    // Try to get an untried genre first, fallback to random if all tried
+    const genre = getUntriedGenre(genres, genresTried) ?? getRandomGenre(genres)
     genresTried.push(genre)
 
-    console.log(
-      `[TrackSuggestion] Attempt ${attempts + 1}/${MAX_GENRE_ATTEMPTS}: Searching genre "${genre}"`,
-      {
-        attempt: attempts + 1,
-        maxAttempts: MAX_GENRE_ATTEMPTS,
-        genre,
-        genresTried,
-        timestamp: new Date().toISOString()
-      }
-    )
+    if (addLog) {
+      addLog(
+        'INFO',
+        `Attempt ${attempts + 1}/${DEFAULT_MAX_GENRE_ATTEMPTS}: Searching genre "${genre}"`,
+        'TrackSuggestion'
+      )
+    }
 
     try {
-      const searchStartTime = Date.now()
       const tracks = await searchTracksByGenre(
         genre,
         yearRange,
@@ -177,23 +289,19 @@ export async function findSuggestedTrack(
         minPopularity,
         maxOffset
       )
-      const searchDuration = Date.now() - searchStartTime
 
-      console.log(
-        `[TrackSuggestion] Found ${tracks.length} tracks for genre "${genre}" in ${searchDuration}ms`,
-        {
-          attempt: attempts + 1,
-          genre,
-          tracksFound: tracks.length,
-          searchDuration,
-          timestamp: new Date().toISOString()
-        }
-      )
+      if (addLog) {
+        addLog(
+          'INFO',
+          `Found ${tracks.length} tracks for genre "${genre}"`,
+          'TrackSuggestion'
+        )
+      }
 
       // Log details about the tracks we found
       const trackDetails = tracks.map((t) => ({
         name: t.name,
-        popularity: t.popularity,
+        popularity: typeof t.popularity === 'number' && !isNaN(t.popularity) ? t.popularity : 0,
         isExcluded: allExcludedIds.includes(t.id),
         isPlayable: t.is_playable,
         duration_ms: t.duration_ms,
@@ -201,7 +309,6 @@ export async function findSuggestedTrack(
       }))
       allTrackDetails.push(...trackDetails)
 
-      const selectionStartTime = Date.now()
       const selectedTrack = selectRandomTrack(
         tracks,
         allExcludedIds,
@@ -209,62 +316,23 @@ export async function findSuggestedTrack(
         maxSongLength,
         allowExplicit
       )
-      const selectionDuration = Date.now() - selectionStartTime
 
-      // Count how many tracks meet each criteria
-      const playableCount = tracks.filter((t) => t.is_playable === true).length
-      const popularityCount = tracks.filter(
-        (t) => t.popularity >= minPopularity
-      ).length
-      const lengthCount = tracks.filter(
-        (t) => t.duration_ms <= maxSongLength * 60 * 1000
-      ).length
-      const explicitCount = tracks.filter(
-        (t) => allowExplicit || !t.explicit
-      ).length
-      const excludedCount = tracks.filter((t) =>
-        allExcludedIds.includes(t.id)
-      ).length
-
-      console.log(`[TrackSuggestion] Track selection results for "${genre}":`, {
-        attempt: attempts + 1,
-        genre,
-        totalTracks: tracks.length,
-        playableCount,
-        popularityCount,
-        lengthCount,
-        explicitCount,
-        excludedCount,
-        selectedTrack: selectedTrack
-          ? {
-              name: selectedTrack.name,
-              artist: selectedTrack.artists[0]?.name,
-              popularity: selectedTrack.popularity,
-              duration:
-                Math.round((selectedTrack.duration_ms / 1000 / 60) * 10) / 10 +
-                'min'
-            }
-          : null,
-        selectionDuration,
-        timestamp: new Date().toISOString()
+      // Count how many tracks meet each criteria using the filter function
+      const filterResult = filterTracksByCriteria(tracks, {
+        excludedIds: allExcludedIds,
+        minPopularity,
+        maxSongLengthMs: maxSongLength * 60 * 1000,
+        allowExplicit
       })
 
       if (selectedTrack) {
-        console.log(
-          `[TrackSuggestion] Successfully found track after ${attempts + 1} attempts:`,
-          {
-            trackName: selectedTrack.name,
-            artist: selectedTrack.artists[0]?.name,
-            album: selectedTrack.album?.name,
-            popularity: selectedTrack.popularity,
-            duration:
-              Math.round((selectedTrack.duration_ms / 1000 / 60) * 10) / 10 +
-              'min',
-            genresTried,
-            totalTracksSearched: allTrackDetails.length,
-            timestamp: new Date().toISOString()
-          }
-        )
+        if (addLog) {
+          addLog(
+            'INFO',
+            `Successfully found track after ${attempts + 1} attempts`,
+            'TrackSuggestion'
+          )
+        }
 
         return {
           track: selectedTrack,
@@ -279,46 +347,53 @@ export async function findSuggestedTrack(
         }
       }
 
-      attempts++
-      if (attempts < MAX_GENRE_ATTEMPTS) {
-        console.log(
-          `[TrackSuggestion] No suitable track found for "${genre}", waiting 1s before next attempt`,
-          {
-            attempt: attempts,
-            nextAttempt: attempts + 1,
-            timestamp: new Date().toISOString()
-          }
+      // Log when no suitable track is found for this genre
+      if (addLog) {
+        // Calculate highest popularity found for this genre
+        const popularityValues = tracks.map(t => typeof t.popularity === 'number' && !isNaN(t.popularity) ? t.popularity : 0)
+        const highestPopularity = tracks.length > 0 ? Math.max(...popularityValues) : 0
+
+        addLog(
+          'WARN',
+          `No suitable track found for genre "${genre}" - ${filterResult.candidates.length} candidates out of ${tracks.length} total tracks (highest popularity: ${highestPopularity})`,
+          'TrackSuggestion'
         )
-        // Add a small delay between attempts
+      }
+
+      attempts++
+      if (attempts < DEFAULT_MAX_GENRE_ATTEMPTS) {
+        if (addLog) {
+          addLog(
+            'INFO',
+            `No suitable track found for "${genre}", waiting 1s before next attempt`,
+            'TrackSuggestion'
+          )
+        }
         await new Promise((resolve) => setTimeout(resolve, 1000))
       }
     } catch (error) {
-      console.error(
-        `[TrackSuggestion] Error during track search attempt ${attempts + 1} for genre "${genre}":`,
-        {
-          attempt: attempts + 1,
-          genre,
-          error: error instanceof Error ? error.message : 'Unknown error',
-          timestamp: new Date().toISOString()
-        }
-      )
+      if (addLog) {
+        addLog(
+          'ERROR',
+          `Error searching tracks for genre "${genre}"`,
+          'TrackSuggestion',
+          error instanceof Error ? error : new Error('Unknown error')
+        )
+      }
       attempts++
-      if (attempts >= MAX_GENRE_ATTEMPTS) {
-        throw error
+      if (attempts < DEFAULT_MAX_GENRE_ATTEMPTS) {
+        await new Promise((resolve) => setTimeout(resolve, 1000))
       }
     }
   }
 
-  console.log(
-    `[TrackSuggestion] Failed to find suitable track after ${MAX_GENRE_ATTEMPTS} attempts`,
-    {
-      totalAttempts: attempts,
-      genresTried,
-      totalTracksSearched: allTrackDetails.length,
-      excludedTrackIds: allExcludedIds.length,
-      timestamp: new Date().toISOString()
-    }
-  )
+  if (addLog) {
+    addLog(
+      'ERROR',
+      `Failed to find suitable track after ${DEFAULT_MAX_GENRE_ATTEMPTS} attempts`,
+      'TrackSuggestion'
+    )
+  }
 
   return {
     track: null,
