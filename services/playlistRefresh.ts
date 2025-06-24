@@ -282,7 +282,10 @@ export class PlaylistRefreshServiceImpl implements PlaylistRefreshService {
     }
 
     // Add logging to show parameter sources
-    logger('INFO', `Track suggestion parameters - provided: ${params ? 'yes' : 'no'}, saved: ${savedParams ? 'yes' : 'no'}, final: genres=${mergedParams.genres.length}, popularity=${mergedParams.popularity}, maxOffset=${mergedParams.maxOffset}`)
+    logger(
+      'INFO',
+      `Track suggestion parameters - provided: ${params ? 'yes' : 'no'}, saved: ${savedParams ? 'yes' : 'no'}, final: genres=${mergedParams.genres.length}, popularity=${mergedParams.popularity}, maxOffset=${mergedParams.maxOffset}`
+    )
 
     // Check if we have 3 or fewer upcoming tracks (need to add more)
     if (upcomingTracks.length > 3) {
