@@ -7,6 +7,7 @@ import { useState } from 'react'
 
 interface UseTrackOperationsProps {
   playlistId: string
+  token?: string | null
 }
 
 interface TrackOperationsState {
@@ -17,20 +18,24 @@ interface TrackOperationsState {
   optimisticTrack: TrackItem | null
 }
 
-export const useTrackOperations = ({ playlistId }: UseTrackOperationsProps) => {
+export const useTrackOperations = ({
+  playlistId,
+  token
+}: UseTrackOperationsProps) => {
   const {
-    isError: playlistError,
-    refetchPlaylist,
+    error: playlistError,
+    refetch,
     data: playlist
-  } = useGetPlaylist(playlistId)
+  } = useGetPlaylist({ playlistId, token })
   const [pendingTracks, setPendingTracks] = useState<Set<string>>(new Set())
   const [optimisticTrack, setOptimisticTrack] = useState<TrackItem | null>(null)
 
   const { isLoading, error, isSuccess, executeOperation } = useTrackOperation({
     playlistId,
-    playlistError,
+    playlistError: !!playlistError,
     refetchPlaylist: async (optimisticData?: SpotifyPlaylistItem) => {
-      return refetchPlaylist(optimisticData)
+      await refetch()
+      return playlist
     }
   })
 
@@ -103,22 +108,18 @@ export const useTrackOperations = ({ playlistId }: UseTrackOperationsProps) => {
       // Set optimistic state
       setOptimisticState(track)
 
-      // Optimistically update playlist data
-      if (playlist) {
-        const optimisticPlaylist = createOptimisticPlaylist(track)
-        await refetchPlaylist(optimisticPlaylist)
-      }
-
       try {
         await operation()
+        // Small delay to ensure Spotify API has processed the change
+        await new Promise((resolve) => setTimeout(resolve, 1000))
         // Refresh playlist with actual data
-        await refetchPlaylist()
+        await refetch()
       } catch (error) {
         console.error(`[${operationName}] Error:`, error)
         // Revert optimistic update on error
         clearOptimisticState(track)
         // Revert playlist data on error
-        await refetchPlaylist()
+        await refetch()
         throw new Error(errorMessage)
       }
     }
@@ -136,13 +137,35 @@ export const useTrackOperations = ({ playlistId }: UseTrackOperationsProps) => {
 
   const addTrack = async (track: TrackItem): Promise<void> => {
     const operation = async (): Promise<void> => {
-      await sendApiRequest({
-        path: `playlists/${playlistId}/tracks`,
-        method: 'POST',
-        body: {
-          uris: [track.track.uri]
+      if (token) {
+        // Use provided token
+        const response = await fetch(
+          `https://api.spotify.com/v1/playlists/${playlistId}/tracks`,
+          {
+            method: 'POST',
+            headers: {
+              Authorization: `Bearer ${token}`,
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+              uris: [track.track.uri]
+            })
+          }
+        )
+
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}: ${response.statusText}`)
         }
-      })
+      } else {
+        // Use authenticated user's token via sendApiRequest
+        await sendApiRequest({
+          path: `playlists/${playlistId}/tracks`,
+          method: 'POST',
+          body: {
+            uris: [track.track.uri]
+          }
+        })
+      }
     }
 
     await executeWithOptimisticUpdates(
@@ -156,11 +179,33 @@ export const useTrackOperations = ({ playlistId }: UseTrackOperationsProps) => {
 
   const removeTrack = async (track: TrackItem): Promise<void> => {
     const operation = async (): Promise<void> => {
-      await sendApiRequest({
-        path: `playlists/${playlistId}/tracks`,
-        method: 'DELETE',
-        body: { tracks: [{ uri: track.track.uri }] }
-      })
+      if (token) {
+        // Use provided token
+        const response = await fetch(
+          `https://api.spotify.com/v1/playlists/${playlistId}/tracks`,
+          {
+            method: 'DELETE',
+            headers: {
+              Authorization: `Bearer ${token}`,
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+              tracks: [{ uri: track.track.uri }]
+            })
+          }
+        )
+
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}: ${response.statusText}`)
+        }
+      } else {
+        // Use authenticated user's token via sendApiRequest
+        await sendApiRequest({
+          path: `playlists/${playlistId}/tracks`,
+          method: 'DELETE',
+          body: { tracks: [{ uri: track.track.uri }] }
+        })
+      }
     }
 
     await executeWithOptimisticUpdates(

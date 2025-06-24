@@ -20,6 +20,7 @@ const QueueItem: React.FC<IQueueItemProps> = ({
           src={track.track.album.images[0]?.url ?? '/default-album.png'}
           alt={track.track.album.name}
           fill
+          sizes='48px'
           className='rounded object-cover'
         />
       </div>

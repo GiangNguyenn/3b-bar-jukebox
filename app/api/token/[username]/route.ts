@@ -3,12 +3,20 @@ import { cookies } from 'next/headers'
 import { NextResponse } from 'next/server'
 import type { Database } from '@/types/supabase'
 import { SpotifyTokenResponse } from '@/shared/types/spotify'
-import { createModuleLogger } from '@/shared/utils/logger'
-
-// Set up logger for this module
-const logger = createModuleLogger('Search')
 
 // Types
+interface ErrorResponse {
+  error: string
+  code: string
+  status: number
+}
+
+interface TokenResponse {
+  access_token: string
+  refresh_token: string
+  expires_at: number
+}
+
 interface UserProfile {
   id: string
   spotify_access_token: string
@@ -16,33 +24,12 @@ interface UserProfile {
   spotify_token_expires_at: string
 }
 
-interface ErrorResponse {
-  error: string
-  code: string
-  status: number
-}
-
-interface SearchResponse {
-  tracks?: {
-    items: Array<{
-      id: string
-      name: string
-      artists: Array<{
-        id: string
-        name: string
-      }>
-      album: {
-        id: string
-        name: string
-        images: Array<{
-          url: string
-          height: number
-          width: number
-        }>
-      }
-    }>
-  }
-}
+// Constants
+const AUTH = {
+  TOKEN_URL: 'https://accounts.spotify.com/api/token',
+  GRANT_TYPE: 'refresh_token',
+  CONTENT_TYPE: 'application/x-www-form-urlencoded'
+} as const
 
 // Environment variables
 const SPOTIFY_CLIENT_ID = process.env.SPOTIFY_CLIENT_ID
@@ -55,27 +42,11 @@ if (!SPOTIFY_CLIENT_ID || !SPOTIFY_CLIENT_SECRET) {
 }
 
 export const dynamic = 'force-dynamic'
-export const revalidate = 0
 
 export async function GET(
-  request: Request
-): Promise<NextResponse<SearchResponse | ErrorResponse>> {
-  const { searchParams } = new URL(request.url)
-  const query = searchParams.get('q')
-  const type = searchParams.get('type') ?? 'track'
-  const username = searchParams.get('username')
-
-  if (!query) {
-    return NextResponse.json(
-      {
-        error: 'Query parameter is required',
-        code: 'MISSING_QUERY',
-        status: 400
-      },
-      { status: 400 }
-    )
-  }
-
+  request: Request,
+  { params }: { params: { username: string } }
+): Promise<NextResponse<TokenResponse | ErrorResponse>> {
   try {
     const cookieStore = cookies()
 
@@ -102,21 +73,17 @@ export async function GET(
       }
     )
 
-    // Get user profile from database - use provided username or fall back to admin
-    const displayName = username || '3B'
+    // Get the user's profile from database by display_name
     const { data: userProfile, error: profileError } = await supabase
       .from('profiles')
       .select(
         'id, spotify_access_token, spotify_refresh_token, spotify_token_expires_at'
       )
-      .ilike('display_name', displayName)
+      .ilike('display_name', params.username)
       .single()
 
     if (profileError || !userProfile) {
-      logger(
-        'ERROR',
-        `Error fetching user profile for ${displayName}: ${JSON.stringify(profileError)}`
-      )
+      console.error('[Token] Error fetching user profile:', profileError)
       return NextResponse.json(
         {
           error: 'Failed to get user credentials',
@@ -127,31 +94,46 @@ export async function GET(
       )
     }
 
+    // Type guard to ensure userProfile has required fields
     const typedProfile = userProfile as UserProfile
+    if (
+      !typedProfile.spotify_access_token ||
+      !typedProfile.spotify_refresh_token ||
+      !typedProfile.spotify_token_expires_at
+    ) {
+      return NextResponse.json(
+        {
+          error: 'Invalid user profile data - missing Spotify credentials',
+          code: 'INVALID_PROFILE_DATA',
+          status: 500
+        },
+        { status: 500 }
+      )
+    }
 
     // Check if token needs refresh
     const tokenExpiresAt = Number(typedProfile.spotify_token_expires_at)
     const now = Math.floor(Date.now() / 1000)
-    let accessToken = typedProfile.spotify_access_token
 
     if (tokenExpiresAt <= now) {
       // Token is expired, refresh it
-      const response = await fetch('https://accounts.spotify.com/api/token', {
+      const response = await fetch(AUTH.TOKEN_URL, {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/x-www-form-urlencoded',
+          'Content-Type': AUTH.CONTENT_TYPE,
           Authorization: `Basic ${Buffer.from(
             `${SPOTIFY_CLIENT_ID}:${SPOTIFY_CLIENT_SECRET}`
           ).toString('base64')}`
         },
         body: new URLSearchParams({
-          grant_type: 'refresh_token',
+          grant_type: AUTH.GRANT_TYPE,
           refresh_token: typedProfile.spotify_refresh_token
         })
       })
 
       if (!response.ok) {
-        logger('ERROR', `Error refreshing token: ${await response.text()}`)
+        const errorText = await response.text()
+        console.error('[Token] Error refreshing token:', errorText)
         return NextResponse.json(
           {
             error: 'Failed to refresh token',
@@ -163,7 +145,6 @@ export async function GET(
       }
 
       const tokenData = (await response.json()) as SpotifyTokenResponse
-      accessToken = tokenData.access_token
 
       // Update the token in the database
       const { error: updateError } = await supabase
@@ -176,43 +157,25 @@ export async function GET(
         .eq('id', userProfile.id)
 
       if (updateError) {
-        logger('ERROR', `Error updating token: ${JSON.stringify(updateError)}`)
+        console.error('[Token] Error updating token:', updateError)
       }
+
+      return NextResponse.json({
+        access_token: tokenData.access_token,
+        refresh_token:
+          tokenData.refresh_token ?? typedProfile.spotify_refresh_token,
+        expires_at: Math.floor(Date.now() / 1000) + tokenData.expires_in
+      })
     }
 
-    // Make the search request to Spotify API
-    const searchResponse = await fetch(
-      `https://api.spotify.com/v1/search?q=${encodeURIComponent(
-        query
-      )}&type=${type}&limit=10`,
-      {
-        headers: {
-          Authorization: `Bearer ${accessToken}`
-        }
-      }
-    )
-
-    if (!searchResponse.ok) {
-      logger('ERROR', `Spotify API error: ${await searchResponse.text()}`)
-      return NextResponse.json(
-        {
-          error: 'Failed to search Spotify',
-          code: 'SPOTIFY_API_ERROR',
-          status: searchResponse.status
-        },
-        { status: searchResponse.status }
-      )
-    }
-
-    const searchData = (await searchResponse.json()) as SearchResponse
-    return NextResponse.json(searchData)
+    // Token is still valid, return it
+    return NextResponse.json({
+      access_token: typedProfile.spotify_access_token,
+      refresh_token: typedProfile.spotify_refresh_token,
+      expires_at: tokenExpiresAt
+    })
   } catch (error) {
-    logger(
-      'ERROR',
-      'Error in search route:',
-      undefined,
-      error instanceof Error ? error : undefined
-    )
+    console.error('[Token] Error:', error)
     return NextResponse.json(
       {
         error: 'Internal server error',

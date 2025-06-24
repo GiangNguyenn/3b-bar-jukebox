@@ -8,6 +8,7 @@ import Image from 'next/image'
 
 interface SearchInputProps {
   onAddTrack: (track: TrackDetails) => Promise<void>
+  username?: string
 }
 
 interface SearchResponse {
@@ -17,7 +18,8 @@ interface SearchResponse {
 }
 
 export default function SearchInput({
-  onAddTrack
+  onAddTrack,
+  username
 }: SearchInputProps): JSX.Element {
   const [searchQuery, setSearchQuery] = useState('')
   const [searchResults, setSearchResults] = useState<TrackDetails[]>([])
@@ -34,9 +36,15 @@ export default function SearchInput({
     setError(null)
 
     try {
-      const response = await fetch(
-        `/api/search?q=${encodeURIComponent(searchQuery)}`
-      )
+      const searchParams = new URLSearchParams({
+        q: searchQuery
+      })
+
+      if (username) {
+        searchParams.append('username', username)
+      }
+
+      const response = await fetch(`/api/search?${searchParams.toString()}`)
       if (!response.ok) {
         throw new Error('Search failed')
       }

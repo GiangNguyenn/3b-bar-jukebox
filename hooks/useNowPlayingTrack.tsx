@@ -1,97 +1,141 @@
-import { sendApiRequest } from '@/shared/api'
+import { useEffect, useState, useRef } from 'react'
 import { SpotifyPlaybackState } from '@/shared/types/spotify'
-import { handleOperationError, AppError } from '@/shared/utils/errorHandling'
-import React, { useEffect, useRef } from 'react'
-import useSWR from 'swr'
+import { sendApiRequest } from '@/shared/api'
+import { handleOperationError } from '@/shared/utils/errorHandling'
 
-const useNowPlayingTrack = () => {
-  const isMounted = useRef(true)
+interface UseNowPlayingTrackProps {
+  token?: string | null
+  enabled?: boolean
+}
+
+export function useNowPlayingTrack({
+  token,
+  enabled = true
+}: UseNowPlayingTrackProps = {}) {
+  const [data, setData] = useState<SpotifyPlaybackState | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const [isLoading, setIsLoading] = useState(false)
+  const intervalRef = useRef<NodeJS.Timeout | null>(null)
   const lastTrackId = useRef<string | null>(null)
 
-  useEffect(() => {
-    return () => {
-      isMounted.current = false
+  const fetchCurrentlyPlaying = async () => {
+    if (!enabled) {
+      setData(null)
+      return
     }
-  }, [])
 
-  const fetcher = async () => {
-    if (!isMounted.current) return undefined
+    try {
+      setIsLoading(true)
+      setError(null)
 
-    return handleOperationError(
-      async () => {
-        // Construct the URL with query parameters
-        const queryParams = new URLSearchParams({
-          market: 'from_token',
-          additional_types: 'track,episode'
-        })
-        const path = `me/player/currently-playing?${queryParams.toString()}`
+      const queryParams = new URLSearchParams({
+        market: 'from_token',
+        additional_types: 'track,episode'
+      })
+      const path = `me/player/currently-playing?${queryParams.toString()}`
 
-        const response = await sendApiRequest<SpotifyPlaybackState>({
+      let response: SpotifyPlaybackState
+
+      if (token) {
+        // Use provided token
+        const fetchResponse = await fetch(
+          `https://api.spotify.com/v1/${path}`,
+          {
+            headers: {
+              Authorization: `Bearer ${token}`,
+              'Content-Type': 'application/json'
+            }
+          }
+        )
+
+        if (!fetchResponse.ok) {
+          if (fetchResponse.status === 401) {
+            console.log('[useNowPlayingTrack] Token invalid')
+            setData(null)
+            return
+          }
+          throw new Error(
+            `HTTP ${fetchResponse.status}: ${fetchResponse.statusText}`
+          )
+        }
+
+        response = await fetchResponse.json()
+      } else {
+        // Use authenticated user's token via sendApiRequest
+        response = await sendApiRequest<SpotifyPlaybackState>({
           path,
           extraHeaders: {
             'Content-Type': 'application/json'
           }
         })
-
-        if (!isMounted.current) return undefined
-
-        // Only log if the track has changed
-        const currentTrackId = response?.item?.id
-        if (currentTrackId !== lastTrackId.current) {
-          console.log('[useNowPlayingTrack] Track changed:', {
-            isPlaying: response?.is_playing,
-            trackName: response?.item?.name,
-            trackId: currentTrackId
-          })
-          lastTrackId.current = currentTrackId ?? null
-        }
-
-        return response
-      },
-      'useNowPlayingTrack',
-      (error) => {
-        if (!isMounted.current) return
-
-        console.error(
-          '[useNowPlayingTrack] Error fetching current track:',
-          error instanceof Error ? error.message : 'Unknown error'
-        )
       }
-    )
+
+      // Only log if the track has changed
+      const currentTrackId = response?.item?.id
+      if (currentTrackId !== lastTrackId.current) {
+        console.log('[useNowPlayingTrack] Track changed:', {
+          isPlaying: response?.is_playing,
+          trackName: response?.item?.name,
+          trackId: currentTrackId
+        })
+        lastTrackId.current = currentTrackId ?? null
+      }
+
+      setData(response)
+    } catch (err) {
+      console.error('[useNowPlayingTrack] Error:', err)
+
+      // Handle authentication errors gracefully
+      if (err instanceof Error && err.message.includes('401')) {
+        console.log(
+          '[useNowPlayingTrack] User not authenticated, skipping currently playing detection'
+        )
+        setData(null)
+        return
+      }
+
+      setError(err instanceof Error ? err.message : 'An error occurred')
+      setData(null)
+    } finally {
+      setIsLoading(false)
+    }
   }
 
-  const { data, error, mutate, isLoading } = useSWR(
-    'currently-playing-state',
-    fetcher,
-    {
-      revalidateOnFocus: false,
-      revalidateOnReconnect: false,
-      revalidateIfStale: false,
-      refreshInterval: 10000, // Check every 10 seconds
-      onError: (err) => {
-        if (!isMounted.current) return
-        console.error(
-          '[useNowPlayingTrack] SWR Error:',
-          err instanceof Error ? err.message : 'Unknown error'
-        )
-      },
-      onSuccess: (data) => {
-        if (!isMounted.current) return
-        // Success logging is handled in the fetcher
+  useEffect(() => {
+    // Clear any existing interval
+    if (intervalRef.current) {
+      clearInterval(intervalRef.current)
+      intervalRef.current = null
+    }
+
+    if (!enabled) {
+      setData(null)
+      return
+    }
+
+    // Initial fetch
+    void fetchCurrentlyPlaying()
+
+    // Set up polling every 10 seconds
+    intervalRef.current = setInterval(() => {
+      void fetchCurrentlyPlaying()
+    }, 10000)
+
+    return () => {
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current)
+        intervalRef.current = null
       }
     }
-  )
+  }, [token, enabled])
 
   return {
-    data: data ?? undefined,
-    isLoading: isLoading || error,
-    error: error
-      ? error instanceof AppError
-        ? error
-        : new AppError(error.message, error, 'useNowPlayingTrack')
-      : null,
-    refetchPlaylists: mutate
+    data,
+    error,
+    isLoading,
+    refetch: fetchCurrentlyPlaying
   }
 }
 
+// Default export for backward compatibility
 export default useNowPlayingTrack

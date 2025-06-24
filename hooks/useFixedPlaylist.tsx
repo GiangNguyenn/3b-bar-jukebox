@@ -66,7 +66,7 @@ export function useFixedPlaylist() {
         const { data: profile, error: profileError } = await supabase
           .from('profiles')
           .select('id, spotify_access_token')
-          .eq('display_name', displayName)
+          .ilike('display_name', displayName)
           .single()
 
         if (profileError) {

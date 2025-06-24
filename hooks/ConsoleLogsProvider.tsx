@@ -50,7 +50,7 @@ const DEFAULT_MAX_MESSAGE_LENGTH = 1000
 export function ConsoleLogsProvider({
   children,
   maxLogs = DEFAULT_MAX_LOGS,
-  enableConsoleOverride = true,
+  enableConsoleOverride = false,
   enableSentry = true,
   rateLimit = DEFAULT_RATE_LIMIT,
   maxMessageLength = DEFAULT_MAX_MESSAGE_LENGTH
@@ -161,88 +161,100 @@ export function ConsoleLogsProvider({
 
   // Separate effect for console overrides
   useEffect(() => {
-    if (!enableConsoleOverride || isConsoleOverridden.current) return
-    isConsoleOverridden.current = true
+    // Only override console after first render
+    let didRun = false
+    const timeout = setTimeout(() => {
+      if (!enableConsoleOverride || isConsoleOverridden.current) return
+      isConsoleOverridden.current = true
 
-    const originalConsoleLog = console.log
-    const originalConsoleInfo = console.info
-    const originalConsoleWarn = console.warn
-    const originalConsoleError = console.error
+      const originalConsoleLog = console.log
+      const originalConsoleInfo = console.info
+      const originalConsoleWarn = console.warn
+      const originalConsoleError = console.error
 
-    function addLogFromConsole(level: LogLevel, ...args: unknown[]): void {
-      const timestamp = new Date().toISOString()
-      const [firstArg, ...restArgs] = args
+      function addLogFromConsole(level: LogLevel, ...args: unknown[]): void {
+        const timestamp = new Date().toISOString()
+        const [firstArg, ...restArgs] = args
 
-      let context: string | undefined
-      let message: string
-      let error: Error | undefined
+        let context: string | undefined
+        let message: string
+        let error: Error | undefined
 
-      // Handle different argument patterns
-      if (
-        typeof firstArg === 'string' &&
-        firstArg.startsWith('[') &&
-        firstArg.endsWith(']')
-      ) {
-        context = firstArg.slice(1, -1)
-        message = restArgs
-          .map((arg) =>
-            arg instanceof Error
-              ? arg.message
-              : typeof arg === 'object'
-                ? JSON.stringify(arg)
-                : String(arg)
-          )
-          .join(' ')
-      } else {
-        message = args
-          .map((arg) =>
-            arg instanceof Error
-              ? arg.message
-              : typeof arg === 'object'
-                ? JSON.stringify(arg)
-                : String(arg)
-          )
-          .join(' ')
+        // Handle different argument patterns
+        if (
+          typeof firstArg === 'string' &&
+          firstArg.startsWith('[') &&
+          firstArg.endsWith(']')
+        ) {
+          context = firstArg.slice(1, -1)
+          message = restArgs
+            .map((arg) =>
+              arg instanceof Error
+                ? arg.message
+                : typeof arg === 'object'
+                  ? JSON.stringify(arg)
+                  : String(arg)
+            )
+            .join(' ')
+        } else {
+          message = args
+            .map((arg) =>
+              arg instanceof Error
+                ? arg.message
+                : typeof arg === 'object'
+                  ? JSON.stringify(arg)
+                  : String(arg)
+            )
+            .join(' ')
+        }
+
+        // Extract error if present
+        const lastArg = args[args.length - 1]
+        if (lastArg instanceof Error) {
+          error = lastArg
+        }
+
+        // Use addLog instead of setLogs directly
+        addLog(level, message, context, error)
       }
 
-      // Extract error if present
-      const lastArg = args[args.length - 1]
-      if (lastArg instanceof Error) {
-        error = lastArg
+      // Override console methods
+      console.log = (...args: unknown[]): void => {
+        originalConsoleLog.apply(console, args)
+        addLogFromConsole('LOG', ...args)
       }
 
-      // Use addLog instead of setLogs directly
-      addLog(level, message, context, error)
-    }
+      console.info = (...args: unknown[]): void => {
+        originalConsoleInfo.apply(console, args)
+        addLogFromConsole('INFO', ...args)
+      }
 
-    // Override console methods
-    console.log = (...args: unknown[]): void => {
-      originalConsoleLog.apply(console, args)
-      addLogFromConsole('LOG', ...args)
-    }
+      console.warn = (...args: unknown[]): void => {
+        originalConsoleWarn.apply(console, args)
+        addLogFromConsole('WARN', ...args)
+      }
 
-    console.info = (...args: unknown[]): void => {
-      originalConsoleInfo.apply(console, args)
-      addLogFromConsole('INFO', ...args)
-    }
+      console.error = (...args: unknown[]): void => {
+        originalConsoleError.apply(console, args)
+        addLogFromConsole('ERROR', ...args)
+      }
 
-    console.warn = (...args: unknown[]): void => {
-      originalConsoleWarn.apply(console, args)
-      addLogFromConsole('WARN', ...args)
-    }
-
-    console.error = (...args: unknown[]): void => {
-      originalConsoleError.apply(console, args)
-      addLogFromConsole('ERROR', ...args)
-    }
-
-    // Cleanup
+      // Cleanup
+      didRun = true
+      return () => {
+        console.log = originalConsoleLog
+        console.info = originalConsoleInfo
+        console.warn = originalConsoleWarn
+        console.error = originalConsoleError
+        isConsoleOverridden.current = false
+      }
+    }, 0)
     return () => {
-      console.log = originalConsoleLog
-      console.info = originalConsoleInfo
-      console.warn = originalConsoleWarn
-      console.error = originalConsoleError
-      isConsoleOverridden.current = false
+      clearTimeout(timeout)
+      if (didRun) {
+        // Restore console methods if effect ran
+        isConsoleOverridden.current = false
+      }
     }
   }, [enableConsoleOverride, addLog])
 
