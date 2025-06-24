@@ -59,7 +59,22 @@ export function useNowPlayingTrack({
           )
         }
 
-        response = await fetchResponse.json()
+        // Handle 204 No Content (no currently playing track)
+        if (fetchResponse.status === 204) {
+          console.log('[useNowPlayingTrack] No currently playing track')
+          setData(null)
+          return
+        }
+
+        // Check if response has content before parsing JSON
+        const responseText = await fetchResponse.text()
+        if (!responseText.trim()) {
+          console.log('[useNowPlayingTrack] Empty response body')
+          setData(null)
+          return
+        }
+
+        response = JSON.parse(responseText)
       } else {
         // Use authenticated user's token via sendApiRequest
         response = await sendApiRequest<SpotifyPlaybackState>({
