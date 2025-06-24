@@ -5,33 +5,7 @@ import { cookies } from 'next/headers'
 import type { Database } from '@/types/supabase'
 import { createModuleLogger } from '@/shared/utils/logger'
 import { setApiLogger } from '@/shared/api'
-
-interface SpotifyUserProfile {
-  id: string
-  display_name: string
-  email: string
-  product: string // 'premium', 'free', 'open', 'premium_duo', 'premium_family', etc.
-  type: string
-  uri: string
-  href: string
-  images?: Array<{
-    url: string
-    height: number
-    width: number
-  }>
-  external_urls: {
-    spotify: string
-  }
-  followers: {
-    href: string | null
-    total: number
-  }
-  country: string
-  explicit_content: {
-    filter_enabled: boolean
-    filter_locked: boolean
-  }
-}
+import { SpotifyUserProfile } from '@/shared/types/spotify'
 
 interface PremiumVerificationResponse {
   isPremium: boolean

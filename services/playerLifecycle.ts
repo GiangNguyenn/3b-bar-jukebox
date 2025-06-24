@@ -6,55 +6,11 @@ import {
   setDeviceManagementLogger
 } from '@/services/deviceManagement'
 import type { LogLevel } from '@/hooks/ConsoleLogsProvider'
-
-// Spotify Web Playback SDK types
-interface SpotifySDKPlaybackState {
-  context: {
-    uri: string
-    metadata: Record<string, string>
-  }
-  disallows: {
-    pausing: boolean
-    peeking_next: boolean
-    peeking_prev: boolean
-    resuming: boolean
-    seeking: boolean
-    skipping_next: boolean
-    skipping_prev: boolean
-  }
-  duration: number
-  paused: boolean
-  position: number
-  repeat_mode: number
-  shuffle: boolean
-  timestamp: number
-  track_window: {
-    current_track: {
-      uri: string
-      id: string
-      type: string
-      media_type: string
-      name: string
-      is_playable: boolean
-      album: {
-        uri: string
-        name: string
-        images: Array<{
-          url: string
-          height: number
-          width: number
-        }>
-      }
-      artists: Array<{
-        uri: string
-        name: string
-      }>
-      duration_ms: number
-    }
-    previous_tracks: Array<unknown>
-    next_tracks: Array<unknown>
-  }
-}
+import { 
+  SpotifySDKPlaybackState, 
+  SpotifyPlayerInstance, 
+  SpotifySDK 
+} from '@/shared/types/spotify'
 
 type SpotifySDKEventTypes =
   | 'ready'
@@ -73,38 +29,6 @@ type SpotifySDKEventCallbacks = {
   authentication_error: (event: { message: string }) => void
   account_error: (event: { message: string }) => void
   playback_error: (event: { message: string }) => void
-}
-
-interface SpotifyPlayerInstance {
-  connect: () => Promise<boolean>
-  disconnect: () => void
-  addListener: <T extends SpotifySDKEventTypes>(
-    eventName: T,
-    callback: SpotifySDKEventCallbacks[T]
-  ) => void
-  removeListener: <T extends SpotifySDKEventTypes>(
-    eventName: T,
-    callback: SpotifySDKEventCallbacks[T]
-  ) => void
-  getCurrentState: () => Promise<SpotifySDKPlaybackState | null>
-  setName: (name: string) => Promise<void>
-  getVolume: () => Promise<number>
-  setVolume: (volume: number) => Promise<void>
-  pause: () => Promise<void>
-  resume: () => Promise<void>
-  togglePlay: () => Promise<void>
-  seek: (position_ms: number) => Promise<void>
-  previousTrack: () => Promise<void>
-  nextTrack: () => Promise<void>
-}
-
-interface SpotifySDK {
-  Player: new (config: {
-    name: string
-    getOAuthToken: (cb: (token: string) => void) => void
-    volume?: number
-    robustness?: 'LOW' | 'MEDIUM' | 'HIGH'
-  }) => SpotifyPlayerInstance
 }
 
 // @ts-ignore - Spotify SDK type definitions are incomplete

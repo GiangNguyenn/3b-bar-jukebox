@@ -5,28 +5,10 @@ import { sendApiRequest } from '@/shared/api'
 import { useSpotifyPlayerStore } from '@/hooks/useSpotifyPlayer'
 import { PlayIcon, TrashIcon } from '@heroicons/react/24/outline'
 import { ErrorMessage } from '@/components/ui/error-message'
-
-interface SpotifyArtist {
-  name: string
-  id: string
-}
-
-interface SpotifyAlbum {
-  name: string
-  id: string
-}
-
-interface SpotifyTrack {
-  id: string
-  name: string
-  duration_ms: number
-  artists: SpotifyArtist[]
-  album: SpotifyAlbum
-  uri: string
-}
+import { TrackDetails, SpotifyArtist } from '@/shared/types/spotify'
 
 interface SpotifyPlaylistTrack {
-  track: SpotifyTrack | null
+  track: TrackDetails | null
 }
 
 interface PlaylistDisplayProps {
