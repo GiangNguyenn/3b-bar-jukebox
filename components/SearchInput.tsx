@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { TrackDetails } from '@/shared/types/spotify'
 import { handleApiError } from '@/shared/utils/errorHandling'
 import { ErrorMessage } from '@/components/ui/error-message'
@@ -25,9 +25,10 @@ export default function SearchInput({
   const [searchResults, setSearchResults] = useState<TrackDetails[]>([])
   const [isSearching, setIsSearching] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const debounceRef = useRef<NodeJS.Timeout | null>(null)
 
-  const handleSearch = async (): Promise<void> => {
-    if (!searchQuery.trim()) {
+  const handleSearch = async (query: string): Promise<void> => {
+    if (!query.trim() || query.trim().length < 3) {
       setSearchResults([])
       return
     }
@@ -37,7 +38,7 @@ export default function SearchInput({
 
     try {
       const searchParams = new URLSearchParams({
-        q: searchQuery
+        q: query
       })
 
       if (username) {
@@ -60,13 +61,31 @@ export default function SearchInput({
     }
   }
 
-  const handleKeyPress = (
-    event: React.KeyboardEvent<HTMLInputElement>
-  ): void => {
-    if (event.key === 'Enter') {
-      void handleSearch()
+  // Debounced search effect
+  useEffect(() => {
+    // Clear previous timeout
+    if (debounceRef.current) {
+      clearTimeout(debounceRef.current)
     }
-  }
+
+    // Only search if query has 3+ characters
+    if (searchQuery.trim().length >= 3) {
+      // Debounce search by 300ms
+      debounceRef.current = setTimeout(() => {
+        void handleSearch(searchQuery)
+      }, 300)
+    } else {
+      // Clear results if query is too short
+      setSearchResults([])
+    }
+
+    // Cleanup timeout on unmount or when searchQuery changes
+    return () => {
+      if (debounceRef.current) {
+        clearTimeout(debounceRef.current)
+      }
+    }
+  }, [searchQuery, username])
 
   const handleAddTrack = async (track: TrackDetails): Promise<void> => {
     try {
@@ -87,17 +106,14 @@ export default function SearchInput({
           type='text'
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
-          onKeyPress={handleKeyPress}
-          placeholder='Search for a song...'
-          className='w-full rounded-lg border border-gray-300 p-2 focus:border-blue-500 focus:outline-none'
+          placeholder='Search for a song... (type at least 3 characters)'
+          className='w-full rounded-lg border border-gray-300 p-2 pr-4 focus:border-blue-500 focus:outline-none'
         />
-        <button
-          onClick={() => void handleSearch()}
-          disabled={isSearching}
-          className='text-white absolute right-2 top-1/2 -translate-y-1/2 rounded bg-blue-500 px-4 py-1 hover:bg-blue-600 disabled:bg-gray-400'
-        >
-          {isSearching ? 'Searching...' : 'Search'}
-        </button>
+        {isSearching && (
+          <div className='absolute right-3 top-1/2 -translate-y-1/2'>
+            <div className='h-4 w-4 animate-spin rounded-full border-2 border-gray-300 border-t-blue-500'></div>
+          </div>
+        )}
       </div>
 
       {error && (
@@ -133,6 +149,12 @@ export default function SearchInput({
               </div>
             </div>
           ))}
+        </div>
+      )}
+
+      {searchQuery.trim().length > 0 && searchQuery.trim().length < 3 && (
+        <div className='mt-2 text-sm text-gray-500'>
+          Type at least 3 characters to search...
         </div>
       )}
     </div>

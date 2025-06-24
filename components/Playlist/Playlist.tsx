@@ -57,9 +57,9 @@ export default function Playlist({
               ref={containerRef}
               className='flex max-h-[calc(100vh-16rem)] flex-col space-y-2 overflow-y-auto'
             >
-              {tracksToShow.map((track) => (
+              {tracksToShow.map((track, index) => (
                 <QueueItem
-                  key={track.track.id}
+                  key={`${track.track.id}-${index}-${track.added_at}`}
                   track={track}
                   isPending={optimisticTrack?.track.id === track.track.id}
                 />
