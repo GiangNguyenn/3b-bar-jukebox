@@ -7,6 +7,7 @@ import { usePremiumStatus } from '@/hooks/usePremiumStatus'
 import type { Database } from '@/types/supabase'
 import type { User } from '@supabase/supabase-js'
 import { useConsoleLogsContext } from '@/hooks/ConsoleLogsProvider'
+import { Loading } from '@/components/ui/loading'
 
 export default function Home(): JSX.Element {
   const [user, setUser] = useState<User | null>(null)
@@ -52,7 +53,7 @@ export default function Home(): JSX.Element {
   }, [user, isPremium, isPremiumLoading, router, premiumError, addLog])
 
   if (loading || isPremiumLoading) {
-    return <div>Loading...</div>
+    return <Loading fullScreen />
   }
 
   if (!user) {

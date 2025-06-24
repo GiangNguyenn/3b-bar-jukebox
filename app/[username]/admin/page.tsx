@@ -22,6 +22,7 @@ import { type PlaybackInfo } from '@/shared/types/health'
 import { type TrackSuggestionsState } from '@/shared/types/trackSuggestions'
 import { useRecoverySystem } from '@/hooks/recovery'
 import { ErrorMessage } from '@/components/ui/error-message'
+import { Loading, PlaylistSkeleton } from '@/components/ui'
 
 export default function AdminPage(): JSX.Element {
   // State
@@ -300,11 +301,7 @@ export default function AdminPage(): JSX.Element {
   }
 
   if (isFixedPlaylistLoading) {
-    return (
-      <div className='p-4 text-gray-500'>
-        <p>Loading playlist...</p>
-      </div>
-    )
+    return <PlaylistSkeleton />
   }
 
   if (playlistRefreshError) {
@@ -388,41 +385,61 @@ export default function AdminPage(): JSX.Element {
                       : 'bg-green-600 hover:bg-green-700'
                   }`}
                 >
-                  {isLoading
-                    ? 'Loading...'
-                    : !isReady
-                      ? 'Initializing...'
-                      : recoveryState.isRecovering
-                        ? 'Recovering...'
-                        : getIsActuallyPlaying()
-                          ? 'Pause'
-                          : 'Play'}
+                  {isLoading ? (
+                    <div className='flex items-center justify-center gap-2'>
+                      <Loading className='h-4 w-4' />
+                      <span>Loading...</span>
+                    </div>
+                  ) : !isReady ? (
+                    'Initializing...'
+                  ) : recoveryState.isRecovering ? (
+                    'Recovering...'
+                  ) : getIsActuallyPlaying() ? (
+                    'Pause'
+                  ) : (
+                    'Play'
+                  )}
                 </button>
                 <button
                   onClick={() => void handleRefreshPlaylist()}
                   disabled={
-                    !isReady || isRefreshing || recoveryState.isRecovering
+                    !isReady ||
+                    isRefreshing ||
+                    isLoading ||
+                    recoveryState.isRecovering
                   }
                   className='text-white flex-1 rounded-lg bg-purple-600 px-4 py-2 font-medium transition-colors hover:bg-purple-700 disabled:cursor-not-allowed disabled:opacity-50'
                 >
-                  {isRefreshing
-                    ? 'Refreshing...'
-                    : !isReady
-                      ? 'Initializing...'
-                      : recoveryState.isRecovering
-                        ? 'Recovering...'
-                        : 'Refresh Playlist'}
+                  {isRefreshing || isLoading ? (
+                    <div className='flex items-center justify-center gap-2'>
+                      <Loading className='h-4 w-4' />
+                      <span>
+                        {isRefreshing ? 'Refreshing...' : 'Loading...'}
+                      </span>
+                    </div>
+                  ) : !isReady ? (
+                    'Initializing...'
+                  ) : recoveryState.isRecovering ? (
+                    'Recovering...'
+                  ) : (
+                    'Refresh Playlist'
+                  )}
                 </button>
                 <button
                   onClick={handleForceRecoveryClick}
                   disabled={isLoading}
                   className='text-white flex-1 rounded-lg bg-orange-600 px-4 py-2 font-medium transition-colors hover:bg-orange-700 disabled:cursor-not-allowed disabled:opacity-50'
                 >
-                  {isLoading
-                    ? 'Loading...'
-                    : recoveryState.isRecovering
-                      ? 'Recovering...'
-                      : 'Manual Recovery'}
+                  {isLoading ? (
+                    <div className='flex items-center justify-center gap-2'>
+                      <Loading className='h-4 w-4' />
+                      <span>Loading...</span>
+                    </div>
+                  ) : recoveryState.isRecovering ? (
+                    'Recovering...'
+                  ) : (
+                    'Manual Recovery'
+                  )}
                 </button>
               </div>
             </div>

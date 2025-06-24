@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from 'react'
 import { TrackDetails } from '@/shared/types/spotify'
 import { handleApiError } from '@/shared/utils/errorHandling'
 import { ErrorMessage } from '@/components/ui/error-message'
+import { Loading } from '@/components/ui/loading'
 import Image from 'next/image'
 
 interface SearchInputProps {
@@ -111,7 +112,7 @@ export default function SearchInput({
         />
         {isSearching && (
           <div className='absolute right-3 top-1/2 -translate-y-1/2'>
-            <div className='h-4 w-4 animate-spin rounded-full border-2 border-gray-300 border-t-blue-500'></div>
+            <Loading className='h-4 w-4' />
           </div>
         )}
       </div>
