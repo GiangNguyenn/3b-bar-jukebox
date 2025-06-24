@@ -78,8 +78,13 @@ function filterTracksByCriteria(
   tracks: TrackDetails[],
   criteria: TrackFilterCriteria
 ): TrackFilterResult {
-  const { excludedIds, minPopularity, maxSongLengthMs, allowExplicit, yearRange } =
-    criteria
+  const {
+    excludedIds,
+    minPopularity,
+    maxSongLengthMs,
+    allowExplicit,
+    yearRange
+  } = criteria
 
   const candidates: TrackDetails[] = []
   const filteredOut = {
@@ -92,7 +97,7 @@ function filterTracksByCriteria(
   }
 
   for (const track of tracks) {
-    const trackInfo = `${track.name} by ${track.artists.map(a => a.name).join(', ')} (${track.id})`
+    const trackInfo = `${track.name} by ${track.artists.map((a) => a.name).join(', ')} (${track.id})`
 
     // Check exclusion first (most restrictive)
     if (excludedIds.includes(track.id)) {
@@ -127,8 +132,9 @@ function filterTracksByCriteria(
     }
 
     // Check length
-    const trackLengthMinutes = Math.round(track.duration_ms / 1000 / 60 * 10) / 10
-    const maxLengthMinutes = Math.round(maxSongLengthMs / 1000 / 60 * 10) / 10
+    const trackLengthMinutes =
+      Math.round((track.duration_ms / 1000 / 60) * 10) / 10
+    const maxLengthMinutes = Math.round((maxSongLengthMs / 1000 / 60) * 10) / 10
     if (track.duration_ms > maxSongLengthMs) {
       filteredOut.tooLong++
       continue
@@ -144,7 +150,7 @@ function filterTracksByCriteria(
     if (yearRange) {
       const [startYear, endYear] = yearRange
       const releaseYear = parseInt(track.album.release_date.split('-')[0])
-      
+
       if (releaseYear < startYear || releaseYear > endYear) {
         filteredOut.wrongYear++
         continue
@@ -170,13 +176,11 @@ export async function searchTracksByGenre(
     const randomOffset = Math.floor(Math.random() * maxOffset)
 
     // Construct the full request URL for logging
-    const baseUrl = process.env.NEXT_PUBLIC_SPOTIFY_BASE_URL || 'https://api.spotify.com/v1'
+    const baseUrl =
+      process.env.NEXT_PUBLIC_SPOTIFY_BASE_URL || 'https://api.spotify.com/v1'
     const fullUrl = `${baseUrl}/${SPOTIFY_SEARCH_ENDPOINT}?q=genre:${encodeURIComponent(genre)} year:${startYear}-${endYear}&type=track&limit=${TRACK_SEARCH_LIMIT}&market=${market}&offset=${randomOffset}`
-    
-    logger(
-      'WARN',
-      `[TrackSuggestion] Full Spotify API URL: ${fullUrl}`
-    )
+
+    logger('WARN', `[TrackSuggestion] Full Spotify API URL: ${fullUrl}`)
 
     const response = await sendApiRequest<{
       tracks: { items: TrackDetails[] }
