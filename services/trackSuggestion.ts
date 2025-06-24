@@ -143,13 +143,20 @@ function filterTracksByCriteria(
 export async function searchTracksByGenre(
   genre: string,
   yearRange: [number, number],
-  market: string = DEFAULT_MARKET,
-  minPopularity: number = MIN_TRACK_POPULARITY,
-  maxOffset: number = DEFAULT_MAX_OFFSET
+  market: string,
+  minPopularity: number,
+  maxOffset: number
 ): Promise<TrackDetails[]> {
   try {
     const [startYear, endYear] = yearRange
     const randomOffset = Math.floor(Math.random() * maxOffset)
+
+    // Log the parameters used for the Spotify search endpoint
+    logger(
+      'INFO',
+      `Spotify Search Params: genre=${genre}, yearRange=${startYear}-${endYear}, market=${market}, minPopularity=${minPopularity}, maxOffset=${maxOffset}, randomOffset=${randomOffset}`,
+      'SpotifyTrackSuggestion'
+    )
 
     const response = await sendApiRequest<{
       tracks: { items: TrackDetails[] }
