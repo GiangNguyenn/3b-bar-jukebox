@@ -2,39 +2,13 @@ import { useState, useEffect, useCallback } from 'react'
 import { createBrowserClient } from '@supabase/ssr'
 import type { Database } from '@/types/supabase'
 import { useConsoleLogsContext } from '@/hooks/ConsoleLogsProvider'
+import { SpotifyUserProfile } from '@/shared/types/spotify'
 
 interface PremiumStatus {
   isPremium: boolean
   productType: string
   isLoading: boolean
   error: string | null
-}
-
-interface SpotifyUserProfile {
-  id: string
-  display_name: string
-  email: string
-  product: string
-  type: string
-  uri: string
-  href: string
-  images?: Array<{
-    url: string
-    height: number
-    width: number
-  }>
-  external_urls: {
-    spotify: string
-  }
-  followers: {
-    href: string | null
-    total: number
-  }
-  country: string
-  explicit_content: {
-    filter_enabled: boolean
-    filter_locked: boolean
-  }
 }
 
 interface PremiumVerificationResponse {

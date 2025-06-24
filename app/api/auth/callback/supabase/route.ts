@@ -6,6 +6,7 @@ import type { Database } from '@/types/supabase'
 import { getBaseUrl } from '@/shared/utils/domain'
 import { createModuleLogger } from '@/shared/utils/logger'
 import { setApiLogger } from '@/shared/api'
+import { SpotifyUserProfile } from '@/shared/types/spotify'
 
 // Set up logger for this module
 const logger = createModuleLogger('Callback', setApiLogger)
@@ -28,33 +29,6 @@ function validateEnv(): void {
     throw new Error(
       `Missing required environment variables: ${missingVars.join(', ')}`
     )
-  }
-}
-
-interface SpotifyUserProfile {
-  id: string
-  display_name: string
-  email: string
-  product: string // 'premium', 'free', 'open', 'premium_duo', 'premium_family', etc.
-  type: string
-  uri: string
-  href: string
-  images?: Array<{
-    url: string
-    height: number
-    width: number
-  }>
-  external_urls: {
-    spotify: string
-  }
-  followers: {
-    href: string | null
-    total: number
-  }
-  country: string
-  explicit_content: {
-    filter_enabled: boolean
-    filter_locked: boolean
   }
 }
 

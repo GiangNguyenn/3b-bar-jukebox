@@ -1,3 +1,5 @@
+import { SpotifyErrorResponse } from './types/spotify'
+
 export interface ApiErrorOptions {
   status?: number
   retryAfter?: number
@@ -31,14 +33,6 @@ interface ApiProps {
     maxDelay?: number
   }
   debounceTime?: number // Custom debounce time in milliseconds
-}
-
-interface SpotifyErrorResponse {
-  error: {
-    status: number
-    message: string
-    reason?: string
-  }
 }
 
 const SPOTIFY_API_URL =

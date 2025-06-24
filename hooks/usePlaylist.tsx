@@ -13,12 +13,6 @@ import { type Genre } from '@/shared/constants/trackSuggestion'
 import { PlaylistRefreshServiceImpl } from '@/services/playlistRefresh'
 import { type TrackSuggestionsState } from '@/shared/types/trackSuggestions'
 
-interface SpotifyPlaylistObjectFull {
-  tracks: {
-    items: TrackItem[]
-  }
-}
-
 interface CurrentlyPlayingResponse {
   item: {
     id: string
@@ -28,7 +22,11 @@ interface CurrentlyPlayingResponse {
 const fetcher = async (playlistId: string) => {
   return handleOperationError(
     async () => {
-      const response = await sendApiRequest<SpotifyPlaylistObjectFull>({
+      const response = await sendApiRequest<{
+        tracks: {
+          items: TrackItem[]
+        }
+      }>({
         path: `playlists/${playlistId}`,
         method: 'GET'
       })
@@ -123,7 +121,11 @@ export const usePlaylist = (
       // Force a revalidation with fresh data to update UI
       await refreshPlaylist(
         async () => {
-          const response = await sendApiRequest<SpotifyPlaylistObjectFull>({
+          const response = await sendApiRequest<{
+            tracks: {
+              items: TrackItem[]
+            }
+          }>({
             path: `playlists/${playlistId}`,
             method: 'GET'
           })

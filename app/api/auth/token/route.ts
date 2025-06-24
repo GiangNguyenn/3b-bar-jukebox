@@ -2,16 +2,9 @@ import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
 import { NextResponse } from 'next/server'
 import type { Database } from '@/types/supabase'
+import { SpotifyTokenResponse } from '@/shared/types/spotify'
 
 // Types
-interface SpotifyTokenResponse {
-  access_token: string
-  refresh_token: string
-  expires_in: number
-  token_type: string
-  scope: string
-}
-
 interface ErrorResponse {
   error: string
   code: string

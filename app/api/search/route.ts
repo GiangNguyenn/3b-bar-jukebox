@@ -2,19 +2,13 @@ import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
 import { NextResponse } from 'next/server'
 import type { Database } from '@/types/supabase'
+import { SpotifyTokenResponse } from '@/shared/types/spotify'
 import { createModuleLogger } from '@/shared/utils/logger'
 
 // Set up logger for this module
 const logger = createModuleLogger('Search')
 
 // Types
-interface SpotifyTokenResponse {
-  access_token: string
-  expires_in: number
-  token_type: string
-  scope: string
-}
-
 interface AdminProfile {
   spotify_access_token: string
   spotify_refresh_token: string

@@ -1,5 +1,5 @@
 import { sendApiRequest } from '@/shared/api'
-import { SpotifyPlaybackState } from '@/shared/types/spotify'
+import { SpotifyPlaybackState, SpotifyDevice } from '@/shared/types/spotify'
 
 // Add logging context
 let addLog: (
@@ -12,14 +12,6 @@ let addLog: (
 // Function to set the logging function
 export function setDeviceApiLogger(logger: typeof addLog) {
   addLog = logger
-}
-
-interface SpotifyDevice {
-  id: string
-  is_active: boolean
-  is_restricted: boolean
-  type: string
-  name: string
 }
 
 interface DevicesResponse {
