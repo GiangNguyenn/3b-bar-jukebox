@@ -3,11 +3,11 @@ import { create } from 'zustand'
 import { useCallback, useEffect, useRef } from 'react'
 import { useConsoleLogsContext } from './ConsoleLogsProvider'
 import { sendApiRequest } from '@/shared/api'
-import { 
-  SpotifyPlaybackState, 
-  SpotifySDKPlaybackState, 
-  SpotifyPlayerInstance, 
-  SpotifySDK 
+import {
+  SpotifyPlaybackState,
+  SpotifySDKPlaybackState,
+  SpotifyPlayerInstance,
+  SpotifySDK
 } from '@/shared/types/spotify'
 import {
   validateDevice,

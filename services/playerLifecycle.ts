@@ -6,10 +6,10 @@ import {
   setDeviceManagementLogger
 } from '@/services/deviceManagement'
 import type { LogLevel } from '@/hooks/ConsoleLogsProvider'
-import { 
-  SpotifySDKPlaybackState, 
-  SpotifyPlayerInstance, 
-  SpotifySDK 
+import {
+  SpotifySDKPlaybackState,
+  SpotifyPlayerInstance,
+  SpotifySDK
 } from '@/shared/types/spotify'
 
 type SpotifySDKEventTypes =
