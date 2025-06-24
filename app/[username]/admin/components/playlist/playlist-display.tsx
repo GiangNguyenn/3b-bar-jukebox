@@ -5,6 +5,8 @@ import { sendApiRequest } from '@/shared/api'
 import { useSpotifyPlayerStore } from '@/hooks/useSpotifyPlayer'
 import { PlayIcon, TrashIcon } from '@heroicons/react/24/outline'
 import { ErrorMessage } from '@/components/ui/error-message'
+import { Loading } from '@/components/ui/loading'
+import { TableSkeleton } from '@/components/ui/skeleton'
 import { TrackDetails, SpotifyArtist } from '@/shared/types/spotify'
 
 interface SpotifyPlaylistTrack {
@@ -109,11 +111,7 @@ export function PlaylistDisplay({
   }
 
   if (isLoading) {
-    return (
-      <div className='flex items-center justify-center p-8'>
-        <div className='border-white h-8 w-8 animate-spin rounded-full border-b-2 border-t-2'></div>
-      </div>
-    )
+    return <TableSkeleton rows={8} />
   }
 
   if (error) {
@@ -232,7 +230,7 @@ export function PlaylistDisplay({
                           title='Play track'
                         >
                           {isTrackLoading ? (
-                            <div className='border-white h-4 w-4 animate-spin rounded-full border-b-2 border-t-2'></div>
+                            <Loading className='h-4 w-4' />
                           ) : (
                             <PlayIcon className='h-4 w-4' />
                           )}
@@ -256,7 +254,7 @@ export function PlaylistDisplay({
                           }
                         >
                           {isTrackDeleting ? (
-                            <div className='border-white h-4 w-4 animate-spin rounded-full border-b-2 border-t-2'></div>
+                            <Loading className='h-4 w-4' />
                           ) : (
                             <TrashIcon className='h-4 w-4' />
                           )}

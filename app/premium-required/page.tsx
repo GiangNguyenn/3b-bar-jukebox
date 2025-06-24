@@ -7,6 +7,7 @@ import type { Database } from '@/types/supabase'
 import { FaSpotify, FaCrown, FaMusic, FaPlay, FaSync } from 'react-icons/fa'
 import { usePremiumStatus } from '@/hooks/usePremiumStatus'
 import { useConsoleLogsContext } from '@/hooks/ConsoleLogsProvider'
+import { Loading } from '@/components/ui/loading'
 
 export default function PremiumRequiredPage(): JSX.Element {
   const { addLog } = useConsoleLogsContext()
@@ -294,9 +295,11 @@ export default function PremiumRequiredPage(): JSX.Element {
               disabled={isPremiumLoading}
               className='text-white flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-6 py-3 font-semibold transition-colors hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:ring-offset-black disabled:cursor-not-allowed disabled:opacity-50'
             >
-              <FaSync
-                className={`h-5 w-5 ${isPremiumLoading ? 'animate-spin' : ''}`}
-              />
+              {isPremiumLoading ? (
+                <Loading className='h-5 w-5' />
+              ) : (
+                <FaSync className='h-5 w-5' />
+              )}
               {isPremiumLoading ? 'Checking...' : 'Refresh Status'}
             </button>
             <button

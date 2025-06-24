@@ -2,6 +2,7 @@
 
 import Image from 'next/image'
 import { cn } from '@/lib/utils'
+import { Loading } from '@/components/ui/loading'
 import { SpotifyPlaybackState } from '@/shared/types/spotify'
 
 interface PlaybackControlsProps {
@@ -34,16 +35,17 @@ export function PlaybackControls({
         disabled={!canControlPlayback || isLoading}
         aria-label={isPlaying ? 'Pause' : 'Play'}
       >
-        <Image
-          src={isPlaying ? '/pause.svg' : '/play.svg'}
-          alt={isPlaying ? 'Pause' : 'Play'}
-          width={16}
-          height={16}
-          className={cn(
-            'h-4 w-4',
-            loadingAction === 'playPause' && 'animate-spin'
-          )}
-        />
+        {loadingAction === 'playPause' ? (
+          <Loading className='h-4 w-4' />
+        ) : (
+          <Image
+            src={isPlaying ? '/pause.svg' : '/play.svg'}
+            alt={isPlaying ? 'Pause' : 'Play'}
+            width={16}
+            height={16}
+            className='h-4 w-4'
+          />
+        )}
       </button>
     </div>
   )

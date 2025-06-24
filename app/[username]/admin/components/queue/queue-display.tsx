@@ -2,12 +2,13 @@
 
 import { useUserQueue } from '@/hooks/useUserQueue'
 import type { UserQueue } from '@/shared/types/spotify'
+import { Loading } from '@/components/ui'
 
 export function QueueDisplay(): JSX.Element {
   const { data: queue } = useUserQueue('')
 
   if (!queue?.queue) {
-    return <div>Loading queue...</div>
+    return <Loading message='Loading queue...' />
   }
 
   return (

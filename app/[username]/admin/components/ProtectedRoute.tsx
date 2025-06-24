@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createBrowserClient } from '@supabase/ssr'
 import type { Database } from '@/types/supabase'
+import { Loading } from '@/components/ui/loading'
 
 export function ProtectedRoute({
   children
@@ -64,11 +65,7 @@ export function ProtectedRoute({
   }, [router, supabase.auth])
 
   if (isLoading) {
-    return (
-      <div className='flex min-h-screen items-center justify-center'>
-        <div className='border-white h-8 w-8 animate-spin rounded-full border-2 border-t-transparent'></div>
-      </div>
-    )
+    return <Loading fullScreen />
   }
 
   // Only render children if user is premium

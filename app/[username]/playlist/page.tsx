@@ -12,6 +12,7 @@ import Playlist from '@/components/Playlist/Playlist'
 import { handleApiError } from '@/shared/utils/errorHandling'
 import { AppError } from '@/shared/utils/errorHandling'
 import { useParams } from 'next/navigation'
+import { Loading, PlaylistSkeleton } from '@/components/ui'
 
 export default function PlaylistPage(): JSX.Element {
   const params = useParams()
@@ -87,7 +88,7 @@ export default function PlaylistPage(): JSX.Element {
   }
 
   if (isTokenLoading || isPlaylistIdLoading || isPlaylistLoading) {
-    return <div>Loading...</div>
+    return <Loading fullScreen />
   }
 
   if (!playlist) {
@@ -102,11 +103,11 @@ export default function PlaylistPage(): JSX.Element {
             <SearchInput onAddTrack={handleAddTrack} username={username} />
           </div>
         </div>
-        <Suspense fallback={<div>Loading playlist...</div>}>
+        <Suspense fallback={<PlaylistSkeleton />}>
           <div className='relative'>
             {isPlaylistRefreshing && (
               <div className='bg-white absolute inset-0 z-10 flex items-center justify-center rounded-lg bg-opacity-75'>
-                <div className='text-sm text-gray-600'>Refreshing...</div>
+                <Loading className='h-6 w-6' message='Refreshing...' />
               </div>
             )}
             <Playlist
