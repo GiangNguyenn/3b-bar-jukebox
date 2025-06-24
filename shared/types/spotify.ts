@@ -274,7 +274,10 @@ export interface SpotifyPlayerInstance {
   previousTrack(): Promise<void>
   nextTrack(): Promise<void>
   activateElement(): Promise<void>
-  addListener(event: string, callback: (state: SpotifySDKPlaybackState) => void): void
+  addListener(
+    event: string,
+    callback: (state: SpotifySDKPlaybackState) => void
+  ): void
   removeListener(event: string): void
   togglePlay(): Promise<void>
   seek(position_ms: number): Promise<void>

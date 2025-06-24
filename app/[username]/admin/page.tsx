@@ -18,7 +18,7 @@ import { HealthStatusSection } from './components/dashboard/health-status-sectio
 import { TrackSuggestionsTab } from './components/track-suggestions/track-suggestions-tab'
 import { PlaylistDisplay } from './components/playlist/playlist-display'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { type HealthStatus, type PlaybackInfo } from '@/shared/types/health'
+import { type PlaybackInfo } from '@/shared/types/health'
 import { type TrackSuggestionsState } from '@/shared/types/trackSuggestions'
 import { useRecoverySystem } from '@/hooks/recovery'
 import { ErrorMessage } from '@/components/ui/error-message'
@@ -61,11 +61,7 @@ export default function AdminPage(): JSX.Element {
   const updateTrackSuggestionsState = trackSuggestions.updateState
 
   // First, use the health monitor hook
-  const { healthStatus, setHealthStatus } = useSpotifyHealthMonitor(
-    fixedPlaylistId,
-    isFixedPlaylistLoading,
-    fixedPlaylistError
-  )
+  const healthStatus = useSpotifyHealthMonitor()
 
   // Get recovery system for manual recovery
   const { state: recoveryState, recover } = useRecoverySystem(
@@ -133,18 +129,6 @@ export default function AdminPage(): JSX.Element {
     void initializePlayer()
   }, [playerStatus, addLog, createPlayer])
 
-  // Update health status when device ID or fixed playlist changes
-  useEffect(() => {
-    if (!deviceId && !isReady) {
-      const newDeviceStatus = 'unknown'
-
-      setHealthStatus((prev: HealthStatus) => ({
-        ...prev,
-        device: newDeviceStatus
-      }))
-    }
-  }, [deviceId, isReady, setHealthStatus])
-
   const handlePlayPause = useCallback(async (): Promise<void> => {
     if (!deviceId) return
 
@@ -164,10 +148,6 @@ export default function AdminPage(): JSX.Element {
                 }
               : null
           )
-          setHealthStatus((prev: HealthStatus) => ({
-            ...prev,
-            playback: 'paused'
-          }))
         } else {
           throw new Error('Failed to pause playback')
         }
@@ -185,10 +165,6 @@ export default function AdminPage(): JSX.Element {
                 }
               : null
           )
-          setHealthStatus((prev: HealthStatus) => ({
-            ...prev,
-            playback: 'playing'
-          }))
         } else {
           throw new Error('Failed to resume playback')
         }
@@ -225,14 +201,10 @@ export default function AdminPage(): JSX.Element {
         'Playback',
         error instanceof Error ? error : undefined
       )
-      setHealthStatus((prev: HealthStatus) => ({
-        ...prev,
-        playback: 'error'
-      }))
     } finally {
       setIsLoading(false)
     }
-  }, [deviceId, getIsActuallyPlaying, addLog, setHealthStatus])
+  }, [deviceId, getIsActuallyPlaying, addLog])
 
   // Manual recovery trigger for user-initiated recovery (e.g., device mismatch, connection issues)
   const handleForceRecovery = useCallback(async (): Promise<void> => {
@@ -257,7 +229,7 @@ export default function AdminPage(): JSX.Element {
     } finally {
       setIsLoading(false)
     }
-  }, [addLog, recover])
+  }, [recover, addLog])
 
   // Create a wrapper for the force recovery handler
   const handleForceRecoveryClick = useCallback((): void => {

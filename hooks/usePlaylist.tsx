@@ -1,156 +1,34 @@
-import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
-import {
-  SpotifyPlaylistItem,
-  TrackItem,
-  SpotifyPlaybackState
-} from '@/shared/types/spotify'
-import { ERROR_MESSAGES } from '@/shared/constants/errors'
-import { filterUpcomingTracks } from '@/lib/utils'
-import useSWR from 'swr'
-import { sendApiRequest } from '@/shared/api'
-import { handleOperationError, AppError } from '@/shared/utils/errorHandling'
-import { type Genre } from '@/shared/constants/trackSuggestion'
-import { PlaylistRefreshServiceImpl } from '@/services/playlistRefresh'
+import { usePlaylistData } from './usePlaylistData'
+import { useCurrentlyPlaying } from './useCurrentlyPlaying'
+import { useUpcomingTracks } from './useUpcomingTracks'
+import { usePlaylistRefresh } from './usePlaylistRefresh'
 import { type TrackSuggestionsState } from '@/shared/types/trackSuggestions'
-
-interface CurrentlyPlayingResponse {
-  item: {
-    id: string
-  }
-}
-
-const fetcher = async (playlistId: string) => {
-  return handleOperationError(
-    async () => {
-      const response = await sendApiRequest<{
-        tracks: {
-          items: TrackItem[]
-        }
-      }>({
-        path: `playlists/${playlistId}`,
-        method: 'GET'
-      })
-      return response
-    },
-    'PlaylistFetcher',
-    (error) => {
-      console.error(`[Playlist] Error fetching playlist ${playlistId}:`, error)
-    }
-  )
-}
-
-const currentlyPlayingFetcher = async () => {
-  return handleOperationError(
-    async () => {
-      const response = await sendApiRequest<SpotifyPlaybackState>({
-        path: 'me/player/currently-playing',
-        method: 'GET'
-      })
-      return response
-    },
-    'CurrentlyPlayingFetcher',
-    (error) => {
-      console.error('[Playlist] Error fetching currently playing:', error)
-    }
-  )
-}
 
 export const usePlaylist = (
   playlistId: string,
   trackSuggestionsState?: TrackSuggestionsState
 ) => {
+  // Use focused hooks
   const {
-    data: playlist,
+    playlist,
     error: playlistError,
-    mutate: refreshPlaylist
-  } = useSWR(
-    playlistId ? ['playlist', playlistId] : null,
-    () => fetcher(playlistId),
-    {
-      refreshInterval: 30000,
-      revalidateOnFocus: false,
-      revalidateOnReconnect: false
-    }
-  )
-
-  const { data: currentlyPlaying, error: currentlyPlayingError } = useSWR(
-    'currently-playing',
-    currentlyPlayingFetcher,
-    {
-      refreshInterval: 10000,
-      revalidateOnFocus: false,
-      revalidateOnReconnect: false
-    }
-  )
-
-  // Filter upcoming tracks
-  const upcomingTracks = useMemo(() => {
-    if (!playlist || !currentlyPlaying?.item?.id) return []
-    return filterUpcomingTracks(playlist.tracks.items, currentlyPlaying.item.id)
-  }, [playlist, currentlyPlaying?.item?.id])
-
-  const handleRefresh = async (
-    trackSuggestionsState?: TrackSuggestionsState
-  ) => {
-    try {
-      const playlistRefreshService = PlaylistRefreshServiceImpl.getInstance()
-      const result = await playlistRefreshService.refreshPlaylist(
-        false,
-        trackSuggestionsState
-      )
-
-      if (!result.success) {
-        // Don't throw for expected behaviors
-        if (result.message === 'Enough tracks remaining') {
-          console.log('[Playlist] Enough tracks remaining, no action needed')
-        } else if (result.message === 'Refresh operation already in progress') {
-          console.log(
-            '[Playlist] Refresh operation already in progress, skipping'
-          )
-        } else if (
-          result.message.includes('Playlist has reached maximum length')
-        ) {
-          console.log(
-            '[Playlist] Playlist at maximum length, no new tracks needed'
-          )
-        } else {
-          throw new Error(result.message)
-        }
-      }
-
-      // Force a revalidation with fresh data to update UI
-      await refreshPlaylist(
-        async () => {
-          const response = await sendApiRequest<{
-            tracks: {
-              items: TrackItem[]
-            }
-          }>({
-            path: `playlists/${playlistId}`,
-            method: 'GET'
-          })
-          return response
-        },
-        {
-          revalidate: true,
-          populateCache: true,
-          rollbackOnError: true
-        }
-      )
-    } catch (error) {
-      console.error(
-        `[Playlist] Error refreshing playlist ${playlistId}:`,
-        error
-      )
-      throw error
-    }
-  }
+    refreshPlaylist,
+    isLoading: playlistLoading
+  } = usePlaylistData(playlistId)
+  const {
+    currentlyPlaying,
+    error: currentlyPlayingError,
+    isLoading: currentlyPlayingLoading
+  } = useCurrentlyPlaying()
+  const upcomingTracks = useUpcomingTracks(playlist, currentlyPlaying)
+  const handleRefresh = usePlaylistRefresh(playlistId, refreshPlaylist)
 
   return {
     playlist,
     upcomingTracks,
     currentlyPlaying,
     error: playlistError || currentlyPlayingError,
-    refreshPlaylist: handleRefresh
+    refreshPlaylist: handleRefresh,
+    isLoading: playlistLoading || currentlyPlayingLoading
   }
 }
