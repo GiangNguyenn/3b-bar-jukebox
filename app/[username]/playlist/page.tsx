@@ -1,38 +1,56 @@
 'use client'
 
 import { Suspense } from 'react'
-import { useGetProfile } from '@/hooks/useGetProfile'
 import { useGetPlaylist } from '@/hooks/useGetPlaylist'
 import { useFixedPlaylist } from '@/hooks/useFixedPlaylist'
 import { useTrackOperations } from '@/hooks/useTrackOperations'
+import { useUserToken } from '@/hooks/useUserToken'
+import { useNowPlayingTrack } from '@/hooks/useNowPlayingTrack'
 import { TrackDetails, TrackItem } from '@/shared/types/spotify'
 import SearchInput from '@/components/SearchInput'
 import Playlist from '@/components/Playlist/Playlist'
 import { handleApiError } from '@/shared/utils/errorHandling'
 import { AppError } from '@/shared/utils/errorHandling'
+import { useParams } from 'next/navigation'
 
 export default function PlaylistPage(): JSX.Element {
-  const {
-    profile,
-    error: profileError,
-    loading: isProfileLoading
-  } = useGetProfile()
+  const params = useParams()
+  const username = params?.username as string | undefined
+
+  const { token, loading: isTokenLoading, error: tokenError } = useUserToken()
   const { fixedPlaylistId, isLoading: isPlaylistIdLoading } = useFixedPlaylist()
+
+  // Only enable useGetPlaylist when we have both token and playlistId, and token is not loading
+  const shouldEnablePlaylist = !isTokenLoading && !!token && !!fixedPlaylistId
+
   const {
     data: playlist,
     error: playlistError,
-    isLoading: isPlaylistLoading
-  } = useGetPlaylist(fixedPlaylistId) as {
+    isLoading: isPlaylistLoading,
+    isRefreshing: isPlaylistRefreshing
+  } = useGetPlaylist({
+    playlistId: fixedPlaylistId,
+    token,
+    enabled: shouldEnablePlaylist
+  }) as {
     data: { tracks: { items: TrackItem[] } } | null
-    error: Error | null
+    error: string | null
     isLoading: boolean
+    isRefreshing: boolean
   }
   const { addTrack, optimisticTrack } = useTrackOperations({
-    playlistId: fixedPlaylistId ?? ''
+    playlistId: fixedPlaylistId ?? '',
+    token
   }) as {
     addTrack: (track: TrackItem) => Promise<void>
     optimisticTrack: TrackItem | undefined
   }
+
+  // Get currently playing track using the user's token
+  const { data: currentlyPlaying } = useNowPlayingTrack({
+    token,
+    enabled: !isTokenLoading && !!token
+  })
 
   const handleAddTrack = async (track: TrackDetails): Promise<void> => {
     try {
@@ -60,20 +78,16 @@ export default function PlaylistPage(): JSX.Element {
     }
   }
 
-  if (profileError) {
-    return <div>Error loading profile: {profileError}</div>
+  if (tokenError) {
+    return <div>Error loading user token: {tokenError}</div>
   }
 
-  if (playlistError instanceof Error) {
-    return <div>Error loading playlist: {playlistError.message}</div>
+  if (playlistError) {
+    return <div>Error loading playlist: {playlistError}</div>
   }
 
-  if (isProfileLoading || isPlaylistIdLoading || isPlaylistLoading) {
+  if (isTokenLoading || isPlaylistIdLoading || isPlaylistLoading) {
     return <div>Loading...</div>
-  }
-
-  if (!profile) {
-    return <div>Profile not found</div>
   }
 
   if (!playlist) {
@@ -83,14 +97,24 @@ export default function PlaylistPage(): JSX.Element {
   return (
     <div className='w-full'>
       <div className='mx-auto flex w-full flex-col space-y-6 sm:w-10/12 md:w-8/12 lg:w-9/12'>
-        <div className='w-full'>
-          <SearchInput onAddTrack={handleAddTrack} />
+        <div className='mx-auto flex w-full overflow-hidden rounded-lg bg-primary-100 shadow-md sm:w-10/12 md:w-8/12 lg:w-9/12'>
+          <div className='flex w-full flex-col p-5'>
+            <SearchInput onAddTrack={handleAddTrack} username={username} />
+          </div>
         </div>
         <Suspense fallback={<div>Loading playlist...</div>}>
-          <Playlist
-            tracks={playlist.tracks.items}
-            optimisticTrack={optimisticTrack}
-          />
+          <div className='relative'>
+            {isPlaylistRefreshing && (
+              <div className='bg-white absolute inset-0 z-10 flex items-center justify-center rounded-lg bg-opacity-75'>
+                <div className='text-sm text-gray-600'>Refreshing...</div>
+              </div>
+            )}
+            <Playlist
+              tracks={playlist.tracks.items}
+              optimisticTrack={optimisticTrack}
+              currentlyPlaying={currentlyPlaying}
+            />
+          </div>
         </Suspense>
       </div>
     </div>
