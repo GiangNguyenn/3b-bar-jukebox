@@ -27,15 +27,7 @@ const logger = createModuleLogger('PlaylistRefresh')
 export interface PlaylistRefreshService {
   refreshPlaylist(
     force?: boolean,
-    params?: {
-      genres: Genre[]
-      yearRange: [number, number]
-      popularity: number
-      allowExplicit: boolean
-      maxSongLength: number
-      songsBetweenRepeats: number
-      maxOffset: number
-    }
+    params?: TrackSuggestionsState
   ): Promise<{
     success: boolean
     message: string
@@ -255,15 +247,7 @@ export class PlaylistRefreshServiceImpl implements PlaylistRefreshService {
     playlistId: string,
     currentTrackId: string | null,
     allPlaylistTracks: TrackItem[],
-    params?: {
-      genres: Genre[]
-      yearRange: [number, number]
-      popularity: number
-      allowExplicit: boolean
-      maxSongLength: number
-      songsBetweenRepeats: number
-      maxOffset: number
-    }
+    params?: TrackSuggestionsState
   ): Promise<{ success: boolean; error?: string; searchDetails?: unknown }> {
     // Get saved params from localStorage
     const savedParams =
@@ -297,6 +281,9 @@ export class PlaylistRefreshServiceImpl implements PlaylistRefreshService {
       maxOffset: params?.maxOffset ?? savedParams?.maxOffset ?? 1000
     }
 
+    // Add logging to show parameter sources
+    logger('INFO', `Track suggestion parameters - provided: ${params ? 'yes' : 'no'}, saved: ${savedParams ? 'yes' : 'no'}, final: genres=${mergedParams.genres.length}, popularity=${mergedParams.popularity}, maxOffset=${mergedParams.maxOffset}`)
+
     // Check if we have 3 or fewer upcoming tracks (need to add more)
     if (upcomingTracks.length > 3) {
       return {
@@ -310,69 +297,57 @@ export class PlaylistRefreshServiceImpl implements PlaylistRefreshService {
     )
 
     try {
-      let retryCount = 0
-      let success = false
-      let searchDetails: unknown
+      const result = await findSuggestedTrack(
+        existingTrackIds,
+        currentTrackId,
+        DEFAULT_MARKET,
+        mergedParams
+      )
 
-      while (!success && retryCount < this.retryConfig.maxRetries) {
-        const result = await findSuggestedTrack(
-          existingTrackIds,
-          currentTrackId,
-          DEFAULT_MARKET,
-          mergedParams
-        )
-
-        if (!result.track) {
-          retryCount++
-          continue
-        }
-
-        success = await this.tryAddTrack(result.track.uri, playlistId)
-        searchDetails = {
-          ...result.searchDetails,
-          trackDetails: result.searchDetails.trackDetails
-        }
-
-        if (success) {
-          this.lastSuggestedTrack = {
-            name: result.track.name,
-            artist: result.track.artists[0].name,
-            album: result.track.album.name,
-            uri: result.track.uri,
-            popularity: result.track.popularity,
-            duration_ms: result.track.duration_ms,
-            preview_url: result.track.preview_url ?? null,
-            genres: [
-              result.searchDetails.genresTried[
-                result.searchDetails.genresTried.length - 1
-              ]
-            ]
-          }
-
-          // Save to localStorage if in browser
-          if (typeof window !== 'undefined') {
-            this.saveLastSuggestedTrack()
-          }
-
-          // Track that a track was successfully added (will trigger playback resumption)
-          success = true
-        } else {
-          retryCount++
-          await new Promise((resolve) =>
-            setTimeout(
-              resolve,
-              this.retryConfig.baseDelay * Math.pow(2, retryCount)
-            )
-          )
+      if (!result.track) {
+        return {
+          success: false,
+          error: 'No suitable track found after trying all genres'
         }
       }
 
-      return {
-        success,
-        error: !success
-          ? 'Failed to add track after multiple attempts'
-          : undefined,
-        searchDetails
+      const success = await this.tryAddTrack(result.track.uri, playlistId)
+      const searchDetails = {
+        ...result.searchDetails,
+        trackDetails: result.searchDetails.trackDetails
+      }
+
+      if (success) {
+        this.lastSuggestedTrack = {
+          name: result.track.name,
+          artist: result.track.artists[0].name,
+          album: result.track.album.name,
+          uri: result.track.uri,
+          popularity: result.track.popularity,
+          duration_ms: result.track.duration_ms,
+          preview_url: result.track.preview_url ?? null,
+          genres: [
+            result.searchDetails.genresTried[
+              result.searchDetails.genresTried.length - 1
+            ]
+          ]
+        }
+
+        // Save to localStorage if in browser
+        if (typeof window !== 'undefined') {
+          this.saveLastSuggestedTrack()
+        }
+
+        return {
+          success: true,
+          searchDetails
+        }
+      } else {
+        return {
+          success: false,
+          error: 'Failed to add track to playlist',
+          searchDetails
+        }
       }
     } catch (error) {
       Sentry.logger.error('Error in addSuggestedTrackToPlaylist', {
@@ -474,15 +449,7 @@ export class PlaylistRefreshServiceImpl implements PlaylistRefreshService {
 
   async refreshPlaylist(
     force = false,
-    params?: {
-      genres: Genre[]
-      yearRange: [number, number]
-      popularity: number
-      allowExplicit: boolean
-      maxSongLength: number
-      songsBetweenRepeats: number
-      maxOffset: number
-    }
+    params?: TrackSuggestionsState
   ): Promise<{
     success: boolean
     message: string
@@ -569,15 +536,7 @@ export class PlaylistRefreshServiceImpl implements PlaylistRefreshService {
           playlist.id,
           currentTrackId,
           playlist.tracks.items,
-          {
-            genres: params?.genres ?? Array.from(FALLBACK_GENRES),
-            yearRange: params?.yearRange ?? [1950, new Date().getFullYear()],
-            popularity: params?.popularity ?? 50,
-            allowExplicit: params?.allowExplicit ?? false,
-            maxSongLength: params?.maxSongLength ?? 3,
-            songsBetweenRepeats: params?.songsBetweenRepeats ?? 5,
-            maxOffset: params?.maxOffset ?? 1000
-          }
+          params
         ),
         this.TIMEOUT_MS
       )
