@@ -32,6 +32,7 @@ interface TrackFilterCriteria {
   minPopularity: number
   maxSongLengthMs: number
   allowExplicit: boolean
+  yearRange?: [number, number]
 }
 
 // Track filtering result interface
@@ -43,6 +44,7 @@ interface TrackFilterResult {
     tooLong: number
     explicit: number
     unplayable: number
+    wrongYear: number
   }
 }
 
@@ -76,7 +78,7 @@ function filterTracksByCriteria(
   tracks: TrackDetails[],
   criteria: TrackFilterCriteria
 ): TrackFilterResult {
-  const { excludedIds, minPopularity, maxSongLengthMs, allowExplicit } =
+  const { excludedIds, minPopularity, maxSongLengthMs, allowExplicit, yearRange } =
     criteria
 
   const candidates: TrackDetails[] = []
@@ -85,10 +87,13 @@ function filterTracksByCriteria(
     lowPopularity: 0,
     tooLong: 0,
     explicit: 0,
-    unplayable: 0
+    unplayable: 0,
+    wrongYear: 0
   }
 
   for (const track of tracks) {
+    const trackInfo = `${track.name} by ${track.artists.map(a => a.name).join(', ')} (${track.id})`
+
     // Check exclusion first (most restrictive)
     if (excludedIds.includes(track.id)) {
       filteredOut.excluded++
@@ -111,7 +116,7 @@ function filterTracksByCriteria(
     if (typeof track.popularity !== 'number' || isNaN(track.popularity)) {
       logger(
         'WARN',
-        `Invalid popularity value for track ${track.name} (${track.id}): ${track.popularity}`
+        `Invalid popularity value for track ${trackInfo}: ${track.popularity}`
       )
     }
 
@@ -122,6 +127,8 @@ function filterTracksByCriteria(
     }
 
     // Check length
+    const trackLengthMinutes = Math.round(track.duration_ms / 1000 / 60 * 10) / 10
+    const maxLengthMinutes = Math.round(maxSongLengthMs / 1000 / 60 * 10) / 10
     if (track.duration_ms > maxSongLengthMs) {
       filteredOut.tooLong++
       continue
@@ -131,6 +138,17 @@ function filterTracksByCriteria(
     if (!allowExplicit && track.explicit) {
       filteredOut.explicit++
       continue
+    }
+
+    // Check year range if provided (secondary validation)
+    if (yearRange) {
+      const [startYear, endYear] = yearRange
+      const releaseYear = parseInt(track.album.release_date.split('-')[0])
+      
+      if (releaseYear < startYear || releaseYear > endYear) {
+        filteredOut.wrongYear++
+        continue
+      }
     }
 
     // Track passes all criteria
@@ -151,18 +169,21 @@ export async function searchTracksByGenre(
     const [startYear, endYear] = yearRange
     const randomOffset = Math.floor(Math.random() * maxOffset)
 
-    // Log the parameters used for the Spotify search endpoint
+    // Construct the full request URL for logging
+    const baseUrl = process.env.NEXT_PUBLIC_SPOTIFY_BASE_URL || 'https://api.spotify.com/v1'
+    const fullUrl = `${baseUrl}/${SPOTIFY_SEARCH_ENDPOINT}?q=genre:${encodeURIComponent(genre)} year:${startYear}-${endYear}&type=track&limit=${TRACK_SEARCH_LIMIT}&market=${market}&offset=${randomOffset}`
+    
     logger(
-      'INFO',
-      `Spotify Search Params: genre=${genre}, yearRange=${startYear}-${endYear}, market=${market}, minPopularity=${minPopularity}, maxOffset=${maxOffset}, randomOffset=${randomOffset}`,
-      'SpotifyTrackSuggestion'
+      'WARN',
+      `[TrackSuggestion] Full Spotify API URL: ${fullUrl}`
     )
 
     const response = await sendApiRequest<{
       tracks: { items: TrackDetails[] }
     }>({
       path: `${SPOTIFY_SEARCH_ENDPOINT}?q=genre:${encodeURIComponent(genre)} year:${startYear}-${endYear}&type=track&limit=${TRACK_SEARCH_LIMIT}&market=${market}&offset=${randomOffset}`,
-      method: 'GET'
+      method: 'GET',
+      debounceTime: 0 // Disable caching for search requests to ensure fresh results
     })
 
     const tracks = response.tracks?.items
@@ -314,7 +335,8 @@ export async function findSuggestedTrack(
         excludedIds: allExcludedIds,
         minPopularity,
         maxSongLengthMs: maxSongLength * 60 * 1000,
-        allowExplicit
+        allowExplicit,
+        yearRange
       })
 
       if (selectedTrack) {
