@@ -23,6 +23,7 @@ export interface Database {
           spotify_provider_id: string | null
           spotify_product_type: string | null
           is_premium: boolean | null
+          premium_verified_at: string | null
         }
         Insert: {
           id: string
@@ -37,6 +38,7 @@ export interface Database {
           spotify_provider_id?: string | null
           spotify_product_type?: string | null
           is_premium?: boolean | null
+          premium_verified_at?: string | null
         }
         Update: {
           id?: string
@@ -51,6 +53,7 @@ export interface Database {
           spotify_provider_id?: string | null
           spotify_product_type?: string | null
           is_premium?: boolean | null
+          premium_verified_at?: string | null
         }
       }
       playlists: {

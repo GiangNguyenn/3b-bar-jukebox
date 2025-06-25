@@ -19,9 +19,9 @@ interface TokenResponse {
 
 interface UserProfile {
   id: string
-  spotify_access_token: string
-  spotify_refresh_token: string
-  spotify_token_expires_at: string
+  spotify_access_token: string | null
+  spotify_refresh_token: string | null
+  spotify_token_expires_at: number | null
 }
 
 // Constants
@@ -80,7 +80,6 @@ export async function GET(): Promise<
     } = await supabase.auth.getUser()
 
     if (userError || !user) {
-      console.error('[Token] Error getting current user:', userError)
       return NextResponse.json(
         {
           error: 'User not authenticated',
@@ -100,12 +99,80 @@ export async function GET(): Promise<
       .eq('id', user.id)
       .single()
 
-    if (profileError || !userProfile) {
-      console.error('[Token] Error fetching user profile:', profileError)
+    if (profileError) {
+      // If profile doesn't exist, try to create one
+      if (profileError.code === 'PGRST116') {
+        // Try to get Spotify tokens from session
+        const session = await supabase.auth.getSession()
+        const spotifyAccessToken = session.data.session?.provider_token as
+          | string
+          | undefined
+        const spotifyRefreshToken = session.data.session
+          ?.provider_refresh_token as string | undefined
+
+        if (spotifyAccessToken && spotifyRefreshToken) {
+          const { error: createError } = await supabase
+            .from('profiles')
+            .insert({
+              id: user.id,
+              spotify_user_id: user.id,
+              display_name:
+                (user.user_metadata?.name as string | undefined) ??
+                user.email?.split('@')[0] ??
+                'user',
+              avatar_url:
+                (user.user_metadata?.avatar_url as string | undefined) ?? null,
+              spotify_access_token: spotifyAccessToken,
+              spotify_refresh_token: spotifyRefreshToken,
+              spotify_token_expires_at: Math.floor(Date.now() / 1000) + 3600, // Assume 1 hour
+              is_premium: false,
+              premium_verified_at: null
+            })
+
+          if (createError) {
+            return NextResponse.json(
+              {
+                error: 'Failed to create user profile',
+                code: 'PROFILE_CREATION_ERROR',
+                status: 500
+              },
+              { status: 500 }
+            )
+          }
+
+          // Return the tokens from session
+          return NextResponse.json({
+            access_token: spotifyAccessToken,
+            refresh_token: spotifyRefreshToken,
+            expires_at: Math.floor(Date.now() / 1000) + 3600
+          })
+        } else {
+          return NextResponse.json(
+            {
+              error: 'No Spotify tokens found in session',
+              code: 'NO_SPOTIFY_TOKENS',
+              status: 500
+            },
+            { status: 500 }
+          )
+        }
+      }
+
       return NextResponse.json(
         {
           error: 'Failed to get user credentials',
           code: 'USER_PROFILE_ERROR',
+          status: 500
+        },
+        { status: 500 }
+      )
+    }
+
+    if (!userProfile) {
+      return NextResponse.json(
+        {
+          error: 'User profile not found',
+          code: 'PROFILE_NOT_FOUND',
           status: 500
         },
         { status: 500 }
@@ -117,20 +184,59 @@ export async function GET(): Promise<
     if (
       !typedProfile.spotify_access_token ||
       !typedProfile.spotify_refresh_token ||
-      !typedProfile.spotify_token_expires_at
+      typedProfile.spotify_token_expires_at === null
     ) {
-      return NextResponse.json(
-        {
-          error: 'Invalid user profile data - missing Spotify credentials',
-          code: 'INVALID_PROFILE_DATA',
-          status: 500
-        },
-        { status: 500 }
-      )
+      // Try to get Spotify tokens from session
+      const session = await supabase.auth.getSession()
+      const spotifyAccessToken = session.data.session?.provider_token as
+        | string
+        | undefined
+      const spotifyRefreshToken = session.data.session
+        ?.provider_refresh_token as string | undefined
+
+      if (spotifyAccessToken && spotifyRefreshToken) {
+        // Update the profile with tokens from session
+        const { error: updateError } = await supabase
+          .from('profiles')
+          .update({
+            spotify_access_token: spotifyAccessToken,
+            spotify_refresh_token: spotifyRefreshToken,
+            spotify_token_expires_at: Math.floor(Date.now() / 1000) + 3600, // Assume 1 hour
+            premium_verified_at: null // Reset premium verification since we're updating tokens
+          })
+          .eq('id', user.id)
+
+        if (updateError) {
+          return NextResponse.json(
+            {
+              error: 'Failed to update user profile with session tokens',
+              code: 'PROFILE_UPDATE_ERROR',
+              status: 500
+            },
+            { status: 500 }
+          )
+        }
+
+        // Return the tokens from session
+        return NextResponse.json({
+          access_token: spotifyAccessToken,
+          refresh_token: spotifyRefreshToken,
+          expires_at: Math.floor(Date.now() / 1000) + 3600
+        })
+      } else {
+        return NextResponse.json(
+          {
+            error: 'No Spotify access token found. Please sign in again.',
+            code: 'NO_SPOTIFY_TOKEN',
+            status: 400
+          },
+          { status: 400 }
+        )
+      }
     }
 
     // Check if token needs refresh
-    const tokenExpiresAt = Number(typedProfile.spotify_token_expires_at)
+    const tokenExpiresAt = typedProfile.spotify_token_expires_at
     const now = Math.floor(Date.now() / 1000)
 
     if (tokenExpiresAt <= now) {
@@ -150,8 +256,6 @@ export async function GET(): Promise<
       })
 
       if (!response.ok) {
-        const errorText = await response.text()
-        console.error('[Token] Error refreshing token:', errorText)
         return NextResponse.json(
           {
             error: 'Failed to refresh token',
@@ -175,7 +279,7 @@ export async function GET(): Promise<
         .eq('id', userProfile.id)
 
       if (updateError) {
-        console.error('[Token] Error updating token:', updateError)
+        // Log error but continue - token refresh was successful
       }
 
       return NextResponse.json({
@@ -192,8 +296,7 @@ export async function GET(): Promise<
       refresh_token: typedProfile.spotify_refresh_token,
       expires_at: tokenExpiresAt
     })
-  } catch (error) {
-    console.error('[Token] Error:', error)
+  } catch {
     return NextResponse.json(
       {
         error: 'Internal server error',

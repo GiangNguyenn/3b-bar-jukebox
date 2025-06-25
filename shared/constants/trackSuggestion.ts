@@ -16,31 +16,18 @@ export const MIN_TRACK_POPULARITY_INCLUSIVE = 30 // Include mid-tier tracks
 export const MIN_TRACK_POPULARITY_VERY_INCLUSIVE = 20 // Include most tracks except very obscure
 export const MIN_TRACK_POPULARITY_OBSCURE = 0 // Include all tracks
 
-// Default market for track search (Australia)
-export const DEFAULT_MARKET = 'AU'
+// Default market for track search (Vietnam)
+export const DEFAULT_MARKET = 'VN'
 
 // API endpoints
 export const SPOTIFY_SEARCH_ENDPOINT = 'search'
 
-// Genre options - only includes genres that exist in ALL_SPOTIFY_GENRES
 export const FALLBACK_GENRES = [
-  'Australian Alternative Rock',
-  'Australian Indie',
-  'Australian Pop',
-  'Pub Rock',
-  'Vietnamese Pop',
-  'Grunge',
-  'Grunge Pop',
-  'Alternative Rock',
-  'Alternative Pop',
-  'Nerdcore',
-  'Blues-rock',
-  'Contemporary Jazz',
-  'Classic Rock',
   'Rock',
-  'Indie Rock',
-  'Soul',
-  'Funk'
+  'Pop',
+  'Hip Hop',
+  'R&b',
+  'Metal'
 ] as const
 
 export const ALL_SPOTIFY_GENRES = [

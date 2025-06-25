@@ -53,10 +53,10 @@ export async function POST(): Promise<NextResponse> {
   const { error } = await supabase.from('profiles').insert([
     {
       id: user.id,
-      email: user.email,
+      spotify_user_id: user.id, // Use user ID as spotify_user_id for now
       display_name:
         user.user_metadata?.full_name ?? user.email?.split('@')[0] ?? 'user',
-      avatar_url: user.user_metadata?.avatar_url,
+      avatar_url: user.user_metadata?.avatar_url ?? null,
       is_premium: false, // Default to false, will be updated by premium verification
       premium_verified_at: null
     }

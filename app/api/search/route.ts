@@ -11,9 +11,9 @@ const logger = createModuleLogger('Search')
 // Types
 interface UserProfile {
   id: string
-  spotify_access_token: string
-  spotify_refresh_token: string
-  spotify_token_expires_at: string
+  spotify_access_token: string | null
+  spotify_refresh_token: string | null
+  spotify_token_expires_at: number | null
 }
 
 interface ErrorResponse {
@@ -103,7 +103,7 @@ export async function GET(
     )
 
     // Get user profile from database - use provided username or fall back to admin
-    const displayName = username || '3B'
+    const displayName = username ?? '3B'
     const { data: userProfile, error: profileError } = await supabase
       .from('profiles')
       .select(
@@ -130,12 +130,24 @@ export async function GET(
     const typedProfile = userProfile as UserProfile
 
     // Check if token needs refresh
-    const tokenExpiresAt = Number(typedProfile.spotify_token_expires_at)
+    const tokenExpiresAt = typedProfile.spotify_token_expires_at
     const now = Math.floor(Date.now() / 1000)
     let accessToken = typedProfile.spotify_access_token
 
-    if (tokenExpiresAt <= now) {
+    if (tokenExpiresAt && tokenExpiresAt <= now) {
       // Token is expired, refresh it
+      if (!typedProfile.spotify_refresh_token) {
+        logger('ERROR', 'No refresh token available')
+        return NextResponse.json(
+          {
+            error: 'No refresh token available',
+            code: 'NO_REFRESH_TOKEN',
+            status: 500
+          },
+          { status: 500 }
+        )
+      }
+
       const response = await fetch('https://accounts.spotify.com/api/token', {
         method: 'POST',
         headers: {
@@ -176,7 +188,7 @@ export async function GET(
         .eq('id', userProfile.id)
 
       if (updateError) {
-        logger('ERROR', `Error updating token: ${JSON.stringify(updateError)}`)
+        // Log error but continue
       }
     }
 

@@ -16,7 +16,8 @@ export default function Home(): JSX.Element {
   const {
     isPremium,
     isLoading: isPremiumLoading,
-    error: premiumError
+    error: premiumError,
+    needsReauth
   } = usePremiumStatus()
   const { addLog } = useConsoleLogsContext()
 
@@ -40,8 +41,18 @@ export default function Home(): JSX.Element {
   // Redirect non-premium users to premium-required page
   // Only redirect if there's no error and user is confirmed to be non-premium
   useEffect(() => {
-    addLog('INFO', 'Premium status check', 'RootPage', undefined)
-    if (user && !isPremiumLoading && !isPremium && !premiumError) {
+    addLog(
+      'INFO',
+      `Premium status check - user: ${!!user}, isPremium: ${isPremium}, isLoading: ${isPremiumLoading}, error: ${premiumError}, needsReauth: ${needsReauth}`,
+      'RootPage'
+    )
+    if (
+      user &&
+      !isPremiumLoading &&
+      !isPremium &&
+      !premiumError &&
+      !needsReauth
+    ) {
       addLog(
         'INFO',
         'Redirecting non-premium user to /premium-required',
@@ -50,7 +61,52 @@ export default function Home(): JSX.Element {
       )
       void router.push('/premium-required')
     }
-  }, [user, isPremium, isPremiumLoading, router, premiumError, addLog])
+  }, [
+    user,
+    isPremium,
+    isPremiumLoading,
+    router,
+    premiumError,
+    needsReauth,
+    addLog
+  ])
+
+  // Log state changes for debugging
+  useEffect(() => {
+    if (loading || isPremiumLoading) {
+      addLog('INFO', 'Showing loading screen', 'RootPage')
+    } else if (!user) {
+      addLog('INFO', 'No user found, showing sign in page', 'RootPage')
+    } else if (needsReauth) {
+      addLog(
+        'INFO',
+        'Re-authentication needed, showing sign in option',
+        'RootPage'
+      )
+    } else if (premiumError) {
+      addLog(
+        'INFO',
+        'Premium error detected, showing re-authentication option',
+        'RootPage'
+      )
+    } else if (!isPremium) {
+      addLog(
+        'INFO',
+        'User is not premium, showing redirect message',
+        'RootPage'
+      )
+    } else {
+      addLog('INFO', 'User is premium, showing admin button', 'RootPage')
+    }
+  }, [
+    loading,
+    isPremiumLoading,
+    user,
+    needsReauth,
+    premiumError,
+    isPremium,
+    addLog
+  ])
 
   if (loading || isPremiumLoading) {
     return <Loading fullScreen />
@@ -75,14 +131,31 @@ export default function Home(): JSX.Element {
     )
   }
 
+  // If there's a re-authentication needed, show login button
+  if (needsReauth) {
+    return (
+      <div className='flex min-h-screen items-center justify-center'>
+        <div className='text-center'>
+          <h1 className='mb-4 text-center font-[family-name:var(--font-belgrano)] text-4xl leading-tight text-primary-100'>
+            Spotify Authentication Required
+          </h1>
+          <p className='mb-8 text-gray-400'>
+            Your Spotify connection has expired or is invalid. Please sign in
+            again to continue.
+          </p>
+          <a
+            href='/auth/signin'
+            className='text-white rounded bg-green-500 px-4 py-2 font-bold hover:bg-green-600'
+          >
+            Sign In with Spotify
+          </a>
+        </div>
+      </div>
+    )
+  }
+
   // If there's a premium error (like token issues), show login button
   if (premiumError) {
-    addLog(
-      'INFO',
-      'Premium error detected, showing re-authentication option',
-      'RootPage',
-      undefined
-    )
     return (
       <div className='flex min-h-screen items-center justify-center'>
         <div className='text-center'>
@@ -106,12 +179,6 @@ export default function Home(): JSX.Element {
 
   // Don't show admin button if user is not premium
   if (!isPremium) {
-    addLog(
-      'INFO',
-      'User is not premium, showing redirect message',
-      'RootPage',
-      undefined
-    )
     return (
       <div className='flex min-h-screen items-center justify-center'>
         <div className='text-center'>
@@ -127,7 +194,6 @@ export default function Home(): JSX.Element {
   }
 
   // Only show admin button for premium users
-  addLog('INFO', 'User is premium, showing admin button', 'RootPage', undefined)
   return (
     <div className='flex min-h-screen items-center justify-center'>
       <div className='text-center'>

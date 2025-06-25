@@ -19,9 +19,9 @@ interface TokenResponse {
 
 interface AdminProfile {
   id: string
-  spotify_access_token: string
-  spotify_refresh_token: string
-  spotify_token_expires_at: string
+  spotify_access_token: string | null
+  spotify_refresh_token: string | null
+  spotify_token_expires_at: number | null
 }
 
 // Constants
@@ -99,7 +99,7 @@ export async function GET(): Promise<
     if (
       !typedProfile.spotify_access_token ||
       !typedProfile.spotify_refresh_token ||
-      !typedProfile.spotify_token_expires_at
+      typedProfile.spotify_token_expires_at === null
     ) {
       return NextResponse.json(
         {
@@ -112,7 +112,7 @@ export async function GET(): Promise<
     }
 
     // Check if token needs refresh
-    const tokenExpiresAt = Number(typedProfile.spotify_token_expires_at)
+    const tokenExpiresAt = typedProfile.spotify_token_expires_at
     const now = Math.floor(Date.now() / 1000)
 
     if (tokenExpiresAt <= now) {
