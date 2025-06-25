@@ -26,11 +26,11 @@ The project is organized into the following key directories:
 - **`app/`**: The core of the Next.js application, containing pages and API routes.
   - **`app/api/`**: Backend API endpoints.
   - **`app/[username]/admin/`**: The main dashboard for authenticated users.
+  - **`app/[username]/playlist/`**: The public-facing playlist view.
 - **`components/`**: Reusable React components.
 - **`lib/`**: Utility functions and library initializations.
 - **`services/`**: Business logic and interactions with external APIs.
 - **`supabase/`**: Supabase-related configurations and migrations.
-- **`prisma/`**: Prisma schema and database-related files.
 - **`hooks/`**: Custom React hooks for managing state and side effects.
 - **`shared/`**: Code shared between the client and server.
 
@@ -85,7 +85,7 @@ The application exposes several API endpoints under `app/api/` to handle various
 
 ## 6. Data Management
 
-- **Database:** The application uses a PostgreSQL database managed by Supabase. The schema is defined and managed using Prisma.
+- **Database:** The application uses a PostgreSQL database managed by Supabase. The schema is managed via Supabase's built-in migration tools, located in the `supabase/migrations` directory.
 - **State Management:** Client-side state is managed with Zustand, a small, fast, and scalable state-management solution.
 
 ## 7. Key Components
