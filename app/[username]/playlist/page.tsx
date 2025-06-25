@@ -1,6 +1,6 @@
 'use client'
 
-import { Suspense } from 'react'
+import { Suspense, useMemo } from 'react'
 import { useGetPlaylist } from '@/hooks/useGetPlaylist'
 import { useFixedPlaylist } from '@/hooks/useFixedPlaylist'
 import { useTrackOperations } from '@/hooks/useTrackOperations'
@@ -13,13 +13,21 @@ import Playlist from '@/components/Playlist/Playlist'
 import { handleApiError } from '@/shared/utils/errorHandling'
 import { AppError } from '@/shared/utils/errorHandling'
 import { useParams } from 'next/navigation'
-import { Loading, PlaylistSkeleton } from '@/components/ui'
+import { Loading, PlaylistSkeleton, ErrorMessage, Toast } from '@/components/ui'
+import { ERROR_MESSAGES } from '@/shared/constants/errors'
 
 export default function PlaylistPage(): JSX.Element {
   const params = useParams()
   const username = params?.username as string | undefined
 
-  const { token, loading: isTokenLoading, error: tokenError } = useUserToken()
+  const { 
+    token, 
+    loading: isTokenLoading, 
+    error: tokenError,
+    isRecovering,
+    isJukeboxOffline 
+  } = useUserToken()
+  
   const { fixedPlaylistId, isLoading: isPlaylistIdLoading } = useFixedPlaylist()
 
   // Only enable useGetPlaylist when we have both token and playlistId, and token is not loading
@@ -41,12 +49,19 @@ export default function PlaylistPage(): JSX.Element {
     isRefreshing: boolean
   }
 
-  const { addTrack, optimisticTrack } = useTrackOperations({
+  const { 
+    addTrack, 
+    optimisticTrack, 
+    lastAddedTrack, 
+    clearLastAddedTrack 
+  } = useTrackOperations({
     playlistId: fixedPlaylistId ?? '',
     token
   }) as {
     addTrack: (track: TrackItem) => Promise<void>
     optimisticTrack: TrackItem | undefined
+    lastAddedTrack: TrackItem | null
+    clearLastAddedTrack: () => void
   }
 
   // Get currently playing track using the user's token
@@ -60,6 +75,16 @@ export default function PlaylistPage(): JSX.Element {
     playlist ?? undefined,
     currentlyPlaying ?? undefined
   )
+
+  // Include optimistic track in the display if it exists
+  const tracksToDisplay = useMemo(() => {
+    if (!optimisticTrack) {
+      return upcomingTracks
+    }
+    
+    // Always add optimistic track to the end of the list
+    return [...upcomingTracks, optimisticTrack]
+  }, [upcomingTracks, optimisticTrack])
 
   const handleAddTrack = async (track: TrackDetails): Promise<void> => {
     try {
@@ -79,32 +104,96 @@ export default function PlaylistPage(): JSX.Element {
       }
       await addTrack(trackItem)
     } catch (error) {
-      console.error('[PlaylistPage] Error adding track:', error)
       const appError = handleApiError(error, 'PlaylistPage')
       if (appError instanceof AppError) {
-        console.error('[PlaylistPage] AppError:', appError.message)
+        // Error is already handled by handleApiError
       }
     }
   }
 
+  // Show jukebox offline state if circuit breaker is open
+  if (isJukeboxOffline) {
+    return (
+      <div className='w-full'>
+        <div className='mx-auto flex w-full flex-col space-y-6 sm:w-10/12 md:w-8/12 lg:w-9/12'>
+          <ErrorMessage 
+            message={ERROR_MESSAGES.JUKEBOX_OFFLINE}
+            variant="offline"
+            autoDismissMs={0} // Don't auto-dismiss offline errors
+            className="text-center"
+          />
+        </div>
+      </div>
+    )
+  }
+
+  // Show token error if present
   if (tokenError) {
-    return <div>Error loading user token: {tokenError}</div>
+    return (
+      <div className='w-full'>
+        <div className='mx-auto flex w-full flex-col space-y-6 sm:w-10/12 md:w-8/12 lg:w-9/12'>
+          <ErrorMessage 
+            message={tokenError}
+            variant="error"
+            autoDismissMs={0}
+            className="text-center"
+          />
+        </div>
+      </div>
+    )
   }
 
+  // Show playlist error if present
   if (playlistError) {
-    return <div>Error loading playlist: {playlistError}</div>
+    return (
+      <div className='w-full'>
+        <div className='mx-auto flex w-full flex-col space-y-6 sm:w-10/12 md:w-8/12 lg:w-9/12'>
+          <ErrorMessage 
+            message={playlistError}
+            variant="error"
+            className="text-center"
+          />
+        </div>
+      </div>
+    )
   }
 
-  if (isTokenLoading || isPlaylistIdLoading || isPlaylistLoading) {
-    return <Loading fullScreen />
+  // Show loading state during token loading or recovery
+  if (isTokenLoading || isPlaylistIdLoading || isPlaylistLoading || isRecovering) {
+    return (
+      <Loading 
+        fullScreen 
+        message={isRecovering ? ERROR_MESSAGES.RECONNECTING : "Loading..."} 
+      />
+    )
   }
 
   if (!playlist) {
-    return <div>Playlist not found</div>
+    return (
+      <div className='w-full'>
+        <div className='mx-auto flex w-full flex-col space-y-6 sm:w-10/12 md:w-8/12 lg:w-9/12'>
+          <ErrorMessage 
+            message="Playlist not found"
+            variant="error"
+            className="text-center"
+          />
+        </div>
+      </div>
+    )
   }
 
   return (
     <div className='w-full'>
+      {/* Success Toast */}
+      {lastAddedTrack && (
+        <Toast
+          message={`"${lastAddedTrack.track.name}" added to playlist`}
+          onDismiss={clearLastAddedTrack}
+          variant="success"
+          autoDismissMs={3000}
+        />
+      )}
+      
       <div className='mx-auto flex w-full flex-col space-y-6 sm:w-10/12 md:w-8/12 lg:w-9/12'>
         <div className='mx-auto flex w-full overflow-hidden rounded-lg bg-primary-100 shadow-md sm:w-10/12 md:w-8/12 lg:w-9/12'>
           <div className='flex w-full flex-col p-5'>
@@ -119,7 +208,7 @@ export default function PlaylistPage(): JSX.Element {
               </div>
             )}
             <Playlist
-              tracks={upcomingTracks}
+              tracks={tracksToDisplay}
               optimisticTrack={optimisticTrack}
               currentlyPlaying={currentlyPlaying}
             />

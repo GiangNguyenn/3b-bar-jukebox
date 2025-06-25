@@ -25,7 +25,7 @@ export async function verifyPlaybackResume(
   })
 
   const initialState = await sendApiRequest<SpotifyPlaybackState>({
-    path: 'me/player',
+    path: 'me/player?market=from_token',
     method: 'GET'
   })
 
@@ -83,7 +83,7 @@ export async function verifyPlaybackResume(
 
     try {
       currentState = await sendApiRequest<SpotifyPlaybackState>({
-        path: 'me/player',
+        path: 'me/player?market=from_token',
         method: 'GET'
       })
     } catch (error) {

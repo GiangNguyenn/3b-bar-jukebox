@@ -8,13 +8,15 @@ interface ErrorMessageProps {
   onDismiss?: () => void
   autoDismissMs?: number
   className?: string
+  variant?: 'error' | 'offline' | 'recovering'
 }
 
 export function ErrorMessage({
   message,
   onDismiss,
   autoDismissMs = 5000, // 5 seconds default
-  className = ''
+  className = '',
+  variant = 'error'
 }: ErrorMessageProps): JSX.Element | null {
   const [isVisible, setIsVisible] = useState(true)
 
@@ -39,9 +41,20 @@ export function ErrorMessage({
     return null
   }
 
+  const getVariantStyles = (): string => {
+    switch (variant) {
+      case 'offline':
+        return 'border-orange-500 bg-orange-900/50 text-orange-100'
+      case 'recovering':
+        return 'border-blue-500 bg-blue-900/50 text-blue-100'
+      default:
+        return 'border-red-500 bg-red-900/50 text-red-100'
+    }
+  }
+
   return (
     <div
-      className={`relative rounded border border-red-500 bg-red-900/50 p-4 text-red-100 ${className}`}
+      className={`relative rounded p-4 ${getVariantStyles()} ${className}`}
     >
       <button
         onClick={handleDismiss}

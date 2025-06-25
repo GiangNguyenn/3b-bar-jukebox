@@ -54,7 +54,7 @@ export async function cleanupPlaybackState(): Promise<void> {
   try {
     // Only pause if we're actually playing
     const state = await sendApiRequest<SpotifyPlaybackState>({
-      path: 'me/player',
+      path: 'me/player?market=from_token',
       method: 'GET'
     })
 

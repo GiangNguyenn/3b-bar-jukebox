@@ -11,7 +11,7 @@ export const useUserQueue = (id: string) => {
     return handleOperationError(
       async () => {
         const response = await sendApiRequest<UserQueue>({
-          path: `me/player/queue`
+          path: `me/player/queue?market=from_token`
         })
         return response
       },

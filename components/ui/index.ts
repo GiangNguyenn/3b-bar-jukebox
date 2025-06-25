@@ -7,6 +7,7 @@ export {
 } from './skeleton'
 export { Progress } from './progress'
 export { ErrorMessage } from './error-message'
+export { Toast } from './toast'
 export { RecoveryStatus } from './recovery-status'
 export { Tabs, TabsContent, TabsList, TabsTrigger } from './tabs'
 export {

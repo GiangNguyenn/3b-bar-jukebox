@@ -140,7 +140,7 @@ export class SpotifyApiService implements SpotifyApiClient {
     return handleOperationError(
       async () =>
         this.apiClient<SpotifyPlaybackState>({
-          path: 'me/player/currently-playing',
+          path: 'me/player/currently-playing?market=from_token',
           retryConfig: this.retryConfig
         }),
       'SpotifyApi.getCurrentlyPlaying'
@@ -173,7 +173,7 @@ export class SpotifyApiService implements SpotifyApiClient {
     return handleOperationError(
       async () =>
         this.apiClient<SpotifyPlaybackState>({
-          path: 'me/player',
+          path: 'me/player?market=from_token',
           retryConfig: this.retryConfig
         }),
       'SpotifyApi.getPlaybackState'
@@ -184,7 +184,7 @@ export class SpotifyApiService implements SpotifyApiClient {
     return handleOperationError(
       async () =>
         this.apiClient<{ queue: SpotifyPlaybackState[] }>({
-          path: 'me/player/queue',
+          path: 'me/player/queue?market=from_token',
           retryConfig: this.retryConfig
         }),
       'SpotifyApi.getQueue'

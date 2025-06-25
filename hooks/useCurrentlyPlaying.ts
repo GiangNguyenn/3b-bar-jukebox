@@ -8,7 +8,7 @@ const currentlyPlayingFetcher = async () => {
   return handleOperationError(
     async () => {
       const response = await sendApiRequest<SpotifyPlaybackState>({
-        path: 'me/player/currently-playing',
+        path: 'me/player/currently-playing?market=from_token',
         method: 'GET'
       })
       return response
