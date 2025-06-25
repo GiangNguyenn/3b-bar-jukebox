@@ -6,6 +6,7 @@ import { useFixedPlaylist } from '@/hooks/useFixedPlaylist'
 import { useTrackOperations } from '@/hooks/useTrackOperations'
 import { useUserToken } from '@/hooks/useUserToken'
 import { useNowPlayingTrack } from '@/hooks/useNowPlayingTrack'
+import { useUpcomingTracks } from '@/hooks/useUpcomingTracks'
 import { TrackDetails, TrackItem } from '@/shared/types/spotify'
 import SearchInput from '@/components/SearchInput'
 import Playlist from '@/components/Playlist/Playlist'
@@ -39,6 +40,7 @@ export default function PlaylistPage(): JSX.Element {
     isLoading: boolean
     isRefreshing: boolean
   }
+
   const { addTrack, optimisticTrack } = useTrackOperations({
     playlistId: fixedPlaylistId ?? '',
     token
@@ -52,6 +54,12 @@ export default function PlaylistPage(): JSX.Element {
     token,
     enabled: !isTokenLoading && !!token
   })
+
+  // Get only the upcoming tracks (tracks that are yet to be played)
+  const upcomingTracks = useUpcomingTracks(
+    playlist ?? undefined,
+    currentlyPlaying ?? undefined
+  )
 
   const handleAddTrack = async (track: TrackDetails): Promise<void> => {
     try {
@@ -111,7 +119,7 @@ export default function PlaylistPage(): JSX.Element {
               </div>
             )}
             <Playlist
-              tracks={playlist.tracks.items}
+              tracks={upcomingTracks}
               optimisticTrack={optimisticTrack}
               currentlyPlaying={currentlyPlaying}
             />
