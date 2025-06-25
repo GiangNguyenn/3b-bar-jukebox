@@ -15,7 +15,7 @@ const getInitialState = (): TrackSuggestionsState => {
       yearRange: [1950, new Date().getFullYear()],
       popularity: 50,
       allowExplicit: false,
-      maxSongLength: 3,
+      maxSongLength: 10,
       songsBetweenRepeats: 5,
       maxOffset: DEFAULT_MAX_OFFSET
     }
@@ -32,7 +32,7 @@ const getInitialState = (): TrackSuggestionsState => {
           parsed.genres?.length > 0
             ? parsed.genres.slice(0, 10)
             : [...FALLBACK_GENRES.slice(0, 10)],
-        maxSongLength: Math.max(3, parsed.maxSongLength ?? 3),
+        maxSongLength: parsed.maxSongLength ?? 10,
         maxOffset: parsed.maxOffset ?? DEFAULT_MAX_OFFSET
       }
     } catch (error) {
@@ -45,7 +45,7 @@ const getInitialState = (): TrackSuggestionsState => {
     yearRange: [1950, new Date().getFullYear()],
     popularity: 50,
     allowExplicit: false,
-    maxSongLength: 3,
+    maxSongLength: 10,
     songsBetweenRepeats: 5,
     maxOffset: DEFAULT_MAX_OFFSET
   }
