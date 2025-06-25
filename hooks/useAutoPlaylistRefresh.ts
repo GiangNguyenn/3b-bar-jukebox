@@ -76,8 +76,8 @@ export function useAutoPlaylistRefresh({
     // Set up the interval
     intervalRef.current = setInterval(performAutoRefresh, AUTO_REFRESH_INTERVAL)
 
-    // Perform initial refresh after a short delay
-    const initialRefreshTimeout = setTimeout(performAutoRefresh, 5000) // 5 seconds
+    // Perform initial refresh after a delay to avoid interfering with user actions
+    const initialRefreshTimeout = setTimeout(performAutoRefresh, 30000) // 30 seconds
 
     addLog(
       'INFO',

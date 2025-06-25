@@ -26,3 +26,9 @@ export const ERROR_MESSAGES = {
   ALL_RECOVERY_ATTEMPTS_FAILED:
     'All recovery attempts failed. Reloading page...'
 } as const
+
+export const TOKEN_RECOVERY_CONFIG = {
+  MAX_RETRY_ATTEMPTS: 2,
+  RETRY_DELAYS: [1000, 3000], // Exponential backoff
+  OFFLINE_THRESHOLD: 3 // Max consecutive failures before showing offline
+} as const

@@ -13,8 +13,12 @@ export function useUpcomingTracks(
   currentlyPlaying: SpotifyPlaybackState | undefined
 ) {
   const upcomingTracks = useMemo(() => {
-    if (!playlist || !currentlyPlaying?.item?.id) return []
-    return filterUpcomingTracks(playlist.tracks.items, currentlyPlaying.item.id)
+    if (!playlist) return []
+    
+    // Get the current track ID, or null if no track is playing
+    const currentTrackId = currentlyPlaying?.item?.id || null
+    
+    return filterUpcomingTracks(playlist.tracks.items, currentTrackId)
   }, [playlist, currentlyPlaying?.item?.id])
 
   return upcomingTracks

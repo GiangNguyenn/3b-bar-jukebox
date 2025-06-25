@@ -59,7 +59,7 @@ export async function getAvailableDevices(): Promise<SpotifyDevice[]> {
 export async function getPlaybackState(): Promise<SpotifyPlaybackState | null> {
   try {
     const state = await sendApiRequest<SpotifyPlaybackState>({
-      path: 'me/player',
+      path: 'me/player?market=from_token',
       method: 'GET'
     })
 

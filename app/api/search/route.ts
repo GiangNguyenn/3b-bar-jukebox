@@ -192,11 +192,11 @@ export async function GET(
       }
     }
 
-    // Make the search request to Spotify API
+    // Make the search request to Spotify API with market filtering
     const searchResponse = await fetch(
       `https://api.spotify.com/v1/search?q=${encodeURIComponent(
         query
-      )}&type=${type}&limit=10`,
+      )}&type=${type}&limit=10&market=from_token`,
       {
         headers: {
           Authorization: `Bearer ${accessToken}`

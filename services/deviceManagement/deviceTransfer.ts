@@ -71,7 +71,7 @@ export async function transferPlaybackToDevice(
       const state = await sendApiRequest<{
         device: { id: string; name: string }
       }>({
-        path: 'me/player',
+        path: 'me/player?market=from_token',
         method: 'GET'
       })
 

@@ -56,7 +56,7 @@ export function useDeviceHealth(deviceId: string | null): DeviceHealthStatus {
 
           // Get current playback state for intelligent validation
           await sendApiRequest<SpotifyPlaybackState>({
-            path: 'me/player',
+            path: 'me/player?market=from_token',
             method: 'GET'
           })
 

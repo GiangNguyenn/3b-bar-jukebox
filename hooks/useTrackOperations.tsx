@@ -3,7 +3,7 @@ import { sendApiRequest } from '@/shared/api'
 import { useGetPlaylist } from './useGetPlaylist'
 import { useTrackOperation } from './useTrackOperation'
 import { ERROR_MESSAGES } from '@/shared/constants/errors'
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
 
 interface UseTrackOperationsProps {
   playlistId: string
@@ -16,6 +16,7 @@ interface TrackOperationsState {
   isSuccess: boolean
   pendingTracks: string[]
   optimisticTrack: TrackItem | null
+  lastAddedTrack: TrackItem | null
 }
 
 export const useTrackOperations = ({
@@ -25,10 +26,45 @@ export const useTrackOperations = ({
   const {
     error: playlistError,
     refetch,
-    data: playlist
+    data: playlist,
+    addTrackOptimistically,
+    removeTrackOptimistically,
+    revertOptimisticUpdate
   } = useGetPlaylist({ playlistId, token })
+  
   const [pendingTracks, setPendingTracks] = useState<Set<string>>(new Set())
   const [optimisticTrack, setOptimisticTrack] = useState<TrackItem | null>(null)
+  const [lastAddedTrack, setLastAddedTrack] = useState<TrackItem | null>(null)
+  const optimisticTrackTimeRef = useRef<number>(0)
+
+  // Clear optimistic track when the real track appears in playlist data
+  useEffect(() => {
+    if (optimisticTrack && playlist) {
+      // Don't clear optimistic track for at least 2 seconds after it's set
+      const timeSinceOptimisticTrack = Date.now() - optimisticTrackTimeRef.current
+      if (timeSinceOptimisticTrack < 2000) {
+        return
+      }
+      
+      const matchingTracks = playlist.tracks.items.filter(
+        item => item.track.id === optimisticTrack.track.id
+      )
+      
+      // Look for a track with a real added_by ID (not optimistic)
+      const realTrack = matchingTracks.find(
+        item => item.added_by?.id && item.added_by.id !== 'optimistic'
+      )
+      
+      if (realTrack) {
+        setOptimisticTrack(null)
+        setPendingTracks((prev) => {
+          const newSet = new Set(prev)
+          newSet.delete(optimisticTrack.track.uri)
+          return newSet
+        })
+      }
+    }
+  }, [playlist?.tracks?.items, optimisticTrack]) // Only depend on the tracks array, not the entire playlist object
 
   const { isLoading, error, isSuccess, executeOperation } = useTrackOperation({
     playlistId,
@@ -43,6 +79,7 @@ export const useTrackOperations = ({
   const setOptimisticState = (track: TrackItem): void => {
     setPendingTracks((prev) => new Set(prev).add(track.track.uri))
     setOptimisticTrack(track)
+    optimisticTrackTimeRef.current = Date.now()
   }
 
   // Helper function to clear optimistic state
@@ -55,50 +92,11 @@ export const useTrackOperations = ({
     setOptimisticTrack(null)
   }
 
-  // Helper function to create optimistic playlist for add operation
-  const createOptimisticAddPlaylist = (
-    track: TrackItem
-  ): SpotifyPlaylistItem => ({
-    ...playlist!,
-    tracks: {
-      ...playlist!.tracks,
-      items: [
-        ...playlist!.tracks.items,
-        {
-          ...track,
-          added_at: new Date().toISOString(),
-          added_by: {
-            id: 'optimistic',
-            uri: 'spotify:user:optimistic',
-            href: 'https://api.spotify.com/v1/users/optimistic',
-            external_urls: {
-              spotify: 'https://open.spotify.com/user/optimistic'
-            },
-            type: 'user'
-          }
-        }
-      ]
-    }
-  })
-
-  // Helper function to create optimistic playlist for remove operation
-  const createOptimisticRemovePlaylist = (
-    track: TrackItem
-  ): SpotifyPlaylistItem => ({
-    ...playlist!,
-    tracks: {
-      ...playlist!.tracks,
-      items: playlist!.tracks.items.filter(
-        (item) => item.track.uri !== track.track.uri
-      )
-    }
-  })
-
   // Helper function to handle operation with optimistic updates
   const executeWithOptimisticUpdates = async (
     track: TrackItem,
     operation: () => Promise<void>,
-    createOptimisticPlaylist: (track: TrackItem) => SpotifyPlaylistItem,
+    optimisticUpdate: () => void,
     errorMessage: string,
     operationName: string
   ): Promise<void> => {
@@ -107,19 +105,23 @@ export const useTrackOperations = ({
     ): Promise<void> => {
       // Set optimistic state
       setOptimisticState(track)
+      
+      // Apply optimistic update immediately
+      optimisticUpdate()
 
       try {
         await operation()
-        // Small delay to ensure Spotify API has processed the change
-        await new Promise((resolve) => setTimeout(resolve, 1000))
-        // Refresh playlist with actual data
-        await refetch()
+        // Don't immediately refetch - let the optimistic update persist
+        // The track will be confirmed on the next natural refresh cycle
+        
+        // Set success state for toast
+        if (operationName === 'Add Track') {
+          setLastAddedTrack(track)
+        }
       } catch (error) {
-        console.error(`[${operationName}] Error:`, error)
         // Revert optimistic update on error
         clearOptimisticState(track)
-        // Revert playlist data on error
-        await refetch()
+        revertOptimisticUpdate()
         throw new Error(errorMessage)
       }
     }
@@ -127,12 +129,9 @@ export const useTrackOperations = ({
     try {
       await executeOperation(operationWithOptimisticUpdates, track)
     } catch (error) {
-      console.error(`[${operationName}] Error:`, error)
       throw error // Re-throw the error to be caught by the caller
-    } finally {
-      // Clear pending state after operation completes
-      clearOptimisticState(track)
     }
+    // Don't clear optimistic state here - let it persist until next refresh cycle
   }
 
   const addTrack = async (track: TrackItem): Promise<void> => {
@@ -171,7 +170,7 @@ export const useTrackOperations = ({
     await executeWithOptimisticUpdates(
       track,
       operation,
-      createOptimisticAddPlaylist,
+      () => addTrackOptimistically(track),
       ERROR_MESSAGES.FAILED_TO_ADD,
       'Add Track'
     )
@@ -211,10 +210,15 @@ export const useTrackOperations = ({
     await executeWithOptimisticUpdates(
       track,
       operation,
-      createOptimisticRemovePlaylist,
+      () => removeTrackOptimistically(track.track.uri),
       ERROR_MESSAGES.FAILED_TO_LOAD,
       'Remove Track'
     )
+  }
+
+  // Function to clear the last added track (for toast dismissal)
+  const clearLastAddedTrack = (): void => {
+    setLastAddedTrack(null)
   }
 
   return {
@@ -224,6 +228,8 @@ export const useTrackOperations = ({
     error,
     isSuccess,
     pendingTracks: Array.from(pendingTracks),
-    optimisticTrack
+    optimisticTrack,
+    lastAddedTrack,
+    clearLastAddedTrack
   }
 }
