@@ -8,11 +8,7 @@ import { type SpotifyPlaybackState } from '@/shared/types/spotify'
 
 export function usePlaybackControls() {
   const [isLoading, setIsLoading] = useState(false)
-  const {
-    deviceId,
-    playbackState,
-    setPlaybackState
-  } = useSpotifyPlayerStore()
+  const { deviceId, playbackState, setPlaybackState } = useSpotifyPlayerStore()
   const { addLog } = useConsoleLogsContext()
 
   const getIsActuallyPlaying = useCallback(() => {
@@ -69,13 +65,7 @@ export function usePlaybackControls() {
     } finally {
       setIsLoading(false)
     }
-  }, [
-    deviceId,
-    playbackState,
-    getIsActuallyPlaying,
-    addLog,
-    setPlaybackState
-  ])
+  }, [deviceId, playbackState, getIsActuallyPlaying, addLog, setPlaybackState])
 
   return {
     isLoading,
