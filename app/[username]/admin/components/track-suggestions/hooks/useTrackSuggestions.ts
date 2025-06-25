@@ -1,5 +1,9 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { FALLBACK_GENRES, type Genre, DEFAULT_MAX_OFFSET } from '@/shared/constants/trackSuggestion'
+import {
+  FALLBACK_GENRES,
+  type Genre,
+  DEFAULT_MAX_OFFSET
+} from '@/shared/constants/trackSuggestion'
 import { type TrackSuggestionsState } from '@/shared/types/trackSuggestions'
 
 const STORAGE_KEY = 'track-suggestions-state'
