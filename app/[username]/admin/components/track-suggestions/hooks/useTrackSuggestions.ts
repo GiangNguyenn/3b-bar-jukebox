@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { FALLBACK_GENRES, type Genre } from '@/shared/constants/trackSuggestion'
+import { FALLBACK_GENRES, type Genre, DEFAULT_MAX_OFFSET } from '@/shared/constants/trackSuggestion'
 import { type TrackSuggestionsState } from '@/shared/types/trackSuggestions'
 
 const STORAGE_KEY = 'track-suggestions-state'
@@ -13,7 +13,7 @@ const getInitialState = (): TrackSuggestionsState => {
       allowExplicit: false,
       maxSongLength: 3,
       songsBetweenRepeats: 5,
-      maxOffset: 1000
+      maxOffset: DEFAULT_MAX_OFFSET
     }
   }
 
@@ -29,7 +29,7 @@ const getInitialState = (): TrackSuggestionsState => {
             ? parsed.genres.slice(0, 10)
             : [...FALLBACK_GENRES.slice(0, 10)],
         maxSongLength: Math.max(3, parsed.maxSongLength ?? 3),
-        maxOffset: parsed.maxOffset ?? 1000
+        maxOffset: parsed.maxOffset ?? DEFAULT_MAX_OFFSET
       }
     } catch (error) {
       console.error('[TrackSuggestions] Failed to parse localStorage:', error)
@@ -43,7 +43,7 @@ const getInitialState = (): TrackSuggestionsState => {
     allowExplicit: false,
     maxSongLength: 3,
     songsBetweenRepeats: 5,
-    maxOffset: 1000
+    maxOffset: DEFAULT_MAX_OFFSET
   }
 }
 

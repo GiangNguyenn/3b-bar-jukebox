@@ -1428,7 +1428,7 @@ export const TRACK_SEARCH_LIMIT = 50
 
 // Track suggestion defaults
 export const DEFAULT_MAX_SONG_LENGTH_MINUTES = 3
-export const DEFAULT_MAX_OFFSET = 1000
+export const DEFAULT_MAX_OFFSET = 10
 export const DEFAULT_MAX_GENRE_ATTEMPTS = 20
 export const DEFAULT_YEAR_RANGE: [number, number] = [
   1950,
