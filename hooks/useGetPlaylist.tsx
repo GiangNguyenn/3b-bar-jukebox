@@ -44,9 +44,13 @@ export function useGetPlaylist({
 
     // Skip background refresh if there are optimistic updates and it's been less than 10 seconds
     if (isBackgroundRefresh && hasOptimisticUpdates) {
-      const timeSinceOptimisticUpdate = Date.now() - optimisticUpdateTimeRef.current
-      if (timeSinceOptimisticUpdate < 10000) { // 10 seconds
-        console.log('[useGetPlaylist] Skipping background refresh due to recent optimistic updates')
+      const timeSinceOptimisticUpdate =
+        Date.now() - optimisticUpdateTimeRef.current
+      if (timeSinceOptimisticUpdate < 10000) {
+        // 10 seconds
+        console.log(
+          '[useGetPlaylist] Skipping background refresh due to recent optimistic updates'
+        )
         return
       }
     }
@@ -103,7 +107,7 @@ export function useGetPlaylist({
 
       cache.set(cacheKey, playlistData)
       setData(playlistData)
-      
+
       // Clear optimistic updates flag after successful fetch
       if (hasOptimisticUpdates) {
         setHasOptimisticUpdates(false)
@@ -129,77 +133,96 @@ export function useGetPlaylist({
   }
 
   // Optimistic update function to immediately add a track to the playlist
-  const addTrackOptimistically = useCallback((track: TrackItem) => {
-    if (!data || !playlistId) {
-      console.log('[useGetPlaylist] Cannot add track optimistically - no data or playlistId:', { data: !!data, playlistId })
-      return
-    }
-
-    console.log('[useGetPlaylist] Adding track optimistically:', track.track.name, 'Current tracks count:', data.tracks.items.length)
-
-    const optimisticPlaylist: SpotifyPlaylistItem = {
-      ...data,
-      tracks: {
-        ...data.tracks,
-        items: [
-          ...data.tracks.items,
-          {
-            ...track,
-            added_at: new Date().toISOString(),
-            added_by: {
-              id: 'optimistic',
-              uri: 'spotify:user:optimistic',
-              href: 'https://api.spotify.com/v1/users/optimistic',
-              external_urls: {
-                spotify: 'https://open.spotify.com/user/optimistic'
-              },
-              type: 'user'
-            }
-          }
-        ]
+  const addTrackOptimistically = useCallback(
+    (track: TrackItem) => {
+      if (!data || !playlistId) {
+        console.log(
+          '[useGetPlaylist] Cannot add track optimistically - no data or playlistId:',
+          { data: !!data, playlistId }
+        )
+        return
       }
-    }
 
-    // Update both state and cache
-    setData(optimisticPlaylist)
-    const cacheKey = `playlist-${playlistId}`
-    cache.set(cacheKey, optimisticPlaylist)
-    
-    // Set flag to prevent background refresh from overriding optimistic updates
-    setHasOptimisticUpdates(true)
-    optimisticUpdateTimeRef.current = Date.now()
+      console.log(
+        '[useGetPlaylist] Adding track optimistically:',
+        track.track.name,
+        'Current tracks count:',
+        data.tracks.items.length
+      )
 
-    console.log('[useGetPlaylist] Optimistically added track:', track.track.name, 'New tracks count:', optimisticPlaylist.tracks.items.length)
-  }, [data, playlistId])
+      const optimisticPlaylist: SpotifyPlaylistItem = {
+        ...data,
+        tracks: {
+          ...data.tracks,
+          items: [
+            ...data.tracks.items,
+            {
+              ...track,
+              added_at: new Date().toISOString(),
+              added_by: {
+                id: 'optimistic',
+                uri: 'spotify:user:optimistic',
+                href: 'https://api.spotify.com/v1/users/optimistic',
+                external_urls: {
+                  spotify: 'https://open.spotify.com/user/optimistic'
+                },
+                type: 'user'
+              }
+            }
+          ]
+        }
+      }
+
+      // Update both state and cache
+      setData(optimisticPlaylist)
+      const cacheKey = `playlist-${playlistId}`
+      cache.set(cacheKey, optimisticPlaylist)
+
+      // Set flag to prevent background refresh from overriding optimistic updates
+      setHasOptimisticUpdates(true)
+      optimisticUpdateTimeRef.current = Date.now()
+
+      console.log(
+        '[useGetPlaylist] Optimistically added track:',
+        track.track.name,
+        'New tracks count:',
+        optimisticPlaylist.tracks.items.length
+      )
+    },
+    [data, playlistId]
+  )
 
   // Optimistic update function to immediately remove a track from the playlist
-  const removeTrackOptimistically = useCallback((trackUri: string) => {
-    if (!data || !playlistId) return
+  const removeTrackOptimistically = useCallback(
+    (trackUri: string) => {
+      if (!data || !playlistId) return
 
-    const optimisticPlaylist: SpotifyPlaylistItem = {
-      ...data,
-      tracks: {
-        ...data.tracks,
-        items: data.tracks.items.filter(item => item.track.uri !== trackUri)
+      const optimisticPlaylist: SpotifyPlaylistItem = {
+        ...data,
+        tracks: {
+          ...data.tracks,
+          items: data.tracks.items.filter((item) => item.track.uri !== trackUri)
+        }
       }
-    }
 
-    // Update both state and cache
-    setData(optimisticPlaylist)
-    const cacheKey = `playlist-${playlistId}`
-    cache.set(cacheKey, optimisticPlaylist)
-    
-    // Set flag to prevent background refresh from overriding optimistic updates
-    setHasOptimisticUpdates(true)
-    optimisticUpdateTimeRef.current = Date.now()
+      // Update both state and cache
+      setData(optimisticPlaylist)
+      const cacheKey = `playlist-${playlistId}`
+      cache.set(cacheKey, optimisticPlaylist)
 
-    console.log('[useGetPlaylist] Optimistically removed track:', trackUri)
-  }, [data, playlistId])
+      // Set flag to prevent background refresh from overriding optimistic updates
+      setHasOptimisticUpdates(true)
+      optimisticUpdateTimeRef.current = Date.now()
+
+      console.log('[useGetPlaylist] Optimistically removed track:', trackUri)
+    },
+    [data, playlistId]
+  )
 
   // Function to revert optimistic updates (used on error)
   const revertOptimisticUpdate = useCallback(() => {
     if (!playlistId) return
-    
+
     const cacheKey = `playlist-${playlistId}`
     cache.delete(cacheKey)
     setHasOptimisticUpdates(false)

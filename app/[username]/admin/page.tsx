@@ -23,6 +23,8 @@ import { type TrackSuggestionsState } from '@/shared/types/trackSuggestions'
 import { useRecoverySystem } from '@/hooks/recovery'
 import { ErrorMessage } from '@/components/ui/error-message'
 import { Loading, PlaylistSkeleton } from '@/components/ui'
+import { useTokenHealth } from '@/hooks/health/useTokenHealth'
+import { tokenManager } from '@/shared/token/tokenManager'
 
 export default function AdminPage(): JSX.Element {
   // State
@@ -70,6 +72,9 @@ export default function AdminPage(): JSX.Element {
     fixedPlaylistId,
     undefined // No callback needed for admin page
   )
+
+  // Add token health monitoring
+  const tokenHealth = useTokenHealth()
 
   // Enable automatic playlist refresh every 3 minutes
   useAutoPlaylistRefresh({
@@ -277,6 +282,73 @@ export default function AdminPage(): JSX.Element {
     const remainingSeconds = seconds % 60
     return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`
   }, [])
+
+  // Add graceful token error recovery
+  const handleTokenError = useCallback(async (): Promise<void> => {
+    try {
+      setIsLoading(true)
+      addLog('INFO', 'Attempting automatic token recovery', 'AdminPage')
+
+      // Clear token cache
+      tokenManager.clearCache()
+
+      // Force token refresh
+      await tokenManager.getToken()
+
+      // Reinitialize player
+      await createPlayer()
+
+      addLog('INFO', 'Automatic token recovery successful', 'AdminPage')
+      setError(null)
+    } catch (error) {
+      addLog(
+        'ERROR',
+        'Automatic token recovery failed',
+        'AdminPage',
+        error instanceof Error ? error : undefined
+      )
+      setError('Token recovery failed. Please check your Spotify credentials.')
+    } finally {
+      setIsLoading(false)
+    }
+  }, [addLog, createPlayer])
+
+  // Automatic token recovery when token health is in error state
+  useEffect(() => {
+    if (tokenHealth.status === 'error' && !isLoading && isReady) {
+      addLog(
+        'INFO',
+        'Token health error detected, triggering automatic recovery',
+        'AdminPage'
+      )
+      void handleTokenError()
+    }
+  }, [tokenHealth.status, isLoading, isReady, handleTokenError, addLog])
+
+  // Proactive token refresh interval - check every minute
+  useEffect(() => {
+    if (!isReady) return
+
+    const interval = setInterval(() => {
+      void (async () => {
+        try {
+          const wasRefreshed = await tokenManager.refreshIfNeeded()
+          if (wasRefreshed) {
+            addLog('INFO', 'Proactive token refresh completed', 'AdminPage')
+          }
+        } catch (error) {
+          addLog(
+            'ERROR',
+            'Proactive token refresh failed',
+            'AdminPage',
+            error instanceof Error ? error : undefined
+          )
+        }
+      })()
+    }, 60000) // Check every minute
+
+    return () => clearInterval(interval)
+  }, [isReady, addLog])
 
   useEffect(() => {
     addLog(

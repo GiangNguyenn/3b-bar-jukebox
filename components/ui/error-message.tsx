@@ -53,9 +53,7 @@ export function ErrorMessage({
   }
 
   return (
-    <div
-      className={`relative rounded p-4 ${getVariantStyles()} ${className}`}
-    >
+    <div className={`relative rounded p-4 ${getVariantStyles()} ${className}`}>
       <button
         onClick={handleDismiss}
         className='absolute right-2 top-2 text-red-300 transition-colors hover:text-red-100'

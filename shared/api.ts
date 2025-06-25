@@ -269,6 +269,43 @@ export const sendApiRequest = async <T>({
           )
         }
 
+        // Handle authentication errors with automatic token refresh
+        if (response.status === 401 && !isLocalApi) {
+          if (addLog) {
+            addLog(
+              'WARN',
+              'Authentication error detected, attempting token refresh',
+              'ApiRequest'
+            )
+          }
+
+          try {
+            // Clear token cache and force refresh
+            tokenManager.clearCache()
+            await tokenManager.getToken()
+
+            if (addLog) {
+              addLog('INFO', 'Token refreshed, retrying request', 'ApiRequest')
+            }
+
+            // Retry the request with fresh token
+            return makeRequest(retryCount + 1)
+          } catch (tokenError) {
+            if (addLog) {
+              addLog(
+                'ERROR',
+                'Token refresh failed',
+                'ApiRequest',
+                tokenError instanceof Error ? tokenError : undefined
+              )
+            }
+            throw new ApiError('Authentication failed after token refresh', {
+              status: 401,
+              headers: response.headers
+            })
+          }
+        }
+
         // Handle rate limiting
         if (response.status === 429) {
           const retryAfter = parseInt(

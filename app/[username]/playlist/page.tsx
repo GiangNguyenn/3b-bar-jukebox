@@ -1,6 +1,6 @@
 'use client'
 
-import { Suspense, useMemo } from 'react'
+import { Suspense, useMemo, useEffect } from 'react'
 import { useGetPlaylist } from '@/hooks/useGetPlaylist'
 import { useFixedPlaylist } from '@/hooks/useFixedPlaylist'
 import { useTrackOperations } from '@/hooks/useTrackOperations'
@@ -20,14 +20,14 @@ export default function PlaylistPage(): JSX.Element {
   const params = useParams()
   const username = params?.username as string | undefined
 
-  const { 
-    token, 
-    loading: isTokenLoading, 
+  const {
+    token,
+    loading: isTokenLoading,
     error: tokenError,
     isRecovering,
-    isJukeboxOffline 
+    isJukeboxOffline
   } = useUserToken()
-  
+
   const { fixedPlaylistId, isLoading: isPlaylistIdLoading } = useFixedPlaylist()
 
   // Only enable useGetPlaylist when we have both token and playlistId, and token is not loading
@@ -49,20 +49,16 @@ export default function PlaylistPage(): JSX.Element {
     isRefreshing: boolean
   }
 
-  const { 
-    addTrack, 
-    optimisticTrack, 
-    lastAddedTrack, 
-    clearLastAddedTrack 
-  } = useTrackOperations({
-    playlistId: fixedPlaylistId ?? '',
-    token
-  }) as {
-    addTrack: (track: TrackItem) => Promise<void>
-    optimisticTrack: TrackItem | undefined
-    lastAddedTrack: TrackItem | null
-    clearLastAddedTrack: () => void
-  }
+  const { addTrack, optimisticTrack, lastAddedTrack, clearLastAddedTrack } =
+    useTrackOperations({
+      playlistId: fixedPlaylistId ?? '',
+      token
+    }) as {
+      addTrack: (track: TrackItem) => Promise<void>
+      optimisticTrack: TrackItem | undefined
+      lastAddedTrack: TrackItem | null
+      clearLastAddedTrack: () => void
+    }
 
   // Get currently playing track using the user's token
   const { data: currentlyPlaying } = useNowPlayingTrack({
@@ -81,7 +77,7 @@ export default function PlaylistPage(): JSX.Element {
     if (!optimisticTrack) {
       return upcomingTracks
     }
-    
+
     // Always add optimistic track to the end of the list
     return [...upcomingTracks, optimisticTrack]
   }, [upcomingTracks, optimisticTrack])
@@ -111,17 +107,27 @@ export default function PlaylistPage(): JSX.Element {
     }
   }
 
+  // Reload page when jukebox goes offline (can't recover from expired token)
+  useEffect(() => {
+    if (isJukeboxOffline) {
+      // Small delay to ensure the user sees the loading state briefly
+      const reloadTimer = setTimeout(() => {
+        window.location.reload()
+      }, 1000)
+
+      return () => clearTimeout(reloadTimer)
+    }
+
+    // Return empty cleanup function when not offline
+    return () => {}
+  }, [isJukeboxOffline])
+
   // Show jukebox offline state if circuit breaker is open
   if (isJukeboxOffline) {
     return (
       <div className='w-full'>
         <div className='mx-auto flex w-full flex-col space-y-6 sm:w-10/12 md:w-8/12 lg:w-9/12'>
-          <ErrorMessage 
-            message={ERROR_MESSAGES.JUKEBOX_OFFLINE}
-            variant="offline"
-            autoDismissMs={0} // Don't auto-dismiss offline errors
-            className="text-center"
-          />
+          <Loading fullScreen message='Reconnecting to jukebox...' />
         </div>
       </div>
     )
@@ -132,11 +138,11 @@ export default function PlaylistPage(): JSX.Element {
     return (
       <div className='w-full'>
         <div className='mx-auto flex w-full flex-col space-y-6 sm:w-10/12 md:w-8/12 lg:w-9/12'>
-          <ErrorMessage 
+          <ErrorMessage
             message={tokenError}
-            variant="error"
+            variant='error'
             autoDismissMs={0}
-            className="text-center"
+            className='text-center'
           />
         </div>
       </div>
@@ -148,10 +154,10 @@ export default function PlaylistPage(): JSX.Element {
     return (
       <div className='w-full'>
         <div className='mx-auto flex w-full flex-col space-y-6 sm:w-10/12 md:w-8/12 lg:w-9/12'>
-          <ErrorMessage 
+          <ErrorMessage
             message={playlistError}
-            variant="error"
-            className="text-center"
+            variant='error'
+            className='text-center'
           />
         </div>
       </div>
@@ -159,11 +165,16 @@ export default function PlaylistPage(): JSX.Element {
   }
 
   // Show loading state during token loading or recovery
-  if (isTokenLoading || isPlaylistIdLoading || isPlaylistLoading || isRecovering) {
+  if (
+    isTokenLoading ||
+    isPlaylistIdLoading ||
+    isPlaylistLoading ||
+    isRecovering
+  ) {
     return (
-      <Loading 
-        fullScreen 
-        message={isRecovering ? ERROR_MESSAGES.RECONNECTING : "Loading..."} 
+      <Loading
+        fullScreen
+        message={isRecovering ? ERROR_MESSAGES.RECONNECTING : 'Loading...'}
       />
     )
   }
@@ -172,10 +183,10 @@ export default function PlaylistPage(): JSX.Element {
     return (
       <div className='w-full'>
         <div className='mx-auto flex w-full flex-col space-y-6 sm:w-10/12 md:w-8/12 lg:w-9/12'>
-          <ErrorMessage 
-            message="Playlist not found"
-            variant="error"
-            className="text-center"
+          <ErrorMessage
+            message='Playlist not found'
+            variant='error'
+            className='text-center'
           />
         </div>
       </div>
@@ -189,11 +200,11 @@ export default function PlaylistPage(): JSX.Element {
         <Toast
           message={`"${lastAddedTrack.track.name}" added to playlist`}
           onDismiss={clearLastAddedTrack}
-          variant="success"
+          variant='success'
           autoDismissMs={3000}
         />
       )}
-      
+
       <div className='mx-auto flex w-full flex-col space-y-6 sm:w-10/12 md:w-8/12 lg:w-9/12'>
         <div className='mx-auto flex w-full overflow-hidden rounded-lg bg-primary-100 shadow-md sm:w-10/12 md:w-8/12 lg:w-9/12'>
           <div className='flex w-full flex-col p-5'>

@@ -14,10 +14,10 @@ export function useUpcomingTracks(
 ) {
   const upcomingTracks = useMemo(() => {
     if (!playlist) return []
-    
+
     // Get the current track ID, or null if no track is playing
     const currentTrackId = currentlyPlaying?.item?.id || null
-    
+
     return filterUpcomingTracks(playlist.tracks.items, currentTrackId)
   }, [playlist, currentlyPlaying?.item?.id])
 
