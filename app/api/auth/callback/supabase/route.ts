@@ -4,12 +4,7 @@ import { cookies } from 'next/headers'
 import { NextResponse } from 'next/server'
 import type { Database } from '@/types/supabase'
 import { getBaseUrl } from '@/shared/utils/domain'
-import { createModuleLogger } from '@/shared/utils/logger'
-import { setApiLogger } from '@/shared/api'
 import { SpotifyUserProfile } from '@/shared/types/spotify'
-
-// Set up logger for this module
-const logger = createModuleLogger('Callback', setApiLogger)
 
 // Mark this route as dynamic since it uses request.url for OAuth callback
 export const dynamic = 'force-dynamic'
@@ -94,12 +89,6 @@ export async function GET(request: Request): Promise<NextResponse> {
     } = await supabase.auth.exchangeCodeForSession(code)
 
     if (sessionError || !session) {
-      logger(
-        'ERROR',
-        'Session exchange failed:',
-        'Callback',
-        sessionError instanceof Error ? sessionError : undefined
-      )
       return NextResponse.json(
         {
           error: sessionError?.message ?? 'Failed to exchange code for session',
@@ -115,18 +104,6 @@ export async function GET(request: Request): Promise<NextResponse> {
     const spotifyRefreshToken = session.provider_refresh_token
 
     if (!spotifyAccessToken) {
-      logger('ERROR', 'No Spotify access token in session', 'Callback')
-      logger(
-        'ERROR',
-        `Session provider_token: ${session.provider_token}`,
-        'Callback'
-      )
-      logger(
-        'ERROR',
-        `Session provider_refresh_token: ${session.provider_refresh_token}`,
-        'Callback'
-      )
-
       // Try multiple fallback methods to get the Spotify token
       const possibleTokens = [
         session.user.user_metadata?.access_token,
@@ -162,21 +139,19 @@ export async function GET(request: Request): Promise<NextResponse> {
             .from('profiles')
             .upsert({
               id: session.user.id,
+              spotify_user_id: userData.id,
               display_name: userData.display_name,
-              email: userData.email,
+              avatar_url: userData.images?.[0]?.url || null,
               is_premium: isPremium,
               spotify_product_type: productType,
               spotify_access_token: metadataToken,
               spotify_refresh_token: session.provider_refresh_token,
+              spotify_token_expires_at: Math.floor(Date.now() / 1000) + 3600, // Assume 1 hour
               premium_verified_at: new Date().toISOString()
             })
 
           if (updateError) {
-            logger(
-              'ERROR',
-              `Error updating user profile: ${JSON.stringify(updateError)}`,
-              'Callback'
-            )
+            // Log error but continue
           }
 
           // Redirect based on premium status
@@ -191,16 +166,11 @@ export async function GET(request: Request): Promise<NextResponse> {
 
           return NextResponse.redirect(redirectUrl)
         } else {
-          logger(
-            'ERROR',
-            `Spotify API error with fallback token: ${JSON.stringify({ status: spotifyResponse.status, statusText: spotifyResponse.statusText })}`,
-            'Callback'
-          )
+          // Continue to error handling
         }
       }
 
       // If we still don't have a token, redirect to sign in with an error
-      logger('ERROR', `No Spotify token found in any location`, 'Callback')
       return NextResponse.json(
         {
           error: 'No Spotify access token found. Please sign in again.',
@@ -234,40 +204,31 @@ export async function GET(request: Request): Promise<NextResponse> {
 
         productType = userData.product
       } else {
-        const errorText = await spotifyResponse.text()
-        logger(
-          'ERROR',
-          `Spotify API error: ${JSON.stringify({ status: spotifyResponse.status, statusText: spotifyResponse.statusText, errorText })}`,
-          'Callback'
-        )
+        // Log error but continue
       }
-    } catch (apiError) {
-      logger(
-        'ERROR',
-        `Error calling Spotify API: ${JSON.stringify(apiError)}`,
-        'Callback'
-      )
+    } catch {
+      // Log error but continue
     }
 
     // Update user profile with Spotify information
     const { error: updateError } = await supabase.from('profiles').upsert({
       id: session.user.id,
+      spotify_user_id: session.user.id, // Use user ID as spotify_user_id for now
       display_name:
-        session.user.user_metadata?.name ?? session.user.email ?? 'Unknown',
-      email: session.user.email ?? '',
+        session.user.user_metadata?.name ??
+        session.user.email?.split('@')[0] ??
+        'Unknown',
+      avatar_url: session.user.user_metadata?.avatar_url ?? null,
       is_premium: isPremium,
       spotify_product_type: productType,
       spotify_access_token: spotifyAccessToken,
       spotify_refresh_token: spotifyRefreshToken,
+      spotify_token_expires_at: Math.floor(Date.now() / 1000) + 3600, // Assume 1 hour
       premium_verified_at: new Date().toISOString()
     })
 
     if (updateError) {
-      logger(
-        'ERROR',
-        `Error updating user profile: ${JSON.stringify(updateError)}`,
-        'Callback'
-      )
+      // Log error but continue
     }
 
     // Use the domain utility to get the correct base URL for redirects
@@ -287,13 +248,7 @@ export async function GET(request: Request): Promise<NextResponse> {
     }
 
     return NextResponse.redirect(redirectUrl)
-  } catch (error) {
-    logger(
-      'ERROR',
-      'Unexpected error:',
-      'Callback',
-      error instanceof Error ? error : undefined
-    )
+  } catch {
     return NextResponse.json(
       {
         error: 'Internal server error',

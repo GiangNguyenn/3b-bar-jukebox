@@ -2,10 +2,6 @@ import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
 import type { Database } from '@/types/supabase'
-import { createModuleLogger } from '@/shared/utils/logger'
-
-// Set up logger for this module
-const logger = createModuleLogger('Middleware')
 
 export async function middleware(request: NextRequest) {
   let response = NextResponse.next({
@@ -53,48 +49,9 @@ export async function middleware(request: NextRequest) {
       return NextResponse.redirect(redirectUrl)
     }
 
-    // Check premium status for admin routes
-    try {
-      const premiumResponse = await fetch(
-        `${request.nextUrl.origin}/api/auth/verify-premium`,
-        {
-          headers: {
-            Cookie: request.headers.get('cookie') || ''
-          }
-        }
-      )
-
-      if (premiumResponse.ok) {
-        const premiumData = await premiumResponse.json()
-        if (!premiumData.isPremium) {
-          // Non-premium user, redirect to premium required page
-          const redirectUrl = new URL('/premium-required', request.url)
-          return NextResponse.redirect(redirectUrl)
-        }
-      } else {
-        // Premium verification failed, check if it's a token issue
-        const errorData = await premiumResponse.json().catch(() => ({}))
-        logger(
-          'ERROR',
-          `Premium verification failed in middleware: ${JSON.stringify({ status: premiumResponse.status, error: errorData })}`
-        )
-
-        // For all errors (including token issues), redirect to root page
-        // This allows users to re-authenticate with Spotify
-        const redirectUrl = new URL('/', request.url)
-        return NextResponse.redirect(redirectUrl)
-      }
-    } catch (error) {
-      logger(
-        'ERROR',
-        'Error verifying premium status in middleware:',
-        undefined,
-        error instanceof Error ? error : undefined
-      )
-      // Error in premium verification, redirect to root page
-      const redirectUrl = new URL('/', request.url)
-      return NextResponse.redirect(redirectUrl)
-    }
+    // For admin routes, we'll let the application handle the authentication flow
+    // The ProtectedRoute component will handle Spotify token validation and premium verification
+    // This prevents middleware from causing redirect loops during the initial auth flow
   }
 
   return response

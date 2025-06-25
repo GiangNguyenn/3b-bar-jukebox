@@ -31,7 +31,17 @@ export function ProtectedRoute({
           return
         }
 
-        // Check premium status
+        // Step 1: Check if user has valid Spotify authentication
+        const tokenResponse = await fetch('/api/token', {
+          credentials: 'include'
+        })
+
+        if (!tokenResponse.ok) {
+          router.push('/auth/signin')
+          return
+        }
+
+        // Step 2: Now that we have valid Spotify authentication, check premium status
         const premiumResponse = await fetch('/api/auth/verify-premium', {
           credentials: 'include'
         })
@@ -47,15 +57,27 @@ export function ProtectedRoute({
           }
           setIsPremium(true)
         } else {
-          // Premium verification failed, redirect to root page
-          // This allows users to re-authenticate with Spotify
+          // Premium verification failed, check if it's a token issue
+          const errorData = (await premiumResponse
+            .json()
+            .catch(() => ({}))) as { code?: string }
+
+          // For authentication errors (token issues), redirect to signin page
+          if (
+            errorData.code === 'NO_SPOTIFY_TOKEN' ||
+            errorData.code === 'INVALID_SPOTIFY_TOKEN'
+          ) {
+            router.push('/auth/signin')
+            return
+          }
+
+          // For other errors, redirect to root page to allow the app to handle it
           router.push('/')
           return
         }
 
         setIsLoading(false)
-      } catch (error) {
-        console.error('Error checking session or premium status:', error)
+      } catch {
         // For any errors, redirect to root page to allow re-authentication
         router.push('/')
       }

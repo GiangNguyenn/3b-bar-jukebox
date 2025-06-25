@@ -3,12 +3,14 @@ import { createBrowserClient } from '@supabase/ssr'
 import type { Database } from '@/types/supabase'
 import { useConsoleLogsContext } from '@/hooks/ConsoleLogsProvider'
 import { SpotifyUserProfile } from '@/shared/types/spotify'
+import { tokenManager } from '@/shared/token/tokenManager'
 
 interface PremiumStatus {
   isPremium: boolean
   productType: string
   isLoading: boolean
   error: string | null
+  needsReauth: boolean
 }
 
 interface PremiumVerificationResponse {
@@ -27,7 +29,8 @@ export function usePremiumStatus(): PremiumStatus & {
     isPremium: false,
     productType: '',
     isLoading: true,
-    error: null
+    error: null,
+    needsReauth: false
   })
 
   const supabase = createBrowserClient<Database>(
@@ -38,9 +41,14 @@ export function usePremiumStatus(): PremiumStatus & {
   const checkPremiumStatus = useCallback(
     async (force = false): Promise<void> => {
       try {
-        setStatus((prev) => ({ ...prev, isLoading: true, error: null }))
+        setStatus((prev) => ({
+          ...prev,
+          isLoading: true,
+          error: null,
+          needsReauth: false
+        }))
 
-        // Check if user is authenticated
+        // Step 1: Check if user is authenticated with Supabase
         const {
           data: { session }
         } = await supabase.auth.getSession()
@@ -50,12 +58,27 @@ export function usePremiumStatus(): PremiumStatus & {
             isPremium: false,
             productType: '',
             isLoading: false,
-            error: 'No session found'
+            error: 'No session found',
+            needsReauth: false
           })
           return
         }
 
-        // Call the premium verification API
+        // Step 2: Check if user has valid Spotify authentication
+        try {
+          const spotifyToken = await tokenManager.getToken()
+        } catch (tokenError) {
+          setStatus({
+            isPremium: false,
+            productType: '',
+            isLoading: false,
+            error: 'Spotify authentication required',
+            needsReauth: true
+          })
+          return
+        }
+
+        // Step 3: Now that we have valid Spotify authentication, verify premium status
         const apiUrl = force
           ? '/api/auth/verify-premium?force=true'
           : '/api/auth/verify-premium'
@@ -66,11 +89,22 @@ export function usePremiumStatus(): PremiumStatus & {
 
         if (!response.ok) {
           const errorData = await response.json()
-          addLog(
-            'ERROR',
-            `API error: ${JSON.stringify(errorData)}`,
-            'usePremiumStatus'
-          )
+
+          // Handle specific authentication errors
+          if (
+            errorData.code === 'NO_SPOTIFY_TOKEN' ||
+            errorData.code === 'INVALID_SPOTIFY_TOKEN'
+          ) {
+            setStatus({
+              isPremium: false,
+              productType: '',
+              isLoading: false,
+              error: errorData.error,
+              needsReauth: true
+            })
+            return
+          }
+
           throw new Error(errorData.error || 'Failed to verify premium status')
         }
 
@@ -80,20 +114,16 @@ export function usePremiumStatus(): PremiumStatus & {
           isPremium: data.isPremium,
           productType: data.productType,
           isLoading: false,
-          error: null
+          error: null,
+          needsReauth: false
         })
       } catch (error) {
-        addLog(
-          'ERROR',
-          'Error checking premium status:',
-          'usePremiumStatus',
-          error instanceof Error ? error : undefined
-        )
         setStatus({
           isPremium: false,
           productType: '',
           isLoading: false,
-          error: error instanceof Error ? error.message : 'Unknown error'
+          error: error instanceof Error ? error.message : 'Unknown error',
+          needsReauth: false
         })
       }
     },
