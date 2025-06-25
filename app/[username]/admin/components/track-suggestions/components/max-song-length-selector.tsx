@@ -11,7 +11,7 @@ export function MaxSongLengthSelector({
   length,
   onLengthChange
 }: MaxSongLengthSelectorProps): JSX.Element {
-  const defaultLength = 10
+  const defaultLength = 10;
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>): void => {
     onLengthChange(parseInt(e.target.value))
@@ -47,7 +47,7 @@ export function MaxSongLengthSelector({
         <input
           type='number'
           min='1'
-          max='10'
+          max='15'
           value={length}
           onChange={handleChange}
           className='w-24 rounded-lg border border-input bg-background px-4 py-3 text-base text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring'
