@@ -1,6 +1,7 @@
 'use client'
 
 import { RefreshCw } from 'lucide-react'
+import { DEFAULT_MAX_OFFSET } from '@/shared/constants/trackSuggestion'
 
 interface MaxOffsetSelectorProps {
   offset: number
@@ -11,14 +12,12 @@ export function MaxOffsetSelector({
   offset,
   onOffsetChange
 }: MaxOffsetSelectorProps): JSX.Element {
-  const defaultOffset = 1000
-
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>): void => {
     onOffsetChange(Number(e.target.value))
   }
 
   const handleReset = (): void => {
-    onOffsetChange(defaultOffset)
+    onOffsetChange(DEFAULT_MAX_OFFSET)
   }
 
   return (
@@ -47,15 +46,15 @@ export function MaxOffsetSelector({
               id='max-offset'
               type='range'
               min={0}
-              max={1000}
+              max={100}
               value={offset}
               onChange={handleChange}
               className='accent-primary mt-1 block w-full'
             />
             <div className='flex justify-between text-xs text-muted-foreground'>
               <span>0</span>
-              <span>500</span>
-              <span>1000</span>
+              <span>50</span>
+              <span>100</span>
             </div>
           </div>
         </div>

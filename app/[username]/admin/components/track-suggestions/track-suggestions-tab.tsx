@@ -17,6 +17,7 @@ import { useTrackSuggestions } from './hooks/useTrackSuggestions'
 
 interface TrackSuggestionsTabProps {
   onStateChange: (state: TrackSuggestionsState) => void
+  initialState?: Partial<TrackSuggestionsState>
 }
 
 interface LastSuggestedTrackResponse {
@@ -27,7 +28,8 @@ const POLL_INTERVAL = 30000 // 30 seconds
 const DEBOUNCE_MS = 1000 // 1 second
 
 export function TrackSuggestionsTab({
-  onStateChange
+  onStateChange,
+  initialState
 }: TrackSuggestionsTabProps): JSX.Element {
   const {
     state,
@@ -39,7 +41,7 @@ export function TrackSuggestionsTab({
     setSongsBetweenRepeats,
     setMaxOffset,
     updateState
-  } = useTrackSuggestions()
+  } = useTrackSuggestions(initialState)
 
   const lastTrackUriRef = useRef<string | null>(null)
   const isInitialMount = useRef(true)

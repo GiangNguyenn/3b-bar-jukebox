@@ -8,17 +8,22 @@ import { type TrackSuggestionsState } from '@/shared/types/trackSuggestions'
 
 const STORAGE_KEY = 'track-suggestions-state'
 
-const getInitialState = (): TrackSuggestionsState => {
+const getInitialState = (
+  initialState?: Partial<TrackSuggestionsState>
+): TrackSuggestionsState => {
+  const defaultState: TrackSuggestionsState = {
+    genres: [...FALLBACK_GENRES.slice(0, 10)],
+    yearRange: [1950, new Date().getFullYear()],
+    popularity: 50,
+    allowExplicit: false,
+    maxSongLength: 10,
+    songsBetweenRepeats: 5,
+    maxOffset: DEFAULT_MAX_OFFSET,
+    ...initialState
+  }
+
   if (typeof window === 'undefined') {
-    return {
-      genres: [...FALLBACK_GENRES.slice(0, 10)],
-      yearRange: [1950, new Date().getFullYear()],
-      popularity: 50,
-      allowExplicit: false,
-      maxSongLength: 10,
-      songsBetweenRepeats: 5,
-      maxOffset: DEFAULT_MAX_OFFSET
-    }
+    return defaultState
   }
 
   const savedState = localStorage.getItem(STORAGE_KEY)
@@ -27,28 +32,16 @@ const getInitialState = (): TrackSuggestionsState => {
     try {
       const parsed = JSON.parse(savedState) as TrackSuggestionsState
       return {
+        ...defaultState,
         ...parsed,
-        genres:
-          parsed.genres?.length > 0
-            ? parsed.genres.slice(0, 10)
-            : [...FALLBACK_GENRES.slice(0, 10)],
-        maxSongLength: parsed.maxSongLength ?? 10,
-        maxOffset: parsed.maxOffset ?? DEFAULT_MAX_OFFSET
+        maxOffset: parsed.maxOffset ?? defaultState.maxOffset
       }
     } catch (error) {
       console.error('[TrackSuggestions] Failed to parse localStorage:', error)
     }
   }
 
-  return {
-    genres: [...FALLBACK_GENRES.slice(0, 10)],
-    yearRange: [1950, new Date().getFullYear()],
-    popularity: 50,
-    allowExplicit: false,
-    maxSongLength: 10,
-    songsBetweenRepeats: 5,
-    maxOffset: DEFAULT_MAX_OFFSET
-  }
+  return defaultState
 }
 
 interface UseTrackSuggestionsReturn {
@@ -63,8 +56,12 @@ interface UseTrackSuggestionsReturn {
   setMaxOffset: (maxOffset: number) => void
 }
 
-export function useTrackSuggestions(): UseTrackSuggestionsReturn {
-  const [state, setState] = useState<TrackSuggestionsState>(getInitialState)
+export function useTrackSuggestions(
+  initialState?: Partial<TrackSuggestionsState>
+): UseTrackSuggestionsReturn {
+  const [state, setState] = useState<TrackSuggestionsState>(() =>
+    getInitialState(initialState)
+  )
   const stateRef = useRef(state)
   const lastSavedStateRef = useRef<string>('')
 
