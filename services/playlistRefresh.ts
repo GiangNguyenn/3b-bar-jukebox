@@ -279,7 +279,8 @@ export class PlaylistRefreshServiceImpl implements PlaylistRefreshService {
       maxSongLength: params?.maxSongLength ?? savedParams?.maxSongLength ?? 3,
       songsBetweenRepeats:
         params?.songsBetweenRepeats ?? savedParams?.songsBetweenRepeats ?? 5,
-      maxOffset: params?.maxOffset ?? savedParams?.maxOffset ?? DEFAULT_MAX_OFFSET
+      maxOffset:
+        params?.maxOffset ?? savedParams?.maxOffset ?? DEFAULT_MAX_OFFSET
     }
 
     // Add logging to show parameter sources
