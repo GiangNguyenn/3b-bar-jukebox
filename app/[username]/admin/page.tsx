@@ -520,6 +520,7 @@ export default function AdminPage(): JSX.Element {
           <TabsContent value='settings'>
             <TrackSuggestionsTab
               onStateChange={handleTrackSuggestionsStateChange}
+              initialState={{ maxOffset: 10 }}
             />
           </TabsContent>
 
