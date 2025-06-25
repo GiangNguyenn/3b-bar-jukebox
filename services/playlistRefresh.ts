@@ -7,7 +7,8 @@ import { SpotifyApiClient, SpotifyApiService } from './spotifyApi'
 import {
   MAX_PLAYLIST_LENGTH,
   FALLBACK_GENRES,
-  type Genre
+  type Genre,
+  DEFAULT_MAX_OFFSET
 } from '@/shared/constants/trackSuggestion'
 import { findSuggestedTrack } from '@/services/trackSuggestion'
 import { filterUpcomingTracks } from '@/lib/utils'
@@ -278,7 +279,7 @@ export class PlaylistRefreshServiceImpl implements PlaylistRefreshService {
       maxSongLength: params?.maxSongLength ?? savedParams?.maxSongLength ?? 3,
       songsBetweenRepeats:
         params?.songsBetweenRepeats ?? savedParams?.songsBetweenRepeats ?? 5,
-      maxOffset: params?.maxOffset ?? savedParams?.maxOffset ?? 1000
+      maxOffset: params?.maxOffset ?? savedParams?.maxOffset ?? DEFAULT_MAX_OFFSET
     }
 
     // Add logging to show parameter sources
