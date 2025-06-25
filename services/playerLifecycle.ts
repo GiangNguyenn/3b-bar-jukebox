@@ -11,6 +11,7 @@ import {
   SpotifyPlayerInstance,
   SpotifySDK
 } from '@/shared/types/spotify'
+import { tokenManager } from '@/shared/token/tokenManager'
 
 type SpotifySDKEventTypes =
   | 'ready'
@@ -268,9 +269,41 @@ class PlayerLifecycleService {
         onStatusChange('error', `Initialization error: ${message}`)
       })
 
-      player.addListener('authentication_error', ({ message }) => {
+      player.addListener('authentication_error', async ({ message }) => {
         this.log('ERROR', `Failed to authenticate: ${message}`)
-        onStatusChange('error', `Authentication error: ${message}`)
+
+        // Try to refresh token and recreate player
+        try {
+          this.log(
+            'INFO',
+            'Attempting automatic token refresh and player recovery'
+          )
+
+          // Clear token cache to force refresh
+          tokenManager.clearCache()
+
+          // Attempt to get fresh token
+          await tokenManager.getToken()
+
+          // Recreate player with fresh token
+          this.log('INFO', 'Token refreshed, recreating player')
+          onStatusChange('initializing', 'Refreshing authentication')
+
+          // Destroy current player and recreate
+          this.destroyPlayer()
+          await this.createPlayer(
+            onStatusChange,
+            onDeviceIdChange,
+            onPlaybackStateChange
+          )
+        } catch (error) {
+          this.log(
+            'ERROR',
+            'Failed to recover from authentication error',
+            error
+          )
+          onStatusChange('error', `Authentication error: ${message}`)
+        }
       })
 
       player.addListener('account_error', ({ message }) => {

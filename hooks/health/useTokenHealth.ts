@@ -34,8 +34,16 @@ export function useTokenHealth(): TokenHealthStatus {
 
         const data = await response.json()
         const expiresSoonThreshold = 300 // 5 minutes
+        const criticalThreshold = 60 // 1 minute
 
-        if (data.expiresIn && data.expiresIn < expiresSoonThreshold) {
+        if (data.expiresIn && data.expiresIn < criticalThreshold) {
+          setTokenStatus({ status: 'valid', expiringSoon: true })
+          addLog(
+            'ERROR',
+            `Token expiring critically soon: ${data.expiresIn}s remaining`,
+            'TokenHealth'
+          )
+        } else if (data.expiresIn && data.expiresIn < expiresSoonThreshold) {
           setTokenStatus({ status: 'valid', expiringSoon: true })
           addLog(
             'WARN',

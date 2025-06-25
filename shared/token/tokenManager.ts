@@ -50,6 +50,7 @@ class TokenManager {
   }
   private config: TokenManagerConfig
   private refreshPromise: Promise<string> | null = null
+  private refreshInProgress = false
 
   private constructor(config: TokenManagerConfig) {
     this.config = {
@@ -78,13 +79,24 @@ class TokenManager {
       return this.refreshPromise
     }
 
+    // Prevent multiple simultaneous refreshes
+    if (this.refreshInProgress) {
+      // Wait for existing refresh to complete
+      while (this.refreshInProgress) {
+        await new Promise((resolve) => setTimeout(resolve, 100))
+      }
+      return this.tokenCache.token || this.refreshToken()
+    }
+
     // Start a new refresh
+    this.refreshInProgress = true
     this.refreshPromise = this.refreshToken()
     try {
       const token = await this.refreshPromise
       return token
     } finally {
       this.refreshPromise = null
+      this.refreshInProgress = false
     }
   }
 
@@ -161,6 +173,41 @@ class TokenManager {
         now <
           this.tokenCache.expiry - (this.config.refreshThreshold ?? 0) * 1000
     )
+  }
+
+  // Proactive token refresh - returns true if token was refreshed
+  public async refreshIfNeeded(): Promise<boolean> {
+    const now = Date.now()
+    const timeUntilExpiry = this.tokenCache.expiry - now
+    const refreshThreshold = (this.config.refreshThreshold ?? 300) * 1000 // 5 minutes in ms
+
+    // If token expires within the refresh threshold, refresh it
+    if (timeUntilExpiry <= refreshThreshold) {
+      if (addLog) {
+        addLog(
+          'INFO',
+          `Token expires in ${Math.round(timeUntilExpiry / 1000)}s, refreshing proactively`,
+          'TokenManager'
+        )
+      }
+
+      try {
+        await this.getToken() // This will refresh the token
+        return true
+      } catch (error) {
+        if (addLog) {
+          addLog(
+            'ERROR',
+            'Proactive token refresh failed',
+            'TokenManager',
+            error instanceof Error ? error : undefined
+          )
+        }
+        return false
+      }
+    }
+
+    return false
   }
 }
 

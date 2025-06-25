@@ -55,7 +55,7 @@ export function Toast({
   const getIcon = () => {
     switch (variant) {
       case 'success':
-        return <CheckCircle className="h-4 w-4" />
+        return <CheckCircle className='h-4 w-4' />
       default:
         return null
     }
@@ -63,17 +63,17 @@ export function Toast({
 
   return (
     <div
-      className={`fixed top-4 right-4 z-50 flex items-center space-x-3 rounded-lg border p-4 shadow-lg transition-all duration-300 ${getVariantStyles()} ${className}`}
+      className={`fixed right-4 top-4 z-50 flex items-center space-x-3 rounded-lg border p-4 shadow-lg transition-all duration-300 ${getVariantStyles()} ${className}`}
     >
       {getIcon()}
-      <span className="text-sm font-medium">{message}</span>
+      <span className='text-sm font-medium'>{message}</span>
       <button
         onClick={handleDismiss}
-        className="text-green-300 transition-colors hover:text-green-100"
-        aria-label="Dismiss toast"
+        className='text-green-300 transition-colors hover:text-green-100'
+        aria-label='Dismiss toast'
       >
         <X size={16} />
       </button>
     </div>
   )
-} 
+}

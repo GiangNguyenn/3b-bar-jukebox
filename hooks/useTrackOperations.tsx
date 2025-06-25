@@ -31,7 +31,7 @@ export const useTrackOperations = ({
     removeTrackOptimistically,
     revertOptimisticUpdate
   } = useGetPlaylist({ playlistId, token })
-  
+
   const [pendingTracks, setPendingTracks] = useState<Set<string>>(new Set())
   const [optimisticTrack, setOptimisticTrack] = useState<TrackItem | null>(null)
   const [lastAddedTrack, setLastAddedTrack] = useState<TrackItem | null>(null)
@@ -41,20 +41,21 @@ export const useTrackOperations = ({
   useEffect(() => {
     if (optimisticTrack && playlist) {
       // Don't clear optimistic track for at least 2 seconds after it's set
-      const timeSinceOptimisticTrack = Date.now() - optimisticTrackTimeRef.current
+      const timeSinceOptimisticTrack =
+        Date.now() - optimisticTrackTimeRef.current
       if (timeSinceOptimisticTrack < 2000) {
         return
       }
-      
+
       const matchingTracks = playlist.tracks.items.filter(
-        item => item.track.id === optimisticTrack.track.id
+        (item) => item.track.id === optimisticTrack.track.id
       )
-      
+
       // Look for a track with a real added_by ID (not optimistic)
       const realTrack = matchingTracks.find(
-        item => item.added_by?.id && item.added_by.id !== 'optimistic'
+        (item) => item.added_by?.id && item.added_by.id !== 'optimistic'
       )
-      
+
       if (realTrack) {
         setOptimisticTrack(null)
         setPendingTracks((prev) => {
@@ -105,7 +106,7 @@ export const useTrackOperations = ({
     ): Promise<void> => {
       // Set optimistic state
       setOptimisticState(track)
-      
+
       // Apply optimistic update immediately
       optimisticUpdate()
 
@@ -113,7 +114,7 @@ export const useTrackOperations = ({
         await operation()
         // Don't immediately refetch - let the optimistic update persist
         // The track will be confirmed on the next natural refresh cycle
-        
+
         // Set success state for toast
         if (operationName === 'Add Track') {
           setLastAddedTrack(track)

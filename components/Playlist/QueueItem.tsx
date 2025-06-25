@@ -29,22 +29,26 @@ const QueueItem: React.FC<IQueueItemProps> = ({
         />
         {isPending && (
           <div className='absolute inset-0 flex items-center justify-center rounded bg-black/20'>
-            <Loader2 className='h-4 w-4 animate-spin text-white' />
+            <Loader2 className='text-white h-4 w-4 animate-spin' />
           </div>
         )}
       </div>
       <div className='min-w-0 flex-1'>
-        <p className={`truncate text-sm font-medium ${
-          isPending ? 'text-gray-600' : 'text-gray-900'
-        }`}>
+        <p
+          className={`truncate text-sm font-medium ${
+            isPending ? 'text-gray-600' : 'text-gray-900'
+          }`}
+        >
           {track.track.name}
           {isPending && (
             <span className='ml-2 text-xs text-gray-500'>Adding...</span>
           )}
         </p>
-        <p className={`truncate text-sm ${
-          isPending ? 'text-gray-400' : 'text-gray-500'
-        }`}>
+        <p
+          className={`truncate text-sm ${
+            isPending ? 'text-gray-400' : 'text-gray-500'
+          }`}
+        >
           {track.track.artists.map((artist) => artist.name).join(', ')}
         </p>
       </div>
