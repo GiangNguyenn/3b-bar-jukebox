@@ -358,6 +358,18 @@ export default function AdminPage(): JSX.Element {
     )
   }, [playbackState, healthStatus.playback, addLog])
 
+  // Automatically trigger recovery if playback stalls
+  useEffect(() => {
+    if (healthStatus.playback === 'stalled' && !recoveryState.isRecovering) {
+      addLog(
+        'INFO',
+        'Playback stall detected, triggering automatic recovery.',
+        'AdminPage'
+      )
+      void recover()
+    }
+  }, [healthStatus.playback, recoveryState.isRecovering, recover, addLog])
+
   // Update error handling
   if (fixedPlaylistError) {
     return (

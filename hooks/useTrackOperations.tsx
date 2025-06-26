@@ -15,7 +15,7 @@ interface TrackOperationsState {
   error: Error | null
   isSuccess: boolean
   pendingTracks: string[]
-  optimisticTrack: TrackItem | null
+  optimisticTracks: TrackItem[]
   lastAddedTrack: TrackItem | null
 }
 
@@ -33,39 +33,43 @@ export const useTrackOperations = ({
   } = useGetPlaylist({ playlistId, token })
 
   const [pendingTracks, setPendingTracks] = useState<Set<string>>(new Set())
-  const [optimisticTrack, setOptimisticTrack] = useState<TrackItem | null>(null)
+  const [optimisticTracks, setOptimisticTracks] = useState<TrackItem[]>([])
   const [lastAddedTrack, setLastAddedTrack] = useState<TrackItem | null>(null)
   const optimisticTrackTimeRef = useRef<number>(0)
 
-  // Clear optimistic track when the real track appears in playlist data
+  // Clear optimistic tracks when they appear in playlist data
   useEffect(() => {
-    if (optimisticTrack && playlist) {
-      // Don't clear optimistic track for at least 2 seconds after it's set
+    if (optimisticTracks.length > 0 && playlist) {
       const timeSinceOptimisticTrack =
         Date.now() - optimisticTrackTimeRef.current
       if (timeSinceOptimisticTrack < 2000) {
         return
       }
 
-      const matchingTracks = playlist.tracks.items.filter(
-        (item) => item.track.id === optimisticTrack.track.id
+      const realTrackIds = new Set(
+        playlist.tracks.items
+          .filter(
+            (item) => item.added_by?.id && item.added_by.id !== 'optimistic'
+          )
+          .map((item) => item.track.id)
       )
 
-      // Look for a track with a real added_by ID (not optimistic)
-      const realTrack = matchingTracks.find(
-        (item) => item.added_by?.id && item.added_by.id !== 'optimistic'
+      const newOptimisticTracks = optimisticTracks.filter(
+        (track) => !realTrackIds.has(track.track.id)
       )
 
-      if (realTrack) {
-        setOptimisticTrack(null)
-        setPendingTracks((prev) => {
-          const newSet = new Set(prev)
-          newSet.delete(optimisticTrack.track.uri)
-          return newSet
+      if (newOptimisticTracks.length < optimisticTracks.length) {
+        setOptimisticTracks(newOptimisticTracks)
+        const newPendingTracks = new Set(pendingTracks)
+        optimisticTracks.forEach((track) => {
+          if (!newOptimisticTracks.includes(track)) {
+            newPendingTracks.delete(track.track.uri)
+          }
         })
+        setPendingTracks(newPendingTracks)
       }
     }
-  }, [playlist?.tracks?.items, optimisticTrack]) // Only depend on the tracks array, not the entire playlist object
+  }, [playlist?.tracks?.items, optimisticTracks, pendingTracks])
 
   const { isLoading, error, isSuccess, executeOperation } = useTrackOperation({
     playlistId,
@@ -79,7 +83,7 @@ export const useTrackOperations = ({
   // Helper function to set optimistic state
   const setOptimisticState = (track: TrackItem): void => {
     setPendingTracks((prev) => new Set(prev).add(track.track.uri))
-    setOptimisticTrack(track)
+    setOptimisticTracks((prev) => [...prev, track])
     optimisticTrackTimeRef.current = Date.now()
   }
 
@@ -90,7 +94,9 @@ export const useTrackOperations = ({
       newSet.delete(track.track.uri)
       return newSet
     })
-    setOptimisticTrack(null)
+    setOptimisticTracks((prev) =>
+      prev.filter((t) => t.track.id !== track.track.id)
+    )
   }
 
   // Helper function to handle operation with optimistic updates
@@ -229,7 +235,7 @@ export const useTrackOperations = ({
     error,
     isSuccess,
     pendingTracks: Array.from(pendingTracks),
-    optimisticTrack,
+    optimisticTracks,
     lastAddedTrack,
     clearLastAddedTrack
   }
