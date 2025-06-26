@@ -15,6 +15,7 @@ export function usePlaybackHealth(
     timestamp: number
   } | null>(null)
   const stallTimerRef = useRef<NodeJS.Timeout | null>(null)
+  const lastTrackUriRef = useRef<string | null>(null)
 
   useEffect(() => {
     addLog(
@@ -28,11 +29,29 @@ export function usePlaybackHealth(
       stallTimerRef.current = null
     }
 
-    if (!playbackState) {
-      setPlaybackStatus('unknown')
-      addLog('INFO', 'Set playback status to unknown', 'PlaybackHealth')
+    if (!playbackState || !playbackState.item) {
+      setPlaybackStatus(playbackState ? 'stopped' : 'unknown')
+      addLog(
+        'INFO',
+        `Set playback status to ${playbackState ? 'stopped' : 'unknown'}`,
+        'PlaybackHealth'
+      )
       lastProgressRef.current = null
+      lastTrackUriRef.current = null
       return
+    }
+
+    const currentTrackUri = playbackState.item.uri
+
+    // Reset stall detection if track changes
+    if (lastTrackUriRef.current !== currentTrackUri) {
+      lastProgressRef.current = null
+      lastTrackUriRef.current = currentTrackUri
+      addLog(
+        'INFO',
+        `Track changed to: ${currentTrackUri}. Resetting stall detection.`,
+        'PlaybackHealth'
+      )
     }
 
     if (playbackState.is_playing) {
@@ -43,25 +62,25 @@ export function usePlaybackHealth(
         const timeDiff = now - lastProgressRef.current.timestamp
         const progressDiff = currentProgress - lastProgressRef.current.progress
 
-        if (timeDiff > 4000 && progressDiff < 1000) {
+        // More lenient stall detection
+        if (timeDiff > 5000 && progressDiff < 1000) {
           setPlaybackStatus('stalled')
-          addLog('ERROR', 'Playback has stalled.', 'PlaybackHealth')
+          addLog(
+            'ERROR',
+            `Playback has stalled. Progress diff: ${progressDiff} in ${timeDiff}ms`,
+            'PlaybackHealth'
+          )
         } else {
           setPlaybackStatus('playing')
-          addLog('INFO', 'Set playback status to playing', 'PlaybackHealth')
         }
       } else {
         setPlaybackStatus('playing')
         addLog('INFO', 'Set playback status to playing', 'PlaybackHealth')
       }
       lastProgressRef.current = { progress: currentProgress, timestamp: now }
-    } else if (playbackState.item) {
+    } else {
       setPlaybackStatus('paused')
       addLog('INFO', 'Set playback status to paused', 'PlaybackHealth')
-      lastProgressRef.current = null
-    } else {
-      setPlaybackStatus('stopped')
-      addLog('INFO', 'Set playback status to stopped', 'PlaybackHealth')
       lastProgressRef.current = null
     }
   }, [playbackState, addLog])

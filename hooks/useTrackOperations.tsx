@@ -177,7 +177,7 @@ export const useTrackOperations = ({
     await executeWithOptimisticUpdates(
       track,
       operation,
-      () => addTrackOptimistically(track),
+      () => {},
       ERROR_MESSAGES.FAILED_TO_ADD,
       'Add Track'
     )
@@ -217,7 +217,7 @@ export const useTrackOperations = ({
     await executeWithOptimisticUpdates(
       track,
       operation,
-      () => removeTrackOptimistically(track.track.uri),
+      () => {},
       ERROR_MESSAGES.FAILED_TO_LOAD,
       'Remove Track'
     )
