@@ -6,7 +6,12 @@ import { useConsoleLogsContext } from '@/hooks/ConsoleLogsProvider'
 import { SpotifyApiService } from '@/services/spotifyApi'
 import { type SpotifyPlaybackState } from '@/shared/types/spotify'
 
-export function usePlaybackControls() {
+export function usePlaybackControls(): {
+  isLoading: boolean
+  playbackInfo: SpotifyPlaybackState | null
+  isActuallyPlaying: boolean
+  handlePlayPause: () => Promise<void>
+} {
   const [isLoading, setIsLoading] = useState(false)
   const { deviceId, playbackState, setPlaybackState } = useSpotifyPlayerStore()
   const { addLog } = useConsoleLogsContext()
