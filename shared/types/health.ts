@@ -1,7 +1,7 @@
 export interface HealthStatus {
   deviceId: string | null
   device: 'healthy' | 'unresponsive' | 'disconnected' | 'unknown' | 'error'
-  playback: 'playing' | 'paused' | 'stopped' | 'error' | 'unknown'
+  playback: 'playing' | 'paused' | 'stopped' | 'error' | 'unknown' | 'stalled'
   token: 'valid' | 'expired' | 'error' | 'unknown'
   tokenExpiringSoon: boolean
   connection:

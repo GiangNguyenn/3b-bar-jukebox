@@ -49,13 +49,13 @@ export default function PlaylistPage(): JSX.Element {
     isRefreshing: boolean
   }
 
-  const { addTrack, optimisticTrack, lastAddedTrack, clearLastAddedTrack } =
+  const { addTrack, optimisticTracks, lastAddedTrack, clearLastAddedTrack } =
     useTrackOperations({
       playlistId: fixedPlaylistId ?? '',
       token
     }) as {
       addTrack: (track: TrackItem) => Promise<void>
-      optimisticTrack: TrackItem | undefined
+      optimisticTracks: TrackItem[]
       lastAddedTrack: TrackItem | null
       clearLastAddedTrack: () => void
     }
@@ -74,13 +74,13 @@ export default function PlaylistPage(): JSX.Element {
 
   // Include optimistic track in the display if it exists
   const tracksToDisplay = useMemo(() => {
-    if (!optimisticTrack) {
+    if (optimisticTracks.length === 0) {
       return upcomingTracks
     }
 
-    // Always add optimistic track to the end of the list
-    return [...upcomingTracks, optimisticTrack]
-  }, [upcomingTracks, optimisticTrack])
+    // Always add optimistic tracks to the end of the list
+    return [...upcomingTracks, ...optimisticTracks]
+  }, [upcomingTracks, optimisticTracks])
 
   const handleAddTrack = async (track: TrackDetails): Promise<void> => {
     try {
@@ -220,7 +220,7 @@ export default function PlaylistPage(): JSX.Element {
             )}
             <Playlist
               tracks={tracksToDisplay}
-              optimisticTrack={optimisticTrack}
+              optimisticTracks={optimisticTracks}
               currentlyPlaying={currentlyPlaying}
             />
           </div>
