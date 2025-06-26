@@ -210,20 +210,12 @@ class PlayerLifecycleService {
         name: 'Jukebox Player',
         getOAuthToken: async (cb) => {
           try {
-            this.log('INFO', 'Requesting token from /api/token')
-            const response = await sendApiRequest<{ access_token: string }>({
-              path: 'token',
-              method: 'GET',
-              isLocalApi: true
-            })
-            this.log('INFO', 'Token response received')
-            if (response?.access_token) {
-              cb(response.access_token)
-            } else {
-              throw new Error('No access token in response')
-            }
+            this.log('INFO', 'Requesting token from token manager')
+            const token = await tokenManager.getToken()
+            this.log('INFO', 'Token received from token manager')
+            cb(token)
           } catch (error) {
-            this.log('ERROR', 'Error getting token', error)
+            this.log('ERROR', 'Error getting token from token manager', error)
             throw error
           }
         },
