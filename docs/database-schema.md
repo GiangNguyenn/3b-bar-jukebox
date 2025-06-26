@@ -53,3 +53,4 @@ create index IF not exists idx_profiles_is_premium on public.profiles using btre
 create index IF not exists idx_profiles_spotify_product_type on public.profiles using btree (spotify_product_type) TABLESPACE pg_default;
 
 create index IF not exists idx_profiles_premium_verified_at on public.profiles using btree (premium_verified_at) TABLESPACE pg_default;
+```
