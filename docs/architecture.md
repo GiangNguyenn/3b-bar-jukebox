@@ -17,7 +17,6 @@ This document outlines the architecture of the JM Bar Jukebox, a web application
   - [Headless UI](https://headlessui.com/)
   - [Radix UI](https://www.radix-ui.com/)
   - [Lucide React](https://lucide.dev/)
-  - [Framer Motion](https://www.framer.com/motion/)
 
 ## 3. Folder Structure
 
