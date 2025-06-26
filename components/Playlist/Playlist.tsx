@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef } from 'react'
+import { useRef } from 'react'
 import { TrackItem, SpotifyPlaybackState } from '@/shared/types/spotify'
 import QueueItem from './QueueItem'
 import NowPlaying from './NowPlaying'
@@ -17,26 +17,6 @@ export default function Playlist({
   currentlyPlaying
 }: PlaylistProps): JSX.Element {
   const containerRef = useRef<HTMLDivElement>(null)
-  const currentTrackIdRef = useRef<string | null>(null)
-
-  useEffect(() => {
-    if (!containerRef.current) return
-
-    const container = containerRef.current
-    const currentTrack = container.querySelector(
-      '[data-track-id="' + currentTrackIdRef.current + '"]'
-    )
-    if (currentTrack) {
-      currentTrack.scrollIntoView({ behavior: 'smooth', block: 'center' })
-    }
-  }, [tracks])
-
-  useEffect(() => {
-    if (optimisticTracks && optimisticTracks.length > 0) {
-      currentTrackIdRef.current =
-        optimisticTracks[optimisticTracks.length - 1].track.id
-    }
-  }, [optimisticTracks])
 
   const tracksToShow = tracks.filter((track) => {
     if (!currentlyPlaying) return true
