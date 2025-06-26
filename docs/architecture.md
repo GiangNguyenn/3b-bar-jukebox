@@ -10,7 +10,10 @@ This document outlines the architecture of the JM Bar Jukebox, a web application
 - **Language:** [TypeScript](https://www.typescriptlang.org/)
 - **Authentication:** [Supabase Auth](https://supabase.com/docs/guides/auth) with Spotify as the OAuth provider.
 - **Backend & Database:** [Supabase](https://supabase.com/) (PostgreSQL)
-- **External Services:** [Spotify Web API](https://developer.spotify.com/documentation/web-api/)
+- **External Services:**
+  - [Spotify Web API](https://developer.spotify.com/documentation/web-api/)
+  - [Spotify Web Playback SDK](https://developer.spotify.com/documentation/web-playback-sdk)
+- **Data Fetching:** [SWR](https://swr.vercel.app/)
 - **Styling:** [Tailwind CSS](https://tailwindcss.com/)
 - **State Management:** [Zustand](https://github.com/pmndrs/zustand)
 - **UI Libraries:**
@@ -76,11 +79,15 @@ sequenceDiagram
 
 The application exposes several API endpoints under `app/api/` to handle various backend operations:
 
-- **`app/api/auth/...`**: Manages authentication, including callbacks and session management.
+- **`app/api/auth/...`**: Manages authentication, including callbacks, session management, profile handling, and premium verification.
+- **`app/api/fixed-playlist/...`**: Manages the fixed playlist.
+- **`app/api/ping/...`**: A simple endpoint to check if the API is running.
 - **`app/api/playback/...`**: Controls Spotify playback, such as play, pause, and skip.
-- **`app/api/playlist/...`**: Manages the jukebox playlist.
+- **`app/api/playlist/...`**: Manages the jukebox playlist, including adding and removing tracks.
+- **`app/api/playlists/...`**: Handles creation of new playlists.
 - **`app/api/search/...`**: Searches for tracks on Spotify.
 - **`app/api/token/...`**: Handles Spotify API token management.
+- **`app/api/track-suggestions/...`**: Manages track suggestions.
 
 ## 6. Data Management
 
