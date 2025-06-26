@@ -313,6 +313,15 @@ class PlayerLifecycleService {
       })
 
       player.addListener('player_state_changed', (state) => {
+        if (!state) {
+          this.log(
+            'WARN',
+            'Received null state in player_state_changed event. Device is likely inactive. Triggering recovery.'
+          )
+          onStatusChange('reconnecting', 'Device became inactive')
+          return
+        }
+
         this.log(
           'INFO',
           `player_state_changed event: paused=${state.paused}, loading=${state.loading}, position=${state.position}`
