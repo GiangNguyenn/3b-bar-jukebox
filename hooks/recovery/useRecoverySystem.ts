@@ -24,6 +24,10 @@ const RECOVERY_STATE_KEY = 'spotify_recovery_state'
 const DEVICE_REGISTRATION_TIMEOUT = 15000 // 15 seconds
 const DEVICE_ACTIVATION_TIMEOUT = 15000 // 15 seconds
 
+// NEW: Global recovery lock to prevent multiple instances running
+const RECOVERY_LOCK_KEY = 'spotify_recovery_lock_ts'
+const RECOVERY_LOCK_TIMEOUT = 60000 // 1 minute lock timeout
+
 // Device health status type
 export type DeviceHealthStatus =
   | 'healthy'
@@ -61,18 +65,22 @@ export interface RecoveryState {
 // Add helper to poll for device registration
 async function waitForDevice(
   deviceId: string,
-  timeoutMs = 10000
+  timeoutMs = 20000
 ): Promise<boolean> {
   const start = Date.now()
   while (Date.now() - start < timeoutMs) {
-    const devices = await sendApiRequest<{ devices: { id: string }[] }>({
-      path: 'me/player/devices',
-      method: 'GET'
-    })
-    if (devices.devices.some((d: { id: string }) => d.id === deviceId)) {
-      return true
+    try {
+      const devices = await sendApiRequest<{ devices: { id: string }[] }>({
+        path: 'me/player/devices',
+        method: 'GET'
+      })
+      if (devices.devices.some((d: { id: string }) => d.id === deviceId)) {
+        return true
+      }
+    } catch (error) {
+      // Ignore errors and continue polling
     }
-    await new Promise((resolve) => setTimeout(resolve, 500))
+    await new Promise((resolve) => setTimeout(resolve, 1000))
   }
   return false
 }
@@ -80,20 +88,24 @@ async function waitForDevice(
 // Add helper to poll for device active
 async function waitForDeviceActive(
   deviceId: string,
-  timeoutMs = 10000
+  timeoutMs = 20000
 ): Promise<boolean> {
   const start = Date.now()
   while (Date.now() - start < timeoutMs) {
-    const devices = await sendApiRequest<{
-      devices: { id: string; is_active: boolean }[]
-    }>({
-      path: 'me/player/devices',
-      method: 'GET'
-    })
-    if (devices.devices.some((d) => d.id === deviceId && d.is_active)) {
-      return true
+    try {
+      const devices = await sendApiRequest<{
+        devices: { id: string; is_active: boolean }[]
+      }>({
+        path: 'me/player/devices',
+        method: 'GET'
+      })
+      if (devices.devices.some((d) => d.id === deviceId && d.is_active)) {
+        return true
+      }
+    } catch (error) {
+      // Ignore errors and continue polling
     }
-    await new Promise((resolve) => setTimeout(resolve, 500))
+    await new Promise((resolve) => setTimeout(resolve, 1000))
   }
   return false
 }
@@ -196,8 +208,9 @@ export function useRecoverySystem(
         currentStep: ''
       })
       resetHealth()
-      // Clear persisted state
+      // Clear persisted state and lock
       localStorage.removeItem(RECOVERY_STATE_KEY)
+      localStorage.removeItem(RECOVERY_LOCK_KEY) // Also clear the lock
     } catch (error) {
       addLog(
         'ERROR',
@@ -228,10 +241,34 @@ export function useRecoverySystem(
 
   const recover = useCallback(async (): Promise<void> => {
     if (isRecoveringRef.current) {
+      addLog(
+        'INFO',
+        'Recovery already in progress for this instance.',
+        'RecoverySystem'
+      )
       return
     }
 
+    // Check for a global recovery lock
+    const lockTimestamp = localStorage.getItem(RECOVERY_LOCK_KEY)
+    if (
+      lockTimestamp &&
+      Date.now() - parseInt(lockTimestamp, 10) < RECOVERY_LOCK_TIMEOUT
+    ) {
+      addLog(
+        'WARN',
+        'Another recovery process is active globally. Aborting.',
+        'RecoverySystem'
+      )
+      return
+    }
+
+    // Set a global lock
+    localStorage.setItem(RECOVERY_LOCK_KEY, Date.now().toString())
+
     if (circuitBreaker.isCircuitOpen()) {
+      // Release lock if circuit is open
+      localStorage.removeItem(RECOVERY_LOCK_KEY)
       return
     }
 
@@ -259,11 +296,11 @@ export function useRecoverySystem(
         return
       }
 
-      // Step 1: Complete Destruction (0% - 30%)
+      // Step 1: Complete Destruction (0% - 20%)
       updateState({
         phase: 'destroying_everything',
         message: 'Destroying existing player and clearing state...',
-        progress: 0.15,
+        progress: 0.1,
         currentStep: 'destroying_player'
       })
 
@@ -283,11 +320,11 @@ export function useRecoverySystem(
       // Clear any cached state that might be corrupted
       localStorage.removeItem('spotify_last_playback')
 
-      // Step 2: Reload Spotify SDK (30% - 40%)
+      // Step 2: Reload Spotify SDK (20% - 40%)
       updateState({
         phase: 'reloading_sdk',
         message: 'Reloading Spotify SDK...',
-        progress: 0.4,
+        progress: 0.3,
         currentStep: 'reloading_sdk'
       })
 
@@ -298,26 +335,22 @@ export function useRecoverySystem(
       updateState({
         phase: 'creating_player',
         message: 'Creating new Spotify player...',
-        progress: 0.6,
+        progress: 0.5,
         currentStep: 'creating_player'
       })
 
       // Create fresh player
       const newDeviceId = await playerLifecycleService.createPlayer(
         (status, error) => {
-          // Removed INFO log as per user request
+          spotifyPlayerStore.getState().setStatus(status as any, error)
         },
         (deviceId) => {
-          // Removed INFO log as per user request
+          spotifyPlayerStore.getState().setDeviceId(deviceId)
         },
         (state) => {
-          // Removed INFO log as per user request
+          spotifyPlayerStore.getState().setPlaybackState(state)
         }
       )
-
-      // createPlayer returns null on success - the device ID comes from the 'ready' event
-      // Wait a moment for the player to initialize and get the device ID from the store
-      await new Promise((resolve) => setTimeout(resolve, 2000))
 
       const currentDeviceId = spotifyPlayerStore.getState().deviceId
       const currentStatus = spotifyPlayerStore.getState().status
@@ -335,7 +368,7 @@ export function useRecoverySystem(
       updateState({
         phase: 'registering_device',
         message: 'Registering device with Spotify...',
-        progress: 0.8,
+        progress: 0.7,
         currentStep: 'registering_device'
       })
 
@@ -364,7 +397,7 @@ export function useRecoverySystem(
       updateState({
         phase: 'restoring_playback',
         message: 'Restoring playback from last position...',
-        progress: 1,
+        progress: 0.9,
         currentStep: 'restoring_playback'
       })
 
@@ -437,6 +470,8 @@ export function useRecoverySystem(
       }, 5000) // Clear after 5 seconds for errors
     } finally {
       isRecoveringRef.current = false
+      // Release the global lock
+      localStorage.removeItem(RECOVERY_LOCK_KEY)
     }
   }, [
     deviceId,

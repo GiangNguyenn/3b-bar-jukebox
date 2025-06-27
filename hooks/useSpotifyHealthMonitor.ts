@@ -13,7 +13,7 @@ import { HealthStatus } from '@/shared/types/health'
 
 export function useSpotifyHealthMonitor(): HealthStatus {
   const { addLog } = useConsoleLogsContext()
-  const { deviceId, playbackState } = useSpotifyPlayerStore()
+  const { deviceId } = useSpotifyPlayerStore()
   const {
     fixedPlaylistId,
     isLoading: isFixedPlaylistLoading,
@@ -24,7 +24,7 @@ export function useSpotifyHealthMonitor(): HealthStatus {
   const tokenHealth = useTokenHealth()
   const deviceHealth = useDeviceHealth(deviceId)
   const connectionHealth = useConnectionHealth()
-  const playbackHealth = usePlaybackHealth(playbackState)
+  const playbackHealth = usePlaybackHealth()
   const fixedPlaylistHealth = useFixedPlaylistHealth(
     fixedPlaylistId,
     isFixedPlaylistLoading,

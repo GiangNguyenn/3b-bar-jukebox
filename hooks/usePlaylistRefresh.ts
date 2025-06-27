@@ -23,7 +23,8 @@ export function usePlaylistRefresh(
         const playlistRefreshService = PlaylistRefreshServiceImpl.getInstance()
         const result = await playlistRefreshService.refreshPlaylist(
           false,
-          trackSuggestionsState
+          trackSuggestionsState,
+          refreshPlaylist
         )
 
         if (!result.success) {

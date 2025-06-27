@@ -115,11 +115,11 @@ export default function PlaylistPage(): JSX.Element {
         window.location.reload()
       }, 1000)
 
-      return () => clearTimeout(reloadTimer)
+      return (): void => clearTimeout(reloadTimer)
     }
 
     // Return empty cleanup function when not offline
-    return () => {}
+    return (): void => {}
   }, [isJukeboxOffline])
 
   // Show jukebox offline state if circuit breaker is open

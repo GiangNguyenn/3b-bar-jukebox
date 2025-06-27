@@ -2,6 +2,7 @@
 'use client'
 
 import { useCallback, useEffect, useState, useRef } from 'react'
+import { usePlaybackIntentStore } from '@/hooks/usePlaybackIntent'
 import {
   useSpotifyPlayerStore,
   useAdminSpotifyPlayerHook
@@ -51,6 +52,7 @@ export default function AdminPage(): JSX.Element {
     error: fixedPlaylistError
   } = useFixedPlaylist()
   const { addLog } = useConsoleLogsContext()
+  const { userIntent, setUserIntent } = usePlaybackIntentStore()
 
   // Use the playlist hook
   const playlistHookResult = usePlaylist(fixedPlaylistId ?? '')
@@ -85,14 +87,8 @@ export default function AdminPage(): JSX.Element {
 
   // Create a more reliable playback state indicator
   const getIsActuallyPlaying = useCallback(() => {
-    if (!playbackState) return false
-
-    // If the SDK says it's not playing, it's not playing
-    if (!playbackState.is_playing) return false
-
-    // If we have a track and it's supposed to be playing, trust the SDK state
-    return true
-  }, [playbackState])
+    return userIntent === 'playing'
+  }, [userIntent])
 
   // Initialize the player when the component mounts
   useEffect(() => {
@@ -144,36 +140,23 @@ export default function AdminPage(): JSX.Element {
 
       if (getIsActuallyPlaying()) {
         // If currently playing, pause playback
-        const result = await spotifyApi.pausePlayback(deviceId)
-        if (result.success) {
-          setPlaybackInfo((prev: PlaybackInfo | null) =>
-            prev
-              ? {
-                  ...prev,
-                  isPlaying: false
-                }
-              : null
-          )
-        } else {
-          throw new Error('Failed to pause playback')
-        }
+        await spotifyApi.pausePlayback(deviceId)
+        setUserIntent('paused')
+        setPlaybackInfo((prev) => (prev ? { ...prev, isPlaying: false } : null))
       } else {
         // If not playing, resume playback
-        const result = await spotifyApi.resumePlayback()
-        if (result.success) {
-          setPlaybackInfo((prev: PlaybackInfo | null) =>
-            prev
-              ? {
-                  ...prev,
-                  isPlaying: true,
-                  lastProgressCheck: Date.now(),
-                  progressStalled: false
-                }
-              : null
-          )
-        } else {
-          throw new Error('Failed to resume playback')
-        }
+        await spotifyApi.resumePlayback()
+        setUserIntent('playing')
+        setPlaybackInfo((prev) =>
+          prev
+            ? {
+                ...prev,
+                isPlaying: true,
+                lastProgressCheck: Date.now(),
+                progressStalled: false
+              }
+            : null
+        )
       }
 
       // Add a small delay to allow the Spotify API to update
@@ -210,7 +193,7 @@ export default function AdminPage(): JSX.Element {
     } finally {
       setIsLoading(false)
     }
-  }, [deviceId, getIsActuallyPlaying, addLog])
+  }, [deviceId, getIsActuallyPlaying, addLog, setUserIntent])
 
   // Manual recovery trigger for user-initiated recovery (e.g., device mismatch, connection issues)
   const handleForceRecovery = useCallback(async (): Promise<void> => {
@@ -330,7 +313,7 @@ export default function AdminPage(): JSX.Element {
     if (!isReady) return
 
     const interval = setInterval(() => {
-      void (async () => {
+      void (async (): Promise<void> => {
         try {
           const wasRefreshed = await tokenManager.refreshIfNeeded()
           if (wasRefreshed) {
@@ -347,7 +330,7 @@ export default function AdminPage(): JSX.Element {
       })()
     }, 60000) // Check every minute
 
-    return () => clearInterval(interval)
+    return (): void => clearInterval(interval)
   }, [isReady, addLog])
 
   useEffect(() => {

@@ -28,7 +28,8 @@ const logger = createModuleLogger('PlaylistRefresh')
 export interface PlaylistRefreshService {
   refreshPlaylist(
     force?: boolean,
-    params?: TrackSuggestionsState
+    params?: TrackSuggestionsState,
+    onSnapshotMismatch?: () => void
   ): Promise<{
     success: boolean
     message: string
@@ -423,38 +424,10 @@ export class PlaylistRefreshServiceImpl implements PlaylistRefreshService {
     return Promise.race([promise, timeoutPromise])
   }
 
-  private async resumePlaybackIfPlaying(): Promise<void> {
-    try {
-      const playbackState = await this.spotifyApi.getPlaybackState()
-      if (
-        playbackState?.context?.uri &&
-        playbackState?.item?.uri &&
-        playbackState.is_playing
-      ) {
-        // Resume playback at the exact same track and position
-        await sendApiRequest({
-          path: `me/player/play?device_id=${playbackState.device.id}`,
-          method: 'PUT',
-          body: {
-            context_uri: playbackState.context.uri,
-            offset: { uri: playbackState.item.uri },
-            position_ms: playbackState.progress_ms ?? 0
-          },
-          retryConfig: this.retryConfig,
-          debounceTime: 60000 // 1 minute debounce
-        })
-      }
-    } catch (error) {
-      console.error('[PlaylistRefresh] Failed to resume playback:', {
-        error: error instanceof Error ? error.message : 'Unknown error',
-        timestamp: new Date().toISOString()
-      })
-    }
-  }
-
   async refreshPlaylist(
     force = false,
-    params?: TrackSuggestionsState
+    params?: TrackSuggestionsState,
+    onSnapshotMismatch?: () => void
   ): Promise<{
     success: boolean
     message: string
@@ -489,9 +462,17 @@ export class PlaylistRefreshServiceImpl implements PlaylistRefreshService {
 
       // Check if the snapshot_id has changed
       const hasPlaylistChanged = this.lastSnapshotId !== snapshotId
+      logger(
+        'INFO',
+        `Playlist snapshot changed: ${hasPlaylistChanged ? 'Yes' : 'No'}`
+      )
 
       // Update the lastSnapshotId
       this.lastSnapshotId = snapshotId
+
+      if (hasPlaylistChanged && onSnapshotMismatch) {
+        onSnapshotMismatch()
+      }
 
       const { id: currentTrackId, error: playbackError } =
         await this.withTimeout(this.getCurrentlyPlaying(), this.TIMEOUT_MS)
@@ -557,6 +538,7 @@ export class PlaylistRefreshServiceImpl implements PlaylistRefreshService {
               timestamp: new Date().toISOString()
             }
           )
+          // Don't return here yet. Fall through to the playback check.
         } else {
           Sentry.logger.error('[PlaylistRefresh] Failed to add track', {
             error: result.error,
@@ -570,33 +552,49 @@ export class PlaylistRefreshServiceImpl implements PlaylistRefreshService {
             params,
             timestamp: new Date().toISOString()
           })
-        }
-        return {
-          success: false,
-          message: result.error || 'Failed to add track',
-          timestamp: new Date().toISOString(),
-          diagnosticInfo,
-          forceRefresh: force
+          // For actual errors, we return.
+          return {
+            success: false,
+            message: result.error || 'Failed to add track',
+            timestamp: new Date().toISOString(),
+            diagnosticInfo,
+            forceRefresh: force
+          }
         }
       }
 
-      diagnosticInfo.addedTrack = true
+      diagnosticInfo.addedTrack = result.success
 
       // Resume playback if playlist changed OR track was successfully added
       if (
         shouldResumePlayback ||
         (result.success && playbackState?.is_playing)
       ) {
-        await this.resumePlaybackIfPlaying()
+        logger('INFO', 'Calling resume playback endpoint')
+        await this.spotifyApi.resumePlayback()
       }
 
-      return {
-        success: true,
-        message: 'Track added successfully',
-        timestamp: new Date().toISOString(),
-        diagnosticInfo,
-        forceRefresh: force,
-        playerStateRefresh: true
+      // Now, construct the final return object
+      if (result.success) {
+        return {
+          success: true,
+          message: 'Track added successfully',
+          timestamp: new Date().toISOString(),
+          diagnosticInfo,
+          forceRefresh: force,
+          playerStateRefresh: true
+        }
+      } else {
+        // This will be for "Enough tracks remaining"
+        return {
+          success: false, // It wasn't a "success" in terms of adding a track
+          message: result.error || 'No track added',
+          timestamp: new Date().toISOString(),
+          diagnosticInfo,
+          forceRefresh: force,
+          // We might have refreshed the player state by resuming
+          playerStateRefresh: shouldResumePlayback
+        }
       }
     } catch (error) {
       Sentry.logger.error('[PlaylistRefresh] Error in refreshPlaylist', {

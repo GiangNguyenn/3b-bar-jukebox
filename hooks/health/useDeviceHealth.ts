@@ -77,7 +77,9 @@ export function useDeviceHealth(deviceId: string | null): DeviceHealthStatus {
             if (deviceMismatchCountRef.current >= DEVICE_MISMATCH_THRESHOLD) {
               addLog(
                 'ERROR',
-                `Device health check failed: ${validationResult.errors.join(', ')}`,
+                `Device health check failed: ${validationResult.errors.join(
+                  ', '
+                )}`,
                 'DeviceHealth'
               )
               const hasDeviceMismatch = validationResult.errors.some((error) =>

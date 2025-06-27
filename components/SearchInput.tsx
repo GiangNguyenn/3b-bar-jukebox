@@ -81,12 +81,12 @@ export default function SearchInput({
     }
 
     // Cleanup timeout on unmount or when searchQuery changes
-    return () => {
+    return (): void => {
       if (debounceRef.current) {
         clearTimeout(debounceRef.current)
       }
     }
-  }, [searchQuery, username])
+  }, [searchQuery, username, handleSearch])
 
   const handleAddTrack = async (track: TrackDetails): Promise<void> => {
     try {
