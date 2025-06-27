@@ -41,24 +41,19 @@ export function usePlaybackHealth(): PlaybackStatus {
         )
 
         if (!currentPlaybackState || !currentPlaybackState.item) {
-          setPlaybackStatus('stalled')
-          addLog(
-            'ERROR',
-            `Playback stalled. No active device found via API. Intent: ${intent}.`,
-            'PlaybackHealth'
-          )
+          setPlaybackStatus('stopped')
+          lastCheckRef.current = { progress: null, uri: null }
           return
         }
 
         const lastCheck = lastCheckRef.current
         const currentProgress = currentPlaybackState.progress_ms ?? null
-        const currentUri = currentPlaybackState.item.uri ?? null
+        const currentUri = currentPlaybackState.item.uri
 
-        if (lastCheck.uri === null) {
+        if (lastCheck.uri === null || lastCheck.uri !== currentUri) {
           setPlaybackStatus('playing')
         } else {
           if (
-            currentUri === lastCheck.uri &&
             currentProgress !== null &&
             currentProgress === lastCheck.progress
           ) {
@@ -72,6 +67,7 @@ export function usePlaybackHealth(): PlaybackStatus {
             setPlaybackStatus('playing')
           }
         }
+
         lastCheckRef.current = { progress: currentProgress, uri: currentUri }
       } catch (error) {
         addLog(
