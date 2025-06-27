@@ -29,3 +29,12 @@ Sentry.init({
 })
 
 export const onRouterTransitionStart = Sentry.captureRouterTransitionStart
+
+// Clear recovery state on page load to prevent issues with stale data
+try {
+  console.log('Clearing recovery state from localStorage...')
+  localStorage.removeItem('spotify_recovery_state')
+  localStorage.removeItem('spotify_recovery_lock_ts')
+} catch (error) {
+  console.error('Failed to clear recovery state:', error)
+}
