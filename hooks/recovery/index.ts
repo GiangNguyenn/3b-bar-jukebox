@@ -1,5 +1,6 @@
 export { useRecoverySystem } from './useRecoverySystem'
 export { useCircuitBreaker } from './useCircuitBreaker'
 export { useDeviceHealth } from './useDeviceHealth'
+export { useTokenRecovery } from './useTokenRecovery'
 export type { DeviceHealthStatus } from './useDeviceHealth'
 export type { RecoveryState } from './useRecoverySystem'

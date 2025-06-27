@@ -91,6 +91,7 @@ export function useGetPlaylist({
         if (!response.ok) {
           if (response.status === 401) {
             setError('Token invalid')
+            // Note: The recovery is now handled by the page component
             return
           }
           throw new Error(`HTTP ${response.status}: ${response.statusText}`)
