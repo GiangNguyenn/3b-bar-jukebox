@@ -1,11 +1,11 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useEffect } from 'react'
 import { X, CheckCircle } from 'lucide-react'
 
 interface ToastProps {
   message: string
-  onDismiss?: () => void
+  onDismiss: () => void
   autoDismissMs?: number
   className?: string
   variant?: 'success' | 'info' | 'warning'
@@ -14,32 +14,17 @@ interface ToastProps {
 export function Toast({
   message,
   onDismiss,
-  autoDismissMs = 3000, // 3 seconds default for success messages
+  autoDismissMs = 3000,
   className = '',
   variant = 'success'
-}: ToastProps): JSX.Element | null {
-  const [isVisible, setIsVisible] = useState(true)
-
-  useEffect((): (() => void) | undefined => {
+}: ToastProps): JSX.Element {
+  useEffect(() => {
     if (autoDismissMs > 0) {
-      const timer = setTimeout(() => {
-        setIsVisible(false)
-        onDismiss?.()
-      }, autoDismissMs)
-
-      return () => clearTimeout(timer)
+      const timer = setTimeout(onDismiss, autoDismissMs)
+      return (): void => clearTimeout(timer)
     }
-    return undefined
+    return (): void => {}
   }, [autoDismissMs, onDismiss])
-
-  const handleDismiss = (): void => {
-    setIsVisible(false)
-    onDismiss?.()
-  }
-
-  if (!isVisible) {
-    return null
-  }
 
   const getVariantStyles = (): string => {
     switch (variant) {
@@ -47,12 +32,13 @@ export function Toast({
         return 'border-blue-500 bg-blue-900/50 text-blue-100'
       case 'warning':
         return 'border-yellow-500 bg-yellow-900/50 text-yellow-100'
+      case 'success':
       default:
         return 'border-green-500 bg-green-900/50 text-green-100'
     }
   }
 
-  const getIcon = () => {
+  const getIcon = (): JSX.Element | null => {
     switch (variant) {
       case 'success':
         return <CheckCircle className='h-4 w-4' />
@@ -63,12 +49,12 @@ export function Toast({
 
   return (
     <div
-      className={`fixed right-4 top-4 z-50 flex items-center space-x-3 rounded-lg border p-4 shadow-lg transition-all duration-300 ${getVariantStyles()} ${className}`}
+      className={`flex items-center space-x-3 rounded-lg border p-4 shadow-lg transition-all duration-300 ${getVariantStyles()} ${className}`}
     >
       {getIcon()}
       <span className='text-sm font-medium'>{message}</span>
       <button
-        onClick={handleDismiss}
+        onClick={onDismiss}
         className='text-green-300 transition-colors hover:text-green-100'
         aria-label='Dismiss toast'
       >

@@ -176,218 +176,222 @@ class PlayerLifecycleService {
     }, this.STATE_MACHINE_CONFIG.GRACE_PERIODS.notReadyToReconnecting)
   }
 
-  async createPlayer(
+  createPlayer(
     onStatusChange: (status: string, error?: string) => void,
     onDeviceIdChange: (deviceId: string) => void,
     onPlaybackStateChange: (state: any) => void
-  ): Promise<string | null> {
-    if (this.playerRef) {
-      this.log('INFO', 'Player already exists, returning current device ID')
-      return null // Let the caller get the current device ID from the store
-    }
-
-    this.log('INFO', 'Creating new Spotify player instance')
-
-    if (typeof window.Spotify === 'undefined') {
-      this.log('ERROR', 'Spotify SDK not loaded')
-      onStatusChange('error', 'Spotify SDK not loaded')
-      return null
-    }
-
-    try {
-      // Set up device management logger
-      setDeviceManagementLogger(this.addLog || console.log)
-
-      // Clear any existing cleanup timeout
-      if (this.cleanupTimeoutRef) {
-        clearTimeout(this.cleanupTimeoutRef)
+  ): Promise<string> {
+    return new Promise<string>(async (resolve, reject) => {
+      if (this.playerRef) {
+        this.log('INFO', 'Player already exists, returning current device ID')
+        reject(new Error('Player already exists'))
+        return
       }
 
-      // Set status to initializing (the state machine will handle duplicate transitions)
-      onStatusChange('initializing')
+      this.log('INFO', 'Creating new Spotify player instance')
 
-      const player = new window.Spotify.Player({
-        name: 'Jukebox Player',
-        getOAuthToken: async (cb) => {
-          try {
-            this.log('INFO', 'Requesting token from token manager')
-            const token = await tokenManager.getToken()
-            this.log('INFO', 'Token received from token manager')
-            cb(token)
-          } catch (error) {
-            this.log('ERROR', 'Error getting token from token manager', error)
-            throw error
+      if (typeof window.Spotify === 'undefined') {
+        this.log('ERROR', 'Spotify SDK not loaded')
+        onStatusChange('error', 'Spotify SDK not loaded')
+        reject(new Error('Spotify SDK not loaded'))
+        return
+      }
+
+      try {
+        // Set up device management logger
+        setDeviceManagementLogger(this.addLog || console.log)
+
+        // Clear any existing cleanup timeout
+        if (this.cleanupTimeoutRef) {
+          clearTimeout(this.cleanupTimeoutRef)
+        }
+
+        // Set status to initializing (the state machine will handle duplicate transitions)
+        onStatusChange('initializing')
+
+        const player = new window.Spotify.Player({
+          name: 'Jukebox Player',
+          getOAuthToken: async (cb) => {
+            try {
+              this.log('INFO', 'Requesting token from token manager')
+              const token = await tokenManager.getToken()
+              this.log('INFO', 'Token received from token manager')
+              cb(token)
+            } catch (error) {
+              this.log('ERROR', 'Error getting token from token manager', error)
+              throw error
+            }
+          },
+          volume: 0.5
+        })
+
+        // Set up event listeners
+        player.addListener('ready', async ({ device_id }) => {
+          this.log('INFO', `Ready with device ID: ${device_id}`)
+
+          // Clear any not-ready timeout since we're ready
+          if (this.notReadyTimeoutRef) {
+            clearTimeout(this.notReadyTimeoutRef)
           }
-        },
-        volume: 0.5
-      })
 
-      // Set up event listeners
-      player.addListener('ready', async ({ device_id }) => {
-        this.log('INFO', `Ready with device ID: ${device_id}`)
+          this.log('INFO', 'Setting status to verifying')
+          onStatusChange('verifying')
 
-        // Clear any not-ready timeout since we're ready
-        if (this.notReadyTimeoutRef) {
-          clearTimeout(this.notReadyTimeoutRef)
-        }
+          // Use robust device verification with timeout
+          const deviceVerified = await this.verifyDeviceWithTimeout(device_id)
+          if (!deviceVerified) {
+            this.log(
+              'WARN',
+              'Device setup verification failed, but proceeding anyway'
+            )
+            // Don't fail the initialization, just warn and proceed
+          } else {
+            this.log('INFO', 'Device setup verification successful')
+          }
 
-        this.log('INFO', 'Setting status to verifying')
-        onStatusChange('verifying')
+          this.log('INFO', 'Setting device as ready')
+          onDeviceIdChange(device_id)
+          this.log('INFO', 'Setting status to ready')
+          onStatusChange('ready')
+          resolve(device_id)
+        })
 
-        // Use robust device verification with timeout
-        const deviceVerified = await this.verifyDeviceWithTimeout(device_id)
-        if (!deviceVerified) {
-          this.log(
-            'WARN',
-            'Device setup verification failed, but proceeding anyway'
-          )
-          // Don't fail the initialization, just warn and proceed
-        } else {
-          this.log('INFO', 'Device setup verification successful')
-        }
+        player.addListener('not_ready', (event) => {
+          this.handleNotReady(event.device_id, onStatusChange)
+        })
 
-        this.log('INFO', 'Setting device as ready')
-        onDeviceIdChange(device_id)
-        this.log('INFO', 'Setting status to ready')
-        onStatusChange('ready')
-      })
+        player.addListener('initialization_error', ({ message }) => {
+          this.log('ERROR', `Failed to initialize: ${message}`)
+          onStatusChange('error', `Initialization error: ${message}`)
+          reject(new Error(message))
+        })
 
-      player.addListener('not_ready', (event) => {
-        this.handleNotReady(event.device_id, onStatusChange)
-      })
+        player.addListener('authentication_error', async ({ message }) => {
+          this.log('ERROR', `Failed to authenticate: ${message}`)
 
-      player.addListener('initialization_error', ({ message }) => {
-        this.log('ERROR', `Failed to initialize: ${message}`)
-        onStatusChange('error', `Initialization error: ${message}`)
-      })
-
-      player.addListener('authentication_error', async ({ message }) => {
-        this.log('ERROR', `Failed to authenticate: ${message}`)
-
-        // Try to refresh token and recreate player
-        try {
-          this.log(
-            'INFO',
-            'Attempting automatic token refresh and player recovery'
-          )
-
-          // Clear token cache to force refresh
-          tokenManager.clearCache()
-
-          // Attempt to get fresh token
-          await tokenManager.getToken()
-
-          // Recreate player with fresh token
-          this.log('INFO', 'Token refreshed, recreating player')
-          onStatusChange('initializing', 'Refreshing authentication')
-
-          // Destroy current player and recreate
-          this.destroyPlayer()
-          await this.createPlayer(
-            onStatusChange,
-            onDeviceIdChange,
-            onPlaybackStateChange
-          )
-        } catch (error) {
-          this.log(
-            'ERROR',
-            'Failed to recover from authentication error',
-            error
-          )
-          onStatusChange('error', `Authentication error: ${message}`)
-        }
-      })
-
-      player.addListener('account_error', ({ message }) => {
-        this.log('ERROR', `Account error: ${message}`)
-        onStatusChange('error', `Account error: ${message}`)
-      })
-
-      player.addListener('playback_error', ({ message }) => {
-        this.log('ERROR', `Playback error: ${message}`)
-        // Don't change status for playback errors, let health monitor handle recovery
-        this.log(
-          'WARN',
-          'Playback error occurred, but recovery is handled by health monitor'
-        )
-      })
-
-      player.addListener('player_state_changed', (state) => {
-        if (!state) {
-          this.log(
-            'WARN',
-            'Received null state in player_state_changed event. Device is likely inactive. Triggering recovery.'
-          )
-          onStatusChange('reconnecting', 'Device became inactive')
-          return
-        }
-
-        this.log(
-          'INFO',
-          `player_state_changed event: paused=${state.paused}, loading=${state.loading}, position=${state.position}`
-        )
-
-        // Transform SDK state to our internal format
-        const transformedState = {
-          item: state.track_window?.current_track
-            ? {
-                id: state.track_window.current_track.id,
-                name: state.track_window.current_track.name,
-                uri: state.track_window.current_track.uri,
-                duration_ms: state.track_window.current_track.duration_ms,
-                artists: state.track_window.current_track.artists.map(
-                  (artist) => ({
-                    name: artist.name,
-                    id: artist.uri.split(':').pop() || ''
-                  })
-                ),
-                album: {
-                  name: state.track_window.current_track.album.name,
-                  id:
-                    state.track_window.current_track.album.uri
-                      .split(':')
-                      .pop() || ''
-                }
-              }
-            : null,
-          is_playing: !state.paused && !state.loading,
-          progress_ms: state.position,
-          duration_ms: state.duration
-        }
-
-        onPlaybackStateChange(transformedState)
-      })
-
-      // Connect to Spotify
-      const connected = await player.connect()
-      if (!connected) {
-        throw new Error('Failed to connect to Spotify')
-      }
-
-      // Store player instance
-      this.playerRef = player
-      window.spotifyPlayerInstance = player
-
-      // Set up cleanup timeout
-      this.cleanupTimeoutRef = setTimeout(
-        () => {
-          if (this.playerRef === player) {
+          // Try to refresh token and recreate player
+          try {
             this.log(
               'INFO',
-              'Cleanup timeout reached, player may need recovery'
+              'Attempting automatic token refresh and player recovery'
             )
-          }
-        },
-        5 * 60 * 1000
-      ) // 5 minutes
 
-      // Return null - the device ID will be set via the 'ready' event callback
-      // The caller should get the device ID from the store after the 'ready' event fires
-      return null
-    } catch (error) {
-      this.log('ERROR', 'Error creating player', error)
-      return null
-    }
+            // Clear token cache to force refresh
+            tokenManager.clearCache()
+
+            // Attempt to get fresh token
+            await tokenManager.getToken()
+
+            // Recreate player with fresh token
+            this.log('INFO', 'Token refreshed, recreating player')
+            onStatusChange('initializing', 'Refreshing authentication')
+
+            // Destroy current player and recreate
+            this.destroyPlayer()
+            await this.createPlayer(
+              onStatusChange,
+              onDeviceIdChange,
+              onPlaybackStateChange
+            )
+          } catch (error) {
+            this.log(
+              'ERROR',
+              'Failed to recover from authentication error',
+              error
+            )
+            onStatusChange('error', `Authentication error: ${message}`)
+          }
+        })
+
+        player.addListener('account_error', ({ message }) => {
+          this.log('ERROR', `Account error: ${message}`)
+          onStatusChange('error', `Account error: ${message}`)
+        })
+
+        player.addListener('playback_error', ({ message }) => {
+          this.log('ERROR', `Playback error: ${message}`)
+          // Don't change status for playback errors, let health monitor handle recovery
+          this.log(
+            'WARN',
+            'Playback error occurred, but recovery is handled by health monitor'
+          )
+        })
+
+        player.addListener('player_state_changed', (state) => {
+          if (!state) {
+            this.log(
+              'WARN',
+              'Received null state in player_state_changed event. Device is likely inactive. Triggering recovery.'
+            )
+            onStatusChange('reconnecting', 'Device became inactive')
+            return
+          }
+
+          this.log(
+            'INFO',
+            `player_state_changed event: paused=${state.paused}, loading=${state.loading}, position=${state.position}`
+          )
+
+          // Transform SDK state to our internal format
+          const transformedState = {
+            item: state.track_window?.current_track
+              ? {
+                  id: state.track_window.current_track.id,
+                  name: state.track_window.current_track.name,
+                  uri: state.track_window.current_track.uri,
+                  duration_ms: state.track_window.current_track.duration_ms,
+                  artists: state.track_window.current_track.artists.map(
+                    (artist) => ({
+                      name: artist.name,
+                      id: artist.uri.split(':').pop() || ''
+                    })
+                  ),
+                  album: {
+                    name: state.track_window.current_track.album.name,
+                    id:
+                      state.track_window.current_track.album.uri
+                        .split(':')
+                        .pop() || ''
+                  }
+                }
+              : null,
+            is_playing: !state.paused && !state.loading,
+            progress_ms: state.position,
+            duration_ms: state.duration
+          }
+
+          onPlaybackStateChange(transformedState)
+        })
+
+        // Connect to Spotify
+        const connected = await player.connect()
+        if (!connected) {
+          throw new Error('Failed to connect to Spotify')
+        }
+
+        // Store player instance
+        this.playerRef = player
+        window.spotifyPlayerInstance = player
+
+        // Set up cleanup timeout
+        this.cleanupTimeoutRef = setTimeout(
+          () => {
+            if (this.playerRef === player) {
+              this.log(
+                'INFO',
+                'Cleanup timeout reached, player may need recovery'
+              )
+            }
+          },
+          5 * 60 * 1000
+        ) // 5 minutes
+
+        // The promise will be resolved by the 'ready' event
+      } catch (error) {
+        this.log('ERROR', 'Error creating player', error)
+        reject(error)
+      }
+    })
   }
 
   destroyPlayer(): void {

@@ -6,6 +6,7 @@ import {
 import { sendApiRequest } from '@/shared/api'
 import { handleOperationError } from '@/shared/utils/errorHandling'
 import { useFixedPlaylist } from '@/hooks/useFixedPlaylist'
+import { showToast } from '@/lib/toast'
 
 // Add logging context
 let addLog: (
@@ -302,6 +303,7 @@ export class SpotifyApiService implements SpotifyApiClient {
               retryConfig: this.retryConfig
             })
 
+            showToast('Playback resumed successfully', 'success')
             return {
               success: true,
               resumedFrom: {
@@ -344,6 +346,7 @@ export class SpotifyApiService implements SpotifyApiClient {
               retryConfig: this.retryConfig
             })
 
+            showToast('Playback resumed from last known position', 'success')
             return {
               success: true,
               resumedFrom: {
@@ -388,6 +391,7 @@ export class SpotifyApiService implements SpotifyApiClient {
           throw new Error('Playback failed to start')
         }
 
+        showToast('Playback started with fixed playlist', 'success')
         return {
           success: true
         }

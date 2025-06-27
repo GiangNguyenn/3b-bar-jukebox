@@ -1,89 +1,90 @@
 import { useState, useEffect, useRef } from 'react'
 import { useConsoleLogsContext } from '../ConsoleLogsProvider'
+import { usePlaybackIntentStore } from '../usePlaybackIntent'
 import { SpotifyPlaybackState } from '@/shared/types/spotify'
+import { sendApiRequest } from '@/shared/api'
 
 type PlaybackStatus = 'playing' | 'paused' | 'stopped' | 'unknown' | 'stalled'
 
-export function usePlaybackHealth(
-  playbackState: SpotifyPlaybackState | null
-): PlaybackStatus {
+export function usePlaybackHealth(): PlaybackStatus {
   const [playbackStatus, setPlaybackStatus] =
     useState<PlaybackStatus>('unknown')
   const { addLog } = useConsoleLogsContext()
-  const lastProgressRef = useRef<{
-    progress: number
-    timestamp: number
-  } | null>(null)
-  const stallTimerRef = useRef<NodeJS.Timeout | null>(null)
-  const lastTrackUriRef = useRef<string | null>(null)
+  const { userIntent } = usePlaybackIntentStore()
+  const lastCheckRef = useRef<{
+    progress: number | null
+    uri: string | null
+  }>({ progress: null, uri: null })
+
+  const userIntentRef = useRef(userIntent)
 
   useEffect(() => {
-    addLog(
-      'INFO',
-      `Playback status effect: playbackState=${JSON.stringify(playbackState)}`,
-      'PlaybackHealth'
-    )
+    userIntentRef.current = userIntent
+  }, [userIntent])
 
-    if (stallTimerRef.current) {
-      clearTimeout(stallTimerRef.current)
-      stallTimerRef.current = null
-    }
+  useEffect(() => {
+    const intervalId = setInterval(async () => {
+      const intent = userIntentRef.current
 
-    if (!playbackState || !playbackState.item) {
-      setPlaybackStatus(playbackState ? 'stopped' : 'unknown')
-      addLog(
-        'INFO',
-        `Set playback status to ${playbackState ? 'stopped' : 'unknown'}`,
-        'PlaybackHealth'
-      )
-      lastProgressRef.current = null
-      lastTrackUriRef.current = null
-      return
-    }
+      if (intent !== 'playing') {
+        setPlaybackStatus(intent === 'paused' ? 'paused' : 'stopped')
+        lastCheckRef.current = { progress: null, uri: null }
+        return
+      }
 
-    const currentTrackUri = playbackState.item.uri
+      try {
+        const currentPlaybackState = await sendApiRequest<SpotifyPlaybackState>(
+          {
+            path: 'me/player',
+            method: 'GET'
+          }
+        )
 
-    // Reset stall detection if track changes
-    if (lastTrackUriRef.current !== currentTrackUri) {
-      lastProgressRef.current = null
-      lastTrackUriRef.current = currentTrackUri
-      addLog(
-        'INFO',
-        `Track changed to: ${currentTrackUri}. Resetting stall detection.`,
-        'PlaybackHealth'
-      )
-    }
-
-    if (playbackState.is_playing) {
-      const now = Date.now()
-      const currentProgress = playbackState.progress_ms ?? 0
-
-      if (lastProgressRef.current) {
-        const timeDiff = now - lastProgressRef.current.timestamp
-        const progressDiff = currentProgress - lastProgressRef.current.progress
-
-        // More lenient stall detection
-        if (timeDiff > 5000 && progressDiff < 1000) {
+        if (!currentPlaybackState || !currentPlaybackState.item) {
           setPlaybackStatus('stalled')
           addLog(
             'ERROR',
-            `Playback has stalled. Progress diff: ${progressDiff} in ${timeDiff}ms`,
+            `Playback stalled. No active device found via API. Intent: ${intent}.`,
             'PlaybackHealth'
           )
-        } else {
-          setPlaybackStatus('playing')
+          return
         }
-      } else {
-        setPlaybackStatus('playing')
-        addLog('INFO', 'Set playback status to playing', 'PlaybackHealth')
+
+        const lastCheck = lastCheckRef.current
+        const currentProgress = currentPlaybackState.progress_ms ?? null
+        const currentUri = currentPlaybackState.item.uri ?? null
+
+        if (lastCheck.uri === null) {
+          setPlaybackStatus('playing')
+        } else {
+          if (
+            currentUri === lastCheck.uri &&
+            currentProgress !== null &&
+            currentProgress === lastCheck.progress
+          ) {
+            setPlaybackStatus('stalled')
+            addLog(
+              'ERROR',
+              `Playback stalled. No progress in last 15s via API. Intent: ${intent}, Last Progress: ${lastCheck.progress}, Current Progress: ${currentProgress}.`,
+              'PlaybackHealth'
+            )
+          } else {
+            setPlaybackStatus('playing')
+          }
+        }
+        lastCheckRef.current = { progress: currentProgress, uri: currentUri }
+      } catch (error) {
+        addLog(
+          'ERROR',
+          'Failed to fetch playback state for health check.',
+          'PlaybackHealth',
+          error instanceof Error ? error : undefined
+        )
       }
-      lastProgressRef.current = { progress: currentProgress, timestamp: now }
-    } else {
-      setPlaybackStatus('paused')
-      addLog('INFO', 'Set playback status to paused', 'PlaybackHealth')
-      lastProgressRef.current = null
-    }
-  }, [playbackState, addLog])
+    }, 15000) // Check every 15 seconds
+
+    return () => clearInterval(intervalId)
+  }, [addLog])
 
   return playbackStatus
 }
