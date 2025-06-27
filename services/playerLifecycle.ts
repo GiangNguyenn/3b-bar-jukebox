@@ -251,6 +251,21 @@ class PlayerLifecycleService {
 
           this.log('INFO', 'Setting device as ready')
           onDeviceIdChange(device_id)
+
+          // Automatically transfer playback to the new device
+          this.log(
+            'INFO',
+            `Transferring playback to new device ID: ${device_id}`
+          )
+          const transferSuccess = await transferPlaybackToDevice(device_id)
+          if (transferSuccess) {
+            this.log('INFO', 'Playback transferred successfully')
+            onStatusChange('ready')
+          } else {
+            this.log('ERROR', 'Failed to transfer playback to new device')
+            onStatusChange('error', 'Failed to transfer playback')
+          }
+
           this.log('INFO', 'Setting status to ready')
           onStatusChange('ready')
           resolve(device_id)
@@ -355,7 +370,7 @@ class PlayerLifecycleService {
                   }
                 }
               : null,
-            is_playing: !state.paused && !state.loading,
+            is_playing: !state.paused,
             progress_ms: state.position,
             duration_ms: state.duration
           }

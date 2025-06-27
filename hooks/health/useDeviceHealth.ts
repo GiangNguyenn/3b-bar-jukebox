@@ -12,7 +12,7 @@ type DeviceHealthStatus =
 
 const DEVICE_CHECK_DEBOUNCE = 2000 // 2 seconds debounce for device checks
 const DEVICE_MISMATCH_THRESHOLD = 3
-const DEVICE_CHANGE_GRACE_PERIOD = 10000 // 10 seconds
+const DEVICE_CHANGE_GRACE_PERIOD = 2000 // 2 seconds
 const DEVICE_CHECK_INTERVAL = 5000 // 5 seconds for initial checks
 
 export function useDeviceHealth(deviceId: string | null): DeviceHealthStatus {

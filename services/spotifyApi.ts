@@ -303,7 +303,7 @@ export class SpotifyApiService implements SpotifyApiClient {
               retryConfig: this.retryConfig
             })
 
-            showToast('Playback resumed successfully', 'success')
+            showToast('Playback resumed', 'success')
             return {
               success: true,
               resumedFrom: {
@@ -346,7 +346,7 @@ export class SpotifyApiService implements SpotifyApiClient {
               retryConfig: this.retryConfig
             })
 
-            showToast('Playback resumed from last known position', 'success')
+            showToast('Playback resumed', 'success')
             return {
               success: true,
               resumedFrom: {
@@ -391,7 +391,7 @@ export class SpotifyApiService implements SpotifyApiClient {
           throw new Error('Playback failed to start')
         }
 
-        showToast('Playback started with fixed playlist', 'success')
+        showToast('Playback resumed', 'success')
         return {
           success: true
         }
