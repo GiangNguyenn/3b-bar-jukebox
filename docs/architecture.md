@@ -8,14 +8,17 @@ This document outlines the architecture of the JM Bar Jukebox, a web application
 
 - **Framework:** [Next.js](https://nextjs.org/)
 - **Language:** [TypeScript](https://www.typescriptlang.org/)
-- **Authentication:** [Supabase Auth](https://supabase.com/docs/guides/auth) with Spotify as the OAuth provider.
+- **Authentication:** [NextAuth.js](https://next-auth.js.org/) with Spotify as the OAuth provider.
 - **Backend & Database:** [Supabase](https://supabase.com/) (PostgreSQL)
+- **Error Monitoring:** [@sentry/nextjs](https://sentry.io/)
+- **Schema Validation:** [Zod](https://zod.dev/)
 - **External Services:**
   - [Spotify Web API](https://developer.spotify.com/documentation/web-api/)
   - [Spotify Web Playback SDK](https://developer.spotify.com/documentation/web-playback-sdk)
 - **Data Fetching:** [SWR](https://swr.vercel.app/)
 - **Styling:** [Tailwind CSS](https://tailwindcss.com/)
 - **State Management:** [Zustand](https://github.com/pmndrs/zustand)
+- **Animations:** [Framer Motion](https://www.framer.com/motion/)
 - **UI Libraries:**
   - [Headless UI](https://headlessui.com/)
   - [Radix UI](https://www.radix-ui.com/)
@@ -30,50 +33,54 @@ The project is organized into the following key directories:
   - **`app/[username]/admin/`**: The main dashboard for authenticated users.
   - **`app/[username]/playlist/`**: The public-facing playlist view.
 - **`components/`**: Reusable React components.
-- **`lib/`**: Utility functions and library initializations.
-- **`services/`**: Business logic and interactions with external APIs.
-- **`supabase/`**: Supabase-related configurations and migrations.
+  - **`components/ui/`**: Reusable UI components like `Card`, `Progress`, and `Tabs`.
+- **`contexts/`**: React context providers for managing global state.
 - **`hooks/`**: Custom React hooks for managing state and side effects.
+- **`lib/`**: Utility functions and library initializations.
+- **`public/`**: Static assets like images and icons.
+- **`services/`**: Business logic and interactions with external APIs.
 - **`shared/`**: Code shared between the client and server.
+- **`supabase/`**: Supabase-related configurations and migrations.
+- **`types/`**: Global TypeScript type definitions.
 
 ## 4. Authentication Flow
 
-User authentication is handled by Supabase Auth, using Spotify as the OAuth provider. The flow is as follows:
+User authentication is handled by NextAuth.js, using Spotify as the OAuth provider. The `middleware.ts` file only protects routes under `/admin`.
+
+The flow is as follows:
 
 ```mermaid
 sequenceDiagram
     participant User
-    participant Next.js App
-    participant Supabase
+    participant Next.js App (Client)
+    participant Next.js App (Server)
+    participant NextAuth.js
     participant Spotify
 
-    User->>Next.js App: Accesses admin route
-    Next.js App->>Next.js App: Middleware checks for session
-    alt No session
-        Next.js App->>User: Redirect to /auth/signin
-    end
-
-    User->>Next.js App: Navigates to /auth/signin
-    Next.js App->>Supabase: signInWithOAuth('spotify')
-    Supabase->>User: Redirect to Spotify for authorization
+    User->>Next.js App (Client): Navigates to /auth/signin
+    User->>Next.js App (Client): Clicks 'Sign in with Spotify'
+    Next.js App (Client)->>NextAuth.js: signIn('spotify')
+    NextAuth.js->>User: Redirect to Spotify for authorization
 
     User->>Spotify: Logs in and grants permissions
-    Spotify->>User: Redirects to Supabase callback URL with auth code
+    Spotify->>User: Redirects to NextAuth.js callback URL with auth code
 
-    User->>Next.js App: Follows redirect to /api/auth/callback/supabase
-    Next.js App->>Supabase: exchangeCodeForSession(code)
-    Supabase->>Next.js App: Returns session with tokens
+    User->>Next.js App (Server): Follows redirect to /api/auth/callback/supabase
+    Next.js App (Server)->>Spotify: Exchange authorization code for access token
+    Spotify->>Next.js App (Server): Returns access token and refresh token
 
-    Next.js App->>Spotify: API call to /me with access token
-    Spotify->>Next.js App: Returns user profile (including premium status)
+    Next.js App (Server)->>Spotify: API call to /me with access token
+    Spotify->>Next.js App (Server): Returns user profile (including premium status)
 
-    Next.js App->>Supabase: Upserts user profile to 'profiles' table
+    Next.js App (Server)->>Supabase: Upserts user profile to 'profiles' table
     alt Premium User
-        Next.js App->>User: Redirect to /:username/admin
+        NextAuth.js->>User: Sets session cookie and redirects to /:username/admin
     else Non-Premium User
-        Next.js App->>User: Redirect to /premium-required
+        NextAuth.js->>User: Redirect to /premium-required
     end
 ```
+
+The callback logic in `app/api/auth/callback/supabase/route.ts` is complex, including fallbacks for retrieving the Spotify access token and handling user profile creation and updates.
 
 ## 5. API Endpoints
 
@@ -83,11 +90,12 @@ The application exposes several API endpoints under `app/api/` to handle various
 - **`app/api/fixed-playlist/...`**: Manages the fixed playlist.
 - **`app/api/ping/...`**: A simple endpoint to check if the API is running.
 - **`app/api/playback/...`**: Controls Spotify playback, such as play, pause, and skip.
-- **`app/api/playlist/...`**: Manages the jukebox playlist, including adding and removing tracks.
-- **`app/api/playlists/...`**: Handles creation of new playlists.
+- **`app/api/playlists/[id]/`**: Manages individual playlists.
 - **`app/api/search/...`**: Searches for tracks on Spotify.
-- **`app/api/token/...`**: Handles Spotify API token management.
-- **`app/api/track-suggestions/...`**: Manages track suggestions.
+- **`app/api/token/[username]/`**: Manages tokens for a specific user.
+- **`app/api/track-suggestions/last-suggested/`**: Retrieves the last suggested track.
+- **`app/api/track-suggestions/refresh/`**: Refreshes track suggestions.
+- **`app/api/track-suggestions/refresh-site/`**: Triggers a site-wide refresh of suggestions.
 
 ## 6. Data Management
 
@@ -96,7 +104,10 @@ The application exposes several API endpoints under `app/api/` to handle various
 
 ## 7. Key Components
 
+- **`Header.tsx`**: The main application header.
+- **`SearchInput.tsx`**: A reusable search input component.
 - **`SpotifyPlayer`**: The main component for controlling music playback.
 - **`Playlist`**: Displays the current jukebox playlist.
 - **`QueueItem`**: Represents a single item in the playlist queue.
-- **`Admin Dashboard`**: The main interface for authenticated users to manage the jukebox.
+- **`Admin Dashboard`**: This is not a single component but a collection of components located under the `app/[username]/admin/components/` directory, forming the main interface for authenticated users to manage the jukebox.
+- **`components/ui/`**: This directory contains a set of reusable UI components, such as `Card`, `Progress`, and `Tabs`.
