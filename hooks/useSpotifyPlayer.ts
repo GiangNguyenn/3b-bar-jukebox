@@ -2,6 +2,7 @@
 import { create } from 'zustand'
 import { useCallback, useEffect, useRef } from 'react'
 import { useConsoleLogsContext } from './ConsoleLogsProvider'
+import { showToast } from '@/lib/toast'
 import { sendApiRequest } from '@/shared/api'
 import {
   SpotifyPlaybackState,
@@ -157,6 +158,23 @@ export const spotifyPlayerStore = create<PlayerStatusState>((set, get) => ({
     return newFailures
   }
 }))
+
+// Subscribe to the store to react to state changes
+spotifyPlayerStore.subscribe((state, prevState) => {
+  console.log('Player state changed:', {
+    isPlaying: state.playbackState?.is_playing,
+    wasPlaying: prevState.playbackState?.is_playing
+  })
+  // Check if playback has just resumed
+  if (state.playbackState?.is_playing && !prevState.playbackState?.is_playing) {
+    try {
+      console.log('Showing toast')
+      showToast('Playback resumed', 'success')
+    } catch (error) {
+      console.error('Error showing toast:', error)
+    }
+  }
+})
 
 // Export a hook to access the store
 export function useSpotifyPlayerStore() {
