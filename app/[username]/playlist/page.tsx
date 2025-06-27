@@ -1,6 +1,6 @@
 'use client'
 
-import { Suspense, useMemo, useEffect } from 'react'
+import { Suspense, useMemo, useEffect, useState, useCallback } from 'react'
 import { useGetPlaylist } from '@/hooks/useGetPlaylist'
 import { useFixedPlaylist } from '@/hooks/useFixedPlaylist'
 import { useTrackOperations } from '@/hooks/useTrackOperations'
@@ -25,7 +25,8 @@ export default function PlaylistPage(): JSX.Element {
     loading: isTokenLoading,
     error: tokenError,
     isRecovering,
-    isJukeboxOffline
+    isJukeboxOffline,
+    fetchToken
   } = useUserToken()
 
   const { fixedPlaylistId, isLoading: isPlaylistIdLoading } = useFixedPlaylist()
@@ -37,7 +38,8 @@ export default function PlaylistPage(): JSX.Element {
     data: playlist,
     error: playlistError,
     isLoading: isPlaylistLoading,
-    isRefreshing: isPlaylistRefreshing
+    isRefreshing: isPlaylistRefreshing,
+    refetch: refetchPlaylist
   } = useGetPlaylist({
     playlistId: fixedPlaylistId,
     token,
@@ -47,6 +49,7 @@ export default function PlaylistPage(): JSX.Element {
     error: string | null
     isLoading: boolean
     isRefreshing: boolean
+    refetch: () => Promise<void>
   }
 
   const { addTrack, optimisticTracks, lastAddedTrack, clearLastAddedTrack } =
@@ -106,6 +109,32 @@ export default function PlaylistPage(): JSX.Element {
       }
     }
   }
+
+  const [isTokenInvalid, setIsTokenInvalid] = useState(false)
+
+  // Effect to handle token recovery
+  useEffect(() => {
+    if (playlistError === 'Token invalid' && !isRecovering) {
+      setIsTokenInvalid(true)
+    }
+  }, [playlistError, isRecovering])
+
+  const handleTokenRecovery = useCallback(async () => {
+    if (fetchToken) {
+      const newToken = await fetchToken()
+      if (newToken) {
+        setIsTokenInvalid(false)
+        // Manually trigger a refetch of the playlist with the new token
+        void refetchPlaylist()
+      }
+    }
+  }, [fetchToken, refetchPlaylist])
+
+  useEffect(() => {
+    if (isTokenInvalid) {
+      void handleTokenRecovery()
+    }
+  }, [isTokenInvalid, handleTokenRecovery])
 
   // Reload page when jukebox goes offline (can't recover from expired token)
   useEffect(() => {
@@ -169,7 +198,8 @@ export default function PlaylistPage(): JSX.Element {
     isTokenLoading ||
     isPlaylistIdLoading ||
     isPlaylistLoading ||
-    isRecovering
+    isRecovering ||
+    isTokenInvalid
   ) {
     return (
       <Loading
