@@ -50,14 +50,7 @@ export function usePlaybackControls(): {
         }
       }
 
-      // Reconcile with the actual state from the API
-      const actualState = await spotifyApi.getPlaybackState()
-      if (actualState) {
-        setPlaybackState(actualState)
-      } else {
-        // If we can't get the state, revert to the original
-        setPlaybackState(originalState)
-      }
+      // No longer reconciling with the actual state from the API
     } catch (error) {
       addLog(
         'ERROR',
