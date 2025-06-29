@@ -1,13 +1,26 @@
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { songsBetweenRepeatsSchema } from '@/app/[username]/admin/components/track-suggestions/validations/trackSuggestions'
 import { PlaylistRefreshServiceImpl } from '@/services/playlistRefresh'
 import { type Genre } from '@/shared/constants/trackSuggestion'
 
 export const runtime = 'nodejs'
-
-// Configure timeout
 export const maxDuration = 60 // 60 seconds
+
+// Define the type for the last suggested track
+interface LastSuggestedTrack {
+  name: string
+  artist: string
+  album: string
+  uri: string
+  popularity: number
+  duration_ms: number
+  preview_url: string | null
+  genres: string[]
+}
+
+// Server-side cache for the last suggested track
+let serverCache: LastSuggestedTrack | null = null
 
 // Keep a reference to the service instance
 let serviceInstance: PlaylistRefreshServiceImpl | null = null
@@ -48,8 +61,52 @@ interface RefreshResponse {
   }
 }
 
-export function GET(): NextResponse<{ message: string }> {
-  return NextResponse.json({ message: 'Refresh site endpoint is active' })
+export function GET(request: NextRequest): NextResponse {
+  const { searchParams } = new URL(request.url)
+  const latest = searchParams.get('latest')
+
+  if (latest === 'true') {
+    try {
+      // If we have a cached track, return it immediately
+      if (serverCache) {
+        return NextResponse.json({
+          success: true,
+          track: serverCache,
+          hasServerCache: true,
+          timestamp: Date.now()
+        })
+      }
+
+      // Otherwise, get the track from the service
+      const service = PlaylistRefreshServiceImpl.getInstance()
+      const track = service.getLastSuggestedTrack()
+
+      // Update server cache if we got a track
+      if (track) {
+        serverCache = track
+      }
+
+      return NextResponse.json({
+        success: true,
+        track: track ?? null,
+        hasServerCache: !!serverCache,
+        timestamp: Date.now()
+      })
+    } catch (error) {
+      console.error('[Last Suggested Track] Error:', error)
+      return NextResponse.json(
+        {
+          success: false,
+          error: error instanceof Error ? error.message : 'Unknown error',
+          timestamp: Date.now()
+        },
+        { status: 500 }
+      )
+    }
+  }
+
+  // Default health check
+  return NextResponse.json({ message: 'Track suggestions endpoint is active' })
 }
 
 export async function POST(
@@ -120,6 +177,31 @@ export async function POST(
           'Content-Type': 'application/json'
         }
       }
+    )
+  }
+}
+
+// PUT endpoint to update the server cache for the last suggested track
+export async function PUT(request: Request): Promise<NextResponse> {
+  try {
+    const track = (await request.json()) as LastSuggestedTrack
+    serverCache = track
+
+    return NextResponse.json({
+      success: true,
+      track,
+      hasServerCache: true,
+      timestamp: Date.now()
+    })
+  } catch (error) {
+    console.error('[Last Suggested Track] Error updating cache:', error)
+    return NextResponse.json(
+      {
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error',
+        timestamp: Date.now()
+      },
+      { status: 500 }
     )
   }
 }

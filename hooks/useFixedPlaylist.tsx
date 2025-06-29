@@ -1,4 +1,4 @@
-import { SpotifyPlaylistItem, SpotifyPlaylists } from '@/shared/types/spotify'
+import { SpotifyPlaylistItem } from '@/shared/types/spotify'
 import { sendApiRequest } from '../shared/api'
 import { useMyPlaylists } from './useMyPlaylists'
 import { useEffect, useState, useRef } from 'react'

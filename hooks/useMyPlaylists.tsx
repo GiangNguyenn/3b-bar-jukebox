@@ -1,11 +1,11 @@
 import useSWR from 'swr'
 import { sendApiRequest } from '../shared/api'
-import { SpotifyPlaylists } from '@/shared/types/spotify'
+import { SpotifyPlaylistItem } from '@/shared/types/spotify'
 
 export const useMyPlaylists = () => {
   const fetcher = async () => {
     console.log('[MyPlaylists] Fetching user playlists')
-    const response = await sendApiRequest<SpotifyPlaylists>({
+    const response = await sendApiRequest<{ items: SpotifyPlaylistItem[] }>({
       path: 'me/playlists'
     })
     console.log('[MyPlaylists] Successfully fetched playlists:', {
