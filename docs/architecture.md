@@ -34,12 +34,12 @@ The project is organized into the following key directories:
   - **`app/[username]/playlist/`**: The public-facing playlist view.
 - **`components/`**: Reusable React components.
   - **`components/ui/`**: Reusable UI components like `Card`, `Progress`, and `Tabs`.
-- **`contexts/`**: React context providers for managing global state.
 - **`hooks/`**: Custom React hooks for managing state and side effects.
 - **`lib/`**: Utility functions and library initializations.
 - **`public/`**: Static assets like images and icons.
 - **`services/`**: Business logic and interactions with external APIs.
 - **`shared/`**: Code shared between the client and server.
+- **`stores/`**: Zustand stores for managing global application state.
 - **`supabase/`**: Supabase-related configurations and migrations.
 - **`types/`**: Global TypeScript type definitions.
 
@@ -47,60 +47,63 @@ The project is organized into the following key directories:
 
 User authentication is handled by NextAuth.js, using Spotify as the OAuth provider. The `middleware.ts` file only protects routes under `/admin`.
 
-The flow is as follows:
+The authentication callback logic has been refactored into a dedicated `AuthService` to improve separation of concerns. The API route acts as a thin controller that coordinates the authentication flow.
 
 ```mermaid
 sequenceDiagram
     participant User
     participant Next.js App (Client)
-    participant Next.js App (Server)
-    participant NextAuth.js
+    participant API Route
+    participant AuthService
     participant Spotify
+    participant Supabase
 
-    User->>Next.js App (Client): Navigates to /auth/signin
     User->>Next.js App (Client): Clicks 'Sign in with Spotify'
-    Next.js App (Client)->>NextAuth.js: signIn('spotify')
-    NextAuth.js->>User: Redirect to Spotify for authorization
+    Next.js App (Client)->>API Route: Initiates OAuth flow
 
+    API Route->>Spotify: Redirects user for authorization
     User->>Spotify: Logs in and grants permissions
-    Spotify->>User: Redirects to NextAuth.js callback URL with auth code
+    Spotify->>API Route: Redirects with authorization code
 
-    User->>Next.js App (Server): Follows redirect to /api/auth/callback/supabase
-    Next.js App (Server)->>Spotify: Exchange authorization code for access token
-    Spotify->>Next.js App (Server): Returns access token and refresh token
+    API Route->>AuthService: exchangeCodeForSession(code)
+    AuthService->>Supabase: Exchanges code for session
+    Supabase-->>AuthService: Returns session
 
-    Next.js App (Server)->>Spotify: API call to /me with access token
-    Spotify->>Next.js App (Server): Returns user profile (including premium status)
+    API Route->>AuthService: getSpotifyUserProfile(token)
+    AuthService->>Spotify: Fetches user profile
+    Spotify-->>AuthService: Returns profile
 
-    Next.js App (Server)->>Supabase: Upserts user profile to 'profiles' table
+    API Route->>AuthService: upsertUserProfile(profile)
+    AuthService->>Supabase: Upserts profile data
+    Supabase-->>AuthService: Confirms upsert
+
     alt Premium User
-        NextAuth.js->>User: Sets session cookie and redirects to /:username/admin
+        API Route->>User: Redirects to /:username/admin
     else Non-Premium User
-        NextAuth.js->>User: Redirect to /premium-required
+        API Route->>User: Redirects to /premium-required
     end
 ```
-
-The callback logic in `app/api/auth/callback/supabase/route.ts` is complex, including fallbacks for retrieving the Spotify access token and handling user profile creation and updates.
 
 ## 5. API Endpoints
 
 The application exposes several API endpoints under `app/api/` to handle various backend operations:
 
-- **`app/api/auth/...`**: Manages authentication, including callbacks, session management, profile handling, and premium verification.
+- **`app/api/auth/...`**: Manages authentication, including callbacks, session management, and profile handling.
 - **`app/api/fixed-playlist/...`**: Manages the fixed playlist.
 - **`app/api/ping/...`**: A simple endpoint to check if the API is running.
 - **`app/api/playback/...`**: Controls Spotify playback, such as play, pause, and skip.
 - **`app/api/playlists/[id]/`**: Manages individual playlists.
 - **`app/api/search/...`**: Searches for tracks on Spotify.
 - **`app/api/token/[username]/`**: Manages tokens for a specific user.
-- **`app/api/track-suggestions/last-suggested/`**: Retrieves the last suggested track.
-- **`app/api/track-suggestions/refresh/`**: Refreshes track suggestions.
-- **`app/api/track-suggestions/refresh-site/`**: Triggers a site-wide refresh of suggestions.
+- **`app/api/track-suggestions/`**: A consolidated endpoint for managing track suggestions.
+  - `GET ?latest=true`: Fetches the last suggested track.
+  - `POST`: Requests a new track suggestion based on the criteria in the body.
+  - `PUT`: Updates the "last suggested" track in the cache.
 
 ## 6. Data Management
 
 - **Database:** The application uses a PostgreSQL database managed by Supabase. The schema is managed via Supabase's built-in migration tools, located in the `supabase/migrations` directory.
-- **State Management:** Client-side state is managed with Zustand, a small, fast, and scalable state-management solution.
+- **State Management:** Client-side state is managed exclusively with Zustand, a small, fast, and scalable state-management solution. This provides a single, consistent pattern for managing global state.
 
 ## 7. Key Components
 

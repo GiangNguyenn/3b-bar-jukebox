@@ -14,7 +14,7 @@ interface ErrorResponse {
 interface TokenResponse {
   access_token: string
   refresh_token: string
-  expires_at: number
+  expires_in: number
 }
 
 interface UserProfile {
@@ -144,7 +144,7 @@ export async function GET(): Promise<
           return NextResponse.json({
             access_token: spotifyAccessToken,
             refresh_token: spotifyRefreshToken,
-            expires_at: Math.floor(Date.now() / 1000) + 3600
+            expires_in: 3600
           })
         } else {
           return NextResponse.json(
@@ -221,7 +221,7 @@ export async function GET(): Promise<
         return NextResponse.json({
           access_token: spotifyAccessToken,
           refresh_token: spotifyRefreshToken,
-          expires_at: Math.floor(Date.now() / 1000) + 3600
+          expires_in: 3600
         })
       } else {
         return NextResponse.json(
@@ -286,7 +286,7 @@ export async function GET(): Promise<
         access_token: tokenData.access_token,
         refresh_token:
           tokenData.refresh_token ?? typedProfile.spotify_refresh_token,
-        expires_at: Math.floor(Date.now() / 1000) + tokenData.expires_in
+        expires_in: tokenData.expires_in
       })
     }
 
@@ -294,7 +294,7 @@ export async function GET(): Promise<
     return NextResponse.json({
       access_token: typedProfile.spotify_access_token,
       refresh_token: typedProfile.spotify_refresh_token,
-      expires_at: tokenExpiresAt
+      expires_in: tokenExpiresAt - Math.floor(Date.now() / 1000)
     })
   } catch {
     return NextResponse.json(

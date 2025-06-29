@@ -17,12 +17,10 @@ export function useUserToken() {
   const [isRecovering, setIsRecovering] = useState(initialIsRecovering)
 
   useEffect(() => {
-    const getToken = async () => {
-      const newToken = await fetchToken()
-      setToken(newToken)
+    if (initialToken) {
+      setToken(initialToken)
     }
-    void getToken()
-  }, [fetchToken])
+  }, [initialToken])
 
   useEffect(() => {
     setToken(initialToken)
