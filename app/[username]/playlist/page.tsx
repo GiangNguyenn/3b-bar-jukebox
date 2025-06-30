@@ -85,30 +85,33 @@ export default function PlaylistPage(): JSX.Element {
     return [...upcomingTracks, ...optimisticTracks]
   }, [upcomingTracks, optimisticTracks])
 
-  const handleAddTrack = async (track: TrackDetails): Promise<void> => {
-    try {
-      const trackItem: TrackItem = {
-        added_at: new Date().toISOString(),
-        added_by: {
-          id: 'user',
-          type: 'user',
-          uri: 'spotify:user:user',
-          href: 'https://api.spotify.com/v1/users/user',
-          external_urls: {
-            spotify: 'https://open.spotify.com/user/user'
-          }
-        },
-        is_local: false,
-        track
+  const handleAddTrack = useCallback(
+    async (track: TrackDetails): Promise<void> => {
+      try {
+        const trackItem: TrackItem = {
+          added_at: new Date().toISOString(),
+          added_by: {
+            id: 'user',
+            type: 'user',
+            uri: 'spotify:user:user',
+            href: 'https://api.spotify.com/v1/users/user',
+            external_urls: {
+              spotify: 'https://open.spotify.com/user/user'
+            }
+          },
+          is_local: false,
+          track
+        }
+        await addTrack(trackItem)
+      } catch (error) {
+        const appError = handleApiError(error, 'PlaylistPage')
+        if (appError instanceof AppError) {
+          // Error is already handled by handleApiError
+        }
       }
-      await addTrack(trackItem)
-    } catch (error) {
-      const appError = handleApiError(error, 'PlaylistPage')
-      if (appError instanceof AppError) {
-        // Error is already handled by handleApiError
-      }
-    }
-  }
+    },
+    [addTrack]
+  )
 
   const [isTokenInvalid, setIsTokenInvalid] = useState(false)
 

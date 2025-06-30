@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { TrackDetails } from '@/shared/types/spotify'
 import { handleApiError } from '@/shared/utils/errorHandling'
 import { ErrorMessage } from '@/components/ui/error-message'
@@ -28,39 +28,42 @@ export default function SearchInput({
   const [error, setError] = useState<string | null>(null)
   const debounceRef = useRef<NodeJS.Timeout | null>(null)
 
-  const handleSearch = async (query: string): Promise<void> => {
-    if (!query.trim() || query.trim().length < 3) {
-      setSearchResults([])
-      return
-    }
-
-    setIsSearching(true)
-    setError(null)
-
-    try {
-      const searchParams = new URLSearchParams({
-        q: query
-      })
-
-      if (username) {
-        searchParams.append('username', username)
+  const handleSearch = useCallback(
+    async (query: string): Promise<void> => {
+      if (!query.trim() || query.trim().length < 3) {
+        setSearchResults([])
+        return
       }
 
-      const response = await fetch(`/api/search?${searchParams.toString()}`)
-      if (!response.ok) {
-        throw new Error('Search failed')
+      setIsSearching(true)
+      setError(null)
+
+      try {
+        const searchParams = new URLSearchParams({
+          q: query
+        })
+
+        if (username) {
+          searchParams.append('username', username)
+        }
+
+        const response = await fetch(`/api/search?${searchParams.toString()}`)
+        if (!response.ok) {
+          throw new Error('Search failed')
+        }
+        const data = (await response.json()) as SearchResponse
+        setSearchResults(data.tracks?.items ?? [])
+      } catch (error) {
+        console.error('[SearchInput] Error searching tracks:', error)
+        const appError = handleApiError(error, 'SearchInput')
+        setError(appError.message)
+        setSearchResults([])
+      } finally {
+        setIsSearching(false)
       }
-      const data = (await response.json()) as SearchResponse
-      setSearchResults(data.tracks?.items ?? [])
-    } catch (error) {
-      console.error('[SearchInput] Error searching tracks:', error)
-      const appError = handleApiError(error, 'SearchInput')
-      setError(appError.message)
-      setSearchResults([])
-    } finally {
-      setIsSearching(false)
-    }
-  }
+    },
+    [username]
+  )
 
   // Debounced search effect
   useEffect(() => {
@@ -88,17 +91,20 @@ export default function SearchInput({
     }
   }, [searchQuery, username, handleSearch])
 
-  const handleAddTrack = async (track: TrackDetails): Promise<void> => {
-    try {
-      await onAddTrack(track)
-      setSearchResults([])
-      setSearchQuery('')
-    } catch (error) {
-      console.error('[SearchInput] Error adding track:', error)
-      const appError = handleApiError(error, 'SearchInput')
-      setError(appError.message)
-    }
-  }
+  const handleAddTrack = useCallback(
+    async (track: TrackDetails): Promise<void> => {
+      try {
+        await onAddTrack(track)
+        setSearchResults([])
+        setSearchQuery('')
+      } catch (error) {
+        console.error('[SearchInput] Error adding track:', error)
+        const appError = handleApiError(error, 'SearchInput')
+        setError(appError.message)
+      }
+    },
+    [onAddTrack]
+  )
 
   return (
     <div className='w-full'>
