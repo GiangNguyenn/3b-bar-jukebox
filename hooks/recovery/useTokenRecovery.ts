@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 import { useParams } from 'next/navigation'
 import { useConsoleLogsContext } from '../ConsoleLogsProvider'
 import {
@@ -115,6 +115,11 @@ export function useTokenRecovery() {
     },
     [username, addLog]
   )
+
+  // Automatically fetch the token when the component mounts or username changes
+  useEffect(() => {
+    void fetchToken()
+  }, [fetchToken])
 
   const isJukeboxOffline =
     consecutiveFailures >= TOKEN_RECOVERY_CONFIG.OFFLINE_THRESHOLD
