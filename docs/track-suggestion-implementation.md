@@ -82,6 +82,7 @@ We will create a new, dedicated API route to handle logging user track suggestio
 **File to Create**: `app/api/log-suggestion/route.ts`
 
 **Logic**:
+
 1.  Define a `POST` handler for the new route.
 2.  Extract the `track` object from the request body.
 3.  Create a Supabase server client to get the authenticated user's session and `profile_id`.
@@ -97,31 +98,34 @@ The final step is to call our new API endpoint from the `useTrackOperations` hoo
 **File to Modify**: `hooks/useTrackOperations.tsx`
 
 **Logic**:
+
 1.  In the `addTrack` function, after the `spotifyApi.addTracksToPlaylist` call succeeds, add a `fetch` call to our new `/api/log-suggestion` endpoint.
 2.  The call should be "fire-and-forget" to avoid blocking the UI. We will not `await` its response.
 3.  Include a `.catch()` block to log any potential errors to the console for debugging purposes, without alerting the user.
 4.  The body of the `POST` request will contain the `track` object.
 
 **Example Code Snippet**:
+
 ```typescript
 // Inside hooks/useTrackOperations.tsx in the addTrack function
 
 try {
   // Existing call to add track to Spotify playlist
-  await spotifyApi.addTracksToPlaylist(playlistId, [trackItem.track.uri]);
+  await spotifyApi.addTracksToPlaylist(playlistId, [trackItem.track.uri])
 
   // --- NEW LOGIC ---
   // Fire-and-forget call to our internal API to log the suggestion.
   fetch('/api/log-suggestion', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ track: trackItem.track }),
-  }).catch(error => {
-    console.error('Failed to log track suggestion:', error);
-  });
+    body: JSON.stringify({ track: trackItem.track })
+  }).catch((error) => {
+    console.error('Failed to log track suggestion:', error)
+  })
   // --- END NEW LOGIC ---
 
   // ... rest of the existing success logic
 } catch (error) {
   // ... existing error handling
 }
+```
