@@ -17,7 +17,7 @@ const getInitialState = (
     popularity: 50,
     allowExplicit: false,
     maxSongLength: 10,
-    songsBetweenRepeats: 5,
+    songsBetweenRepeats: 50,
     maxOffset: DEFAULT_MAX_OFFSET,
     ...initialState
   }

@@ -119,8 +119,8 @@ export class PlaylistRefreshServiceImpl implements PlaylistRefreshService {
     genres: string[]
   }): Promise<void> {
     try {
-      await fetch('/api/track-suggestions/last-suggested', {
-        method: 'POST',
+      await fetch('/api/track-suggestions', {
+        method: 'PUT',
         headers: {
           'Content-Type': 'application/json'
         },

@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useRef, useCallback } from 'react'
+import { useConsoleLogsContext } from '@/hooks/ConsoleLogsProvider'
 import { TrackDetails } from '@/shared/types/spotify'
 import { handleApiError } from '@/shared/utils/errorHandling'
 import { ErrorMessage } from '@/components/ui/error-message'
@@ -22,6 +23,7 @@ export default function SearchInput({
   onAddTrack,
   username
 }: SearchInputProps): JSX.Element {
+  const { addLog } = useConsoleLogsContext()
   const [searchQuery, setSearchQuery] = useState('')
   const [searchResults, setSearchResults] = useState<TrackDetails[]>([])
   const [isSearching, setIsSearching] = useState(false)
@@ -67,10 +69,10 @@ export default function SearchInput({
         setSearchResults(data.tracks?.items ?? [])
       } catch (error) {
         if ((error as Error).name === 'AbortError') {
-          console.log('Search request aborted')
+          addLog('INFO', 'Search request aborted', 'SearchInput')
           return // Don't set error for aborted requests
         }
-        console.error('[SearchInput] Error searching tracks:', error)
+        addLog('ERROR', 'Error searching tracks', 'SearchInput', error as Error)
         const appError = handleApiError(error, 'SearchInput')
         setError(appError.message)
         setSearchResults([])
@@ -121,7 +123,7 @@ export default function SearchInput({
         setSearchResults([])
         setSearchQuery('')
       } catch (error) {
-        console.error('[SearchInput] Error adding track:', error)
+        addLog('ERROR', 'Error adding track', 'SearchInput', error as Error)
         const appError = handleApiError(error, 'SearchInput')
         setError(appError.message)
       }

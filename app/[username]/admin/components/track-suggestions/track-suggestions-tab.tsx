@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useCallback } from 'react'
+import { useConsoleLogsContext } from '@/hooks/ConsoleLogsProvider'
 import { GenresSelector } from './components/genres-selector'
 import { YearRangeSelector } from './components/year-range-selector'
 import { PopularitySelector } from './components/popularity-selector'
@@ -31,6 +32,7 @@ export function TrackSuggestionsTab({
   onStateChange,
   initialState
 }: TrackSuggestionsTabProps): JSX.Element {
+  const { addLog } = useConsoleLogsContext()
   const {
     state,
     setGenres,
@@ -71,7 +73,12 @@ export function TrackSuggestionsTab({
     lastFetchTimeRef.current = now
 
     try {
-      const response = await fetch('/api/track-suggestions/last-suggested')
+      addLog(
+        'LOG',
+        'Fetching last suggested track with updated URL...',
+        'TrackSuggestionsTab'
+      )
+      const response = await fetch('/api/track-suggestions?latest=true')
       if (!response.ok) {
         throw new Error('Failed to fetch last suggested track')
       }
@@ -82,9 +89,11 @@ export function TrackSuggestionsTab({
         lastTrackUriRef.current = data.track?.uri ?? null
       }
     } catch (error) {
-      console.error(
-        '[TrackSuggestionsTab] Error fetching last suggested track:',
-        error
+      addLog(
+        'ERROR',
+        'Error fetching last suggested track',
+        'TrackSuggestionsTab',
+        error as Error
       )
     }
   }, [updateState])
