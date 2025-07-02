@@ -7,13 +7,11 @@ import NowPlaying from './NowPlaying'
 
 interface PlaylistProps {
   tracks: TrackItem[]
-  optimisticTracks?: TrackItem[]
   currentlyPlaying?: SpotifyPlaybackState | null
 }
 
 export default function Playlist({
   tracks,
-  optimisticTracks,
   currentlyPlaying
 }: PlaylistProps): JSX.Element {
   const containerRef = useRef<HTMLDivElement>(null)
@@ -42,11 +40,6 @@ export default function Playlist({
                 <QueueItem
                   key={`${track.track.id}-${index}-${track.added_at}`}
                   track={track}
-                  isPending={
-                    optimisticTracks?.some(
-                      (t) => t.track.id === track.track.id
-                    ) ?? false
-                  }
                 />
               ))}
             </div>
