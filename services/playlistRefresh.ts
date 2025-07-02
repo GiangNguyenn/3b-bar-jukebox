@@ -504,7 +504,10 @@ export class PlaylistRefreshServiceImpl implements PlaylistRefreshService {
       )
 
       // Track whether we need to resume playback
-      let shouldResumePlayback = hasPlaylistChanged && playbackState?.is_playing
+      let shouldResumePlayback =
+        hasPlaylistChanged &&
+        playbackState?.is_playing &&
+        upcomingTracks.length <= 2
 
       const diagnosticInfo = {
         currentTrackId,
