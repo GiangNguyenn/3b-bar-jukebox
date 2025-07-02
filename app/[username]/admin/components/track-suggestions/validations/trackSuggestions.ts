@@ -2,7 +2,7 @@ import { z } from 'zod'
 
 export const SONGS_BETWEEN_REPEATS_MIN = 2
 export const SONGS_BETWEEN_REPEATS_MAX = 100
-export const SONGS_BETWEEN_REPEATS_DEFAULT = 20
+export const SONGS_BETWEEN_REPEATS_DEFAULT = 50
 
 export const songsBetweenRepeatsSchema = z
   .number()

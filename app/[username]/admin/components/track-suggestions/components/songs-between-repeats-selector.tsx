@@ -1,6 +1,7 @@
 'use client'
 
 import { RefreshCw } from 'lucide-react'
+import { SONGS_BETWEEN_REPEATS_DEFAULT } from '../validations/trackSuggestions'
 
 interface SongsBetweenRepeatsSelectorProps {
   count: number
@@ -16,7 +17,7 @@ export function SongsBetweenRepeatsSelector({
   }
 
   const handleReset = (): void => {
-    onCountChange(50) // Reset to middle value
+    onCountChange(SONGS_BETWEEN_REPEATS_DEFAULT)
   }
 
   return (
