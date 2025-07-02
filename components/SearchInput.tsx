@@ -27,6 +27,7 @@ export default function SearchInput({
   const [isSearching, setIsSearching] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const debounceRef = useRef<NodeJS.Timeout | null>(null)
+  const abortControllerRef = useRef<AbortController | null>(null)
 
   const handleSearch = useCallback(
     async (query: string): Promise<void> => {
@@ -34,6 +35,15 @@ export default function SearchInput({
         setSearchResults([])
         return
       }
+
+      // Abort previous request if it exists
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort()
+      }
+
+      // Create a new AbortController for the new request
+      const controller = new AbortController()
+      abortControllerRef.current = controller
 
       setIsSearching(true)
       setError(null)
@@ -47,19 +57,28 @@ export default function SearchInput({
           searchParams.append('username', username)
         }
 
-        const response = await fetch(`/api/search?${searchParams.toString()}`)
+        const response = await fetch(`/api/search?${searchParams.toString()}`, {
+          signal: controller.signal
+        })
         if (!response.ok) {
           throw new Error('Search failed')
         }
         const data = (await response.json()) as SearchResponse
         setSearchResults(data.tracks?.items ?? [])
       } catch (error) {
+        if ((error as Error).name === 'AbortError') {
+          console.log('Search request aborted')
+          return // Don't set error for aborted requests
+        }
         console.error('[SearchInput] Error searching tracks:', error)
         const appError = handleApiError(error, 'SearchInput')
         setError(appError.message)
         setSearchResults([])
       } finally {
-        setIsSearching(false)
+        // Only set searching to false if the current request was not aborted
+        if (!controller.signal.aborted) {
+          setIsSearching(false)
+        }
       }
     },
     [username]
@@ -87,6 +106,10 @@ export default function SearchInput({
     return (): void => {
       if (debounceRef.current) {
         clearTimeout(debounceRef.current)
+      }
+      // Abort any ongoing search when the component unmounts or query changes
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort()
       }
     }
   }, [searchQuery, username, handleSearch])

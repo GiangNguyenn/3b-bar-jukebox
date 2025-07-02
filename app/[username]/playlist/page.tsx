@@ -253,7 +253,6 @@ export default function PlaylistPage(): JSX.Element {
             )}
             <Playlist
               tracks={tracksToDisplay}
-              optimisticTracks={optimisticTracks}
               currentlyPlaying={currentlyPlaying}
             />
           </div>
