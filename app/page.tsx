@@ -1,124 +1,213 @@
 'use client'
-import { useFixedPlaylist } from '@/hooks/useFixedPlaylist'
-import { usePlaylist } from '@/hooks/usePlaylist'
-import { useEffect, useState, useMemo, memo, useCallback } from 'react'
-import { useSearchTracks } from '../hooks/useSearchTracks'
-import Playlist from '@/components/Playlist/Playlist'
-import Loading from './loading'
-import SearchInput from '@/components/SearchInput'
-import { useDebounce } from 'use-debounce'
-import { SpotifySearchRequest } from '@/hooks/useSearchTracks'
-import { TrackDetails } from '@/shared/types'
-import { useMyPlaylists } from '@/hooks/useMyPlaylists'
 
-interface PlaylistRefreshEvent extends CustomEvent {
-  detail: {
-    timestamp: number
-  }
-}
+import { useEffect, useState } from 'react'
+import { useRouter } from 'next/navigation'
+import { createBrowserClient } from '@supabase/ssr'
+import { usePremiumStatus } from '@/hooks/usePremiumStatus'
+import type { Database } from '@/types/supabase'
+import type { User } from '@supabase/supabase-js'
+import { useConsoleLogsContext } from '@/hooks/ConsoleLogsProvider'
+import { Loading } from '@/components/ui/loading'
 
-declare global {
-  interface WindowEventMap {
-    playlistRefresh: PlaylistRefreshEvent
-  }
-}
-
-const Home = memo((): JSX.Element => {
+export default function Home(): JSX.Element {
+  const [user, setUser] = useState<User | null>(null)
+  const [loading, setLoading] = useState(true)
+  const router = useRouter()
   const {
-    fixedPlaylistId,
-    isLoading: isCreatingPlaylist,
-    isInitialFetchComplete
-  } = useFixedPlaylist()
-  const { playlist, refreshPlaylist } = usePlaylist(fixedPlaylistId ?? '')
-  const { refetchPlaylists } = useMyPlaylists()
-  const [searchQuery, setSearchQuery] = useState('')
-  const { searchTracks, tracks: searchResults } = useSearchTracks()
+    isPremium,
+    isLoading: isPremiumLoading,
+    error: premiumError,
+    needsReauth
+  } = usePremiumStatus()
+  const { addLog } = useConsoleLogsContext()
+
+  const supabase = createBrowserClient<Database>(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  )
 
   useEffect(() => {
-    if (!fixedPlaylistId && isInitialFetchComplete) {
-      console.error('[Fixed Playlist] Required playlist not found: 3B Saigon')
+    const getUser = async (): Promise<void> => {
+      const {
+        data: { user }
+      } = await supabase.auth.getUser()
+      setUser(user)
+      setLoading(false)
     }
-  }, [fixedPlaylistId, isInitialFetchComplete])
 
-  const handleTrackAdded = useCallback((): void => {
-    // Force a revalidation with fresh data
-    void refreshPlaylist()
-    // Dispatch a custom event to force immediate UI update
-    window.dispatchEvent(
-      new CustomEvent('playlistRefresh', {
-        detail: { timestamp: Date.now() }
-      })
+    void getUser()
+  }, [supabase])
+
+  // Redirect non-premium users to premium-required page
+  // Only redirect if there's no error and user is confirmed to be non-premium
+  useEffect(() => {
+    addLog(
+      'INFO',
+      `Premium status check - user: ${!!user}, isPremium: ${isPremium}, isLoading: ${isPremiumLoading}, error: ${premiumError}, needsReauth: ${needsReauth}`,
+      'RootPage'
     )
-    // Force a refresh of the playlists data
-    void refetchPlaylists()
-  }, [refreshPlaylist, refetchPlaylists])
-
-  const [debouncedSearchQuery] = useDebounce(searchQuery, 300)
-
-  const handleSearch = useCallback(
-    async (query: string): Promise<void> => {
-      if (!query.trim()) {
-        return
-      }
-
-      const searchRequest: SpotifySearchRequest = {
-        query,
-        type: 'track',
-        limit: 20
-      }
-
-      await searchTracks(searchRequest)
-    },
-    [searchTracks]
-  )
-
-  useEffect(() => {
-    const searchTrackDebounce = async (): Promise<void> => {
-      try {
-        if (debouncedSearchQuery !== '') {
-          await handleSearch(debouncedSearchQuery)
-        }
-      } catch (error) {
-        console.error('[Search] Error searching tracks:', error)
-      }
+    if (
+      user &&
+      !isPremiumLoading &&
+      !isPremium &&
+      !premiumError &&
+      !needsReauth
+    ) {
+      addLog(
+        'INFO',
+        'Redirecting non-premium user to /premium-required',
+        'RootPage',
+        undefined
+      )
+      void router.push('/premium-required')
     }
+  }, [
+    user,
+    isPremium,
+    isPremiumLoading,
+    router,
+    premiumError,
+    needsReauth,
+    addLog
+  ])
 
-    void searchTrackDebounce()
-  }, [debouncedSearchQuery, handleSearch])
+  // Log state changes for debugging
+  useEffect(() => {
+    if (loading || isPremiumLoading) {
+      addLog('INFO', 'Showing loading screen', 'RootPage')
+    } else if (!user) {
+      addLog('INFO', 'No user found, showing sign in page', 'RootPage')
+    } else if (needsReauth) {
+      addLog(
+        'INFO',
+        'Re-authentication needed, showing sign in option',
+        'RootPage'
+      )
+    } else if (premiumError) {
+      addLog(
+        'INFO',
+        'Premium error detected, showing re-authentication option',
+        'RootPage'
+      )
+    } else if (!isPremium) {
+      addLog(
+        'INFO',
+        'User is not premium, showing redirect message',
+        'RootPage'
+      )
+    } else {
+      addLog('INFO', 'User is premium, showing admin button', 'RootPage')
+    }
+  }, [
+    loading,
+    isPremiumLoading,
+    user,
+    needsReauth,
+    premiumError,
+    isPremium,
+    addLog
+  ])
 
-  const searchInputProps = useMemo<{
-    searchQuery: string
-    setSearchQuery: (query: string) => void
-    searchResults: TrackDetails[]
-    setSearchResults: () => void
-    playlistId: string
-    onTrackAdded: () => void
-  }>(
-    () => ({
-      searchQuery,
-      setSearchQuery,
-      searchResults,
-      setSearchResults: (): void => {}, // This is handled by useSearchTracks now
-      playlistId: fixedPlaylistId ?? '',
-      onTrackAdded: handleTrackAdded
-    }),
-    [searchQuery, searchResults, fixedPlaylistId, handleTrackAdded]
-  )
-
-  if (isCreatingPlaylist || !playlist || !fixedPlaylistId) {
-    return <Loading />
+  if (loading || isPremiumLoading) {
+    return <Loading fullScreen />
   }
 
-  const { tracks } = playlist
+  if (!user) {
+    return (
+      <div className='flex min-h-screen items-center justify-center'>
+        <div className='text-center'>
+          <h1 className='mb-4 text-center font-[family-name:var(--font-belgrano)] text-4xl leading-tight text-primary-100'>
+            Welcome to 3B Saigon Jukebox
+          </h1>
+          <p className='mb-8 text-gray-400'>Please sign in to continue</p>
+          <a
+            href='/auth/signin'
+            className='text-white rounded bg-green-500 px-4 py-2 font-bold hover:bg-green-600'
+          >
+            Sign In
+          </a>
+        </div>
+      </div>
+    )
+  }
 
+  // If there's a re-authentication needed, show login button
+  if (needsReauth) {
+    return (
+      <div className='flex min-h-screen items-center justify-center'>
+        <div className='text-center'>
+          <h1 className='mb-4 text-center font-[family-name:var(--font-belgrano)] text-4xl leading-tight text-primary-100'>
+            Spotify Authentication Required
+          </h1>
+          <p className='mb-8 text-gray-400'>
+            Your Spotify connection has expired or is invalid. Please sign in
+            again to continue.
+          </p>
+          <a
+            href='/auth/signin'
+            className='text-white rounded bg-green-500 px-4 py-2 font-bold hover:bg-green-600'
+          >
+            Sign In with Spotify
+          </a>
+        </div>
+      </div>
+    )
+  }
+
+  // If there's a premium error (like token issues), show login button
+  if (premiumError) {
+    return (
+      <div className='flex min-h-screen items-center justify-center'>
+        <div className='text-center'>
+          <h1 className='mb-4 text-center font-[family-name:var(--font-belgrano)] text-4xl leading-tight text-primary-100'>
+            Authentication Issue
+          </h1>
+          <p className='mb-8 text-gray-400'>
+            There was an issue with your Spotify connection. Please sign in
+            again.
+          </p>
+          <a
+            href='/auth/signin'
+            className='text-white rounded bg-green-500 px-4 py-2 font-bold hover:bg-green-600'
+          >
+            Sign In Again
+          </a>
+        </div>
+      </div>
+    )
+  }
+
+  // Don't show admin button if user is not premium
+  if (!isPremium) {
+    return (
+      <div className='flex min-h-screen items-center justify-center'>
+        <div className='text-center'>
+          <h1 className='mb-4 text-center font-[family-name:var(--font-belgrano)] text-4xl leading-tight text-primary-100'>
+            Redirecting...
+          </h1>
+          <p className='text-gray-400'>
+            Please wait while we redirect you to the premium requirements page.
+          </p>
+        </div>
+      </div>
+    )
+  }
+
+  // Only show admin button for premium users
   return (
-    <div className='items-center justify-items-center space-y-3 p-4 pt-10 font-mono'>
-      <SearchInput {...searchInputProps} />
-      <Playlist tracks={tracks.items} />
+    <div className='flex min-h-screen items-center justify-center'>
+      <div className='text-center'>
+        <h1 className='mb-4 text-center font-[family-name:var(--font-belgrano)] text-4xl leading-tight text-primary-100'>
+          Welcome, {user.email}!
+        </h1>
+        <p className='mb-8 text-gray-400'>You are signed in successfully.</p>
+        <a
+          href={`/${user.user_metadata?.full_name ?? user.email?.split('@')[0] ?? 'user'}/admin`}
+          className='text-white rounded bg-blue-500 px-4 py-2 font-bold hover:bg-blue-600'
+        >
+          Go to Admin
+        </a>
+      </div>
     </div>
   )
-})
-
-Home.displayName = 'Home'
-
-export default Home
+}

@@ -9,15 +9,15 @@ const nextConfig = {
         pathname: '/**'
       }
     ]
-  },
-  async rewrites() {
-    return [
-      {
-        source: '/api/auth/:path*',
-        destination: '/api/auth'
-      }
-    ]
   }
+  // async rewrites() {
+  //   return [
+  //     {
+  //       source: '/api/auth/:path*',
+  //       destination: '/api/auth'
+  //     }
+  //   ]
+  // }
 }
 
 export default withSentryConfig(nextConfig, {

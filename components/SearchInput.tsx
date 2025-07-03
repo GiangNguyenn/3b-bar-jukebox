@@ -1,142 +1,194 @@
-import { TrackDetails, TrackItem } from '@/shared/types'
-import { FC, useState } from 'react'
-import { faSearch } from '@fortawesome/free-solid-svg-icons'
-import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
-import { useAddTrackToPlaylist } from '@/hooks/useAddTrackToPlaylist'
+'use client'
+
+import { useState, useEffect, useRef, useCallback } from 'react'
+import { useConsoleLogsContext } from '@/hooks/ConsoleLogsProvider'
+import { TrackDetails } from '@/shared/types/spotify'
+import { handleApiError } from '@/shared/utils/errorHandling'
+import { ErrorMessage } from '@/components/ui/error-message'
+import { Loading } from '@/components/ui/loading'
 import Image from 'next/image'
 
 interface SearchInputProps {
-  searchQuery: string
-  setSearchQuery: (value: string) => void
-  searchResults: TrackDetails[]
-  setSearchResults: (value: TrackDetails[]) => void
-  playlistId: string
-  onTrackAdded?: () => void
+  onAddTrack: (track: TrackDetails) => Promise<void>
+  username?: string
 }
 
-const SearchInput: FC<SearchInputProps> = ({
-  searchQuery,
-  setSearchQuery,
-  searchResults,
-  setSearchResults,
-  playlistId,
-  onTrackAdded
-}): JSX.Element => {
-  const { addTrack } = useAddTrackToPlaylist({ playlistId })
-  const [isOpen, setIsOpen] = useState(false)
-
-  const handleChange = (value: string): void => {
-    setSearchQuery(value)
-    setIsOpen(true)
+interface SearchResponse {
+  tracks?: {
+    items: TrackDetails[]
   }
+}
 
-  const handleAddTrack = (track: TrackDetails): void => {
-    const trackItem: TrackItem = {
-      added_at: new Date().toISOString(),
-      added_by: {
-        id: 'user',
-        type: 'user',
-        uri: 'spotify:user:user',
-        href: 'https://api.spotify.com/v1/users/user',
-        external_urls: {
-          spotify: 'https://open.spotify.com/user/user'
-        }
-      },
-      is_local: false,
-      track: {
-        uri: track.uri,
-        name: track.name,
-        artists: track.artists,
-        album: track.album,
-        duration_ms: track.duration_ms,
-        id: track.id,
-        available_markets: track.available_markets,
-        disc_number: track.disc_number,
-        explicit: track.explicit,
-        external_ids: track.external_ids,
-        external_urls: track.external_urls,
-        href: track.href,
-        is_local: track.is_local,
-        is_playable: track.is_playable,
-        popularity: track.popularity,
-        preview_url: track.preview_url,
-        track_number: track.track_number,
-        type: track.type
+export default function SearchInput({
+  onAddTrack,
+  username
+}: SearchInputProps): JSX.Element {
+  const { addLog } = useConsoleLogsContext()
+  const [searchQuery, setSearchQuery] = useState('')
+  const [searchResults, setSearchResults] = useState<TrackDetails[]>([])
+  const [isSearching, setIsSearching] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const debounceRef = useRef<NodeJS.Timeout | null>(null)
+  const abortControllerRef = useRef<AbortController | null>(null)
+
+  const handleSearch = useCallback(
+    async (query: string): Promise<void> => {
+      if (!query.trim() || query.trim().length < 3) {
+        setSearchResults([])
+        return
       }
+
+      // Abort previous request if it exists
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort()
+      }
+
+      // Create a new AbortController for the new request
+      const controller = new AbortController()
+      abortControllerRef.current = controller
+
+      setIsSearching(true)
+      setError(null)
+
+      try {
+        const searchParams = new URLSearchParams({
+          q: query
+        })
+
+        if (username) {
+          searchParams.append('username', username)
+        }
+
+        const response = await fetch(`/api/search?${searchParams.toString()}`, {
+          signal: controller.signal
+        })
+        if (!response.ok) {
+          throw new Error('Search failed')
+        }
+        const data = (await response.json()) as SearchResponse
+        setSearchResults(data.tracks?.items ?? [])
+      } catch (error) {
+        if ((error as Error).name === 'AbortError') {
+          addLog('INFO', 'Search request aborted', 'SearchInput')
+          return // Don't set error for aborted requests
+        }
+        addLog('ERROR', 'Error searching tracks', 'SearchInput', error as Error)
+        const appError = handleApiError(error, 'SearchInput')
+        setError(appError.message)
+        setSearchResults([])
+      } finally {
+        // Only set searching to false if the current request was not aborted
+        if (!controller.signal.aborted) {
+          setIsSearching(false)
+        }
+      }
+    },
+    [username]
+  )
+
+  // Debounced search effect
+  useEffect(() => {
+    // Clear previous timeout
+    if (debounceRef.current) {
+      clearTimeout(debounceRef.current)
     }
 
-    void addTrack(trackItem)
-      .then(() => {
-        // Clear search results and close dropdown after successful addition
+    // Only search if query has 3+ characters
+    if (searchQuery.trim().length >= 3) {
+      // Debounce search by 300ms
+      debounceRef.current = setTimeout(() => {
+        void handleSearch(searchQuery)
+      }, 300)
+    } else {
+      // Clear results if query is too short
+      setSearchResults([])
+    }
+
+    // Cleanup timeout on unmount or when searchQuery changes
+    return (): void => {
+      if (debounceRef.current) {
+        clearTimeout(debounceRef.current)
+      }
+      // Abort any ongoing search when the component unmounts or query changes
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort()
+      }
+    }
+  }, [searchQuery, username, handleSearch])
+
+  const handleAddTrack = useCallback(
+    async (track: TrackDetails): Promise<void> => {
+      try {
+        await onAddTrack(track)
         setSearchResults([])
         setSearchQuery('')
-        setIsOpen(false)
-        // Call the callback after the track is successfully added
-        onTrackAdded?.()
-      })
-      .catch((error) => {
-        console.error('Failed to add track:', error)
-        // Keep search results visible if there was an error
-      })
-  }
+      } catch (error) {
+        addLog('ERROR', 'Error adding track', 'SearchInput', error as Error)
+        const appError = handleApiError(error, 'SearchInput')
+        setError(appError.message)
+      }
+    },
+    [onAddTrack]
+  )
 
   return (
-    <div className='relative flex w-full flex-wrap gap-4 rounded-lg sm:w-10/12 md:w-8/12 md:flex-nowrap lg:w-9/12'>
-      <div className='relative flex-1'>
-        <div className='pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3'>
-          <FontAwesomeIcon icon={faSearch} className='text-gray-400' />
-        </div>
+    <div className='w-full'>
+      <div className='relative'>
         <input
           type='text'
           value={searchQuery}
-          onChange={(e) => handleChange(e.target.value)}
-          placeholder='What do you want to listen to?'
-          className='bg-white block w-full rounded-lg border border-gray-300 py-2 pl-10 pr-3 leading-5 placeholder-gray-500 focus:border-blue-500 focus:placeholder-gray-400 focus:outline-none focus:ring-1 focus:ring-blue-500 sm:text-sm'
-          aria-label='Search for songs, albums, or artists'
+          onChange={(e) => setSearchQuery(e.target.value)}
+          placeholder='Search for a song... (type at least 3 characters)'
+          className='w-full rounded-lg border border-gray-300 p-2 pr-4 focus:border-blue-500 focus:outline-none'
         />
-        {isOpen && searchResults.length > 0 && (
-          <div
-            className='bg-white absolute z-50 mt-1 max-h-60 w-full overflow-auto rounded-md border border-gray-200 shadow-lg'
-            style={{ isolation: 'isolate' }}
-          >
-            <div className='bg-white rounded-md'>
-              <ul className='overflow-auto py-1 text-base focus:outline-none sm:text-sm'>
-                {searchResults.map((track) => (
-                  <li
-                    key={track.id}
-                    onClick={() => handleAddTrack(track)}
-                    className='relative cursor-pointer select-none bg-gray-100 py-2 pl-3 pr-9 hover:bg-gray-200'
-                  >
-                    <div className='flex items-center'>
-                      <Image
-                        src={track.album.images[2].url}
-                        alt={track.name}
-                        width={32}
-                        height={32}
-                        className='h-8 w-8 flex-shrink-0 rounded-full'
-                      />
-                      <div className='ml-3'>
-                        <p className='text-sm font-medium text-gray-900 dark:text-gray-100'>
-                          {track.name}
-                        </p>
-                        <p className='text-xs text-gray-500 dark:text-gray-400'>
-                          {track.artists.map((artist, index) => (
-                            <span key={index}>
-                              {artist.name}
-                              {index < track.artists.length - 1 ? ', ' : ''}
-                            </span>
-                          ))}
-                        </p>
-                      </div>
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            </div>
+        {isSearching && (
+          <div className='absolute right-3 top-1/2 -translate-y-1/2'>
+            <Loading className='h-4 w-4' />
           </div>
         )}
       </div>
+
+      {error && (
+        <ErrorMessage
+          message={error}
+          onDismiss={() => setError(null)}
+          className='mt-2'
+        />
+      )}
+
+      {searchResults.length > 0 && (
+        <div className='mt-4 max-h-96 overflow-y-auto rounded-lg border border-gray-200'>
+          {searchResults.map((track) => (
+            <div
+              key={track.id}
+              className='flex cursor-pointer items-center space-x-4 border-b border-gray-200 p-4 hover:bg-gray-50'
+              onClick={() => void handleAddTrack(track)}
+            >
+              {track.album.images[0] && (
+                <Image
+                  src={track.album.images[0].url}
+                  alt={track.album.name}
+                  width={48}
+                  height={48}
+                  className='rounded'
+                />
+              )}
+              <div>
+                <div className='font-medium'>{track.name}</div>
+                <div className='text-sm text-gray-500'>
+                  {track.artists.map((artist) => artist.name).join(', ')}
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {searchQuery.trim().length > 0 && searchQuery.trim().length < 3 && (
+        <div className='mt-2 text-sm text-gray-500'>
+          Type at least 3 characters to search...
+        </div>
+      )}
     </div>
   )
 }
-export default SearchInput

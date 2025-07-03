@@ -1,39 +1,36 @@
-import { TrackItem } from '@/shared/types'
-import React, { FC } from 'react'
-// Using img instead of next/image for Spotify album art to avoid 402 errors from Spotify's CDN
+import { TrackItem } from '@/shared/types/spotify'
+import React from 'react'
+import Image from 'next/image'
 
 interface IQueueItemProps {
   track: TrackItem
 }
 
-const QueueItem: FC<IQueueItemProps> = ({ track }) => {
-  const {
-    track: {
-      name,
-      album: { images },
-      artists
-    }
-  } = track
-
+const QueueItem: React.FC<IQueueItemProps> = ({ track }): JSX.Element => {
   return (
-    <div className='flex cursor-pointer border-b px-2 py-3 hover:shadow-md'>
-      <img
-        className='rounded-lg'
-        alt='Album cover'
-        src={images[0].url}
-        width={40}
-        height={40}
-        style={{ objectFit: 'cover' }}
-      />
-      <div className='flex w-full flex-col px-2'>
-        <span className='pt-1 text-sm font-semibold capitalize text-secondary-500'>
-          {name}
-        </span>
-        <span className='text-xs font-medium uppercase text-gray-500'>
-          -{artists.map((artist) => artist.name).join(', ')}
-        </span>
+    <div
+      className='flex items-center space-x-4 py-2'
+      data-track-id={track.track.id}
+    >
+      <div className='relative h-12 w-12 flex-shrink-0'>
+        <Image
+          src={track.track.album.images[0]?.url ?? '/default-album.png'}
+          alt={track.track.album.name}
+          fill
+          sizes='48px'
+          className='rounded object-cover'
+        />
+      </div>
+      <div className='min-w-0 flex-1'>
+        <p className='truncate text-sm font-medium text-gray-900'>
+          {track.track.name}
+        </p>
+        <p className='truncate text-sm text-gray-500'>
+          {track.track.artists.map((artist) => artist.name).join(', ')}
+        </p>
       </div>
     </div>
   )
 }
+
 export default QueueItem

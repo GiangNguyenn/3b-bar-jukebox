@@ -1,4 +1,4 @@
-import { TrackItem, SpotifyPlaybackState } from '@/shared/types'
+import { TrackItem, SpotifyPlaybackState } from '@/shared/types/spotify'
 import { sendApiRequest } from '@/shared/api'
 import { handleOperationError } from './errorHandling'
 
@@ -21,17 +21,25 @@ export async function autoRemoveTrack({
   onSuccess,
   onError
 }: AutoRemoveTrackParams): Promise<boolean> {
-  if (!currentTrackId || !playbackState || !playlistTracks.length) return false
+  if (!playlistTracks.length) return false
 
   // If playlist is not longer than songsBetweenRepeats, don't remove anything
   if (playlistTracks.length <= songsBetweenRepeats) {
     return false
   }
 
-  // Always remove the first track if playlist is longer than songsBetweenRepeats
+  // Get the first track to potentially remove
   const trackToRemove = playlistTracks[0]
   if (!trackToRemove) {
     console.error('[Auto Remove] No tracks to remove')
+    return false
+  }
+
+  // Don't remove the track if it's currently playing
+  if (currentTrackId && trackToRemove.track.id === currentTrackId) {
+    console.log(
+      '[Auto Remove] First track is currently playing, skipping removal'
+    )
     return false
   }
 
@@ -45,6 +53,9 @@ export async function autoRemoveTrack({
             tracks: [{ uri: trackToRemove.track.uri }]
           }
         })
+        console.log(
+          `[Auto Remove] Successfully removed track: ${trackToRemove.track.name}`
+        )
         onSuccess?.()
       },
       'AutoRemoveTrack',

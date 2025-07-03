@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { sendApiRequest } from '@/shared/api'
-import { SpotifyPlaylistItem } from '@/shared/types'
+import { SpotifyPlaylistItem } from '@/shared/types/spotify'
 import { cache } from '@/shared/utils/cache'
 
 export async function GET(

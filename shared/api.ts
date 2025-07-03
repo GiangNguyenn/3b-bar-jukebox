@@ -1,3 +1,5 @@
+import { SpotifyErrorResponse } from './types/spotify'
+
 export interface ApiErrorOptions {
   status?: number
   retryAfter?: number
@@ -31,14 +33,6 @@ interface ApiProps {
     maxDelay?: number
   }
   debounceTime?: number // Custom debounce time in milliseconds
-}
-
-interface SpotifyErrorResponse {
-  error: {
-    status: number
-    message: string
-    reason?: string
-  }
 }
 
 const SPOTIFY_API_URL =
@@ -157,16 +151,33 @@ async function processRequestQueue() {
         rateLimitState.requestCount++
         await request()
       } catch (error) {
-        console.error('[Rate Limit] Error processing queued request:', error)
+        if (addLog) {
+          addLog(
+            'ERROR',
+            'Error processing queued request',
+            'RateLimit',
+            error as Error
+          )
+        } else {
+          console.error('[Rate Limit] Error processing queued request:', error)
+        }
         if (error instanceof ApiError && error.status === 429) {
           // The error already has the retry-after value from the response
           const retryAfter = error.retryAfter || 5 // Default to 5 seconds if no Retry-After header
           rateLimitState.isRateLimited = true
           rateLimitState.resetTime = now + retryAfter * 1000
           rateLimitState.retryAfter = retryAfter
-          console.error(
-            `[Rate Limit] Rate limited by server. Retry after ${retryAfter}s`
-          )
+          if (addLog) {
+            addLog(
+              'ERROR',
+              `Rate limited by server. Retry after ${retryAfter}s`,
+              'RateLimit'
+            )
+          } else {
+            console.error(
+              `[Rate Limit] Rate limited by server. Retry after ${retryAfter}s`
+            )
+          }
 
           // Add the request back to the front of the queue
           requestQueue.unshift(request)
@@ -184,6 +195,21 @@ const requestCache = new Map<
   string,
   { promise: Promise<any>; timestamp: number }
 >()
+
+import { tokenManager } from './token/tokenManager'
+
+// Add logging context
+let addLog: (
+  level: 'LOG' | 'INFO' | 'WARN' | 'ERROR',
+  message: string,
+  context?: string,
+  error?: Error
+) => void
+
+// Function to set the logging function
+export function setApiLogger(logger: typeof addLog) {
+  addLog = logger
+}
 
 export const sendApiRequest = async <T>({
   path,
@@ -206,7 +232,7 @@ export const sendApiRequest = async <T>({
 
   const makeRequest = async (retryCount = 0): Promise<T> => {
     try {
-      const baseUrl = isLocalApi ? '' : SPOTIFY_API_URL
+      const baseUrl = isLocalApi ? '/api' : SPOTIFY_API_URL
       const normalizedPath = path.startsWith('/') ? path : `/${path}`
       const url = `${baseUrl}${normalizedPath}`
 
@@ -216,7 +242,7 @@ export const sendApiRequest = async <T>({
       }
 
       if (!isLocalApi) {
-        const authToken = await getSpotifyToken()
+        const authToken = await tokenManager.getToken()
         if (!authToken) {
           throw new ApiError('Failed to get Spotify token')
         }
@@ -243,6 +269,43 @@ export const sendApiRequest = async <T>({
           )
         }
 
+        // Handle authentication errors with automatic token refresh
+        if (response.status === 401 && !isLocalApi) {
+          if (addLog) {
+            addLog(
+              'WARN',
+              'Authentication error detected, attempting token refresh',
+              'ApiRequest'
+            )
+          }
+
+          try {
+            // Clear token cache and force refresh
+            tokenManager.clearCache()
+            await tokenManager.getToken()
+
+            if (addLog) {
+              addLog('INFO', 'Token refreshed, retrying request', 'ApiRequest')
+            }
+
+            // Retry the request with fresh token
+            return makeRequest(retryCount + 1)
+          } catch (tokenError) {
+            if (addLog) {
+              addLog(
+                'ERROR',
+                'Token refresh failed',
+                'ApiRequest',
+                tokenError instanceof Error ? tokenError : undefined
+              )
+            }
+            throw new ApiError('Authentication failed after token refresh', {
+              status: 401,
+              headers: response.headers
+            })
+          }
+        }
+
         // Handle rate limiting
         if (response.status === 429) {
           const retryAfter = parseInt(
@@ -253,9 +316,17 @@ export const sendApiRequest = async <T>({
           rateLimitState.resetTime = now + retryAfter * 1000
           rateLimitState.retryAfter = retryAfter
 
-          console.error(
-            `[Rate Limit] Rate limited by server. Retry after ${retryAfter}s`
-          )
+          if (addLog) {
+            addLog(
+              'ERROR',
+              `Rate limited by server. Retry after ${retryAfter}s`,
+              'RateLimit'
+            )
+          } else {
+            console.error(
+              `[Rate Limit] Rate limited by server. Retry after ${retryAfter}s`
+            )
+          }
 
           // If we have a Retry-After header, use that value
           if (retryAfter > 0) {
@@ -277,9 +348,17 @@ export const sendApiRequest = async <T>({
               baseDelay * Math.pow(2, retryCount),
               maxDelay
             )
-            console.log(
-              `[Rate Limit] Retrying in ${delay}ms (attempt ${retryCount + 1}/${maxRetries})`
-            )
+            if (addLog) {
+              addLog(
+                'INFO',
+                `Retrying in ${delay}ms (attempt ${retryCount + 1}/${maxRetries})`,
+                'RateLimit'
+              )
+            } else {
+              console.log(
+                `[Rate Limit] Retrying in ${delay}ms (attempt ${retryCount + 1}/${maxRetries})`
+              )
+            }
             await new Promise((resolve) => setTimeout(resolve, delay))
             return makeRequest(retryCount + 1)
           }
@@ -328,83 +407,4 @@ export const sendApiRequest = async <T>({
   void processRequestQueue()
 
   return promise
-}
-
-const tokenCache: { token: string | null; expiry: number } = {
-  token: null,
-  expiry: 0
-}
-
-export async function getSpotifyToken() {
-  const now = Date.now()
-
-  if (tokenCache.token && now < tokenCache.expiry) {
-    return tokenCache.token
-  }
-
-  // Get the base URL for the token endpoint
-  let baseUrl = ''
-
-  // Check if we're in a browser environment
-  if (typeof window !== 'undefined') {
-    // In browser, use the current origin
-    baseUrl = window.location.origin
-  } else {
-    // In server-side code, use environment variable or default
-    baseUrl = process.env.VERCEL_URL
-      ? `https://${process.env.VERCEL_URL}`
-      : process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'
-  }
-
-  try {
-    const response = await fetch(`${baseUrl}/api/token`, {
-      cache: 'no-store',
-      headers: {
-        'Content-Type': 'application/json'
-      }
-    })
-
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}))
-      console.error('Failed to fetch token:', {
-        status: response.status,
-        statusText: response.statusText,
-        error: errorData,
-        url: `${baseUrl}/api/token`,
-        environment: process.env.NODE_ENV,
-        vercelUrl: process.env.VERCEL_URL,
-        baseUrl
-      })
-      throw new Error(errorData.error || 'Failed to fetch Spotify token')
-    }
-
-    const data = await response.json()
-    if (!data.access_token) {
-      console.error('Invalid token response:', data)
-      throw new Error('Invalid token response')
-    }
-
-    const newToken = data.access_token
-    const newExpiry = now + data.expires_in * 1000
-
-    tokenCache.token = newToken
-    tokenCache.expiry = newExpiry
-
-    return newToken
-  } catch (error) {
-    console.error('Error fetching token:', {
-      error:
-        error instanceof Error
-          ? {
-              name: error.name,
-              message: error.message,
-              stack: error.stack
-            }
-          : error,
-      baseUrl,
-      environment: process.env.NODE_ENV,
-      vercelUrl: process.env.VERCEL_URL
-    })
-    throw error
-  }
 }
