@@ -1,4 +1,5 @@
 import { ERROR_MESSAGES, ErrorMessage } from '@/shared/constants/errors'
+import { ErrorType } from '@/shared/types/recovery'
 
 interface ApiError {
   message?: string
@@ -62,4 +63,28 @@ export const handleOperationError = async <T>(
 
 export const isAppError = (error: unknown): error is AppError => {
   return error instanceof AppError
+}
+
+export function determineErrorType(error: unknown): ErrorType {
+  if (error instanceof Error) {
+    const message = error.message.toLowerCase()
+    if (
+      message.includes('token') ||
+      message.includes('auth') ||
+      message.includes('unauthorized')
+    ) {
+      return ErrorType.AUTH
+    }
+    if (message.includes('device') || message.includes('transfer')) {
+      return ErrorType.DEVICE
+    }
+    if (
+      message.includes('connection') ||
+      message.includes('network') ||
+      message.includes('timeout')
+    ) {
+      return ErrorType.CONNECTION
+    }
+  }
+  return ErrorType.PLAYBACK
 }

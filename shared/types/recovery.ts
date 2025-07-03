@@ -1,4 +1,4 @@
-import { SpotifyPlaybackState } from '../types'
+import { SpotifyPlaybackState } from './spotify'
 
 /** Constants used throughout the recovery system */
 export const RECOVERY_CONSTANTS = {

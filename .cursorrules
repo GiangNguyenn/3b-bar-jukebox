@@ -1,5 +1,12 @@
 # Cursor Rules for TypeScript, Next.js, and React Development
 
+If you need to run a yarn command.  Ask for permission first.
+
+# Generation of new code
+Always check if there is an existing utility function that can be reused before generating new code. DRY
+# Prefer simpler solutions.  YAGNI
+
+
 ## Code Style and Structure
 - Write concise, technical TypeScript code with accurate examples
 - Use functional and declarative programming patterns; avoid classes

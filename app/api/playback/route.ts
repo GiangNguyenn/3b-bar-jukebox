@@ -1,14 +1,18 @@
 import { NextResponse } from 'next/server'
 import { sendApiRequest } from '@/shared/api'
-import { SpotifyPlaybackState } from '@/shared/types'
+import { SpotifyPlaybackState } from '@/shared/types/spotify'
 import {
   transferPlaybackToDevice,
-  ensureDeviceHealth
+  validateDevice
 } from '@/services/deviceManagement'
 import { verifyPlaybackResume } from '@/shared/utils/recovery/playback-verification'
+import { createModuleLogger } from '@/shared/utils/logger'
+
+// Set up logger for this module
+const logger = createModuleLogger('PlaybackAPI')
 
 interface PlaybackRequest {
-  action: 'play'
+  action: 'play' | 'pause'
   contextUri?: string
   deviceId?: string
   position_ms?: number
@@ -19,14 +23,6 @@ export async function POST(request: Request): Promise<NextResponse> {
     const { action, contextUri, deviceId, position_ms } =
       (await request.json()) as PlaybackRequest
 
-    console.log('[API Playback] Received request:', {
-      action,
-      contextUri,
-      deviceId,
-      position_ms,
-      timestamp: new Date().toISOString()
-    })
-
     if (!deviceId) {
       return NextResponse.json(
         { error: 'Device ID is required' },
@@ -35,13 +31,12 @@ export async function POST(request: Request): Promise<NextResponse> {
     }
 
     // First ensure device is healthy
-    const health = await ensureDeviceHealth(deviceId, {
-      requireActive: true
-    })
-
-    if (!health.isHealthy) {
+    const deviceValidation = await validateDevice(deviceId)
+    if (!deviceValidation.isValid || !deviceValidation.device?.isActive) {
       return NextResponse.json(
-        { error: `Device is not healthy: ${health.errors.join(', ')}` },
+        {
+          error: `Device is not healthy: ${deviceValidation.errors.join(', ')}`
+        },
         { status: 400 }
       )
     }
@@ -55,6 +50,27 @@ export async function POST(request: Request): Promise<NextResponse> {
       )
     }
 
+    // Make the appropriate API call based on action
+    if (action === 'play') {
+      await sendApiRequest({
+        path: 'me/player/play',
+        method: 'PUT',
+        body: {
+          device_id: deviceId,
+          context_uri: contextUri,
+          position_ms: position_ms
+        }
+      })
+    } else if (action === 'pause') {
+      await sendApiRequest({
+        path: 'me/player/pause',
+        method: 'PUT',
+        body: {
+          device_id: deviceId
+        }
+      })
+    }
+
     // Get current state for verification
     const state = await sendApiRequest<SpotifyPlaybackState>({
       path: 'me/player',
@@ -66,7 +82,12 @@ export async function POST(request: Request): Promise<NextResponse> {
 
     return NextResponse.json({ success: true })
   } catch (error) {
-    console.error('[Playback API] Error:', error)
+    logger(
+      'ERROR',
+      'Error in playback API:',
+      undefined,
+      error instanceof Error ? error : undefined
+    )
     return NextResponse.json(
       { error: error instanceof Error ? error.message : 'Unknown error' },
       { status: 500 }

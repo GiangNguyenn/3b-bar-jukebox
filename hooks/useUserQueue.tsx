@@ -1,6 +1,6 @@
 import useSWR from 'swr'
 import { sendApiRequest } from '../shared/api'
-import { UserQueue } from '@/shared/types'
+import { UserQueue } from '@/shared/types/spotify'
 import { handleOperationError, AppError } from '@/shared/utils/errorHandling'
 import { ERROR_MESSAGES } from '@/shared/constants/errors'
 
@@ -11,7 +11,7 @@ export const useUserQueue = (id: string) => {
     return handleOperationError(
       async () => {
         const response = await sendApiRequest<UserQueue>({
-          path: `me/player/queue`
+          path: `me/player/queue?market=from_token`
         })
         return response
       },

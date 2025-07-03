@@ -2,10 +2,24 @@ import {
   SpotifyPlaylistItem,
   SpotifyPlaybackState,
   TrackItem
-} from '@/shared/types'
+} from '@/shared/types/spotify'
 import { sendApiRequest } from '@/shared/api'
 import { handleOperationError } from '@/shared/utils/errorHandling'
 import { useFixedPlaylist } from '@/hooks/useFixedPlaylist'
+import { showToast } from '@/lib/toast'
+
+// Add logging context
+let addLog: (
+  level: 'LOG' | 'INFO' | 'WARN' | 'ERROR',
+  message: string,
+  context?: string,
+  error?: Error
+) => void
+
+// Function to set the logging function
+export function setSpotifyApiLogger(logger: typeof addLog) {
+  addLog = logger
+}
 
 export interface SpotifyApiClient {
   getPlaylists(): Promise<{ items: SpotifyPlaylistItem[] }>
@@ -20,6 +34,9 @@ export interface SpotifyApiClient {
       trackUri: string
       position: number
     }
+  }>
+  pausePlayback(deviceId: string): Promise<{
+    success: boolean
   }>
 }
 
@@ -50,7 +67,19 @@ export class SpotifyApiService implements SpotifyApiClient {
         this.lastKnownPlayback = JSON.parse(cached)
       }
     } catch (error) {
-      console.error('[SpotifyApi] Error loading cached playback state:', error)
+      if (addLog) {
+        addLog(
+          'ERROR',
+          'Error loading cached playback state',
+          'SpotifyApi',
+          error instanceof Error ? error : undefined
+        )
+      } else {
+        console.error(
+          '[SpotifyApi] Error loading cached playback state:',
+          error
+        )
+      }
     }
   }
 
@@ -66,7 +95,16 @@ export class SpotifyApiService implements SpotifyApiClient {
         JSON.stringify(this.lastKnownPlayback)
       )
     } catch (error) {
-      console.error('[SpotifyApi] Error saving playback state:', error)
+      if (addLog) {
+        addLog(
+          'ERROR',
+          'Error saving playback state',
+          'SpotifyApi',
+          error instanceof Error ? error : undefined
+        )
+      } else {
+        console.error('[SpotifyApi] Error saving playback state:', error)
+      }
     }
   }
 
@@ -103,7 +141,7 @@ export class SpotifyApiService implements SpotifyApiClient {
     return handleOperationError(
       async () =>
         this.apiClient<SpotifyPlaybackState>({
-          path: 'me/player/currently-playing',
+          path: 'me/player/currently-playing?market=from_token',
           retryConfig: this.retryConfig
         }),
       'SpotifyApi.getCurrentlyPlaying'
@@ -136,7 +174,7 @@ export class SpotifyApiService implements SpotifyApiClient {
     return handleOperationError(
       async () =>
         this.apiClient<SpotifyPlaybackState>({
-          path: 'me/player',
+          path: 'me/player?market=from_token',
           retryConfig: this.retryConfig
         }),
       'SpotifyApi.getPlaybackState'
@@ -147,7 +185,7 @@ export class SpotifyApiService implements SpotifyApiClient {
     return handleOperationError(
       async () =>
         this.apiClient<{ queue: SpotifyPlaybackState[] }>({
-          path: 'me/player/queue',
+          path: 'me/player/queue?market=from_token',
           retryConfig: this.retryConfig
         }),
       'SpotifyApi.getQueue'
@@ -237,12 +275,12 @@ export class SpotifyApiService implements SpotifyApiClient {
         // First ensure we have an active device
         const deviceId = await this.ensureActiveDevice()
 
-        // Get current state after ensuring device
-        const currentState = await this.getPlaybackState()
-
         // Get the fixed playlist ID - we'll need this in all cases
         const fixedPlaylistId = await this.getFixedPlaylistId()
         const fixedPlaylistUri = `spotify:playlist:${fixedPlaylistId}`
+
+        // Get current state after ensuring device
+        const currentState = await this.getPlaybackState()
 
         // If we have a current state with context and item, try to resume from there
         if (currentState?.context?.uri && currentState?.item?.uri) {
@@ -265,6 +303,7 @@ export class SpotifyApiService implements SpotifyApiClient {
               retryConfig: this.retryConfig
             })
 
+            showToast('Playback resumed', 'success')
             return {
               success: true,
               resumedFrom: {
@@ -273,10 +312,19 @@ export class SpotifyApiService implements SpotifyApiClient {
               }
             }
           } catch (error) {
-            console.warn(
-              '[SpotifyApi] Failed to resume from current state:',
-              error
-            )
+            if (addLog) {
+              addLog(
+                'WARN',
+                'Failed to resume from current state',
+                'SpotifyApi',
+                error instanceof Error ? error : undefined
+              )
+            } else {
+              console.warn(
+                '[SpotifyApi] Failed to resume from current state:',
+                error
+              )
+            }
             // Fall through to starting with fixed playlist
           }
         }
@@ -298,6 +346,7 @@ export class SpotifyApiService implements SpotifyApiClient {
               retryConfig: this.retryConfig
             })
 
+            showToast('Playback resumed', 'success')
             return {
               success: true,
               resumedFrom: {
@@ -306,10 +355,19 @@ export class SpotifyApiService implements SpotifyApiClient {
               }
             }
           } catch (error) {
-            console.warn(
-              '[SpotifyApi] Failed to resume from last known position:',
-              error
-            )
+            if (addLog) {
+              addLog(
+                'WARN',
+                'Failed to resume from last known position',
+                'SpotifyApi',
+                error instanceof Error ? error : undefined
+              )
+            } else {
+              console.warn(
+                '[SpotifyApi] Failed to resume from last known position:',
+                error
+              )
+            }
             // Fall through to starting fresh
           }
         }
@@ -324,11 +382,30 @@ export class SpotifyApiService implements SpotifyApiClient {
           retryConfig: this.retryConfig
         })
 
+        // Wait a moment for playback to start
+        await new Promise((resolve) => setTimeout(resolve, 1000))
+
+        // Verify playback started
+        const verifyState = await this.getPlaybackState()
+        if (!verifyState?.is_playing) {
+          throw new Error('Playback failed to start')
+        }
+
+        showToast('Playback resumed', 'success')
         return {
           success: true
         }
       } catch (error) {
-        console.error('[SpotifyApi] Error in resumePlayback:', error)
+        if (addLog) {
+          addLog(
+            'ERROR',
+            'Error in resumePlayback',
+            'SpotifyApi',
+            error instanceof Error ? error : undefined
+          )
+        } else {
+          console.error('[SpotifyApi] Error in resumePlayback:', error)
+        }
         throw error
       }
     }, 'SpotifyApi.resumePlayback')
@@ -381,8 +458,43 @@ export class SpotifyApiService implements SpotifyApiClient {
 
       return activeDevice.id
     } catch (error) {
-      console.error('[SpotifyApi] Error ensuring active device:', error)
+      if (addLog) {
+        addLog(
+          'ERROR',
+          'Error ensuring active device',
+          'SpotifyApi',
+          error instanceof Error ? error : undefined
+        )
+      } else {
+        console.error('[SpotifyApi] Error ensuring active device:', error)
+      }
       throw error
     }
+  }
+
+  async pausePlayback(deviceId: string): Promise<{ success: boolean }> {
+    return handleOperationError(async () => {
+      try {
+        await this.apiClient({
+          path: `me/player/pause?device_id=${deviceId}`,
+          method: 'PUT',
+          retryConfig: this.retryConfig
+        })
+
+        return { success: true }
+      } catch (error) {
+        if (addLog) {
+          addLog(
+            'ERROR',
+            'Error in pausePlayback',
+            'SpotifyApi',
+            error instanceof Error ? error : undefined
+          )
+        } else {
+          console.error('[SpotifyApi] Error in pausePlayback:', error)
+        }
+        throw error
+      }
+    }, 'SpotifyApi.pausePlayback')
   }
 }

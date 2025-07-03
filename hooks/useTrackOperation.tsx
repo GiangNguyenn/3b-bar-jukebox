@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { TrackItem } from '@/shared/types'
+import { TrackItem, SpotifyPlaylistItem } from '@/shared/types/spotify'
 import { ERROR_MESSAGES } from '@/shared/constants/errors'
 import { sendApiRequest } from '@/shared/api'
 import { handleOperationError, AppError } from '@/shared/utils/errorHandling'
@@ -7,7 +7,9 @@ import { handleOperationError, AppError } from '@/shared/utils/errorHandling'
 interface UseTrackOperationProps {
   playlistId: string | null
   playlistError?: boolean
-  refetchPlaylist: () => Promise<void>
+  refetchPlaylist: (
+    optimisticData?: SpotifyPlaylistItem
+  ) => Promise<SpotifyPlaylistItem | null | undefined>
 }
 
 interface TrackOperationState {
