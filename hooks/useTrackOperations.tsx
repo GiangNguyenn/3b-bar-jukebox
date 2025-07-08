@@ -1,7 +1,8 @@
 import { TrackItem, SpotifyPlaylistItem } from '@/shared/types/spotify'
-import { sendApiRequest } from '@/shared/api'
+import { sendApiRequest, logTrackSuggestion } from '@/shared/api'
 import { useGetPlaylist } from './useGetPlaylist'
 import { useTrackOperation } from './useTrackOperation'
+import { useGetProfile } from './useGetProfile'
 import { ERROR_MESSAGES } from '@/shared/constants/errors'
 import { useState, useEffect, useRef } from 'react'
 
@@ -23,6 +24,7 @@ export const useTrackOperations = ({
   playlistId,
   token
 }: UseTrackOperationsProps) => {
+  const { profile } = useGetProfile()
   const {
     error: playlistError,
     refetch,
@@ -181,6 +183,10 @@ export const useTrackOperations = ({
       ERROR_MESSAGES.FAILED_TO_ADD,
       'Add Track'
     )
+
+    if (profile) {
+      await logTrackSuggestion(track.track, profile.id)
+    }
   }
 
   const removeTrack = async (track: TrackItem): Promise<void> => {
