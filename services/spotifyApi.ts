@@ -38,6 +38,7 @@ export interface SpotifyApiClient {
   pausePlayback(deviceId: string): Promise<{
     success: boolean
   }>
+  addItemsToPlaylist(playlistId: string, trackUris: string[]): Promise<void>
 }
 
 export class SpotifyApiService implements SpotifyApiClient {
@@ -167,6 +168,28 @@ export class SpotifyApiService implements SpotifyApiClient {
           retryConfig: this.retryConfig
         }),
       'SpotifyApi.addTrackToPlaylist'
+    )
+  }
+
+  async addItemsToPlaylist(
+    playlistId: string,
+    trackUris: string[]
+  ): Promise<void> {
+    const formattedUris = trackUris.map((uri) =>
+      uri.startsWith('spotify:track:') ? uri : `spotify:track:${uri}`
+    )
+
+    return handleOperationError(
+      async () =>
+        this.apiClient({
+          path: `playlists/${playlistId}/tracks`,
+          method: 'POST',
+          body: {
+            uris: formattedUris
+          },
+          retryConfig: this.retryConfig
+        }),
+      'SpotifyApi.addItemsToPlaylist'
     )
   }
 

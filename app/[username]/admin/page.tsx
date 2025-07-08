@@ -18,6 +18,7 @@ import { RecoveryStatus } from '@/components/ui/recovery-status'
 import { HealthStatusSection } from './components/dashboard/health-status-section'
 import { TrackSuggestionsTab } from './components/track-suggestions/track-suggestions-tab'
 import { PlaylistDisplay } from './components/playlist/playlist-display'
+import { AnalyticsTab } from './components/analytics/analytics-tab'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { type PlaybackInfo } from '@/shared/types/health'
 import { type TrackSuggestionsState } from '@/shared/types/trackSuggestions'
@@ -34,7 +35,7 @@ export default function AdminPage(): JSX.Element {
   const [playbackInfo, setPlaybackInfo] = useState<PlaybackInfo | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [activeTab, setActiveTab] = useState<
-    'dashboard' | 'playlist' | 'settings' | 'logs'
+    'dashboard' | 'playlist' | 'settings' | 'logs' | 'analytics'
   >('dashboard')
   const initializationAttemptedRef = useRef(false)
 
@@ -249,7 +250,9 @@ export default function AdminPage(): JSX.Element {
 
   // Add missing functions
   const handleTabChange = useCallback((value: string): void => {
-    setActiveTab(value as 'dashboard' | 'playlist' | 'settings' | 'logs')
+    setActiveTab(
+      value as 'dashboard' | 'playlist' | 'settings' | 'logs' | 'analytics'
+    )
   }, [])
 
   const handleTrackSuggestionsStateChange = useCallback(
@@ -403,7 +406,7 @@ export default function AdminPage(): JSX.Element {
           }}
           className='space-y-4'
         >
-          <TabsList className='grid w-full grid-cols-3 bg-gray-800/50'>
+          <TabsList className='grid w-full grid-cols-4 bg-gray-800/50'>
             <TabsTrigger
               value='dashboard'
               className='data-[state=active]:text-white data-[state=active]:bg-gray-700 data-[state=active]:font-semibold'
@@ -421,6 +424,12 @@ export default function AdminPage(): JSX.Element {
               className='data-[state=active]:text-white data-[state=active]:bg-gray-700 data-[state=active]:font-semibold'
             >
               Playlist
+            </TabsTrigger>
+            <TabsTrigger
+              value='analytics'
+              className='data-[state=active]:text-white data-[state=active]:bg-gray-700 data-[state=active]:font-semibold'
+            >
+              Analytics
             </TabsTrigger>
           </TabsList>
 
@@ -521,6 +530,10 @@ export default function AdminPage(): JSX.Element {
 
           <TabsContent value='playlist'>
             <PlaylistDisplay playlistId={fixedPlaylistId ?? ''} />
+          </TabsContent>
+
+          <TabsContent value='analytics'>
+            <AnalyticsTab />
           </TabsContent>
         </Tabs>
       </div>
