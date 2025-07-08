@@ -26,6 +26,7 @@ export interface SpotifyUserProfile {
 }
 export interface SpotifyArtist {
   name: string
+  id: string
 }
 
 export interface SpotifyDevice {
@@ -64,7 +65,7 @@ export interface TrackItem {
     id: string
     uri: string
     name: string
-    artists: { name: string }[]
+    artists: { name: string; id: string }[]
     album: {
       name: string
       images: { url: string }[]

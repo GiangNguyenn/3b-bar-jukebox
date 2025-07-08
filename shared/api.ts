@@ -408,3 +408,41 @@ export const sendApiRequest = async <T>({
 
   return promise
 }
+
+import { TrackItem, SpotifyArtist } from './types/spotify'
+
+export const logTrackSuggestion = async (
+  track: TrackItem['track'],
+  profileId: string
+): Promise<void> => {
+  try {
+    // The track object from the playlist doesn't have genre information.
+    // We need to fetch the artist details to get the genres.
+    const artistDetails = await sendApiRequest<{ genres: string[] }>({
+      path: `artists/${track.artists[0].id}`,
+    });
+
+    await sendApiRequest({
+      path: 'log-suggestion',
+      method: 'POST',
+      isLocalApi: true,
+      body: {
+        profile_id: profileId,
+        track: {
+          id: track.id,
+          name: track.name,
+          artists: [{ name: track.artists[0].name, id: track.artists[0].id, genres: artistDetails.genres }],
+          album: track.album,
+          duration_ms: track.duration_ms,
+          popularity: track.popularity,
+          external_urls: {
+            spotify: `https://open.spotify.com/track/${track.id}`,
+          },
+        },
+      },
+      debounceTime: 0,
+    });
+  } catch (error) {
+    console.error('Failed to log track suggestion:', error);
+  }
+};
