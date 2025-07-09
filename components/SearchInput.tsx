@@ -28,6 +28,7 @@ export default function SearchInput({
   const [searchResults, setSearchResults] = useState<TrackDetails[]>([])
   const [isSearching, setIsSearching] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [isAddingTrack, setIsAddingTrack] = useState(false)
   const debounceRef = useRef<NodeJS.Timeout | null>(null)
   const abortControllerRef = useRef<AbortController | null>(null)
 
@@ -83,7 +84,7 @@ export default function SearchInput({
         }
       }
     },
-    [username]
+    [username, addLog]
   )
 
   // Debounced search effect
@@ -119,16 +120,18 @@ export default function SearchInput({
   const handleAddTrack = useCallback(
     async (track: TrackDetails): Promise<void> => {
       try {
-        await onAddTrack(track)
+        setIsAddingTrack(true)
         setSearchResults([])
         setSearchQuery('')
+        await onAddTrack(track)
+        setIsAddingTrack(false)
       } catch (error) {
         addLog('ERROR', 'Error adding track', 'SearchInput', error as Error)
         const appError = handleApiError(error, 'SearchInput')
         setError(appError.message)
       }
     },
-    [onAddTrack]
+    [onAddTrack, addLog]
   )
 
   return (
@@ -140,8 +143,9 @@ export default function SearchInput({
           onChange={(e) => setSearchQuery(e.target.value)}
           placeholder='Search for a song... (type at least 3 characters)'
           className='w-full rounded-lg border border-gray-300 p-2 pr-4 focus:border-blue-500 focus:outline-none'
+          disabled={isAddingTrack}
         />
-        {isSearching && (
+        {(isSearching || isAddingTrack) && (
           <div className='absolute right-3 top-1/2 -translate-y-1/2'>
             <Loading className='h-4 w-4' />
           </div>

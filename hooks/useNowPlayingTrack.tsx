@@ -3,15 +3,17 @@ import { SpotifyPlaybackState } from '@/shared/types/spotify'
 import { sendApiRequest } from '@/shared/api'
 import { handleOperationError } from '@/shared/utils/errorHandling'
 
-interface UseNowPlayingTrackProps {
+interface UseNowPlayingTrackOptions {
   token?: string | null
   enabled?: boolean
+  refetchInterval?: number | null
 }
 
 export function useNowPlayingTrack({
   token,
-  enabled = true
-}: UseNowPlayingTrackProps = {}) {
+  enabled = true,
+  refetchInterval = 30000
+}: UseNowPlayingTrackOptions = {}) {
   const [data, setData] = useState<SpotifyPlaybackState | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(false)
@@ -131,10 +133,11 @@ export function useNowPlayingTrack({
     // Initial fetch
     void fetchCurrentlyPlaying()
 
-    // Set up polling every 10 seconds
-    intervalRef.current = setInterval(() => {
-      void fetchCurrentlyPlaying()
-    }, 10000)
+    if (refetchInterval && refetchInterval > 0) {
+      intervalRef.current = setInterval(() => {
+        void fetchCurrentlyPlaying()
+      }, refetchInterval)
+    }
 
     return () => {
       if (intervalRef.current) {
@@ -142,7 +145,7 @@ export function useNowPlayingTrack({
         intervalRef.current = null
       }
     }
-  }, [token, enabled])
+  }, [token, enabled, refetchInterval])
 
   return {
     data,

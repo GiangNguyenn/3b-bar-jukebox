@@ -1,13 +1,20 @@
 import { TrackItem, SpotifyPlaylistItem } from '@/shared/types/spotify'
-import { sendApiRequest } from '@/shared/api'
-import { useGetPlaylist } from './useGetPlaylist'
+import { sendApiRequest, logTrackSuggestion } from '@/shared/api'
 import { useTrackOperation } from './useTrackOperation'
+import { useGetProfile } from './useGetProfile'
 import { ERROR_MESSAGES } from '@/shared/constants/errors'
 import { useState, useEffect, useRef } from 'react'
+import { useGetPlaylist } from './useGetPlaylist'
 
 interface UseTrackOperationsProps {
   playlistId: string
   token?: string | null
+  username?: string
+  playlist: SpotifyPlaylistItem | null
+  addTrackOptimistically: (track: TrackItem) => void
+  revertOptimisticUpdate: () => void
+  refetch: () => void
+  playlistError: string | null
 }
 
 interface TrackOperationsState {
@@ -15,61 +22,24 @@ interface TrackOperationsState {
   error: Error | null
   isSuccess: boolean
   pendingTracks: string[]
-  optimisticTracks: TrackItem[]
   lastAddedTrack: TrackItem | null
 }
 
 export const useTrackOperations = ({
   playlistId,
-  token
+  token,
+  username,
+  playlist,
+  addTrackOptimistically,
+  revertOptimisticUpdate,
+  refetch,
+  playlistError
 }: UseTrackOperationsProps) => {
-  const {
-    error: playlistError,
-    refetch,
-    data: playlist,
-    addTrackOptimistically,
-    removeTrackOptimistically,
-    revertOptimisticUpdate
-  } = useGetPlaylist({ playlistId, token })
+  const { profile } = useGetProfile()
 
   const [pendingTracks, setPendingTracks] = useState<Set<string>>(new Set())
-  const [optimisticTracks, setOptimisticTracks] = useState<TrackItem[]>([])
   const [lastAddedTrack, setLastAddedTrack] = useState<TrackItem | null>(null)
   const optimisticTrackTimeRef = useRef<number>(0)
-
-  // Clear optimistic tracks when they appear in playlist data
-  useEffect(() => {
-    if (optimisticTracks.length > 0 && playlist) {
-      const timeSinceOptimisticTrack =
-        Date.now() - optimisticTrackTimeRef.current
-      if (timeSinceOptimisticTrack < 2000) {
-        return
-      }
-
-      const realTrackIds = new Set(
-        playlist.tracks.items
-          .filter(
-            (item) => item.added_by?.id && item.added_by.id !== 'optimistic'
-          )
-          .map((item) => item.track.id)
-      )
-
-      const newOptimisticTracks = optimisticTracks.filter(
-        (track) => !realTrackIds.has(track.track.id)
-      )
-
-      if (newOptimisticTracks.length < optimisticTracks.length) {
-        setOptimisticTracks(newOptimisticTracks)
-        const newPendingTracks = new Set(pendingTracks)
-        optimisticTracks.forEach((track) => {
-          if (!newOptimisticTracks.includes(track)) {
-            newPendingTracks.delete(track.track.uri)
-          }
-        })
-        setPendingTracks(newPendingTracks)
-      }
-    }
-  }, [playlist?.tracks?.items, optimisticTracks, pendingTracks])
 
   const { isLoading, error, isSuccess, executeOperation } = useTrackOperation({
     playlistId,
@@ -83,7 +53,6 @@ export const useTrackOperations = ({
   // Helper function to set optimistic state
   const setOptimisticState = (track: TrackItem): void => {
     setPendingTracks((prev) => new Set(prev).add(track.track.uri))
-    setOptimisticTracks((prev) => [...prev, track])
     optimisticTrackTimeRef.current = Date.now()
   }
 
@@ -94,9 +63,6 @@ export const useTrackOperations = ({
       newSet.delete(track.track.uri)
       return newSet
     })
-    setOptimisticTracks((prev) =>
-      prev.filter((t) => t.track.id !== track.track.id)
-    )
   }
 
   // Helper function to handle operation with optimistic updates
@@ -143,48 +109,44 @@ export const useTrackOperations = ({
 
   const addTrack = async (track: TrackItem): Promise<void> => {
     const operation = async (): Promise<void> => {
-      if (token) {
-        // Use provided token
-        const response = await fetch(
-          `https://api.spotify.com/v1/playlists/${playlistId}/tracks`,
-          {
-            method: 'POST',
-            headers: {
-              Authorization: `Bearer ${token}`,
-              'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-              uris: [track.track.uri]
-            })
-          }
-        )
-
-        if (!response.ok) {
-          throw new Error(`HTTP ${response.status}: ${response.statusText}`)
-        }
-      } else {
-        // Use authenticated user's token via sendApiRequest
-        await sendApiRequest({
-          path: `playlists/${playlistId}/tracks`,
-          method: 'POST',
-          body: {
-            uris: [track.track.uri]
-          }
-        })
+      const body: {
+        trackUri: string
+        profileId?: string
+        username?: string
+      } = {
+        trackUri: track.track.uri
       }
+      if (profile) {
+        body.profileId = profile.id
+      }
+      if (username) {
+        body.username = username
+      }
+
+      await sendApiRequest({
+        path: `playlist/${playlistId}`,
+        method: 'POST',
+        isLocalApi: true,
+        body
+      })
     }
 
     await executeWithOptimisticUpdates(
       track,
       operation,
-      () => {},
+      () => addTrackOptimistically(track),
       ERROR_MESSAGES.FAILED_TO_ADD,
       'Add Track'
     )
   }
 
-  const removeTrack = async (track: TrackItem): Promise<void> => {
+  const removeTrack = async (
+    track: TrackItem,
+    position: number
+  ): Promise<void> => {
     const operation = async (): Promise<void> => {
+      const tracksToRemove = [{ uri: track.track.uri, positions: [position] }]
+
       if (token) {
         // Use provided token
         const response = await fetch(
@@ -196,7 +158,7 @@ export const useTrackOperations = ({
               'Content-Type': 'application/json'
             },
             body: JSON.stringify({
-              tracks: [{ uri: track.track.uri }]
+              tracks: tracksToRemove
             })
           }
         )
@@ -209,7 +171,7 @@ export const useTrackOperations = ({
         await sendApiRequest({
           path: `playlists/${playlistId}/tracks`,
           method: 'DELETE',
-          body: { tracks: [{ uri: track.track.uri }] }
+          body: { tracks: tracksToRemove }
         })
       }
     }
@@ -235,7 +197,6 @@ export const useTrackOperations = ({
     error,
     isSuccess,
     pendingTracks: Array.from(pendingTracks),
-    optimisticTracks,
     lastAddedTrack,
     clearLastAddedTrack
   }

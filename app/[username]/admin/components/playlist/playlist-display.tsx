@@ -3,11 +3,14 @@
 import { useEffect, useState, useCallback } from 'react'
 import { sendApiRequest } from '@/shared/api'
 import { useSpotifyPlayerStore } from '@/hooks/useSpotifyPlayer'
+import { useNowPlayingTrackWithPosition } from '@/hooks/useNowPlayingTrackWithPosition'
 import { PlayIcon, TrashIcon } from '@heroicons/react/24/outline'
 import { ErrorMessage } from '@/components/ui/error-message'
 import { Loading } from '@/components/ui/loading'
 import { TableSkeleton } from '@/components/ui/skeleton'
 import { TrackDetails, SpotifyArtist } from '@/shared/types/spotify'
+
+import { TrackItem } from '@/shared/types/spotify'
 
 interface SpotifyPlaylistTrack {
   track: TrackDetails | null
@@ -25,7 +28,11 @@ export function PlaylistDisplay({
   const [error, setError] = useState<string | null>(null)
   const [loadingTrackId, setLoadingTrackId] = useState<string | null>(null)
   const [deletingTrackId, setDeletingTrackId] = useState<string | null>(null)
-  const { playbackState, deviceId } = useSpotifyPlayerStore()
+  const { deviceId } = useSpotifyPlayerStore()
+  const nowPlaying = useNowPlayingTrackWithPosition(
+    tracks as unknown as TrackItem[]
+  )
+  const [duplicateTrackIds, setDuplicateTrackIds] = useState(new Set<string>())
 
   const fetchPlaylistTracks = useCallback(async (): Promise<void> => {
     try {
@@ -41,6 +48,23 @@ export function PlaylistDisplay({
 
       if (response?.items) {
         setTracks(response.items)
+
+        const trackIds = response.items
+          .map((item) => item.track?.id)
+          .filter((id): id is string => !!id)
+
+        const idCounts = trackIds.reduce(
+          (acc, id) => {
+            acc[id] = (acc[id] || 0) + 1
+            return acc
+          },
+          {} as Record<string, number>
+        )
+
+        const duplicates = new Set(
+          Object.keys(idCounts).filter((id) => idCounts[id] > 1)
+        )
+        setDuplicateTrackIds(duplicates)
       }
     } catch (err) {
       setError(
@@ -91,18 +115,21 @@ export function PlaylistDisplay({
     }
   }
 
-  const handleDeleteTrack = async (trackUri: string): Promise<void> => {
+  const handleDeleteTrack = async (
+    trackUri: string,
+    position: number
+  ): Promise<void> => {
     try {
       setDeletingTrackId(trackUri)
       await sendApiRequest({
         path: `playlists/${playlistId}/tracks`,
         method: 'DELETE',
         body: {
-          tracks: [{ uri: trackUri }]
+          tracks: [{ uri: trackUri, positions: [position] }]
         }
       })
-      // Remove the track from the local state
-      setTracks((prev) => prev.filter((t) => t.track?.uri !== trackUri))
+      // Remove the track from the local state by its position
+      setTracks((prev) => prev.filter((_, i) => i !== position))
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to delete track')
     } finally {
@@ -125,11 +152,6 @@ export function PlaylistDisplay({
       </div>
     )
   }
-
-  // Find the index of the currently playing track
-  const currentTrackIndex = tracks.findIndex(
-    (track) => track.track?.id === playbackState?.item?.id
-  )
 
   return (
     <div className='space-y-4'>
@@ -161,19 +183,23 @@ export function PlaylistDisplay({
             <tbody>
               {[...tracks].reverse().map((track, index) => {
                 const isCurrentlyPlaying =
-                  track.track?.id === playbackState?.item?.id
+                  nowPlaying?.track.id === track.track?.id &&
+                  nowPlaying?.position === tracks.length - 1 - index
                 const isTrackLoading = loadingTrackId === track.track?.uri
                 const isTrackDeleting = deletingTrackId === track.track?.uri
                 const isNextTrack =
-                  currentTrackIndex !== -1 &&
-                  index === tracks.length - currentTrackIndex - 2
+                  nowPlaying?.position !== -1 &&
+                  nowPlaying?.position === tracks.length - 1 - index - 1
+                const isDuplicate = duplicateTrackIds.has(track.track?.id ?? '')
 
                 return (
                   <tr
-                    key={track.track?.id}
+                    key={`${track.track?.id}-${index}`}
                     className={`border-b border-gray-800 last:border-0 hover:bg-gray-800/50 ${
                       isCurrentlyPlaying ? 'bg-green-900/20' : ''
-                    } ${isNextTrack ? 'bg-blue-900/20' : ''}`}
+                    } ${isNextTrack ? 'bg-blue-900/20' : ''} ${
+                      isDuplicate ? 'bg-yellow-900/20' : ''
+                    }`}
                   >
                     <td className='px-4 py-3 text-sm text-gray-400'>
                       {isCurrentlyPlaying ? (
@@ -238,7 +264,10 @@ export function PlaylistDisplay({
                         <button
                           onClick={() =>
                             track.track?.uri &&
-                            void handleDeleteTrack(track.track.uri)
+                            void handleDeleteTrack(
+                              track.track.uri,
+                              tracks.length - 1 - index
+                            )
                           }
                           disabled={
                             isTrackLoading ||

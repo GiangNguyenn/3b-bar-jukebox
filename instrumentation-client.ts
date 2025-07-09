@@ -9,7 +9,10 @@ Sentry.init({
 
   // Add optional integrations for additional features
   integrations: [
-    Sentry.replayIntegration(),
+    Sentry.replayIntegration({
+      // Block all media to avoid capturing album art, etc.
+      blockAllMedia: true
+    }),
     Sentry.consoleLoggingIntegration({ levels: ['error', 'warn'] })
   ],
 
@@ -17,9 +20,9 @@ Sentry.init({
   tracesSampleRate: 1,
 
   // Define how likely Replay events are sampled.
-  // This sets the sample rate to be 10%. You may want this to be 100% while
+  // This sets the sample rate to be 1%. You may want this to be 100% while
   // in development and sample at a lower rate in production
-  replaysSessionSampleRate: 0.1,
+  replaysSessionSampleRate: 0.01,
 
   // Define how likely Replay events are sampled when an error occurs.
   replaysOnErrorSampleRate: 1.0,

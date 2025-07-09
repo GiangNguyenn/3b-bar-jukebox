@@ -26,6 +26,7 @@ export interface SpotifyUserProfile {
 }
 export interface SpotifyArtist {
   name: string
+  id: string
 }
 
 export interface SpotifyDevice {
@@ -64,7 +65,7 @@ export interface TrackItem {
     id: string
     uri: string
     name: string
-    artists: { name: string }[]
+    artists: { name: string; id: string }[]
     album: {
       name: string
       images: { url: string }[]
@@ -117,6 +118,10 @@ export interface SpotifyPlaybackState {
   }
 }
 
+export interface SpotifyPlayerQueue {
+  currently_playing: TrackDetails
+  queue: TrackDetails[]
+}
 export interface UserQueue {
   queue: {
     id: string
@@ -184,4 +189,5 @@ export interface SpotifyErrorResponse {
     status: number
     message: string
   }
+  details?: string
 }
