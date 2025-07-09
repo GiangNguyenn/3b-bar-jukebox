@@ -2,6 +2,7 @@ import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs'
 import { cookies } from 'next/headers'
 import { NextResponse } from 'next/server'
 import { z } from 'zod'
+import { createModuleLogger } from '@/shared/utils/logger'
 
 const logSuggestionSchema = z.object({
   profile_id: z.string().uuid(),
@@ -21,12 +22,23 @@ const logSuggestionSchema = z.object({
   })
 })
 
-export async function POST(request: Request) {
+const logger = createModuleLogger('log-suggestion-api')
+
+export async function POST(request: Request): Promise<NextResponse> {
   const supabase = createRouteHandlerClient({ cookies })
 
   try {
-    const body = await request.json()
-    const { profile_id, track } = logSuggestionSchema.parse(body)
+    const body = (await request.json()) as unknown
+    const validation = logSuggestionSchema.safeParse(body)
+
+    if (!validation.success) {
+      return NextResponse.json(
+        { error: validation.error.issues },
+        { status: 400 }
+      )
+    }
+
+    const { profile_id, track } = validation.data
 
     const { error } = await supabase.rpc('log_track_suggestion', {
       p_profile_id: profile_id,
@@ -42,7 +54,7 @@ export async function POST(request: Request) {
     })
 
     if (error) {
-      console.error('Error logging track suggestion:', error)
+      logger('ERROR', 'Error logging track suggestion', 'Supabase', error)
       return NextResponse.json(
         { error: 'Internal Server Error', details: error.message },
         { status: 500 }
@@ -57,7 +69,12 @@ export async function POST(request: Request) {
     if (error instanceof z.ZodError) {
       return NextResponse.json({ error: error.issues }, { status: 400 })
     }
-    console.error('Unexpected error in log-suggestion:', error)
+    logger(
+      'ERROR',
+      'Unexpected error in log-suggestion',
+      'API',
+      error instanceof Error ? error : undefined
+    )
     return NextResponse.json(
       { error: 'An unexpected error occurred.' },
       { status: 500 }

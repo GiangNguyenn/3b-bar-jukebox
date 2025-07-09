@@ -1,4 +1,4 @@
-import { sendApiRequest } from '../api'
+import { getAppAccessToken } from '@/services/spotify/auth'
 import { getBaseUrl } from '@/shared/utils/domain'
 
 // Add logging context
@@ -102,6 +102,7 @@ class TokenManager {
 
   private async refreshToken(): Promise<string> {
     try {
+      // First, try to get a user-specific token
       const response = await fetch(`${this.config.baseUrl}/api/token`, {
         cache: 'no-store',
         headers: {
@@ -109,52 +110,21 @@ class TokenManager {
         }
       })
 
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}))
-        if (addLog) {
-          addLog('ERROR', 'Failed to fetch token', 'TokenManager', errorData)
-        } else {
-          console.error('[TokenManager] Failed to fetch token:', {
-            status: response.status,
-            statusText: response.statusText,
-            error: errorData
-          })
+      if (response.ok) {
+        const data = (await response.json()) as TokenResponse
+        if (data.access_token) {
+          this.tokenCache = {
+            token: data.access_token,
+            expiry: Date.now() + data.expires_in * 1000
+          }
+          return data.access_token
         }
-        throw new Error(errorData.error || 'Failed to fetch Spotify token')
       }
 
-      const data = (await response.json()) as TokenResponse
-      if (!data.access_token) {
-        if (addLog) {
-          addLog(
-            'ERROR',
-            `Invalid token response: ${JSON.stringify(data)}`,
-            'TokenManager'
-          )
-        } else {
-          console.error('[TokenManager] Invalid token response:', data)
-        }
-        throw new Error('Invalid token response')
-      }
-
-      // Update cache
-      this.tokenCache = {
-        token: data.access_token,
-        expiry: Date.now() + data.expires_in * 1000
-      }
-
-      return data.access_token
+      // If user token fails, throw an error
+      throw new Error('Failed to get user token and no fallback is available.')
     } catch (error) {
-      if (addLog) {
-        addLog(
-          'ERROR',
-          'Error refreshing token',
-          'TokenManager',
-          error instanceof Error ? error : undefined
-        )
-      } else {
-        console.error('[TokenManager] Error refreshing token:', error)
-      }
+      console.error('[TokenManager] Error refreshing token:', error)
       throw error
     }
   }

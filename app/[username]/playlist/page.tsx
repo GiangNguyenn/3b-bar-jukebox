@@ -39,29 +39,27 @@ export default function PlaylistPage(): JSX.Element {
     error: playlistError,
     isLoading: isPlaylistLoading,
     isRefreshing: isPlaylistRefreshing,
-    refetch: refetchPlaylist
+    refetch: refetchPlaylist,
+    addTrackOptimistically,
+    revertOptimisticUpdate
   } = useGetPlaylist({
     playlistId: fixedPlaylistId,
     token,
     enabled: shouldEnablePlaylist
-  }) as {
-    data: { tracks: { items: TrackItem[] } } | null
-    error: string | null
-    isLoading: boolean
-    isRefreshing: boolean
-    refetch: () => Promise<void>
-  }
+  })
 
-  const { addTrack, optimisticTracks, lastAddedTrack, clearLastAddedTrack } =
-    useTrackOperations({
-      playlistId: fixedPlaylistId ?? '',
-      token
-    }) as {
-      addTrack: (track: TrackItem) => Promise<void>
-      optimisticTracks: TrackItem[]
-      lastAddedTrack: TrackItem | null
-      clearLastAddedTrack: () => void
-    }
+  const { addTrack, lastAddedTrack, clearLastAddedTrack } = useTrackOperations({
+    playlistId: fixedPlaylistId ?? '',
+    token,
+    username,
+    playlist,
+    addTrackOptimistically,
+    revertOptimisticUpdate,
+    refetch: () => {
+      void refetchPlaylist()
+    },
+    playlistError
+  })
 
   // Get currently playing track using the user's token
   const { data: currentlyPlaying } = useNowPlayingTrack({
@@ -77,13 +75,8 @@ export default function PlaylistPage(): JSX.Element {
 
   // Include optimistic track in the display if it exists
   const tracksToDisplay = useMemo(() => {
-    if (optimisticTracks.length === 0) {
-      return upcomingTracks
-    }
-
-    // Always add optimistic tracks to the end of the list
-    return [...upcomingTracks, ...optimisticTracks]
-  }, [upcomingTracks, optimisticTracks])
+    return upcomingTracks
+  }, [upcomingTracks])
 
   const handleAddTrack = useCallback(
     async (track: TrackDetails): Promise<void> => {

@@ -96,7 +96,7 @@ export function TrackSuggestionsTab({
         error as Error
       )
     }
-  }, [updateState])
+  }, [updateState, addLog])
 
   useEffect(() => {
     // Initial fetch

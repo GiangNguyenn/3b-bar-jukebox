@@ -19,10 +19,10 @@ class Cache {
     return Cache.instance
   }
 
-  set<T>(key: string, data: T): void {
+  set<T>(key: string, data: T, ttl: number = this.TTL): void {
     this.cache.set(key, {
       data,
-      timestamp: Date.now()
+      timestamp: Date.now() + ttl
     })
   }
 
@@ -31,7 +31,7 @@ class Cache {
     if (!entry) return null
 
     const now = Date.now()
-    if (now - entry.timestamp > this.TTL) {
+    if (now > entry.timestamp) {
       this.cache.delete(key)
       return null
     }

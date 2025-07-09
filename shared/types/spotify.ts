@@ -118,6 +118,10 @@ export interface SpotifyPlaybackState {
   }
 }
 
+export interface SpotifyPlayerQueue {
+  currently_playing: TrackDetails
+  queue: TrackDetails[]
+}
 export interface UserQueue {
   queue: {
     id: string
@@ -185,4 +189,5 @@ export interface SpotifyErrorResponse {
     status: number
     message: string
   }
+  details?: string
 }

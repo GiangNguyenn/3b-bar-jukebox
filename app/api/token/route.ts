@@ -56,7 +56,8 @@ export async function GET(): Promise<
       {
         cookies: {
           getAll() {
-            return cookieStore.getAll()
+            const allCookies = cookieStore.getAll()
+            return allCookies.filter((cookie) => cookie.name.startsWith('sb-'))
           },
           setAll(cookiesToSet) {
             try {

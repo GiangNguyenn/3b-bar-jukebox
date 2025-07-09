@@ -4,7 +4,6 @@ import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
 import type { Database } from '@/types/supabase'
 import { createModuleLogger } from '@/shared/utils/logger'
-import { setApiLogger } from '@/shared/api'
 import { SpotifyUserProfile } from '@/shared/types/spotify'
 
 interface PremiumVerificationResponse {
@@ -21,7 +20,7 @@ interface ErrorResponse {
 }
 
 // Set up logger for this module
-const logger = createModuleLogger('verify-premium', setApiLogger)
+const logger = createModuleLogger('verify-premium')
 
 export async function GET(
   request: Request
