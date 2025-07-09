@@ -65,8 +65,8 @@ begin
 
   -- Step 2: Upsert the suggestion into the 'suggested_tracks' table.
   -- If the user has suggested this track before, increment the count and update the timestamp.
-  insert into public.suggested_tracks (profile_id, track_id, first_suggested_at, last_suggested_at)
-  values (p_profile_id, v_track_id, now(), now())
+  insert into public.suggested_tracks (profile_id, track_id, count, first_suggested_at, last_suggested_at)
+  values (p_profile_id, v_track_id, 1, now(), now())
   on conflict (profile_id, track_id) do update
   set
     count = suggested_tracks.count + 1,

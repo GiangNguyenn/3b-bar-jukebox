@@ -3,6 +3,9 @@ import { cookies } from 'next/headers'
 import { NextResponse } from 'next/server'
 import type { Database } from '@/types/supabase'
 import { SpotifyTokenResponse } from '@/shared/types/spotify'
+import { createModuleLogger } from '@/shared/utils/logger'
+
+const logger = createModuleLogger('API Token')
 
 // Types
 interface ErrorResponse {
@@ -74,6 +77,7 @@ export async function GET(
     )
 
     // Get the user's profile from database by display_name
+    logger('INFO', `Fetching profile for username: ${params.username}`)
     const { data: userProfile, error: profileError } = await supabase
       .from('profiles')
       .select(
@@ -83,7 +87,11 @@ export async function GET(
       .single()
 
     if (profileError || !userProfile) {
-      console.error('[Token] Error fetching user profile:', profileError)
+      logger(
+        'ERROR',
+        `Error fetching user profile for username: "${params.username}"`,
+        JSON.stringify(profileError, null, 2)
+      )
       return NextResponse.json(
         {
           error: 'Failed to get user credentials',
@@ -93,6 +101,7 @@ export async function GET(
         { status: 500 }
       )
     }
+    logger('INFO', `Successfully fetched profile for ${params.username}`)
 
     // Type guard to ensure userProfile has required fields
     const typedProfile = userProfile as UserProfile
@@ -133,7 +142,7 @@ export async function GET(
 
       if (!response.ok) {
         const errorText = await response.text()
-        console.error('[Token] Error refreshing token:', errorText)
+        logger('ERROR', 'Error refreshing token', errorText)
         return NextResponse.json(
           {
             error: 'Failed to refresh token',
@@ -157,7 +166,7 @@ export async function GET(
         .eq('id', userProfile.id)
 
       if (updateError) {
-        console.error('[Token] Error updating token:', updateError)
+        logger('ERROR', 'Error updating token', JSON.stringify(updateError))
       }
 
       return NextResponse.json({
@@ -175,7 +184,7 @@ export async function GET(
       expires_at: tokenExpiresAt
     })
   } catch (error) {
-    console.error('[Token] Error:', error)
+    logger('ERROR', 'Error in GET request', undefined, error as Error)
     return NextResponse.json(
       {
         error: 'Internal server error',

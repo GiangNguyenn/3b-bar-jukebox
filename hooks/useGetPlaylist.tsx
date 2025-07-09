@@ -3,17 +3,22 @@ import { SpotifyPlaylistItem, TrackItem } from '@/shared/types/spotify'
 import { sendApiRequest } from '@/shared/api'
 import { cache } from '@/shared/utils/cache'
 
-interface UseGetPlaylistProps {
+// Module-level cache to track in-flight requests
+const inFlightRequests = new Map<string, Promise<SpotifyPlaylistItem>>()
+
+interface UseGetPlaylistOptions {
   playlistId: string | null
   token?: string | null
   enabled?: boolean
+  refetchInterval?: number | null
 }
 
 export function useGetPlaylist({
   playlistId,
   token,
-  enabled = true
-}: UseGetPlaylistProps) {
+  enabled = true,
+  refetchInterval = 60000
+}: UseGetPlaylistOptions) {
   const [data, setData] = useState<SpotifyPlaylistItem | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(false)
@@ -22,116 +27,85 @@ export function useGetPlaylist({
   const [hasOptimisticUpdates, setHasOptimisticUpdates] = useState(false)
   const optimisticUpdateTimeRef = useRef<number>(0)
 
-  const fetchPlaylist = async (
-    bypassCache = false,
-    isBackgroundRefresh = false
-  ) => {
-    if (!playlistId) {
-      setData(null)
-      return
-    }
-
-    if (enabled && !token) {
-      setData(null)
-      return
-    }
-
-    if (playlistId === 'user' || !playlistId.match(/^[a-zA-Z0-9]{22}$/)) {
-      console.error('[useGetPlaylist] Invalid playlist ID format:', playlistId)
-      setError('Invalid playlist ID format')
-      return
-    }
-
-    // Skip background refresh if there are optimistic updates and it's been less than 10 seconds
-    if (isBackgroundRefresh && hasOptimisticUpdates) {
-      const timeSinceOptimisticUpdate =
-        Date.now() - optimisticUpdateTimeRef.current
-      if (timeSinceOptimisticUpdate < 10000) {
-        // 10 seconds
-        console.log(
-          '[useGetPlaylist] Skipping background refresh due to recent optimistic updates'
-        )
+  const fetchPlaylist = useCallback(
+    async (bypassCache = false, isBackgroundRefresh = false) => {
+      if (!playlistId) {
+        setData(null)
         return
       }
-    }
 
-    try {
-      // Use different loading states for initial load vs background refresh
-      if (isBackgroundRefresh) {
-        setIsRefreshing(true)
-      } else {
-        setIsLoading(true)
+      if (enabled && !token) {
+        setData(null)
+        return
       }
-      setError(null)
+
+      if (playlistId === 'user' || !playlistId.match(/^[a-zA-Z0-9]{22}$/)) {
+        console.error(
+          '[useGetPlaylist] Invalid playlist ID format:',
+          playlistId
+        )
+        setError('Invalid playlist ID format')
+        return
+      }
 
       const cacheKey = `playlist-${playlistId}`
 
-      // Only check cache if not bypassing it
-      if (!bypassCache) {
-        const cachedData = cache.get<SpotifyPlaylistItem>(cacheKey)
-        if (cachedData) {
-          setData(cachedData)
-          return
+      // Prevent duplicate requests
+      if (inFlightRequests.has(cacheKey)) {
+        try {
+          const data = await inFlightRequests.get(cacheKey)
+          setData(data as SpotifyPlaylistItem)
+        } catch (err) {
+          setError(err instanceof Error ? err.message : 'An error occurred')
         }
+        return
       }
 
-      let playlistData: SpotifyPlaylistItem
+      try {
+        if (isBackgroundRefresh) {
+          setIsRefreshing(true)
+        } else {
+          setIsLoading(true)
+        }
+        setError(null)
 
-      if (token) {
-        const response = await fetch(
-          `https://api.spotify.com/v1/playlists/${playlistId}`,
-          {
-            headers: {
-              Authorization: `Bearer ${token}`,
-              'Content-Type': 'application/json'
-            }
-          }
-        )
-
-        if (!response.ok) {
-          if (response.status === 401) {
-            setError('Token invalid')
-            // Note: The recovery is now handled by the page component
+        if (!bypassCache) {
+          const cachedData = cache.get<SpotifyPlaylistItem>(cacheKey)
+          if (cachedData) {
+            setData(cachedData)
             return
           }
-          throw new Error(`HTTP ${response.status}: ${response.statusText}`)
         }
 
-        playlistData = await response.json()
-      } else {
-        console.error(
-          '[useGetPlaylist] No token provided but enabled is true - this should not happen'
-        )
-        setError('No token provided')
-        return
-      }
+        const requestPromise = sendApiRequest<SpotifyPlaylistItem>({
+          path: `playlists/${playlistId}`,
+          token: token ?? undefined
+        })
 
-      cache.set(cacheKey, playlistData)
-      setData(playlistData)
+        inFlightRequests.set(cacheKey, requestPromise)
 
-      // Clear optimistic updates flag after successful fetch
-      if (hasOptimisticUpdates) {
-        setHasOptimisticUpdates(false)
-      }
-    } catch (err) {
-      console.error('[useGetPlaylist] Error:', err)
+        const playlistData = await requestPromise
+        cache.set(cacheKey, playlistData)
+        setData(playlistData)
 
-      if (err instanceof Error && err.message.includes('401')) {
-        setError('User not authenticated')
-        return
+        if (hasOptimisticUpdates) {
+          setHasOptimisticUpdates(false)
+        }
+      } catch (err) {
+        console.error('[useGetPlaylist] Error:', err)
+        setError(err instanceof Error ? err.message : 'An error occurred')
+        setData(null)
+      } finally {
+        inFlightRequests.delete(cacheKey)
+        if (isBackgroundRefresh) {
+          setIsRefreshing(false)
+        } else {
+          setIsLoading(false)
+        }
       }
-
-      setError(err instanceof Error ? err.message : 'An error occurred')
-      setData(null)
-    } finally {
-      // Use different loading states for initial load vs background refresh
-      if (isBackgroundRefresh) {
-        setIsRefreshing(false)
-      } else {
-        setIsLoading(false)
-      }
-    }
-  }
+    },
+    [playlistId, token, enabled, hasOptimisticUpdates]
+  )
 
   // Optimistic update function to immediately add a track to the playlist
   const addTrackOptimistically = useCallback(
@@ -228,29 +202,28 @@ export function useGetPlaylist({
     cache.delete(cacheKey)
     setHasOptimisticUpdates(false)
     void fetchPlaylist(true, false)
-  }, [playlistId])
+  }, [playlistId, fetchPlaylist])
 
   useEffect(() => {
     if (!enabled) {
       return
     }
 
-    // Initial fetch
     void fetchPlaylist()
 
-    // Set up automatic refresh every minute (60000ms)
-    intervalRef.current = setInterval(() => {
-      void fetchPlaylist(true, true) // Always bypass cache for auto-refresh, mark as background refresh
-    }, 60000)
+    if (refetchInterval && refetchInterval > 0) {
+      intervalRef.current = setInterval(() => {
+        void fetchPlaylist(true, true)
+      }, refetchInterval)
+    }
 
-    // Cleanup interval on unmount or when dependencies change
     return () => {
       if (intervalRef.current) {
         clearInterval(intervalRef.current)
         intervalRef.current = null
       }
     }
-  }, [playlistId, token, enabled])
+  }, [enabled, fetchPlaylist, refetchInterval])
 
   return {
     data,
@@ -264,7 +237,7 @@ export function useGetPlaylist({
         cache.delete(cacheKey)
       }
       setHasOptimisticUpdates(false)
-      return fetchPlaylist(true, true) // Mark as background refresh for manual refetch too
+      return fetchPlaylist(true, true)
     },
     addTrackOptimistically,
     removeTrackOptimistically,

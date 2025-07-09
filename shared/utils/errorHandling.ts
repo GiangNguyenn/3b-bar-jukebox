@@ -36,11 +36,15 @@ export const handleApiError = (error: unknown, context: string): AppError => {
     errorMessage = (error.message ||
       ERROR_MESSAGES.GENERIC_ERROR) as ErrorMessage
   } else if (typeof error === 'object' && error !== null) {
-    const apiError = error as ApiError
-    const message =
+    const apiError = error as any
+    let message =
       apiError.message ||
       apiError.error?.message ||
-      apiError.details?.errorMessage
+      apiError.details?.errorMessage ||
+      apiError.error
+    if (apiError.details) {
+      message = `${message} - ${apiError.details}`
+    }
     errorMessage = (message || ERROR_MESSAGES.GENERIC_ERROR) as ErrorMessage
   }
 

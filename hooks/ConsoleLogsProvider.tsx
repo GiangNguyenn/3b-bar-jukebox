@@ -11,7 +11,7 @@ import {
   useMemo
 } from 'react'
 import * as Sentry from '@sentry/nextjs'
-import { initializeLoggers } from '@/shared/utils/logger'
+import { initializeLoggers, setLogger } from '@/shared/utils/logger'
 
 export type LogLevel = 'LOG' | 'INFO' | 'WARN' | 'ERROR'
 export type LogEntry = {
@@ -66,12 +66,6 @@ export function ConsoleLogsProvider({
     setLogsRef.current = setLogs
   }, [setLogs])
 
-  // Initialize service loggers
-  useEffect(() => {
-    initializeLoggers(addLog)
-  }, [])
-
-  // Validate and sanitize message
   const validateMessage = useCallback(
     (message: string): string => {
       if (message.length > maxMessageLength) {
@@ -82,7 +76,6 @@ export function ConsoleLogsProvider({
     [maxMessageLength]
   )
 
-  // Safe Sentry logging with error handling
   const logToSentry = useCallback(
     (level: LogLevel, message: string, context?: string, error?: Error) => {
       if (!enableSentry) return
@@ -94,14 +87,12 @@ export function ConsoleLogsProvider({
           loggerRef.current.warn(message, { context, error })
         }
       } catch (e) {
-        // Fallback logging if Sentry fails
         console.error('Failed to log to Sentry:', e)
       }
     },
     [enableSentry]
   )
 
-  // Rate-limited addLog
   const addLog = useCallback(
     (level: LogLevel, message: string, context?: string, error?: Error) => {
       const now = Date.now()
@@ -120,13 +111,11 @@ export function ConsoleLogsProvider({
         error
       }
 
-      // Use functional update to avoid stale state
       setLogsRef.current((prev) => {
         const updatedLogs = [newLog, ...prev]
         return updatedLogs.slice(0, maxLogs)
       })
 
-      // Log to browser console with appropriate console method
       const consoleMethod = level.toLowerCase() as
         | 'log'
         | 'info'
@@ -153,15 +142,17 @@ export function ConsoleLogsProvider({
           console.log(...consoleArgs)
       }
 
-      // Log to Sentry if enabled
       logToSentry(level, sanitizedMessage, context, error)
     },
     [rateLimit, validateMessage, logToSentry, maxLogs]
   )
 
-  // Separate effect for console overrides
   useEffect(() => {
-    // Only override console after first render
+    setLogger(addLog)
+    initializeLoggers(addLog)
+  }, [addLog])
+
+  useEffect(() => {
     let didRun = false
     const timeout = setTimeout(() => {
       if (!enableConsoleOverride || isConsoleOverridden.current) return
@@ -180,7 +171,6 @@ export function ConsoleLogsProvider({
         let message: string
         let error: Error | undefined
 
-        // Handle different argument patterns
         if (
           typeof firstArg === 'string' &&
           firstArg.startsWith('[') &&
@@ -208,17 +198,14 @@ export function ConsoleLogsProvider({
             .join(' ')
         }
 
-        // Extract error if present
         const lastArg = args[args.length - 1]
         if (lastArg instanceof Error) {
           error = lastArg
         }
 
-        // Use addLog instead of setLogs directly
         addLog(level, message, context, error)
       }
 
-      // Override console methods
       console.log = (...args: unknown[]): void => {
         originalConsoleLog.apply(console, args)
         addLogFromConsole('LOG', ...args)
@@ -239,7 +226,6 @@ export function ConsoleLogsProvider({
         addLogFromConsole('ERROR', ...args)
       }
 
-      // Cleanup
       didRun = true
       return () => {
         console.log = originalConsoleLog
@@ -252,7 +238,6 @@ export function ConsoleLogsProvider({
     return () => {
       clearTimeout(timeout)
       if (didRun) {
-        // Restore console methods if effect ran
         isConsoleOverridden.current = false
       }
     }
@@ -260,7 +245,6 @@ export function ConsoleLogsProvider({
 
   const clearLogs = useCallback(() => setLogsRef.current([]), [])
 
-  // Memoize context value to prevent unnecessary re-renders
   const contextValue = useMemo(
     () => ({ logs, addLog, clearLogs }),
     [logs, addLog, clearLogs]
