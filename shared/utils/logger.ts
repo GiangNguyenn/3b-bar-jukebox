@@ -1,8 +1,4 @@
-import { setApiLogger } from '../api'
-import { setTokenManagerLogger } from '../token/tokenManager'
-import { setSpotifyApiLogger } from '../../services/spotifyApi'
-import { setDeviceManagementLogger } from '../../services/deviceManagement'
-import { setTrackSuggestionLogger } from '../../services/trackSuggestion'
+import { LogEntry } from '@/hooks/ConsoleLogsProvider'
 
 export type LogFunction = (
   level: 'LOG' | 'INFO' | 'WARN' | 'ERROR',
@@ -11,41 +7,37 @@ export type LogFunction = (
   error?: Error
 ) => void
 
-export function initializeLoggers(addLog: LogFunction): void {
-  // Initialize all service loggers
-  setApiLogger(addLog)
-  setTokenManagerLogger(addLog)
-  setSpotifyApiLogger(addLog)
-  setDeviceManagementLogger(addLog)
-  setTrackSuggestionLogger(addLog)
+let resolveLogger: (value: LogFunction) => void
+
+const loggerPromise = new Promise<LogFunction>((resolve) => {
+  resolveLogger = resolve
+})
+
+export function setLogger(logger: LogFunction) {
+  if (resolveLogger) {
+    resolveLogger(logger)
+  }
 }
 
-/**
- * Creates a standardized logger for any module
- * @param moduleName - The name of the module (used as context)
- * @param setLoggerFn - Optional function to set the logger in a specific service
- * @returns A logger function that can be used throughout the module
- */
-export function createModuleLogger(
-  moduleName: string,
-  setLoggerFn?: (logger: LogFunction) => void
-): LogFunction {
-  // Create the logger function
-  const logger: LogFunction = (level, message, context, error) => {
-    const logContext = context || moduleName
-    if (level === 'ERROR') {
-      console.error(`[${logContext}] ${message}`, error)
-    } else if (level === 'WARN') {
-      console.warn(`[${logContext}] ${message}`, error)
-    } else {
-      console.log(`[${logContext}] ${message}`)
-    }
-  }
+export function getLogger(): Promise<LogFunction> {
+  return loggerPromise
+}
 
-  // Set up the logger in the API system if requested
-  if (setLoggerFn) {
-    setLoggerFn(logger)
-  }
+// This function is kept for compatibility, but the new
+// promise-based approach is preferred.
+export function initializeLoggers(logFunction: LogFunction) {
+  // You can add other logger initializations here if needed
+}
 
-  return logger
+export function createModuleLogger(moduleName: string) {
+  return (
+    level: 'LOG' | 'INFO' | 'WARN' | 'ERROR',
+    message: string,
+    context?: string,
+    error?: Error
+  ) => {
+    getLogger().then((logger) => {
+      logger(level, `[${moduleName}] ${message}`, context || moduleName, error)
+    })
+  }
 }

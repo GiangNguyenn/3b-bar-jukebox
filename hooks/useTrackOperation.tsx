@@ -85,7 +85,6 @@ export const useTrackOperation = ({
       await handleOperationError(
         async () => {
           await operation(track)
-          await refetchPlaylist()
           setIsSuccess(true)
           setError(null)
         },

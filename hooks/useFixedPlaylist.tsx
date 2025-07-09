@@ -19,6 +19,7 @@ export function useFixedPlaylist() {
   const [error, setError] = useState<Error | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [isInitialFetchComplete, setIsInitialFetchComplete] = useState(false)
+  const isFetchingRef = useRef(false)
 
   const supabase = createBrowserClient<Database>(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -33,36 +34,18 @@ export function useFixedPlaylist() {
       pathname
     )
 
-    // Reset state when displayName changes
-    setFixedPlaylistId(null)
-    setError(null)
-    setIsLoading(true)
-    setIsInitialFetchComplete(false)
-
-    // If we're on the home page, we don't need to fetch a playlist
-    if (pathname === '/') {
-      console.log('[FixedPlaylist] On home page, skipping playlist fetch')
-      setIsLoading(false)
-      setIsInitialFetchComplete(true)
-      return
-    }
-
-    // If no displayName, we're done loading
-    if (!displayName) {
-      console.log('[FixedPlaylist] No display name provided')
-      setError(new Error('Display name is required'))
-      setIsLoading(false)
-      setIsInitialFetchComplete(true)
-      return
-    }
-
     const fetchPlaylistId = async () => {
+      if (isFetchingRef.current) {
+        return
+      }
+      isFetchingRef.current = true
+      setIsLoading(true)
+
       try {
         console.log(
           '[FixedPlaylist] Fetching profile for display name:',
           displayName
         )
-        // Get the user's profile ID using their display_name
         const { data: profile, error: profileError } = await supabase
           .from('profiles')
           .select('id, spotify_access_token')
@@ -84,8 +67,6 @@ export function useFixedPlaylist() {
 
         console.log('[FixedPlaylist] Found profile:', profile.id)
 
-        // Get their playlist ID
-        console.log('[FixedPlaylist] Fetching playlist for user:', profile.id)
         const { data: playlist, error: playlistError } = await supabase
           .from('playlists')
           .select('spotify_playlist_id')
@@ -121,11 +102,26 @@ export function useFixedPlaylist() {
       } finally {
         setIsLoading(false)
         setIsInitialFetchComplete(true)
+        isFetchingRef.current = false
       }
     }
 
-    void fetchPlaylistId()
-  }, [displayName, pathname])
+    if (pathname === '/') {
+      console.log('[FixedPlaylist] On home page, skipping playlist fetch')
+      setIsLoading(false)
+      setIsInitialFetchComplete(true)
+      return
+    }
+
+    if (displayName) {
+      void fetchPlaylistId()
+    } else {
+      console.log('[FixedPlaylist] No display name provided')
+      setError(new Error('Display name is required'))
+      setIsLoading(false)
+      setIsInitialFetchComplete(true)
+    }
+  }, [displayName, pathname, supabase])
 
   return {
     fixedPlaylistId,

@@ -16,7 +16,7 @@ create table if not exists public.tracks (
 -- Create the 'suggested_tracks' table to log song suggestions
 create table if not exists public.suggested_tracks (
   id uuid primary key default gen_random_uuid(),
-  profile_id uuid not null references public.profiles(id),
+  profile_id uuid references public.profiles(id),
   track_id uuid not null references public.tracks(id),
   count integer not null default 1,
   first_suggested_at timestamptz default now(),
@@ -50,14 +50,14 @@ begin
   -- Get the ID of the track (whether it was newly inserted or already exists).
   select id into v_track_id from public.tracks where spotify_track_id = p_spotify_track_id;
 
-  -- Step 2: Upsert the suggestion into the 'suggested_tracks' table.
-  -- If the user has suggested this track before, increment the count and update the timestamp.
-  -- Otherwise, create a new record.
-  insert into public.suggested_tracks (profile_id, track_id, count, first_suggested_at, last_suggested_at)
-  values (p_profile_id, v_track_id, 1, now(), now())
-  on conflict (profile_id, track_id) do update
-  set
-    count = suggested_tracks.count + 1,
-    last_suggested_at = now();
+  -- Step 2: If a profile_id is provided, upsert the suggestion into the 'suggested_tracks' table.
+  if p_profile_id is not null then
+    insert into public.suggested_tracks (profile_id, track_id, count, first_suggested_at, last_suggested_at)
+    values (p_profile_id, v_track_id, 1, now(), now())
+    on conflict (profile_id, track_id) do update
+    set
+      count = suggested_tracks.count + 1,
+      last_suggested_at = now();
+  end if;
 end;
 $$ language plpgsql volatile security definer;

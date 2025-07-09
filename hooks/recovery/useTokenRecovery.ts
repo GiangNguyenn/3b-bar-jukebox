@@ -7,18 +7,7 @@ import {
 } from '@/shared/utils/errorHandling'
 import { ErrorType } from '@/shared/types/recovery'
 import { TOKEN_RECOVERY_CONFIG } from '@/shared/constants/recovery'
-
-interface TokenResponse {
-  access_token: string
-  refresh_token: string
-  expires_at: number
-}
-
-interface ErrorResponse {
-  error: string
-  code: string
-  status: number
-}
+import { fetchPublicToken, PublicTokenError } from '@/shared/token/publicToken'
 
 export function useTokenRecovery() {
   const params = useParams()
@@ -52,40 +41,7 @@ export function useTokenRecovery() {
           )
         }
 
-        const response = await fetch(
-          `/api/token/${encodeURIComponent(username)}`
-        )
-
-        if (!response.ok) {
-          const errorData = (await response.json()) as ErrorResponse
-          const errorType = determineErrorType(errorData)
-
-          if (
-            errorType === ErrorType.AUTH &&
-            attempt < TOKEN_RECOVERY_CONFIG.MAX_RETRY_ATTEMPTS
-          ) {
-            const delay =
-              TOKEN_RECOVERY_CONFIG.RETRY_DELAYS[attempt] ||
-              TOKEN_RECOVERY_CONFIG.RETRY_DELAYS[
-                TOKEN_RECOVERY_CONFIG.RETRY_DELAYS.length - 1
-              ]
-
-            addLog(
-              'WARN',
-              `Token error, retrying in ${delay}ms...`,
-              'useTokenRecovery'
-            )
-
-            await new Promise((resolve) => setTimeout(resolve, delay))
-            return fetchToken(attempt + 1)
-          }
-
-          setConsecutiveFailures((prev) => prev + 1)
-          const appError = handleApiError(errorData, 'useTokenRecovery')
-          throw new Error(appError.message)
-        }
-
-        const tokenData = (await response.json()) as TokenResponse
+        const tokenData = await fetchPublicToken(username)
         setToken(tokenData.access_token)
         setConsecutiveFailures(0)
 
@@ -95,12 +51,35 @@ export function useTokenRecovery() {
         return tokenData.access_token
       } catch (err) {
         console.error('[useTokenRecovery] Error fetching token:', err)
-        const errorMessage =
-          err instanceof Error ? err.message : 'An error occurred'
-        setError(errorMessage)
+        if (err instanceof PublicTokenError) {
+          const errorType = determineErrorType(err.response)
+          if (
+            errorType === ErrorType.AUTH &&
+            attempt < TOKEN_RECOVERY_CONFIG.MAX_RETRY_ATTEMPTS
+          ) {
+            const delay =
+              TOKEN_RECOVERY_CONFIG.RETRY_DELAYS[attempt] ||
+              TOKEN_RECOVERY_CONFIG.RETRY_DELAYS[
+                TOKEN_RECOVERY_CONFIG.RETRY_DELAYS.length - 1
+              ]
+            addLog(
+              'WARN',
+              `Token error, retrying in ${delay}ms...`,
+              'useTokenRecovery'
+            )
+            await new Promise((resolve) => setTimeout(resolve, delay))
+            return fetchToken(attempt + 1)
+          }
+          const appError = handleApiError(err.response, 'useTokenRecovery')
+          setError(appError.message)
+        } else {
+          const errorMessage =
+            err instanceof Error ? err.message : 'An error occurred'
+          setError(errorMessage)
+        }
 
+        setConsecutiveFailures((prev) => prev + 1)
         if (attempt >= TOKEN_RECOVERY_CONFIG.MAX_RETRY_ATTEMPTS) {
-          setConsecutiveFailures((prev) => prev + 1)
           addLog(
             'ERROR',
             'Token recovery failed after max attempts',
