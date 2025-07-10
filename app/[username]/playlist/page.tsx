@@ -6,6 +6,7 @@ import { useFixedPlaylist } from '@/hooks/useFixedPlaylist'
 import { useTrackOperations } from '@/hooks/useTrackOperations'
 import { useUserToken } from '@/hooks/useUserToken'
 import { useNowPlayingTrack } from '@/hooks/useNowPlayingTrack'
+import { useArtistExtract } from '@/hooks/useArtistExtract'
 import { useUpcomingTracks } from '@/hooks/useUpcomingTracks'
 import { TrackDetails, TrackItem } from '@/shared/types/spotify'
 import SearchInput from '@/components/SearchInput'
@@ -72,6 +73,13 @@ export default function PlaylistPage(): JSX.Element {
     playlist ?? undefined,
     currentlyPlaying ?? undefined
   )
+
+  const artistName = currentlyPlaying?.item?.artists[0]?.name
+  const {
+    data: extract,
+    isLoading: isExtractLoading,
+    error: extractError
+  } = useArtistExtract(artistName)
 
   // Include optimistic track in the display if it exists
   const tracksToDisplay = useMemo(() => {
@@ -247,6 +255,9 @@ export default function PlaylistPage(): JSX.Element {
             <Playlist
               tracks={tracksToDisplay}
               currentlyPlaying={currentlyPlaying}
+              artistExtract={extract}
+              isExtractLoading={isExtractLoading}
+              extractError={extractError}
             />
           </div>
         </Suspense>
