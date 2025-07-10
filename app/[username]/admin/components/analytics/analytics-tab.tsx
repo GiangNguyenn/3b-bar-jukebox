@@ -51,7 +51,7 @@ const useTopTracks = (): {
           .from('suggested_tracks')
           .select('count, tracks(name, artist, spotify_track_id)')
           .order('count', { ascending: false })
-          .limit(10)
+          .limit(50)
 
         if (error) {
           throw new Error(error.message)
@@ -155,7 +155,7 @@ export const AnalyticsTab = (): JSX.Element => {
   return (
     <div className='p-4'>
       <div className='mb-4 flex items-center justify-between'>
-        <h2 className='text-2xl font-bold'>Top 10 Suggested Tracks</h2>
+        <h2 className='text-2xl font-bold'>Top 50 Suggested Tracks</h2>
         <button
           onClick={() => {
             void handleAddToPlaylist()
