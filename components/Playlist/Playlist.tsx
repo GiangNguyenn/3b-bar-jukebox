@@ -8,11 +8,17 @@ import NowPlaying from './NowPlaying'
 interface PlaylistProps {
   tracks: TrackItem[]
   currentlyPlaying?: SpotifyPlaybackState | null
+  artistExtract: string | null
+  isExtractLoading: boolean
+  extractError: Error | null
 }
 
 export default function Playlist({
   tracks,
-  currentlyPlaying
+  currentlyPlaying,
+  artistExtract,
+  isExtractLoading,
+  extractError
 }: PlaylistProps): JSX.Element {
   const containerRef = useRef<HTMLDivElement>(null)
 
@@ -25,7 +31,12 @@ export default function Playlist({
     <div className='w-full'>
       <div className='mx-auto flex w-full overflow-hidden rounded-lg bg-primary-100 shadow-md sm:w-10/12 md:w-8/12 lg:w-9/12'>
         <div className='flex w-full flex-col'>
-          <NowPlaying nowPlaying={currentlyPlaying ?? undefined} />
+          <NowPlaying
+            nowPlaying={currentlyPlaying ?? undefined}
+            artistExtract={artistExtract}
+            isExtractLoading={isExtractLoading}
+            extractError={extractError}
+          />
           <div className='flex flex-col p-5'>
             <div className='mb-2 flex items-center justify-between border-b pb-1'>
               <span className='text-base font-semibold uppercase text-gray-700'>
