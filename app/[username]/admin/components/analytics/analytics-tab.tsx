@@ -220,8 +220,10 @@ const useTopTracks = (): {
               'Real-time subscription for suggested tracks established',
               'useTopTracks'
             )
-          } else if (status === 'CHANNEL_ERROR') {
-            // eslint-disable-line @typescript-eslint/no-unsafe-enum-comparison
+          } else if (
+            // eslint-disable-next-line @typescript-eslint/no-unsafe-enum-comparison
+            status === 'CHANNEL_ERROR'
+          ) {
             addLog(
               'ERROR',
               'Real-time subscription for suggested tracks failed',
