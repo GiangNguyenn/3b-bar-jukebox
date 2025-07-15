@@ -8,14 +8,12 @@ interface StatusGridProps {
   healthStatus: HealthStatus
   playbackState: SpotifyPlaybackState | null
   isReady: boolean
-  fixedPlaylistIsInitialFetchComplete: boolean
 }
 
 export function StatusGrid({
   healthStatus,
   playbackState,
-  isReady,
-  fixedPlaylistIsInitialFetchComplete
+  isReady
 }: StatusGridProps): JSX.Element {
   return (
     <div className='grid grid-cols-2 gap-4'>
@@ -81,16 +79,6 @@ export function StatusGrid({
           unknown: 'bg-gray-500'
         }}
         label={isReady ? (navigator.onLine ? 'Good' : 'Poor') : 'Unknown'}
-      />
-
-      <StatusIndicator
-        title='Fixed Playlist'
-        status={fixedPlaylistIsInitialFetchComplete ? 'found' : 'not_found'}
-        colorMap={{
-          found: 'bg-green-500',
-          not_found: 'bg-red-500'
-        }}
-        label={fixedPlaylistIsInitialFetchComplete ? 'Found' : 'Not Found'}
       />
     </div>
   )

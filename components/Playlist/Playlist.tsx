@@ -1,16 +1,19 @@
 'use client'
 
 import { useRef } from 'react'
-import { TrackItem, SpotifyPlaybackState } from '@/shared/types/spotify'
+import { SpotifyPlaybackState } from '@/shared/types/spotify'
+import { JukeboxQueueItem } from '@/shared/types/queue'
 import QueueItem from './QueueItem'
 import NowPlaying from './NowPlaying'
 
 interface PlaylistProps {
-  tracks: TrackItem[]
+  tracks: JukeboxQueueItem[]
   currentlyPlaying?: SpotifyPlaybackState | null
   artistExtract: string | null
   isExtractLoading: boolean
   extractError: Error | null
+  onVote: (queueId: string, direction: 'up' | 'down') => void
+  isRefreshing?: boolean
 }
 
 export default function Playlist({
@@ -18,13 +21,15 @@ export default function Playlist({
   currentlyPlaying,
   artistExtract,
   isExtractLoading,
-  extractError
+  extractError,
+  onVote,
+  isRefreshing = false
 }: PlaylistProps): JSX.Element {
   const containerRef = useRef<HTMLDivElement>(null)
 
-  const tracksToShow = tracks.filter((track) => {
+  const tracksToShow = tracks.filter((item) => {
     if (!currentlyPlaying) return true
-    return track.track.id !== currentlyPlaying?.item?.id
+    return item.tracks.spotify_track_id !== currentlyPlaying?.item?.id
   })
 
   return (
@@ -40,17 +45,32 @@ export default function Playlist({
           <div className='flex flex-col p-5'>
             <div className='mb-2 flex items-center justify-between border-b pb-1'>
               <span className='text-base font-semibold uppercase text-gray-700'>
-                {!currentlyPlaying ? 'ALL TRACKS' : 'UPCOMING TRACKS'}
+                Playlist Queue
               </span>
+              {isRefreshing && (
+                <div className='flex items-center gap-2 text-xs text-gray-500'>
+                  <div className='h-3 w-3 animate-spin rounded-full border-2 border-gray-300 border-t-gray-600'></div>
+                  <span>Updating...</span>
+                </div>
+              )}
             </div>
             <div
               ref={containerRef}
               className='flex max-h-[calc(100vh-16rem)] flex-col space-y-2 overflow-y-auto'
             >
-              {tracksToShow.map((track, index) => (
+              {tracksToShow.map((item) => (
                 <QueueItem
-                  key={`${track.track.id}-${index}-${track.added_at}`}
-                  track={track}
+                  key={item.id}
+                  track={item}
+                  votes={item.votes}
+                  queueId={item.id}
+                  onVote={onVote}
+                  isPlaying={
+                    !!(
+                      currentlyPlaying?.item?.id &&
+                      item.tracks.spotify_track_id === currentlyPlaying.item.id
+                    )
+                  }
                 />
               ))}
             </div>

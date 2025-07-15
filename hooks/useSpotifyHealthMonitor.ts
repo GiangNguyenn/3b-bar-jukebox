@@ -1,35 +1,22 @@
 import { useMemo } from 'react'
 import { useConsoleLogsContext } from './ConsoleLogsProvider'
 import { useSpotifyPlayerStore } from './useSpotifyPlayer'
-import { useFixedPlaylist } from './useFixedPlaylist'
 import {
   useTokenHealth,
   useDeviceHealth,
   useConnectionHealth,
-  usePlaybackHealth,
-  useFixedPlaylistHealth
+  usePlaybackHealth
 } from './health'
 import { HealthStatus } from '@/shared/types/health'
 
 export function useSpotifyHealthMonitor(): HealthStatus {
   const { addLog } = useConsoleLogsContext()
   const { deviceId } = useSpotifyPlayerStore()
-  const {
-    fixedPlaylistId,
-    isLoading: isFixedPlaylistLoading,
-    error: fixedPlaylistError
-  } = useFixedPlaylist()
-
   // Use focused health hooks
   const tokenHealth = useTokenHealth()
   const deviceHealth = useDeviceHealth(deviceId)
   const connectionHealth = useConnectionHealth()
   const playbackHealth = usePlaybackHealth()
-  const fixedPlaylistHealth = useFixedPlaylistHealth(
-    fixedPlaylistId,
-    isFixedPlaylistLoading,
-    fixedPlaylistError
-  )
 
   // Map the new health status to the old interface structure
   const healthStatus = useMemo((): HealthStatus => {
@@ -39,17 +26,9 @@ export function useSpotifyHealthMonitor(): HealthStatus {
       playback: playbackHealth,
       token: tokenHealth.status,
       tokenExpiringSoon: tokenHealth.expiringSoon,
-      connection: connectionHealth,
-      fixedPlaylist: fixedPlaylistHealth
+      connection: connectionHealth
     }
-  }, [
-    deviceId,
-    tokenHealth,
-    deviceHealth,
-    connectionHealth,
-    playbackHealth,
-    fixedPlaylistHealth
-  ])
+  }, [deviceId, tokenHealth, deviceHealth, connectionHealth, playbackHealth])
 
   return healthStatus
 }

@@ -15,7 +15,7 @@ const queueFetcher = () =>
 
 export function useNowPlayingTrackWithPosition(
   playlist: TrackItem[]
-): { position: number; track: TrackItem['track'] } | null {
+): { position: number; track: TrackItem['tracks'] } | null {
   const { data: queue } = useSWR('user-queue', queueFetcher, {
     refreshInterval: 5000
   })
@@ -31,10 +31,10 @@ export function useNowPlayingTrackWithPosition(
   if (upcomingTrackUri) {
     for (let i = 0; i < playlist.length - 1; i++) {
       if (
-        playlist[i].track.uri === currentlyPlayingUri &&
-        playlist[i + 1].track.uri === upcomingTrackUri
+        playlist[i].tracks.uri === currentlyPlayingUri &&
+        playlist[i + 1].tracks.uri === upcomingTrackUri
       ) {
-        return { position: i, track: playlist[i].track }
+        return { position: i, track: playlist[i].tracks }
       }
     }
   }
@@ -42,10 +42,10 @@ export function useNowPlayingTrackWithPosition(
   // Fallback Strategy: End-of-Playlist Check
   const lastTrackInPlaylist = playlist[playlist.length - 1]
   if (
-    lastTrackInPlaylist.track.uri === currentlyPlayingUri &&
+    lastTrackInPlaylist.tracks.uri === currentlyPlayingUri &&
     queue.queue.length === 0
   ) {
-    return { position: playlist.length - 1, track: lastTrackInPlaylist.track }
+    return { position: playlist.length - 1, track: lastTrackInPlaylist.tracks }
   }
 
   // Failure Case: No match found

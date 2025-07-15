@@ -2,37 +2,36 @@
 'use client'
 
 import { useCallback, useEffect, useState, useRef } from 'react'
+import { useParams } from 'next/navigation'
 import { usePlaybackIntentStore } from '@/hooks/usePlaybackIntent'
 import {
   useSpotifyPlayerStore,
   useAdminSpotifyPlayerHook
 } from '@/hooks/useSpotifyPlayer'
-import { useFixedPlaylist } from '@/hooks/useFixedPlaylist'
 import { useConsoleLogsContext } from '@/hooks/ConsoleLogsProvider'
-import { usePlaylist } from '@/hooks/usePlaylist'
+import { usePlaylistData } from '@/hooks/usePlaylistData'
 import { useTrackSuggestions } from './components/track-suggestions/hooks/useTrackSuggestions'
 import { useSpotifyHealthMonitor } from '@/hooks/useSpotifyHealthMonitor'
-import { useAutoPlaylistRefresh } from '@/hooks/useAutoPlaylistRefresh'
-import { SpotifyApiService } from '@/services/spotifyApi'
 import { RecoveryStatus } from '@/components/ui/recovery-status'
 import { HealthStatusSection } from './components/dashboard/health-status-section'
 import { TrackSuggestionsTab } from './components/track-suggestions/track-suggestions-tab'
 import { PlaylistDisplay } from './components/playlist/playlist-display'
 import { AnalyticsTab } from './components/analytics/analytics-tab'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { type PlaybackInfo } from '@/shared/types/health'
 import { type TrackSuggestionsState } from '@/shared/types/trackSuggestions'
 import { useRecoverySystem } from '@/hooks/recovery'
 import { ErrorMessage } from '@/components/ui/error-message'
-import { Loading, PlaylistSkeleton } from '@/components/ui'
+import { Loading } from '@/components/ui'
 import { useTokenHealth } from '@/hooks/health/useTokenHealth'
 import { tokenManager } from '@/shared/token/tokenManager'
+import { queueManager } from '@/services/queueManager'
+import { getAutoPlayService } from '@/services/autoPlayService'
+import { sendApiRequest } from '@/shared/api'
 
 export default function AdminPage(): JSX.Element {
   // State
   const [isLoading, setIsLoading] = useState(false)
   const [isRefreshing, setIsRefreshing] = useState(false)
-  const [playbackInfo, setPlaybackInfo] = useState<PlaybackInfo | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [activeTab, setActiveTab] = useState<
     'dashboard' | 'playlist' | 'settings' | 'logs' | 'analytics'
@@ -40,6 +39,8 @@ export default function AdminPage(): JSX.Element {
   const initializationAttemptedRef = useRef(false)
 
   // Hooks
+  const params = useParams()
+  const username = params?.username as string | undefined
   const {
     deviceId,
     isReady,
@@ -47,18 +48,16 @@ export default function AdminPage(): JSX.Element {
     status: playerStatus
   } = useSpotifyPlayerStore()
   const { createPlayer } = useAdminSpotifyPlayerHook()
-  const {
-    fixedPlaylistId,
-    isLoading: isFixedPlaylistLoading,
-    error: fixedPlaylistError
-  } = useFixedPlaylist()
   const { addLog } = useConsoleLogsContext()
   const { userIntent, setUserIntent } = usePlaybackIntentStore()
-
-  // Use the playlist hook
-  const playlistHookResult = usePlaylist(fixedPlaylistId ?? '')
-  const playlistRefreshError = playlistHookResult.error
-  const refreshPlaylist = playlistHookResult.refreshPlaylist
+  // Use the enhanced playlist hook with real-time subscriptions
+  const {
+    data: queue,
+    isLoading: queueLoading,
+    error: playlistError,
+    mutate: refreshQueue,
+    optimisticUpdate
+  } = usePlaylistData(username)
 
   // Use the track suggestions hook
   // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
@@ -72,24 +71,75 @@ export default function AdminPage(): JSX.Element {
   // Get recovery system for manual recovery
   const { state: recoveryState, recover } = useRecoverySystem(
     deviceId,
-    fixedPlaylistId,
-    undefined // No callback needed for admin page
+    null // No playlist ID needed for admin page
   )
 
   // Add token health monitoring
   const tokenHealth = useTokenHealth()
 
-  // Enable automatic playlist refresh every 3 minutes
-  useAutoPlaylistRefresh({
-    isEnabled: isReady && !!fixedPlaylistId,
-    trackSuggestionsState,
-    refreshPlaylist
-  })
+  // Initialize auto-play service
+  useEffect(() => {
+    const autoPlayService = getAutoPlayService({
+      checkInterval: 2000, // Check every 2 seconds
+      deviceId: deviceId ?? null,
+      username: username ?? null,
+      onTrackFinished: (trackId: string) => {
+        addLog('INFO', `Auto-play: Track finished - ${trackId}`, 'AdminPage')
+        // Refresh queue when track finishes to update the UI
+        void refreshQueue()
+      },
+      onNextTrackStarted: (track) => {
+        addLog(
+          'INFO',
+          `Auto-play: Started playing - ${track.tracks.name}`,
+          'AdminPage'
+        )
+        setUserIntent('playing')
+        // Refresh queue when next track starts to update the UI
+        void refreshQueue()
+      },
+      onQueueEmpty: () => {
+        addLog(
+          'INFO',
+          'Auto-play: Queue is empty, stopping playback',
+          'AdminPage'
+        )
+        setUserIntent('paused')
+      },
+      onQueueLow: () => {
+        addLog('INFO', 'Auto-play: Queue is low, auto-filling...', 'AdminPage')
+      }
+    })
 
-  // Create a more reliable playback state indicator
-  const getIsActuallyPlaying = useCallback(() => {
-    return userIntent === 'playing'
-  }, [userIntent])
+    // Start the auto-play service
+    autoPlayService.start()
+
+    // Update the service when device ID changes
+    if (deviceId) {
+      autoPlayService.setDeviceId(deviceId)
+    }
+
+    // Update the service when username changes
+    if (username) {
+      autoPlayService.setUsername(username)
+    }
+
+    // Update the service when queue changes
+    if (queue) {
+      autoPlayService.updateQueue(queue)
+    }
+
+    return (): void => {
+      autoPlayService.stop()
+    }
+  }, [deviceId, username, queue, addLog, setUserIntent, refreshQueue])
+
+  // Update QueueManager with queue data
+  useEffect(() => {
+    if (queue) {
+      queueManager.updateQueue(queue)
+    }
+  }, [queue])
 
   // Initialize the player when the component mounts
   useEffect(() => {
@@ -132,70 +182,6 @@ export default function AdminPage(): JSX.Element {
     void initializePlayer()
   }, [playerStatus, addLog, createPlayer])
 
-  const handlePlayPause = useCallback(async (): Promise<void> => {
-    if (!deviceId) return
-
-    try {
-      setIsLoading(true)
-      const spotifyApi = SpotifyApiService.getInstance()
-
-      if (getIsActuallyPlaying()) {
-        // If currently playing, pause playback
-        await spotifyApi.pausePlayback(deviceId)
-        setUserIntent('paused')
-        setPlaybackInfo((prev) => (prev ? { ...prev, isPlaying: false } : null))
-      } else {
-        // If not playing, resume playback
-        await spotifyApi.resumePlayback()
-        setUserIntent('playing')
-        setPlaybackInfo((prev) =>
-          prev
-            ? {
-                ...prev,
-                isPlaying: true,
-                lastProgressCheck: Date.now(),
-                progressStalled: false
-              }
-            : null
-        )
-      }
-
-      // Add a small delay to allow the Spotify API to update
-      await new Promise((resolve) => setTimeout(resolve, 500))
-
-      // Refresh the playback state
-      const state = await spotifyApi.getPlaybackState()
-      if (state) {
-        setPlaybackInfo((prev: PlaybackInfo | null) =>
-          prev
-            ? {
-                ...prev,
-                isPlaying: state.is_playing,
-                currentTrack: state.item?.name ?? '',
-                progress: state.progress_ms ?? 0,
-                duration_ms: state.item?.duration_ms ?? 0,
-                timeUntilEnd:
-                  state.item?.duration_ms && state.progress_ms
-                    ? state.item.duration_ms - state.progress_ms
-                    : 0,
-                lastProgressCheck: Date.now(),
-                progressStalled: false
-              }
-            : null
-        )
-      }
-    } catch (error) {
-      addLog(
-        'ERROR',
-        'Playback control failed',
-        'Playback',
-        error instanceof Error ? error : undefined
-      )
-    } finally {
-      setIsLoading(false)
-    }
-  }, [deviceId, getIsActuallyPlaying, addLog, setUserIntent])
-
   // Manual recovery trigger for user-initiated recovery (e.g., device mismatch, connection issues)
   const handleForceRecovery = useCallback(async (): Promise<void> => {
     try {
@@ -230,23 +216,97 @@ export default function AdminPage(): JSX.Element {
   const handleRefreshPlaylist = useCallback(async (): Promise<void> => {
     try {
       setIsRefreshing(true)
-      addLog('INFO', 'Refreshing playlist...', 'AdminPage')
-      await refreshPlaylist(trackSuggestionsState)
-      addLog('INFO', 'Playlist refreshed successfully', 'AdminPage')
+      addLog('INFO', 'Auto-filling queue...', 'AdminPage')
+
+      if (!username) {
+        throw new Error('Username is not set.')
+      }
+
+      // This is a simplified logic for auto-queue filling.
+      // In a real scenario, this would call the track suggestions API
+      // and then add those tracks to the queue.
+      addLog('INFO', 'Track Suggestions State being sent:', 'AdminPage')
+      const response = await fetch('/api/track-suggestions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(trackSuggestionsState)
+      })
+
+      if (!response.ok) {
+        const errorBody = await response.json()
+        addLog(
+          'ERROR',
+          `Track Suggestions API error: ${JSON.stringify(errorBody)}`,
+          'AdminPage'
+        )
+        throw new Error('Failed to get track suggestions for auto-fill.')
+      }
+
+      const suggestions = (await response.json()) as {
+        tracks: { id: string }[]
+      }
+
+      for (const track of suggestions.tracks) {
+        // Fetch full track details from Spotify
+        const trackDetails = await sendApiRequest<{
+          id: string
+          name: string
+          artists: Array<{ name: string }>
+          album: { name: string }
+          duration_ms: number
+          popularity: number
+          uri: string
+        }>({
+          path: `tracks/${track.id}`,
+          method: 'GET'
+        })
+
+        addLog(
+          'INFO',
+          `Track details from Spotify: ${JSON.stringify(trackDetails)}`,
+          'AdminPage'
+        )
+
+        addLog(
+          'INFO',
+          `Track details structure: ${JSON.stringify({
+            id: trackDetails.id,
+            name: trackDetails.name,
+            artists: trackDetails.artists,
+            album: trackDetails.album,
+            duration_ms: trackDetails.duration_ms,
+            popularity: trackDetails.popularity,
+            uri: trackDetails.uri
+          })}`,
+          'AdminPage'
+        )
+
+        await fetch(`/api/playlist/${username}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            tracks: trackDetails,
+            initialVotes: 1 // Auto-fill tracks get 1 vote
+          })
+        })
+      }
+
+      addLog('INFO', 'Queue auto-fill completed successfully', 'AdminPage')
+      await refreshQueue()
     } catch (error) {
       addLog(
         'ERROR',
-        'Failed to refresh playlist',
+        'Failed to auto-fill queue',
         'AdminPage',
         error instanceof Error ? error : undefined
       )
       setError(
-        error instanceof Error ? error.message : 'Failed to refresh playlist'
+        error instanceof Error ? error.message : 'Failed to auto-fill queue'
       )
     } finally {
       setIsRefreshing(false)
     }
-  }, [refreshPlaylist, trackSuggestionsState, addLog])
+  }, [trackSuggestionsState, addLog, refreshQueue, username])
 
   // Add missing functions
   const handleTabChange = useCallback((value: string): void => {
@@ -356,33 +416,23 @@ export default function AdminPage(): JSX.Element {
     }
   }, [healthStatus.playback, recoveryState.isRecovering, recover, addLog])
 
-  // Update error handling
-  if (fixedPlaylistError) {
+  if (playlistError) {
     return (
       <div className='p-4 text-red-500'>
         <p>
-          Error loading playlist:{' '}
-          {fixedPlaylistError instanceof Error
-            ? fixedPlaylistError.message
-            : String(fixedPlaylistError)}
+          Error loading queue:{' '}
+          {typeof playlistError === 'string'
+            ? playlistError
+            : String(playlistError)}
         </p>
       </div>
     )
   }
 
-  if (isFixedPlaylistLoading) {
-    return <PlaylistSkeleton />
-  }
-
-  if (playlistRefreshError) {
+  if (queueLoading && (!queue || queue.length === 0)) {
     return (
-      <div className='p-4 text-red-500'>
-        <p>
-          Error refreshing playlist:{' '}
-          {playlistRefreshError instanceof Error
-            ? playlistRefreshError.message
-            : String(playlistRefreshError)}
-        </p>
+      <div className='p-4 text-gray-400'>
+        <p>Loading queue...</p>
       </div>
     )
   }
@@ -444,38 +494,84 @@ export default function AdminPage(): JSX.Element {
 
             <HealthStatusSection
               healthStatus={healthStatus}
-              playbackInfo={playbackInfo}
+              playbackInfo={null}
               formatTime={formatTime}
               isReady={isReady}
             />
 
             <div className='mt-8 space-y-4'>
               <h2 className='text-xl font-semibold'>Controls</h2>
-              <div className='flex gap-4'>
+
+              {/* Play/Pause Button - QueueManager Integration */}
+              <div className='mb-4 flex justify-center'>
                 <button
-                  onClick={() => void handlePlayPause()}
-                  disabled={!isReady || isLoading || recoveryState.isRecovering}
-                  className={`text-white flex-1 rounded-lg px-4 py-2 font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
-                    getIsActuallyPlaying()
-                      ? 'bg-blue-600 hover:bg-blue-700'
-                      : 'bg-green-600 hover:bg-green-700'
-                  }`}
+                  onClick={() => {
+                    void (async (): Promise<void> => {
+                      try {
+                        if (userIntent === 'playing') {
+                          // Pause playback
+                          setUserIntent('paused')
+                          await sendApiRequest({
+                            path: `me/player/pause?device_id=${deviceId}`,
+                            method: 'PUT'
+                          })
+                          addLog(
+                            'INFO',
+                            'Playback paused via QueueManager system',
+                            'AdminPage'
+                          )
+                        } else {
+                          // Resume playback - use QueueManager to get next track
+                          const nextTrack = queueManager.getNextTrack()
+
+                          if (nextTrack) {
+                            // Play the next track from the queue
+                            const trackUri = `spotify:track:${nextTrack.tracks.spotify_track_id}`
+                            await sendApiRequest({
+                              path: `me/player/play?device_id=${deviceId}`,
+                              method: 'PUT',
+                              body: {
+                                uris: [trackUri]
+                              }
+                            })
+                            setUserIntent('playing')
+                            addLog(
+                              'INFO',
+                              `Playing next track from queue: ${nextTrack.tracks.name}`,
+                              'AdminPage'
+                            )
+                          } else {
+                            // No tracks in queue, try to resume current playback
+                            await sendApiRequest({
+                              path: `me/player/play?device_id=${deviceId}`,
+                              method: 'PUT'
+                            })
+                            setUserIntent('playing')
+                            addLog(
+                              'INFO',
+                              'Resuming playback (no queue tracks available)',
+                              'AdminPage'
+                            )
+                          }
+                        }
+                      } catch (error) {
+                        addLog(
+                          'ERROR',
+                          'Playback control failed via QueueManager system',
+                          'AdminPage',
+                          error as Error
+                        )
+                      }
+                    })()
+                  }}
+                  disabled={!isReady || recoveryState.isRecovering}
+                  className='text-white max-w-xs flex-1 rounded-lg bg-green-600 px-6 py-3 font-medium transition-colors hover:bg-green-700 disabled:cursor-not-allowed disabled:opacity-50'
                 >
-                  {isLoading ? (
-                    <div className='flex items-center justify-center gap-2'>
-                      <Loading className='h-4 w-4' />
-                      <span>Loading...</span>
-                    </div>
-                  ) : !isReady ? (
-                    'Initializing...'
-                  ) : recoveryState.isRecovering ? (
-                    'Recovering...'
-                  ) : getIsActuallyPlaying() ? (
-                    'Pause'
-                  ) : (
-                    'Play'
-                  )}
+                  {userIntent === 'playing' ? 'Pause' : 'Play'}
                 </button>
+              </div>
+
+              <div className='flex gap-4'>
                 <button
                   onClick={() => void handleRefreshPlaylist()}
                   disabled={
@@ -529,11 +625,17 @@ export default function AdminPage(): JSX.Element {
           </TabsContent>
 
           <TabsContent value='playlist'>
-            <PlaylistDisplay playlistId={fixedPlaylistId ?? ''} />
+            <PlaylistDisplay
+              queue={queue ?? []}
+              onQueueChanged={async () => {
+                await refreshQueue()
+              }}
+              optimisticUpdate={optimisticUpdate}
+            />
           </TabsContent>
 
           <TabsContent value='analytics'>
-            <AnalyticsTab />
+            <AnalyticsTab username={username} />
           </TabsContent>
         </Tabs>
       </div>

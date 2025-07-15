@@ -1,8 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { songsBetweenRepeatsSchema } from '@/app/[username]/admin/components/track-suggestions/validations/trackSuggestions'
-import { PlaylistRefreshServiceImpl } from '@/services/playlistRefresh'
+import { findSuggestedTrack } from '@/services/trackSuggestion'
 import { type Genre } from '@/shared/constants/trackSuggestion'
+import { createModuleLogger } from '@/shared/utils/logger'
+
+const logger = createModuleLogger('API Track Suggestions')
 
 export const runtime = 'nodejs'
 export const maxDuration = 60 // 60 seconds
@@ -21,9 +24,6 @@ interface LastSuggestedTrack {
 
 // Server-side cache for the last suggested track
 let serverCache: LastSuggestedTrack | null = null
-
-// Keep a reference to the service instance
-let serviceInstance: PlaylistRefreshServiceImpl | null = null
 
 const refreshRequestSchema = z.object({
   genres: z
@@ -44,6 +44,7 @@ const refreshRequestSchema = z.object({
 interface RefreshResponse {
   success: boolean
   message?: string
+  tracks?: Array<{ id: string }>
   searchDetails?: {
     attempts: number
     totalTracksFound: number
@@ -78,8 +79,8 @@ export function GET(request: NextRequest): NextResponse {
       }
 
       // Otherwise, get the track from the service
-      const service = PlaylistRefreshServiceImpl.getInstance()
-      const track = service.getLastSuggestedTrack()
+      // For now, return null since we're not using the service anymore
+      const track = null
 
       // Update server cache if we got a track
       if (track) {
@@ -93,7 +94,7 @@ export function GET(request: NextRequest): NextResponse {
         timestamp: Date.now()
       })
     } catch (error) {
-      console.error('[Last Suggested Track] Error:', error)
+      logger('ERROR', `[Last Suggested Track] Error: ${JSON.stringify(error)}`)
       return NextResponse.json(
         {
           success: false,
@@ -116,24 +117,42 @@ export async function POST(
     const body = (await request.json()) as unknown
     const validatedData = refreshRequestSchema.parse(body)
 
-    // Use the cached instance if available, otherwise create a new one
-    serviceInstance ??= PlaylistRefreshServiceImpl.getInstance()
+    logger(
+      'INFO',
+      `Track Suggestions API - Validated data: ${JSON.stringify(validatedData)}`
+    )
 
-    const result = await serviceInstance.refreshPlaylist(true, {
-      genres: validatedData.genres,
-      yearRange: validatedData.yearRange,
-      popularity: validatedData.popularity,
-      allowExplicit: validatedData.allowExplicit,
-      maxSongLength: validatedData.maxSongLength,
-      songsBetweenRepeats: validatedData.songsBetweenRepeats,
-      maxOffset: validatedData.maxOffset
-    })
+    // Use findSuggestedTrack with app tokens for server-side operation
+    const result = await findSuggestedTrack(
+      [], // No excluded track IDs for this operation
+      null, // No current track ID
+      'US', // Default market
+      {
+        genres: validatedData.genres,
+        yearRange: validatedData.yearRange,
+        popularity: validatedData.popularity,
+        allowExplicit: validatedData.allowExplicit,
+        maxSongLength: validatedData.maxSongLength,
+        songsBetweenRepeats: validatedData.songsBetweenRepeats,
+        maxOffset: validatedData.maxOffset
+      },
+      true // Use app token for server-side operations
+    )
 
-    if (!result.success) {
+    logger(
+      'INFO',
+      `Track Suggestions API - Search result: ${JSON.stringify(result)}`
+    )
+
+    if (!result.track) {
+      logger(
+        'INFO',
+        `Track Suggestions API - No track found, search details: ${JSON.stringify(result.searchDetails)}`
+      )
       return NextResponse.json(
         {
           success: false,
-          message: result.message
+          message: 'No suitable track found'
         },
         { status: 400 }
       )
@@ -141,11 +160,16 @@ export async function POST(
 
     return NextResponse.json({
       success: true,
-      message: result.message,
-      searchDetails: result.diagnosticInfo as RefreshResponse['searchDetails']
+      message: 'Track suggestion found successfully',
+      tracks: [
+        {
+          id: result.track.id
+        }
+      ],
+      searchDetails: result.searchDetails as RefreshResponse['searchDetails']
     })
   } catch (error) {
-    console.error('[API Refresh Site] Error:', error)
+    logger('ERROR', `[API Refresh Site] Error: ${JSON.stringify(error)}`)
 
     if (error instanceof z.ZodError) {
       return NextResponse.json(
@@ -194,7 +218,10 @@ export async function PUT(request: Request): Promise<NextResponse> {
       timestamp: Date.now()
     })
   } catch (error) {
-    console.error('[Last Suggested Track] Error updating cache:', error)
+    logger(
+      'ERROR',
+      `[Last Suggested Track] Error updating cache: ${JSON.stringify(error)}`
+    )
     return NextResponse.json(
       {
         success: false,

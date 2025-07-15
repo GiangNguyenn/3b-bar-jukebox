@@ -60,13 +60,6 @@ const connectionColorMap: Record<string, string> = {
   unknown: 'bg-gray-500'
 }
 
-const playlistColorMap: Record<string, string> = {
-  found: 'bg-green-500',
-  not_found: 'bg-red-500',
-  error: 'bg-red-500',
-  unknown: 'bg-gray-500'
-}
-
 export function HealthStatusSection({
   healthStatus,
   playbackInfo,
@@ -157,21 +150,6 @@ export function HealthStatusSection({
               : healthStatus.connection === 'disconnected'
                 ? 'Disconnected'
                 : 'Connection Status Unknown'
-          }
-        />
-
-        <StatusIndicator
-          title='Playlist Status'
-          status={healthStatus.fixedPlaylist}
-          colorMap={playlistColorMap}
-          label={
-            healthStatus.fixedPlaylist === 'found'
-              ? 'Playlist Found'
-              : healthStatus.fixedPlaylist === 'not_found'
-                ? 'Fixed Playlist Not Found'
-                : healthStatus.fixedPlaylist === 'error'
-                  ? 'Fixed Playlist Error'
-                  : 'Fixed Playlist Status Unknown'
           }
         />
       </div>
