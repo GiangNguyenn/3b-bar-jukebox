@@ -248,7 +248,7 @@ export const sendApiRequest = async <T>({
 import { TrackItem } from './types/spotify'
 
 export const logTrackSuggestion = async (
-  track: TrackItem['track'],
+  track: TrackItem['tracks'],
   profileId: string
 ): Promise<void> => {
   try {

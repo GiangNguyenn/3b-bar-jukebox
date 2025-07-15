@@ -6,7 +6,7 @@ import { createModuleLogger } from '@/shared/utils/logger'
 
 const logSuggestionSchema = z.object({
   profile_id: z.string().uuid(),
-  track: z.object({
+  tracks: z.object({
     id: z.string(),
     name: z.string(),
     artists: z.array(
@@ -60,19 +60,19 @@ export async function POST(request: Request): Promise<NextResponse> {
       )
     }
 
-    const { profile_id, track } = validation.data
+    const { profile_id, tracks } = validation.data
 
     const { error } = await supabase.rpc('log_track_suggestion', {
       p_profile_id: profile_id,
-      p_spotify_track_id: track.id,
-      p_track_name: track.name,
-      p_artist_name: track.artists[0]?.name ?? 'Unknown Artist',
-      p_album_name: track.album.name,
-      p_duration_ms: track.duration_ms,
-      p_popularity: track.popularity,
-      p_spotify_url: track.external_urls.spotify,
-      p_genre: track.artists[0]?.genres?.[0] ?? null,
-      p_release_year: new Date(track.album.release_date).getFullYear()
+      p_spotify_track_id: tracks.id,
+      p_track_name: tracks.name,
+      p_artist_name: tracks.artists[0]?.name ?? 'Unknown Artist',
+      p_album_name: tracks.album.name,
+      p_duration_ms: tracks.duration_ms,
+      p_popularity: tracks.popularity,
+      p_spotify_url: tracks.external_urls.spotify,
+      p_genre: tracks.artists[0]?.genres?.[0] ?? null,
+      p_release_year: new Date(tracks.album.release_date).getFullYear()
     })
 
     if (error) {

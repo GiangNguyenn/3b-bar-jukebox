@@ -11,7 +11,9 @@ import {
   SpotifyPlayerInstance,
   SpotifySDK
 } from '@/shared/types/spotify'
+import { JukeboxQueueItem } from '@/shared/types/queue'
 import { tokenManager } from '@/shared/token/tokenManager'
+import { queueManager } from '@/services/queueManager'
 
 type SpotifySDKEventTypes =
   | 'ready'
@@ -44,6 +46,9 @@ declare global {
 // Player lifecycle management service
 class PlayerLifecycleService {
   private playerRef: Spotify.Player | null = null
+  private lastKnownState: any | null = null
+  private currentQueueTrack: JukeboxQueueItem | null = null
+  private deviceId: string | null = null
   private cleanupTimeoutRef: NodeJS.Timeout | null = null
   private notReadyTimeoutRef: NodeJS.Timeout | null = null
   private reconnectionTimeoutRef: NodeJS.Timeout | null = null
@@ -78,6 +83,58 @@ class PlayerLifecycleService {
     ) => void
   ) {
     this.addLog = logger
+  }
+
+  async initializeQueue(playlistId: string) {
+    this.log('INFO', `Initializing queue with playlist ID: ${playlistId}`)
+    // The queueManager is now a singleton and doesn't need initialization here.
+    // The queue will be updated by another service that fetches playlist data.
+    this.currentQueueTrack = queueManager.getNextTrack() ?? null
+  }
+
+  private async checkAndAutoFillQueue(): Promise<void> {
+    const queue = queueManager.getQueue()
+
+    // Check if queue is low (3 or fewer tracks remaining)
+    if (queue.length <= 3) {
+      this.log(
+        'INFO',
+        `Queue is low (${queue.length} tracks remaining), triggering auto-fill`
+      )
+
+      try {
+        // Get track suggestions
+        const response = await fetch('/api/track-suggestions', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({}) // Use default parameters for auto-fill
+        })
+
+        if (!response.ok) {
+          const errorBody = await response.json()
+          this.log(
+            'ERROR',
+            `Track Suggestions API error: ${JSON.stringify(errorBody)}`
+          )
+          return
+        }
+
+        const suggestions = (await response.json()) as {
+          tracks: { id: string }[]
+        }
+
+        this.log(
+          'INFO',
+          `Got ${suggestions.tracks.length} track suggestions for auto-fill`
+        )
+
+        // Note: We can't add tracks to queue here since we don't have username context
+        // This is primarily for logging purposes in the PlayerLifecycleService
+        // The actual auto-fill is handled by the AutoPlayService which has username context
+      } catch (error) {
+        this.log('ERROR', 'Failed to check auto-fill queue', error)
+      }
+    }
   }
 
   private log(level: LogLevel, message: string, error?: unknown) {
@@ -250,6 +307,7 @@ class PlayerLifecycleService {
           }
 
           this.log('INFO', 'Setting device as ready')
+          this.deviceId = device_id
           onDeviceIdChange(device_id)
 
           // Automatically transfer playback to the new device
@@ -332,7 +390,7 @@ class PlayerLifecycleService {
           )
         })
 
-        player.addListener('player_state_changed', (state) => {
+        player.addListener('player_state_changed', (state: any) => {
           if (!state) {
             this.log(
               'WARN',
@@ -342,40 +400,111 @@ class PlayerLifecycleService {
             return
           }
 
-          this.log(
-            'INFO',
-            `player_state_changed event: paused=${state.paused}, loading=${state.loading}, position=${state.position}`
-          )
+          // Use a self-invoking async function to handle async logic
+          ;(async () => {
+            // The queueManager is now a singleton and always available.
 
-          // Transform SDK state to our internal format
-          const transformedState = {
-            item: state.track_window?.current_track
-              ? {
-                  id: state.track_window.current_track.id,
-                  name: state.track_window.current_track.name,
-                  uri: state.track_window.current_track.uri,
-                  duration_ms: state.track_window.current_track.duration_ms,
-                  artists: state.track_window.current_track.artists.map(
-                    (artist) => ({
-                      name: artist.name,
-                      id: artist.uri.split(':').pop() || ''
+            // --- Track Finished Logic ---
+            const trackJustFinished =
+              this.lastKnownState &&
+              !this.lastKnownState.paused && // was playing
+              state.paused && // is now paused
+              state.position === 0 && // at the beginning
+              this.lastKnownState.track_window.current_track?.uri ===
+                state.track_window.current_track?.uri
+
+            if (trackJustFinished && this.currentQueueTrack) {
+              const finishedTrackId = this.currentQueueTrack.id
+              this.log(
+                'INFO',
+                `Track finished: ${finishedTrackId}. Marking as played.`
+              )
+
+              await queueManager.markAsPlayed(finishedTrackId)
+
+              // Check if queue is getting low and trigger auto-fill if needed
+              await this.checkAndAutoFillQueue()
+
+              const nextTrack = queueManager.getNextTrack()
+
+              if (nextTrack) {
+                this.log(
+                  'INFO',
+                  `Playing next track from queue: ${nextTrack.tracks.spotify_url}`
+                )
+                this.currentQueueTrack = nextTrack
+
+                if (this.deviceId) {
+                  try {
+                    await sendApiRequest({
+                      path: 'me/player/play',
+                      method: 'PUT',
+                      body: {
+                        device_id: this.deviceId,
+                        uris: [nextTrack.tracks.spotify_url]
+                      }
                     })
-                  ),
-                  album: {
-                    name: state.track_window.current_track.album.name,
-                    id:
-                      state.track_window.current_track.album.uri
-                        .split(':')
-                        .pop() || ''
+                  } catch (error) {
+                    this.log('ERROR', 'Failed to play next track', error)
                   }
+                } else {
+                  this.log(
+                    'ERROR',
+                    'No device ID available to play next track.'
+                  )
                 }
-              : null,
-            is_playing: !state.paused,
-            progress_ms: state.position,
-            duration_ms: state.duration
-          }
+              } else {
+                this.log('INFO', 'Queue is empty. Playback stopped.')
+                this.currentQueueTrack = null
+              }
+            }
 
-          onPlaybackStateChange(transformedState)
+            // --- State Synchronization Logic ---
+            const currentSpotifyTrack = state.track_window?.current_track
+            if (currentSpotifyTrack && !state.paused) {
+              if (
+                this.currentQueueTrack?.tracks.id !== currentSpotifyTrack.id
+              ) {
+                const nextInQueue = queueManager.getNextTrack()
+                if (
+                  nextInQueue &&
+                  nextInQueue.tracks.id === currentSpotifyTrack.id
+                ) {
+                  this.log(
+                    'INFO',
+                    `Synced playing track with queue: ${nextInQueue.id}`
+                  )
+                  this.currentQueueTrack = nextInQueue
+                }
+              }
+            }
+
+            this.lastKnownState = state
+
+            // --- State Transformation for UI ---
+            const transformedState = {
+              item: state.track_window?.current_track
+                ? {
+                    id: state.track_window.current_track.id,
+                    name: state.track_window.current_track.name,
+                    uri: state.track_window.current_track.uri,
+                    duration_ms: state.track_window.current_track.duration_ms,
+                    artists: state.track_window.current_track.artists.map(
+                      (artist: any) => ({
+                        name: artist.name
+                      })
+                    ),
+                    album: {
+                      name: state.track_window.current_track.album.name
+                    }
+                  }
+                : null,
+              is_playing: !state.paused,
+              progress_ms: state.position,
+              duration_ms: state.duration
+            }
+            onPlaybackStateChange(transformedState)
+          })()
         })
 
         // Connect to Spotify

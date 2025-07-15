@@ -169,7 +169,8 @@ export async function searchTracksByGenre(
   yearRange: [number, number],
   market: string,
   minPopularity: number,
-  maxOffset: number
+  maxOffset: number,
+  useAppToken: boolean = false
 ): Promise<TrackDetails[]> {
   try {
     const [startYear, endYear] = yearRange
@@ -187,6 +188,7 @@ export async function searchTracksByGenre(
     }>({
       path: `${SPOTIFY_SEARCH_ENDPOINT}?q=genre:${encodeURIComponent(genre)} year:${startYear}-${endYear}&type=track&limit=${TRACK_SEARCH_LIMIT}&market=${market}&offset=${randomOffset}`,
       method: 'GET',
+      useAppToken,
       debounceTime: 0 // Disable caching for search requests to ensure fresh results
     })
 
@@ -254,7 +256,8 @@ export async function findSuggestedTrack(
     maxSongLength: number // maxSongLength is in minutes
     songsBetweenRepeats: number
     maxOffset: number
-  }
+  },
+  useAppToken: boolean = false
 ): Promise<TrackSearchResult> {
   // Validate inputs
   const excludedValidation = validateExcludedTrackIds(excludedTrackIds)
@@ -309,7 +312,8 @@ export async function findSuggestedTrack(
         yearRange,
         market,
         minPopularity,
-        maxOffset
+        maxOffset,
+        useAppToken
       )
 
       // Log details about the tracks we found
