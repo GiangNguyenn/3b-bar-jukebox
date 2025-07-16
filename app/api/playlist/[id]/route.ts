@@ -39,7 +39,7 @@ export async function GET(
     const { data: profile, error: profileError } = await supabase
       .from('profiles')
       .select('id')
-      .eq('display_name', username)
+      .ilike('display_name', username)
       .single<{ id: string }>()
 
     logger('INFO', `Profile from Supabase: ${JSON.stringify(profile)}`)
@@ -126,7 +126,7 @@ export async function POST(
     const { data: profile, error: profileError } = await supabase
       .from('profiles')
       .select('id')
-      .eq('display_name', username)
+      .ilike('display_name', username)
       .single<{ id: string }>()
 
     if (profileError || !profile) {
