@@ -114,15 +114,23 @@ export async function POST(
   request: Request
 ): Promise<NextResponse<RefreshResponse>> {
   try {
+    logger('INFO', '[Track Suggestions API] Starting POST request')
+
     const body = (await request.json()) as unknown
-    const validatedData = refreshRequestSchema.parse(body)
 
     logger(
       'INFO',
-      `Track Suggestions API - Validated data: ${JSON.stringify(validatedData)}`
+      `[Track Suggestions API] Request body: ${JSON.stringify(body)}`
+    )
+
+    const validatedData = refreshRequestSchema.parse(body)
+    logger(
+      'INFO',
+      `[Track Suggestions API] Validated data: ${JSON.stringify(validatedData)}`
     )
 
     // Use findSuggestedTrack with app tokens for server-side operation
+    logger('INFO', '[Track Suggestions API] Calling findSuggestedTrack...')
     const result = await findSuggestedTrack(
       [], // No excluded track IDs for this operation
       null, // No current track ID
@@ -141,14 +149,26 @@ export async function POST(
 
     logger(
       'INFO',
-      `Track Suggestions API - Search result: ${JSON.stringify(result)}`
+      `[Track Suggestions API] findSuggestedTrack result: ${JSON.stringify({
+        trackFound: !!result.track,
+        trackId: result.track?.id,
+        trackName: result.track?.name,
+        attempts: result.searchDetails.attempts,
+        totalTracksFound: result.searchDetails.totalTracksFound,
+        genresTried: result.searchDetails.genresTried
+      })}`
     )
 
     if (!result.track) {
       logger(
-        'INFO',
-        `Track Suggestions API - No track found, search details: ${JSON.stringify(result.searchDetails)}`
+        'ERROR',
+        `[Track Suggestions API] No suitable track found after ${result.searchDetails.attempts} attempts`
       )
+      logger(
+        'ERROR',
+        `[Track Suggestions API] Search details: ${JSON.stringify(result.searchDetails)}`
+      )
+
       return NextResponse.json(
         {
           success: false,
@@ -157,6 +177,11 @@ export async function POST(
         { status: 400 }
       )
     }
+
+    logger(
+      'INFO',
+      `[Track Suggestions API] Successfully found track: ${result.track.name} by ${result.track.artists.map((a) => a.name).join(', ')}`
+    )
 
     return NextResponse.json({
       success: true,
@@ -169,9 +194,13 @@ export async function POST(
       searchDetails: result.searchDetails as RefreshResponse['searchDetails']
     })
   } catch (error) {
-    logger('ERROR', `[API Refresh Site] Error: ${JSON.stringify(error)}`)
+    logger('ERROR', `[Track Suggestions API] Error: ${JSON.stringify(error)}`)
 
     if (error instanceof z.ZodError) {
+      logger(
+        'ERROR',
+        `[Track Suggestions API] Validation error: ${JSON.stringify(error.errors)}`
+      )
       return NextResponse.json(
         {
           success: false,
@@ -186,6 +215,11 @@ export async function POST(
 
     const errorMessage =
       error instanceof Error ? error.message : 'An error occurred'
+
+    logger(
+      'ERROR',
+      `[Track Suggestions API] Final error response: ${errorMessage}`
+    )
 
     return NextResponse.json(
       {

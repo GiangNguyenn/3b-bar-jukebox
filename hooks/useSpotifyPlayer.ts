@@ -108,20 +108,7 @@ export const spotifyPlayerStore = create<PlayerStatusState>((set, get) => ({
       timeSinceLastChange < STATE_MACHINE_CONFIG.STATUS_DEBOUNCE &&
       !isImportantTransition
     ) {
-      console.log(
-        `[PlayerState] Debouncing status change from ${currentStatus} to ${newStatus} (${timeSinceLastChange}ms since last change)`
-      )
       return
-    }
-
-    // Log important transitions that bypass debouncing
-    if (
-      isImportantTransition &&
-      timeSinceLastChange < STATE_MACHINE_CONFIG.STATUS_DEBOUNCE
-    ) {
-      console.log(
-        `[PlayerState] Allowing important transition from ${currentStatus} to ${newStatus} despite debounce (${timeSinceLastChange}ms)`
-      )
     }
 
     // Update state
@@ -131,10 +118,6 @@ export const spotifyPlayerStore = create<PlayerStatusState>((set, get) => ({
       lastError: error,
       isReady: getIsReadyFromStatus(newStatus)
     })
-
-    console.log(
-      `[PlayerState] Status changed: ${currentStatus} → ${newStatus}${error ? ` (Error: ${error})` : ''}`
-    )
   },
 
   setDeviceId: (deviceId) => set({ deviceId }),
@@ -161,14 +144,9 @@ export const spotifyPlayerStore = create<PlayerStatusState>((set, get) => ({
 
 // Subscribe to the store to react to state changes
 spotifyPlayerStore.subscribe((state, prevState) => {
-  console.log('Player state changed:', {
-    isPlaying: state.playbackState?.is_playing,
-    wasPlaying: prevState.playbackState?.is_playing
-  })
   // Check if playback has just resumed
   if (state.playbackState?.is_playing && !prevState.playbackState?.is_playing) {
     try {
-      console.log('Showing toast')
       showToast('Playback resumed', 'success')
     } catch (error) {
       console.error('Error showing toast:', error)

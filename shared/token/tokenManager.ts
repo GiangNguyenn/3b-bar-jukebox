@@ -153,14 +153,6 @@ class TokenManager {
 
     // If token expires within the refresh threshold, refresh it
     if (timeUntilExpiry <= refreshThreshold) {
-      if (addLog) {
-        addLog(
-          'INFO',
-          `Token expires in ${Math.round(timeUntilExpiry / 1000)}s, refreshing proactively`,
-          'TokenManager'
-        )
-      }
-
       try {
         await this.getToken() // This will refresh the token
         return true

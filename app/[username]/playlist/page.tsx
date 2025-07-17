@@ -1,7 +1,6 @@
 'use client'
 
 import { Suspense, useEffect, useState, useCallback } from 'react'
-import { useConsoleLogsContext } from '@/hooks/ConsoleLogsProvider'
 import { useUserToken } from '@/hooks/useUserToken'
 import { useNowPlayingTrack } from '@/hooks/useNowPlayingTrack'
 import { useArtistExtract } from '@/hooks/useArtistExtract'
@@ -15,6 +14,7 @@ import { ERROR_MESSAGES } from '@/shared/constants/errors'
 import type { JukeboxQueueItem } from '@/shared/types/queue'
 import { useParams } from 'next/navigation'
 import { Loading, PlaylistSkeleton, ErrorMessage, Toast } from '@/components/ui'
+import { AutoFillNotification } from '@/components/ui/auto-fill-notification'
 
 type VoteFeedback = {
   message: string
@@ -25,7 +25,6 @@ export default function PlaylistPage(): JSX.Element {
   const params = useParams()
   const username = params?.username as string | undefined
   const [voteFeedback, setVoteFeedback] = useState<VoteFeedback | null>(null)
-  const { addLog } = useConsoleLogsContext()
 
   const {
     loading: isTokenLoading,
@@ -34,15 +33,6 @@ export default function PlaylistPage(): JSX.Element {
     isJukeboxOffline,
     fetchToken
   } = useUserToken()
-
-  useEffect(() => {
-    addLog(
-      'LOG',
-      `Params object: ${JSON.stringify(params)}`,
-      'PlaylistPage-Mount'
-    )
-    addLog('LOG', `Username variable: ${username}`, 'PlaylistPage-Mount')
-  }, [addLog, params, username])
 
   const {
     data: queue,
@@ -62,20 +52,10 @@ export default function PlaylistPage(): JSX.Element {
   // Force refresh queue when currently playing track changes
   useEffect(() => {
     if (currentlyPlaying?.item?.id) {
-      addLog(
-        'INFO',
-        `Currently playing track changed: ${currentlyPlaying.item.name}`,
-        'PlaylistPage'
-      )
       // Refresh queue to update the currently playing indicator
       void refreshQueue()
     }
-  }, [
-    currentlyPlaying?.item?.id,
-    currentlyPlaying?.item?.name,
-    refreshQueue,
-    addLog
-  ])
+  }, [currentlyPlaying?.item?.id, currentlyPlaying?.item?.name, refreshQueue])
 
   const artistName = currentlyPlaying?.item?.artists[0]?.name
   const {
@@ -123,7 +103,11 @@ export default function PlaylistPage(): JSX.Element {
         const response = await fetch(`/api/playlist/${username}`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ tracks: track, initialVotes: 5 })
+          body: JSON.stringify({
+            tracks: track,
+            initialVotes: 5,
+            source: 'user' // Mark as user-initiated
+          })
         })
 
         if (!response.ok) {
@@ -326,6 +310,7 @@ export default function PlaylistPage(): JSX.Element {
 
   return (
     <div className='w-full'>
+      <AutoFillNotification />
       {lastAddedTrack && (
         <Toast
           message={`"${lastAddedTrack.name}" added to playlist`}

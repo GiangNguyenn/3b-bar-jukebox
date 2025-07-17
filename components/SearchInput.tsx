@@ -83,7 +83,6 @@ export default function SearchInput({
         setSearchResults(data.tracks?.items ?? [])
       } catch (error) {
         if ((error as Error).name === 'AbortError') {
-          addLog('INFO', 'Search request aborted', 'SearchInput')
           return // Don't set error for aborted requests
         }
         addLog('ERROR', 'Error searching tracks', 'SearchInput', error as Error)

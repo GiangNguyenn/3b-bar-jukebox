@@ -52,7 +52,6 @@ export function useNowPlayingTrack({
 
         if (!fetchResponse.ok) {
           if (fetchResponse.status === 401) {
-            console.log('[useNowPlayingTrack] Token invalid')
             setData(null)
             return
           }
@@ -63,7 +62,6 @@ export function useNowPlayingTrack({
 
         // Handle 204 No Content (no currently playing track)
         if (fetchResponse.status === 204) {
-          console.log('[useNowPlayingTrack] No currently playing track')
           setData(null)
           return
         }
@@ -71,7 +69,6 @@ export function useNowPlayingTrack({
         // Check if response has content before parsing JSON
         const responseText = await fetchResponse.text()
         if (!responseText.trim()) {
-          console.log('[useNowPlayingTrack] Empty response body')
           setData(null)
           return
         }
@@ -94,7 +91,6 @@ export function useNowPlayingTrack({
 
         // Handle 204 No Content (no currently playing track)
         if (apiResponse.status === 204) {
-          console.log('[useNowPlayingTrack] No currently playing track')
           setData(null)
           return
         }
@@ -102,7 +98,6 @@ export function useNowPlayingTrack({
         // Check if response has content before parsing JSON
         const responseText = await apiResponse.text()
         if (!responseText.trim()) {
-          console.log('[useNowPlayingTrack] Empty response body')
           setData(null)
           return
         }
@@ -110,16 +105,9 @@ export function useNowPlayingTrack({
         response = JSON.parse(responseText)
       }
 
-      // Only log if the track has changed
+      // Update last track ID
       const currentTrackId = response?.item?.id
-      if (currentTrackId !== lastTrackId.current) {
-        console.log('[useNowPlayingTrack] Track changed:', {
-          isPlaying: response?.is_playing,
-          trackName: response?.item?.name,
-          trackId: currentTrackId
-        })
-        lastTrackId.current = currentTrackId ?? null
-      }
+      lastTrackId.current = currentTrackId ?? null
 
       setData(response)
     } catch (err) {
@@ -127,9 +115,6 @@ export function useNowPlayingTrack({
 
       // Handle authentication errors gracefully
       if (err instanceof Error && err.message.includes('401')) {
-        console.log(
-          '[useNowPlayingTrack] User not authenticated, skipping currently playing detection'
-        )
         setData(null)
         return
       }

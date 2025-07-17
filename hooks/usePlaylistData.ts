@@ -118,9 +118,8 @@ export function usePlaylistData(username?: string) {
     if (pollingIntervalRef.current) {
       clearInterval(pollingIntervalRef.current)
       pollingIntervalRef.current = null
-      addLog('INFO', 'Stopped API polling', 'usePlaylistData')
     }
-  }, [addLog])
+  }, [])
 
   // Get profile ID for real-time subscriptions
   const getProfileId = useCallback(async (): Promise<string | null> => {
@@ -163,12 +162,6 @@ export function usePlaylistData(username?: string) {
       }
 
       try {
-        addLog(
-          'INFO',
-          `Setting up real-time subscription for profile: ${profileId}`,
-          'usePlaylistData'
-        )
-
         const subscription = supabase
           .channel(`jukebox_queue_changes_${profileId}`)
           .on(
@@ -180,32 +173,13 @@ export function usePlaylistData(username?: string) {
               filter: `profile_id=eq.${profileId}`
             },
             (payload) => {
-              addLog(
-                'INFO',
-                `Queue change detected: ${payload.eventType} on ${payload.table}`,
-                'usePlaylistData'
-              )
-              console.log('Real-time payload:', payload)
-
               // Refresh queue data when database changes (background refresh)
               void fetchQueue(true)
             }
           )
           .subscribe((status) => {
-            console.log('Real-time subscription status:', status)
-            addLog(
-              'INFO',
-              `Real-time subscription status: ${status}`,
-              'usePlaylistData'
-            )
-
             if (status === 'SUBSCRIBED') {
               setIsRealtimeConnected(true)
-              addLog(
-                'INFO',
-                'Real-time subscription established',
-                'usePlaylistData'
-              )
               // Reduce polling frequency when real-time is working
               stopPolling()
               startPolling() // Restart with lower frequency
@@ -254,11 +228,6 @@ export function usePlaylistData(username?: string) {
 
       // If queueManager has different data, update our state
       if (JSON.stringify(currentQueueIds) !== JSON.stringify(queueManagerIds)) {
-        addLog(
-          'INFO',
-          'QueueManager update detected, syncing state',
-          'usePlaylistData'
-        )
         setQueue(queueManagerQueue)
       }
     }

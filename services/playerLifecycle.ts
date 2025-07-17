@@ -214,7 +214,6 @@ class PlayerLifecycleService {
           )
 
           if (availableDevice) {
-            this.log('INFO', 'Found alternative device, attempting transfer')
             const transferSuccess = await transferPlaybackToDevice(
               availableDevice.id
             )
@@ -240,12 +239,9 @@ class PlayerLifecycleService {
   ): Promise<string> {
     return new Promise<string>(async (resolve, reject) => {
       if (this.playerRef) {
-        this.log('INFO', 'Player already exists, returning current device ID')
         reject(new Error('Player already exists'))
         return
       }
-
-      this.log('INFO', 'Creating new Spotify player instance')
 
       if (typeof window.Spotify === 'undefined') {
         this.log('ERROR', 'Spotify SDK not loaded')
@@ -270,9 +266,7 @@ class PlayerLifecycleService {
           name: 'Jukebox Player',
           getOAuthToken: async (cb) => {
             try {
-              this.log('INFO', 'Requesting token from token manager')
               const token = await tokenManager.getToken()
-              this.log('INFO', 'Token received from token manager')
               cb(token)
             } catch (error) {
               this.log('ERROR', 'Error getting token from token manager', error)
@@ -284,14 +278,11 @@ class PlayerLifecycleService {
 
         // Set up event listeners
         player.addListener('ready', async ({ device_id }) => {
-          this.log('INFO', `Ready with device ID: ${device_id}`)
-
           // Clear any not-ready timeout since we're ready
           if (this.notReadyTimeoutRef) {
             clearTimeout(this.notReadyTimeoutRef)
           }
 
-          this.log('INFO', 'Setting status to verifying')
           onStatusChange('verifying')
 
           // Use robust device verification with timeout
@@ -302,29 +293,20 @@ class PlayerLifecycleService {
               'Device setup verification failed, but proceeding anyway'
             )
             // Don't fail the initialization, just warn and proceed
-          } else {
-            this.log('INFO', 'Device setup verification successful')
           }
 
-          this.log('INFO', 'Setting device as ready')
           this.deviceId = device_id
           onDeviceIdChange(device_id)
 
           // Automatically transfer playback to the new device
-          this.log(
-            'INFO',
-            `Transferring playback to new device ID: ${device_id}`
-          )
           const transferSuccess = await transferPlaybackToDevice(device_id)
           if (transferSuccess) {
-            this.log('INFO', 'Playback transferred successfully')
             onStatusChange('ready')
           } else {
             this.log('ERROR', 'Failed to transfer playback to new device')
             onStatusChange('error', 'Failed to transfer playback')
           }
 
-          this.log('INFO', 'Setting status to ready')
           onStatusChange('ready')
           resolve(device_id)
         })
@@ -344,11 +326,6 @@ class PlayerLifecycleService {
 
           // Try to refresh token and recreate player
           try {
-            this.log(
-              'INFO',
-              'Attempting automatic token refresh and player recovery'
-            )
-
             // Clear token cache to force refresh
             tokenManager.clearCache()
 
@@ -356,7 +333,6 @@ class PlayerLifecycleService {
             await tokenManager.getToken()
 
             // Recreate player with fresh token
-            this.log('INFO', 'Token refreshed, recreating player')
             onStatusChange('initializing', 'Refreshing authentication')
 
             // Destroy current player and recreate
