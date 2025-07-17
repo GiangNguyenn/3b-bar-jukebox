@@ -17,7 +17,7 @@ export function AutoFillNotification(): JSX.Element | null {
     useState<AutoFillNotificationData | null>(null)
   const [isVisible, setIsVisible] = useState(false)
 
-  useEffect(() => {
+  useEffect((): (() => void) => {
     const handleAutoFillNotification = (
       event: CustomEvent<AutoFillNotificationData>
     ): void => {
@@ -121,7 +121,9 @@ export function AutoFillNotification(): JSX.Element | null {
             )}
           </div>
           <button
-            onClick={(): void => setIsVisible(false)}
+            onClick={(): void => {
+              setIsVisible(false)
+            }}
             className='flex-shrink-0 text-gray-400 transition-colors hover:text-gray-600'
           >
             <svg

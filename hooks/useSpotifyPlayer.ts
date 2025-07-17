@@ -144,14 +144,8 @@ export const spotifyPlayerStore = create<PlayerStatusState>((set, get) => ({
 
 // Subscribe to the store to react to state changes
 spotifyPlayerStore.subscribe((state, prevState) => {
-  // Check if playback has just resumed
-  if (state.playbackState?.is_playing && !prevState.playbackState?.is_playing) {
-    try {
-      showToast('Playback resumed', 'success')
-    } catch (error) {
-      console.error('Error showing toast:', error)
-    }
-  }
+  // Note: Removed duplicate "Playback resumed" toast notification
+  // The SpotifyApiService.resumePlayback() method already handles this notification
 })
 
 // Export a hook to access the store

@@ -28,6 +28,7 @@ import { queueManager } from '@/services/queueManager'
 import { getAutoPlayService } from '@/services/autoPlayService'
 import { sendApiRequest } from '@/shared/api'
 import { AutoFillNotification } from '@/components/ui/auto-fill-notification'
+import { usePlaybackControls } from './hooks/usePlaybackControls'
 
 export default function AdminPage(): JSX.Element {
   // State
@@ -37,6 +38,7 @@ export default function AdminPage(): JSX.Element {
   const [activeTab, setActiveTab] = useState<
     'dashboard' | 'playlist' | 'settings' | 'logs' | 'analytics'
   >('dashboard')
+  const [volume, setVolume] = useState(50)
   const initializationAttemptedRef = useRef(false)
 
   // Hooks
@@ -45,7 +47,7 @@ export default function AdminPage(): JSX.Element {
   const { deviceId, isReady, status: playerStatus } = useSpotifyPlayerStore()
   const { createPlayer } = useAdminSpotifyPlayerHook()
   const { addLog } = useConsoleLogsContext()
-  const { userIntent, setUserIntent } = usePlaybackIntentStore()
+  const { setUserIntent } = usePlaybackIntentStore()
   // Use the enhanced playlist hook with real-time subscriptions
   const {
     data: queue,
@@ -72,6 +74,9 @@ export default function AdminPage(): JSX.Element {
 
   // Add token health monitoring
   const tokenHealth = useTokenHealth()
+
+  // Use the existing playback controls hook
+  const { handlePlayPause, isActuallyPlaying } = usePlaybackControls()
 
   // Initialize auto-play service
   useEffect(() => {
@@ -114,10 +119,23 @@ export default function AdminPage(): JSX.Element {
       autoPlayService.updateQueue(queue)
     }
 
+    // Update the service when track suggestions state changes
+    if (trackSuggestionsState) {
+      autoPlayService.setTrackSuggestionsState(trackSuggestionsState)
+    }
+
     return (): void => {
       autoPlayService.stop()
     }
-  }, [deviceId, username, queue, addLog, setUserIntent, refreshQueue])
+  }, [
+    deviceId,
+    username,
+    queue,
+    trackSuggestionsState,
+    addLog,
+    setUserIntent,
+    refreshQueue
+  ])
 
   // Update QueueManager with queue data
   useEffect(() => {
@@ -129,12 +147,14 @@ export default function AdminPage(): JSX.Element {
   // Initialize the player when the component mounts
   useEffect(() => {
     const initializePlayer = async (): Promise<void> => {
-      // Only initialize if not ready, SDK is available, and we haven't attempted initialization yet
+      // Only initialize if not ready, SDK is available, we haven't attempted initialization yet,
+      // and recovery is not in progress
       if (
         playerStatus === 'initializing' &&
         typeof window !== 'undefined' &&
         window.Spotify &&
-        !initializationAttemptedRef.current
+        !initializationAttemptedRef.current &&
+        !recoveryState.isRecovering
       ) {
         try {
           initializationAttemptedRef.current = true
@@ -153,7 +173,7 @@ export default function AdminPage(): JSX.Element {
     }
 
     void initializePlayer()
-  }, [playerStatus, addLog, createPlayer])
+  }, [playerStatus, addLog, createPlayer, recoveryState.isRecovering])
 
   // Manual recovery trigger for user-initiated recovery (e.g., device mismatch, connection issues)
   const handleForceRecovery = useCallback(async (): Promise<void> => {
@@ -191,170 +211,259 @@ export default function AdminPage(): JSX.Element {
         throw new Error('Username is not set.')
       }
 
-      addLog(
-        'INFO',
-        `[AdminPage] Manual refresh - trackSuggestionsState: ${JSON.stringify(trackSuggestionsState)}`,
-        'AdminPage'
-      )
-
-      // This is a simplified logic for auto-queue filling.
-      // In a real scenario, this would call the track suggestions API
-      // and then add those tracks to the queue.
-      const response = await fetch('/api/track-suggestions', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(trackSuggestionsState)
-      })
+      // Note: We don't disable auto-play during manual refresh anymore
+      // as it should continue working normally during queue operations
 
       addLog(
         'INFO',
-        `[AdminPage] Track suggestions response status: ${response.status}`,
+        `[AdminPage] Manual refresh started - trackSuggestionsState: ${JSON.stringify(trackSuggestionsState)}`,
         'AdminPage'
       )
 
-      if (!response.ok) {
-        const errorBody = await response.json()
-        addLog(
-          'ERROR',
-          `[AdminPage] Track Suggestions API error: ${JSON.stringify(errorBody)}`,
-          'AdminPage'
-        )
+      // Get current queue to check size and exclude existing tracks
+      const currentQueue = (await fetch(`/api/playlist/${username}`).then(
+        (res) => res.json()
+      )) as Array<{ tracks: { spotify_track_id: string } }>
+      const currentQueueSize = currentQueue.length
+      const targetQueueSize = 3 // Reduced from 10 to 3 tracks
+      const maxAttempts = 20 // Same max attempts as AutoPlayService
 
-        // Try fallback to random track
+      addLog(
+        'INFO',
+        `[AdminPage] Manual refresh - Current queue: ${currentQueueSize}, Target: ${targetQueueSize}`,
+        'AdminPage'
+      )
+
+      // If we've already reached the target, stop
+      if (currentQueueSize >= targetQueueSize) {
         addLog(
           'INFO',
-          `[AdminPage] Track suggestions failed, trying fallback to random track`,
+          `[AdminPage] Manual refresh - Target queue size already reached (${currentQueueSize}/${targetQueueSize})`,
           'AdminPage'
         )
+        return
+      }
 
-        const fallbackResponse = await fetch('/api/random-track', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ username })
-        })
+      let attempts = 0
+      let tracksAdded = 0
 
-        if (!fallbackResponse.ok) {
-          const fallbackError = await fallbackResponse.json()
-          addLog(
-            'ERROR',
-            `[AdminPage] Random track API error: ${JSON.stringify(fallbackError)}`,
-            'AdminPage'
-          )
-          throw new Error('Failed to get random track for fallback.')
-        }
+      while (attempts < maxAttempts) {
+        attempts++
 
-        const fallbackResult = (await fallbackResponse.json()) as {
-          success: boolean
-          track: {
-            id: string
-            spotify_track_id: string
-            name: string
-            artist: string
-            album: string
-            duration_ms: number
-            popularity: number
-            spotify_url: string
-          }
-        }
-
-        if (fallbackResult.success && fallbackResult.track) {
-          addLog(
-            'INFO',
-            `[AdminPage] Adding fallback track to queue: ${fallbackResult.track.name} by ${fallbackResult.track.artist}`,
-            'AdminPage'
-          )
-          addLog(
-            'INFO',
-            `[AdminPage] Fallback track data: ${JSON.stringify(fallbackResult.track)}`,
-            'AdminPage'
-          )
-
-          const playlistRequestBody = {
-            tracks: {
-              id: fallbackResult.track.spotify_track_id,
-              name: fallbackResult.track.name,
-              artists: [{ name: fallbackResult.track.artist }],
-              album: { name: fallbackResult.track.album },
-              duration_ms: fallbackResult.track.duration_ms,
-              popularity: fallbackResult.track.popularity,
-              uri: fallbackResult.track.spotify_url
-            },
-            initialVotes: 1,
-            source: 'fallback'
-          }
-
-          addLog(
-            'INFO',
-            `[AdminPage] Playlist request body: ${JSON.stringify(playlistRequestBody)}`,
-            'AdminPage'
-          )
-
-          const playlistResponse = await fetch(`/api/playlist/${username}`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(playlistRequestBody)
-          })
-
-          if (!playlistResponse.ok) {
-            const playlistError = await playlistResponse.json()
-            addLog(
-              'ERROR',
-              `[AdminPage] Playlist API error: ${JSON.stringify(playlistError)}`,
-              'AdminPage'
-            )
-          } else {
-            addLog(
-              'INFO',
-              `[AdminPage] Successfully added fallback track to queue: ${fallbackResult.track.name}`,
-              'AdminPage'
-            )
-          }
-        } else {
-          throw new Error('No random track available for fallback.')
-        }
-      } else {
-        const suggestions = (await response.json()) as {
-          tracks: { id: string }[]
-        }
+        // Check current queue size again
+        const updatedQueue = (await fetch(`/api/playlist/${username}`).then(
+          (res) => res.json()
+        )) as Array<{ tracks: { spotify_track_id: string } }>
+        const updatedQueueSize = updatedQueue.length
 
         addLog(
           'INFO',
-          `[AdminPage] Track suggestions response: ${JSON.stringify(suggestions)}`,
+          `[AdminPage] Manual refresh - Attempt ${attempts}/${maxAttempts} - Current queue: ${updatedQueueSize}, Target: ${targetQueueSize}, Tracks added: ${tracksAdded}`,
           'AdminPage'
         )
 
-        for (const track of suggestions.tracks) {
-          // Fetch full track details from Spotify
-          const trackDetails = await sendApiRequest<{
-            id: string
-            name: string
-            artists: Array<{ name: string }>
-            album: { name: string }
-            duration_ms: number
-            popularity: number
-            uri: string
-          }>({
-            path: `tracks/${track.id}`,
-            method: 'GET'
-          })
+        // If we've reached the target, stop
+        if (updatedQueueSize >= targetQueueSize) {
+          addLog(
+            'INFO',
+            `[AdminPage] Manual refresh - Target queue size reached (${updatedQueueSize}/${targetQueueSize}), stopping`,
+            'AdminPage'
+          )
+          break
+        }
+
+        try {
+          // Helper function for random track fallback
+          const tryRandomTrack = async (): Promise<void> => {
+            try {
+              const randomTrackResponse = await fetch('/api/random-track', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ username, excludedTrackIds })
+              })
+
+              if (randomTrackResponse.ok) {
+                const randomTrackResult =
+                  (await randomTrackResponse.json()) as {
+                    success: boolean
+                    track: {
+                      id: string
+                      spotify_track_id: string
+                      name: string
+                      artist: string
+                      album: string
+                      duration_ms: number
+                      popularity: number
+                      spotify_url: string
+                    }
+                  }
+
+                if (randomTrackResult.success && randomTrackResult.track) {
+                  const playlistResponse = await fetch(
+                    `/api/playlist/${username}`,
+                    {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({
+                        tracks: {
+                          id: randomTrackResult.track.spotify_track_id,
+                          name: randomTrackResult.track.name,
+                          artists: [{ name: randomTrackResult.track.artist }],
+                          album: { name: randomTrackResult.track.album },
+                          duration_ms: randomTrackResult.track.duration_ms,
+                          popularity: randomTrackResult.track.popularity,
+                          uri: randomTrackResult.track.spotify_url
+                        },
+                        initialVotes: 1,
+                        source: 'fallback'
+                      })
+                    }
+                  )
+
+                  if (playlistResponse.ok) {
+                    tracksAdded++
+                    addLog(
+                      'INFO',
+                      `[AdminPage] Manual refresh - Attempt ${attempts} - Successfully added random track: ${randomTrackResult.track.name} (Total added: ${tracksAdded})`,
+                      'AdminPage'
+                    )
+                  } else if (playlistResponse.status === 409) {
+                    addLog(
+                      'INFO',
+                      `[AdminPage] Manual refresh - Attempt ${attempts} - Random track already in playlist: ${randomTrackResult.track.name}`,
+                      'AdminPage'
+                    )
+                  }
+                }
+              }
+            } catch (error) {
+              addLog(
+                'ERROR',
+                `[AdminPage] Manual refresh - Attempt ${attempts} - Failed to get random track`,
+                'AdminPage',
+                error instanceof Error ? error : undefined
+              )
+            }
+          }
+
+          // Use user's track suggestions configuration
+          const requestBody = trackSuggestionsState || {
+            genres: ['Rock', 'Pop', 'Hip Hop', 'Electronic'],
+            yearRange: [1980, new Date().getFullYear()],
+            popularity: 30,
+            allowExplicit: true,
+            maxSongLength: 8,
+            songsBetweenRepeats: 20,
+            maxOffset: 50
+          }
+
+          // Get current queue to exclude existing tracks
+          const currentQueueForExclusion = (await fetch(
+            `/api/playlist/${username}`
+          ).then((res) => res.json())) as Array<{
+            tracks: { spotify_track_id: string }
+          }>
+          const excludedTrackIds = currentQueueForExclusion.map(
+            (item) => item.tracks.spotify_track_id
+          )
 
           addLog(
             'INFO',
-            `[AdminPage] Adding track to queue: ${trackDetails.name} by ${trackDetails.artists[0].name}`,
+            `[AdminPage] Manual refresh - Attempt ${attempts} - Excluding ${excludedTrackIds.length} existing tracks`,
             'AdminPage'
           )
 
-          await fetch(`/api/playlist/${username}`, {
+          // Try track suggestions first
+          const response = await fetch('/api/track-suggestions', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-              tracks: trackDetails,
-              initialVotes: 1, // Auto-fill tracks get 1 vote
-              source: 'admin' //Mark as admin-initiated
+              ...requestBody,
+              excludedTrackIds
             })
           })
+
+          if (response.ok) {
+            // Process track suggestions
+            const suggestions = (await response.json()) as {
+              tracks: { id: string }[]
+            }
+
+            if (suggestions.tracks && suggestions.tracks.length > 0) {
+              for (const track of suggestions.tracks) {
+                try {
+                  const trackDetails = await sendApiRequest<{
+                    id: string
+                    name: string
+                    artists: Array<{ name: string }>
+                    album: { name: string }
+                    duration_ms: number
+                    popularity: number
+                    uri: string
+                  }>({
+                    path: `tracks/${track.id}`,
+                    method: 'GET'
+                  })
+
+                  const playlistResponse = await fetch(
+                    `/api/playlist/${username}`,
+                    {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({
+                        tracks: trackDetails,
+                        initialVotes: 1,
+                        source: 'admin'
+                      })
+                    }
+                  )
+
+                  if (playlistResponse.ok) {
+                    tracksAdded++
+                    addLog(
+                      'INFO',
+                      `[AdminPage] Manual refresh - Attempt ${attempts} - Successfully added track: ${trackDetails.name} (Total added: ${tracksAdded})`,
+                      'AdminPage'
+                    )
+                  } else if (playlistResponse.status === 409) {
+                    addLog(
+                      'INFO',
+                      `[AdminPage] Manual refresh - Attempt ${attempts} - Track already in playlist: ${trackDetails.name}`,
+                      'AdminPage'
+                    )
+                  }
+                } catch (error) {
+                  addLog(
+                    'ERROR',
+                    `[AdminPage] Manual refresh - Attempt ${attempts} - Failed to add track ${track.id}`,
+                    'AdminPage',
+                    error instanceof Error ? error : undefined
+                  )
+                }
+              }
+            } else {
+              // No suggestions available, try random track
+              await tryRandomTrack()
+            }
+          } else {
+            // Track suggestions failed, try random track
+            await tryRandomTrack()
+          }
+        } catch (error) {
+          addLog(
+            'ERROR',
+            `[AdminPage] Manual refresh - Attempt ${attempts} - Unexpected error`,
+            'AdminPage',
+            error instanceof Error ? error : undefined
+          )
         }
       }
+
+      addLog(
+        'INFO',
+        `[AdminPage] Manual refresh completed - Total tracks added: ${tracksAdded}`,
+        'AdminPage'
+      )
 
       await refreshQueue()
     } catch (error) {
@@ -544,64 +653,69 @@ export default function AdminPage(): JSX.Element {
             <div className='mt-8 space-y-4'>
               <h2 className='text-xl font-semibold'>Controls</h2>
 
-              {/* Play/Pause Button - QueueManager Integration */}
+              {/* Play/Pause Button - Using existing playback controls hook */}
               <div className='mb-4 flex justify-center'>
                 <button
-                  onClick={() => {
-                    void (async (): Promise<void> => {
-                      try {
-                        if (userIntent === 'playing') {
-                          // Pause playback
-                          setUserIntent('paused')
-                          await sendApiRequest({
-                            path: `me/player/pause?device_id=${deviceId}`,
-                            method: 'PUT'
-                          })
-                        } else {
-                          // Resume playback - use QueueManager to get next track
-                          const nextTrack = queueManager.getNextTrack()
-
-                          if (nextTrack) {
-                            // Play the next track from the queue
-                            const trackUri = `spotify:track:${nextTrack.tracks.spotify_track_id}`
-
-                            await sendApiRequest({
-                              path: `me/player/play?device_id=${deviceId}`,
-                              method: 'PUT',
-                              body: {
-                                uris: [trackUri]
-                              }
-                            })
-                            setUserIntent('playing')
-                          } else {
-                            // No tracks in queue, try to resume current playback
-                            await sendApiRequest({
-                              path: `me/player/play?device_id=${deviceId}`,
-                              method: 'PUT'
-                            })
-                            setUserIntent('playing')
-                          }
-                        }
-                      } catch (error) {
-                        addLog(
-                          'ERROR',
-                          'Playback control failed via QueueManager system',
-                          'AdminPage',
-                          error as Error
-                        )
-                      }
-                    })()
+                  onClick={(): void => {
+                    void handlePlayPause()
                   }}
                   disabled={!isReady || recoveryState.isRecovering}
                   className='text-white max-w-xs flex-1 rounded-lg bg-green-600 px-6 py-3 font-medium transition-colors hover:bg-green-700 disabled:cursor-not-allowed disabled:opacity-50'
                 >
-                  {userIntent === 'playing' ? 'Pause' : 'Play'}
+                  {isActuallyPlaying ? 'Pause' : 'Play'}
                 </button>
+              </div>
+
+              {/* Volume Control */}
+              <div className='mb-4'>
+                <label className='mb-2 block text-sm font-medium text-gray-300'>
+                  Volume
+                </label>
+                <div className='flex items-center gap-3'>
+                  <input
+                    type='range'
+                    min='0'
+                    max='100'
+                    value={volume}
+                    className='slider h-2 flex-1 cursor-pointer appearance-none rounded-lg bg-gray-700'
+                    onChange={(e): void => {
+                      const newVolume = parseInt(e.target.value)
+                      setVolume(newVolume)
+                      // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
+                      void (async () => {
+                        try {
+                          await sendApiRequest({
+                            path: `me/player/volume?volume_percent=${newVolume}&device_id=${deviceId}`,
+                            method: 'PUT'
+                          })
+                          addLog(
+                            'INFO',
+                            `Volume set to ${newVolume}%`,
+                            'AdminPage'
+                          )
+                        } catch (error) {
+                          addLog(
+                            'ERROR',
+                            'Failed to set volume',
+                            'AdminPage',
+                            error instanceof Error ? error : undefined
+                          )
+                        }
+                      })()
+                    }}
+                    disabled={!isReady || recoveryState.isRecovering}
+                  />
+                  <span className='min-w-[3rem] text-right text-sm text-gray-400'>
+                    {volume}%
+                  </span>
+                </div>
               </div>
 
               <div className='flex gap-4'>
                 <button
-                  onClick={() => void handleRefreshPlaylist()}
+                  onClick={() => {
+                    void handleRefreshPlaylist()
+                  }}
                   disabled={
                     !isReady ||
                     isRefreshing ||
