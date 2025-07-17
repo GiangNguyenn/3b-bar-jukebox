@@ -395,7 +395,10 @@ class AutoPlayService {
 
     // Check if we have valid track suggestions state
     if (!this.trackSuggestionsState) {
-      logger('WARN', '[AutoFill] No track suggestions state available, using fallback defaults')
+      logger(
+        'WARN',
+        '[AutoFill] No track suggestions state available, using fallback defaults'
+      )
     }
 
     logger('INFO', '[AutoFill] Starting auto-fill process')
@@ -445,12 +448,27 @@ class AutoPlayService {
         }
 
         // Validate that all required fields are present
-        const requiredFields = ['genres', 'yearRange', 'popularity', 'allowExplicit', 'maxSongLength', 'songsBetweenRepeats', 'maxOffset']
-        const missingFields = requiredFields.filter(field => !(field in requestBody))
-        
+        const requiredFields = [
+          'genres',
+          'yearRange',
+          'popularity',
+          'allowExplicit',
+          'maxSongLength',
+          'songsBetweenRepeats',
+          'maxOffset'
+        ]
+        const missingFields = requiredFields.filter(
+          (field) => !(field in requestBody)
+        )
+
         if (missingFields.length > 0) {
-          logger('ERROR', `[AutoFill] Missing required fields: ${missingFields.join(', ')}`)
-          throw new Error(`Missing required fields: ${missingFields.join(', ')}`)
+          logger(
+            'ERROR',
+            `[AutoFill] Missing required fields: ${missingFields.join(', ')}`
+          )
+          throw new Error(
+            `Missing required fields: ${missingFields.join(', ')}`
+          )
         }
 
         // Get current queue to exclude existing tracks
@@ -481,7 +499,7 @@ class AutoPlayService {
           'INFO',
           `[AutoFill] Attempt ${attempts} - Sending track suggestions request: ${JSON.stringify(requestBody)}`
         )
-        
+
         // Additional debugging to see exactly what's being sent
         logger(
           'INFO',
