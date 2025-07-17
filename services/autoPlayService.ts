@@ -422,15 +422,21 @@ class AutoPlayService {
       }
 
       try {
-        // Use user's track suggestions configuration for auto-fill
-        const requestBody = this.trackSuggestionsState || {
-          genres: [...FALLBACK_GENRES], // Fallback genres if no user config
-          yearRange: DEFAULT_YEAR_RANGE, // Fallback year range
-          popularity: MIN_TRACK_POPULARITY, // Fallback popularity threshold
-          allowExplicit: true, // Fallback explicit content setting
-          maxSongLength: DEFAULT_MAX_SONG_LENGTH_MINUTES, // Fallback max song length
-          songsBetweenRepeats: DEFAULT_SONGS_BETWEEN_REPEATS, // Fallback songs between repeats
-          maxOffset: DEFAULT_MAX_OFFSET // Fallback max offset
+        // Use user's track suggestions configuration for auto-fill with fallback defaults
+        const requestBody = {
+          genres: this.trackSuggestionsState?.genres || [...FALLBACK_GENRES],
+          yearRange:
+            this.trackSuggestionsState?.yearRange || DEFAULT_YEAR_RANGE,
+          popularity:
+            this.trackSuggestionsState?.popularity || MIN_TRACK_POPULARITY,
+          allowExplicit: this.trackSuggestionsState?.allowExplicit ?? true,
+          maxSongLength:
+            this.trackSuggestionsState?.maxSongLength ||
+            DEFAULT_MAX_SONG_LENGTH_MINUTES,
+          songsBetweenRepeats:
+            this.trackSuggestionsState?.songsBetweenRepeats ||
+            DEFAULT_SONGS_BETWEEN_REPEATS,
+          maxOffset: this.trackSuggestionsState?.maxOffset || DEFAULT_MAX_OFFSET
         }
 
         // Get current queue to exclude existing tracks
@@ -491,7 +497,7 @@ class AutoPlayService {
               maxSongLength: DEFAULT_MAX_SONG_LENGTH_MINUTES,
               songsBetweenRepeats: DEFAULT_SONGS_BETWEEN_REPEATS,
               maxOffset: DEFAULT_MAX_OFFSET,
-              excludedTrackIds: excludedTrackIds
+              excludedTrackIds
             }
 
             const fallbackResponse = await fetch('/api/track-suggestions', {
