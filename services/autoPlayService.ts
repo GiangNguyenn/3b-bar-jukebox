@@ -3,6 +3,14 @@ import { JukeboxQueueItem } from '@/shared/types/queue'
 import { sendApiRequest } from '@/shared/api'
 import { QueueManager } from './queueManager'
 import { createModuleLogger } from '@/shared/utils/logger'
+import {
+  FALLBACK_GENRES,
+  DEFAULT_YEAR_RANGE,
+  MIN_TRACK_POPULARITY,
+  DEFAULT_MAX_SONG_LENGTH_MINUTES,
+  DEFAULT_SONGS_BETWEEN_REPEATS,
+  DEFAULT_MAX_OFFSET
+} from '@/shared/constants/trackSuggestion'
 
 const logger = createModuleLogger('AutoPlayService')
 
@@ -416,13 +424,13 @@ class AutoPlayService {
       try {
         // Use user's track suggestions configuration for auto-fill
         const requestBody = this.trackSuggestionsState || {
-          genres: ['Rock', 'Pop', 'Hip Hop', 'Electronic'], // Fallback genres if no user config
-          yearRange: [1980, new Date().getFullYear()], // Fallback year range
-          popularity: 30, // Fallback popularity threshold
+          genres: [...FALLBACK_GENRES], // Fallback genres if no user config
+          yearRange: DEFAULT_YEAR_RANGE, // Fallback year range
+          popularity: MIN_TRACK_POPULARITY, // Fallback popularity threshold
           allowExplicit: true, // Fallback explicit content setting
-          maxSongLength: 8, // Fallback max song length
-          songsBetweenRepeats: 20, // Fallback songs between repeats
-          maxOffset: 50 // Fallback max offset
+          maxSongLength: DEFAULT_MAX_SONG_LENGTH_MINUTES, // Fallback max song length
+          songsBetweenRepeats: DEFAULT_SONGS_BETWEEN_REPEATS, // Fallback songs between repeats
+          maxOffset: DEFAULT_MAX_OFFSET // Fallback max offset
         }
 
         // Get current queue to exclude existing tracks
@@ -476,13 +484,13 @@ class AutoPlayService {
 
             // Try with fallback parameters
             const fallbackRequestBody = {
-              genres: ['Rock', 'Pop', 'Hip Hop', 'Electronic'],
-              yearRange: [1980, new Date().getFullYear()],
-              popularity: 30,
+              genres: [...FALLBACK_GENRES],
+              yearRange: DEFAULT_YEAR_RANGE,
+              popularity: MIN_TRACK_POPULARITY,
               allowExplicit: true,
-              maxSongLength: 8,
-              songsBetweenRepeats: 20,
-              maxOffset: 50,
+              maxSongLength: DEFAULT_MAX_SONG_LENGTH_MINUTES,
+              songsBetweenRepeats: DEFAULT_SONGS_BETWEEN_REPEATS,
+              maxOffset: DEFAULT_MAX_OFFSET,
               excludedTrackIds: excludedTrackIds
             }
 
