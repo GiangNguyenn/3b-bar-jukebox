@@ -51,6 +51,10 @@ class AutoPlayService {
 
     this.isRunning = true
     logger('INFO', 'Starting auto-play service')
+    logger(
+      'INFO',
+      `[AutoPlayService] Configuration - checkInterval: ${this.checkInterval}, username: ${this.username}, deviceId: ${this.deviceId}`
+    )
 
     this.intervalRef = setInterval(() => {
       void this.checkPlaybackState()
@@ -77,13 +81,21 @@ class AutoPlayService {
   }
 
   public setUsername(username: string | null): void {
+    logger('INFO', `[AutoPlayService] Setting username: ${username}`)
     this.username = username
-    logger('INFO', `Updated username: ${username}`)
+    logger('INFO', `[AutoPlayService] Updated username: ${this.username}`)
   }
 
   public updateQueue(queue: JukeboxQueueItem[]): void {
+    logger(
+      'INFO',
+      `[AutoPlayService] Updating queue with ${queue.length} tracks`
+    )
     this.queueManager.updateQueue(queue)
-    logger('INFO', `Updated queue with ${queue.length} tracks`)
+    logger(
+      'INFO',
+      `[AutoPlayService] Updated queue with ${queue.length} tracks`
+    )
   }
 
   private async checkPlaybackState(): Promise<void> {
@@ -91,6 +103,10 @@ class AutoPlayService {
       const currentState = await this.getCurrentPlaybackState()
 
       if (!currentState) {
+        logger(
+          'INFO',
+          '[checkPlaybackState] No current playback state available'
+        )
         return
       }
 
@@ -98,6 +114,10 @@ class AutoPlayService {
       const isPlaying = currentState.is_playing
       const progress = currentState.progress_ms || 0
       const duration = currentState.item?.duration_ms || 0
+      logger(
+        'INFO',
+        `[checkPlaybackState] Current state - trackId: ${currentTrackId}, isPlaying: ${isPlaying}, progress: ${progress}, duration: ${duration}`
+      )
 
       // Reset lastProcessedTrackId if we're playing a different track
       if (currentTrackId && currentTrackId !== this.lastTrackId) {
@@ -111,7 +131,28 @@ class AutoPlayService {
       // Check if track has finished
       if (this.hasTrackFinished(currentState)) {
         logger('INFO', `Track finished detected for: ${currentTrackId}`)
-        await this.handleTrackFinished(currentTrackId)
+        try {
+          logger(
+            'INFO',
+            '[checkPlaybackState] About to call handleTrackFinished'
+          )
+          await this.handleTrackFinished(currentTrackId)
+          logger(
+            'INFO',
+            '[checkPlaybackState] handleTrackFinished completed successfully'
+          )
+        } catch (error) {
+          logger(
+            'ERROR',
+            'Exception in handleTrackFinished',
+            undefined,
+            error as Error
+          )
+          logger(
+            'ERROR',
+            `[checkPlaybackState] Error details: ${error instanceof Error ? error.message : 'Unknown error'}`
+          )
+        }
       }
 
       // Update last known state
@@ -158,6 +199,11 @@ class AutoPlayService {
   private async handleTrackFinished(
     trackId: string | undefined
   ): Promise<void> {
+    logger(
+      'INFO',
+      `[handleTrackFinished] Function called with trackId: ${trackId}`
+    )
+
     if (!trackId) {
       logger('WARN', 'Track finished but no track ID available')
       return
@@ -176,6 +222,15 @@ class AutoPlayService {
     try {
       // Find the queue item with this Spotify track ID
       const queue = this.queueManager.getQueue()
+      logger(
+        'INFO',
+        `[handleTrackFinished] Current queue length: ${queue.length}`
+      )
+      logger(
+        'INFO',
+        `[handleTrackFinished] Queue items: ${JSON.stringify(queue.map((item) => ({ id: item.id, spotify_track_id: item.tracks.spotify_track_id, name: item.tracks.name })))}`
+      )
+
       const queueItem = queue.find(
         (item) => item.tracks.spotify_track_id === trackId
       )
@@ -190,7 +245,9 @@ class AutoPlayService {
       logger('INFO', `Marked queue item ${queueItem.id} as played`)
 
       // Check if queue is getting low and trigger auto-fill if needed
+      logger('INFO', '[handleTrackFinished] Calling checkAndAutoFillQueue...')
       await this.checkAndAutoFillQueue()
+      logger('INFO', '[handleTrackFinished] checkAndAutoFillQueue completed')
 
       // Get the next track from the queue
       const nextTrack = this.queueManager.getNextTrack()
@@ -214,22 +271,47 @@ class AutoPlayService {
   private async checkAndAutoFillQueue(): Promise<void> {
     const queue = this.queueManager.getQueue()
 
+    logger(
+      'INFO',
+      `[checkAndAutoFillQueue] Checking queue - length: ${queue.length}, isAutoFilling: ${this.isAutoFilling}, username: ${this.username}`
+    )
+    logger(
+      'INFO',
+      `[checkAndAutoFillQueue] Queue details: ${JSON.stringify(queue.map((item) => ({ id: item.id, name: item.tracks.name })))}`
+    )
+
     // Check if queue is low (3 or fewer tracks remaining)
     if (queue.length <= 3 && !this.isAutoFilling && this.username) {
       logger(
         'INFO',
-        `Queue is low (${queue.length} tracks remaining), triggering auto-fill`
+        `[checkAndAutoFillQueue] Queue is low (${queue.length} tracks remaining), triggering auto-fill`
       )
       this.onQueueLow?.()
 
       try {
         this.isAutoFilling = true
+        logger('INFO', '[checkAndAutoFillQueue] Starting auto-fill process')
         await this.autoFillQueue()
+        logger('INFO', '[checkAndAutoFillQueue] Auto-fill process completed')
       } catch (error) {
-        logger('ERROR', 'Failed to auto-fill queue', undefined, error as Error)
+        logger(
+          'ERROR',
+          '[checkAndAutoFillQueue] Failed to auto-fill queue',
+          undefined,
+          error as Error
+        )
       } finally {
         this.isAutoFilling = false
+        logger(
+          'INFO',
+          '[checkAndAutoFillQueue] Auto-fill process finished, resetting isAutoFilling flag'
+        )
       }
+    } else {
+      logger(
+        'INFO',
+        `[checkAndAutoFillQueue] Queue check conditions not met - length: ${queue.length}, isAutoFilling: ${this.isAutoFilling}, username: ${this.username}`
+      )
     }
   }
 
@@ -239,21 +321,41 @@ class AutoPlayService {
       return
     }
 
-    logger('INFO', 'Starting automatic queue auto-fill')
+    logger('INFO', '[AutoFill] Starting auto-fill process')
 
     try {
-      // Get track suggestions
+      // Get track suggestions with default parameters for auto-fill
+      const requestBody = {
+        genres: ['Rock', 'Pop', 'Hip Hop'], // Default genres for auto-fill
+        yearRange: [1950, new Date().getFullYear()], // Default year range
+        popularity: 50, // Default minimum popularity
+        allowExplicit: false, // Default to no explicit content
+        maxSongLength: 5, // Default max song length in minutes
+        songsBetweenRepeats: 50, // Default songs between repeats
+        maxOffset: 10 // Default max offset
+      }
+
+      logger(
+        'INFO',
+        `[AutoFill] Sending track suggestions request: ${JSON.stringify(requestBody)}`
+      )
+
       const response = await fetch('/api/track-suggestions', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({}) // Use default parameters for auto-fill
+        body: JSON.stringify(requestBody)
       })
+
+      logger(
+        'INFO',
+        `[AutoFill] Track suggestions response status: ${response.status}`
+      )
 
       if (!response.ok) {
         const errorBody = await response.json()
         logger(
           'ERROR',
-          `Track Suggestions API error: ${JSON.stringify(errorBody)}`
+          `[AutoFill] Track Suggestions API error: ${JSON.stringify(errorBody)}`
         )
         throw new Error('Failed to get track suggestions for auto-fill.')
       }
@@ -264,12 +366,26 @@ class AutoPlayService {
 
       logger(
         'INFO',
-        `Got ${suggestions.tracks.length} track suggestions for auto-fill`
+        `[AutoFill] Track suggestions response: ${JSON.stringify(suggestions)}`
       )
+
+      // If no tracks were suggested, trigger fallback
+      if (!suggestions.tracks || suggestions.tracks.length === 0) {
+        logger(
+          'WARN',
+          '[AutoFill] No track suggestions received, triggering fallback'
+        )
+        throw new Error('No track suggestions available')
+      }
 
       // Add suggested tracks to the queue
       for (const track of suggestions.tracks) {
         try {
+          logger(
+            'INFO',
+            `[AutoFill] Fetching full details for track: ${track.id}`
+          )
+
           // Fetch full track details from Spotify
           const trackDetails = await sendApiRequest<{
             id: string
@@ -284,31 +400,209 @@ class AutoPlayService {
             method: 'GET'
           })
 
-          // Add track to queue
-          await fetch(`/api/playlist/${this.username}`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              tracks: trackDetails,
-              initialVotes: 1 // Auto-fill tracks get 1 vote
-            })
-          })
+          logger(
+            'INFO',
+            `[AutoFill] Track details: ${JSON.stringify({
+              name: trackDetails.name,
+              artist: trackDetails.artists[0]?.name,
+              duration_ms: trackDetails.duration_ms,
+              popularity: trackDetails.popularity
+            })}`
+          )
 
-          logger('INFO', `Added track to queue: ${trackDetails.name}`)
+          // Add track to queue
+          const playlistResponse = await fetch(
+            `/api/playlist/${this.username}`,
+            {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                tracks: trackDetails,
+                initialVotes: 1, // Auto-fill tracks get 1 vote
+                source: 'system' // Mark as system-initiated
+              })
+            }
+          )
+
+          if (!playlistResponse.ok) {
+            const playlistError = await playlistResponse.json()
+            logger(
+              'ERROR',
+              `[AutoFill] Failed to add track to playlist: ${JSON.stringify(playlistError)}`
+            )
+          } else {
+            logger(
+              'INFO',
+              `[AutoFill] Successfully added track to queue: ${trackDetails.name}`
+            )
+          }
+
+          // Show popup notification for auto-added track
+          this.showAutoFillNotification(
+            trackDetails.name,
+            trackDetails.artists[0]?.name || 'Unknown Artist'
+          )
         } catch (error) {
           logger(
             'ERROR',
-            `Failed to add track ${track.id} to queue`,
+            `[AutoFill] Failed to add track ${track.id} to queue`,
             undefined,
             error as Error
           )
         }
       }
-
-      logger('INFO', 'Automatic queue auto-fill completed successfully')
     } catch (error) {
-      logger('ERROR', 'Auto-fill failed', undefined, error as Error)
-      throw error
+      logger(
+        'ERROR',
+        '[AutoFill] Auto-fill failed, trying fallback random track',
+        undefined,
+        error as Error
+      )
+      logger(
+        'INFO',
+        `[AutoFill] Error details: ${error instanceof Error ? error.message : 'Unknown error'}`
+      )
+
+      // Fallback: Get a random track from the database
+      logger('INFO', '[AutoFill] Calling fallbackToRandomTrack...')
+      await this.fallbackToRandomTrack()
+      logger('INFO', '[AutoFill] FallbackToRandomTrack completed')
+    }
+  }
+
+  private async fallbackToRandomTrack(): Promise<void> {
+    if (!this.username) {
+      logger('ERROR', '[Fallback] No username available for fallback')
+      return
+    }
+
+    logger(
+      'INFO',
+      `[Fallback] Starting fallback to random track for username: ${this.username}`
+    )
+
+    try {
+      const requestBody = { username: this.username }
+      logger(
+        'INFO',
+        `[Fallback] Sending random track request: ${JSON.stringify(requestBody)}`
+      )
+
+      const response = await fetch('/api/random-track', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(requestBody)
+      })
+
+      logger(
+        'INFO',
+        `[Fallback] Random track response status: ${response.status}`
+      )
+
+      if (!response.ok) {
+        const errorBody = await response.json()
+        logger(
+          'ERROR',
+          `[Fallback] Random track API error: ${JSON.stringify(errorBody)}`
+        )
+        throw new Error('Failed to get random track for fallback.')
+      }
+
+      const result = (await response.json()) as {
+        success: boolean
+        track: {
+          id: string
+          spotify_track_id: string
+          name: string
+          artist: string
+          album: string
+          duration_ms: number
+          popularity: number
+          spotify_url: string
+        }
+      }
+
+      logger(
+        'INFO',
+        `[Fallback] Random track response: ${JSON.stringify(result)}`
+      )
+
+      if (result.success && result.track) {
+        logger(
+          'INFO',
+          `[Fallback] Adding random track to queue: ${result.track.name} by ${result.track.artist}`
+        )
+
+        // Add the random track to the queue
+        const playlistResponse = await fetch(`/api/playlist/${this.username}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            tracks: {
+              id: result.track.spotify_track_id, // Use Spotify track ID, not database UUID
+              name: result.track.name,
+              artists: [{ name: result.track.artist }],
+              album: { name: result.track.album },
+              duration_ms: result.track.duration_ms,
+              popularity: result.track.popularity,
+              uri: result.track.spotify_url
+            },
+            initialVotes: 1, // Fallback tracks get 1 vote
+            source: 'fallback' // Mark as fallback-initiated
+          })
+        })
+
+        if (!playlistResponse.ok) {
+          const playlistError = await playlistResponse.json()
+          logger(
+            'ERROR',
+            `[Fallback] Failed to add random track to playlist: ${JSON.stringify(playlistError)}`
+          )
+        } else {
+          logger(
+            'INFO',
+            `[Fallback] Successfully added random track to queue: ${result.track.name}`
+          )
+        }
+
+        // Show popup notification for fallback track
+        this.showAutoFillNotification(
+          result.track.name,
+          result.track.artist,
+          true
+        )
+      } else {
+        logger('ERROR', '[Fallback] No random track available for fallback')
+      }
+    } catch (error) {
+      logger(
+        'ERROR',
+        '[Fallback] Fallback to random track failed',
+        undefined,
+        error as Error
+      )
+    }
+  }
+
+  private showAutoFillNotification(
+    trackName: string,
+    artistName: string,
+    isFallback = false
+  ): void {
+    // Only dispatch events on the client side
+    if (typeof window !== 'undefined') {
+      // Create a custom event to trigger the notification
+      const event = new CustomEvent('autoFillNotification', {
+        detail: {
+          trackName,
+          artistName,
+          isFallback,
+          timestamp: Date.now()
+        }
+      })
+
+      // Dispatch the event on the window object
+      window.dispatchEvent(event)
     }
   }
 

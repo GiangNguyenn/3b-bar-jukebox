@@ -1,7 +1,6 @@
 'use client'
 
 import { Suspense, useEffect, useState, useCallback } from 'react'
-import { useConsoleLogsContext } from '@/hooks/ConsoleLogsProvider'
 import { useUserToken } from '@/hooks/useUserToken'
 import { useNowPlayingTrack } from '@/hooks/useNowPlayingTrack'
 import { useArtistExtract } from '@/hooks/useArtistExtract'
@@ -26,7 +25,6 @@ export default function PlaylistContent({
   username
 }: PlaylistContentProps): JSX.Element {
   const [voteFeedback, setVoteFeedback] = useState<VoteFeedback | null>(null)
-  const { addLog } = useConsoleLogsContext()
 
   const {
     token,
@@ -36,10 +34,6 @@ export default function PlaylistContent({
     isJukeboxOffline,
     fetchToken
   } = useUserToken()
-
-  useEffect(() => {
-    addLog('LOG', `Username variable: ${username}`, 'PlaylistContent-Mount')
-  }, [addLog, username])
 
   const {
     data: queue,
@@ -72,7 +66,11 @@ export default function PlaylistContent({
         const response = await fetch(`/api/playlist/${username}`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ track, initialVotes: 5 })
+          body: JSON.stringify({
+            tracks: track,
+            initialVotes: 5,
+            source: 'user' // Mark as user-initiated
+          })
         })
 
         if (!response.ok) {

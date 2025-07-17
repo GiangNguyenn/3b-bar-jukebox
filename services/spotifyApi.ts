@@ -163,14 +163,6 @@ export class SpotifyApiService implements SpotifyApiClient {
         if (nextTrack) {
           const trackUri = `spotify:track:${nextTrack.tracks.spotify_track_id}`
 
-          if (addLog) {
-            addLog(
-              'INFO',
-              `Resuming playback with next track from database queue: ${nextTrack.tracks.name}`,
-              'SpotifyApi'
-            )
-          }
-
           // Play the next track from our database queue
           await this.apiClient({
             path: `me/player/play?device_id=${deviceId}`,

@@ -75,7 +75,6 @@ export function useTrackArtwork(spotifyTrackId: string | null): TrackArtwork {
       setArtwork((prev) => ({ ...prev, isLoading: true, error: null }))
 
       try {
-        console.log(`Fetching artwork for track: ${spotifyTrackId}`)
         const response = await fetch(`/api/track-artwork/${spotifyTrackId}`)
 
         if (!response.ok) {
@@ -91,8 +90,6 @@ export function useTrackArtwork(spotifyTrackId: string | null): TrackArtwork {
         }
 
         const data = (await response.json()) as ArtworkResponse
-
-        console.log(`Artwork response for track ${spotifyTrackId}:`, data)
 
         // Cache the result
         setCachedArtwork(spotifyTrackId, data.artworkUrl)

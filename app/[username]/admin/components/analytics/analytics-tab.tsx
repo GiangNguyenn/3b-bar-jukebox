@@ -51,48 +51,6 @@ const useTopTracks = (): {
       setIsLoading(true)
       setError(null)
 
-      addLog('INFO', 'Fetching top suggested tracks', 'useTopTracks')
-
-      // First, let's check if there are any suggested tracks at all
-      const { data: suggestedTracksCount, error: countError } = await supabase
-        .from('suggested_tracks')
-        .select('count', { count: 'exact' })
-
-      if (countError) {
-        addLog(
-          'ERROR',
-          `Failed to get suggested tracks count: ${countError.message}`,
-          'useTopTracks',
-          countError
-        )
-      } else {
-        addLog(
-          'INFO',
-          `Found ${suggestedTracksCount?.length ?? 0} suggested tracks`,
-          'useTopTracks'
-        )
-      }
-
-      // Also check if there are any tracks in the tracks table
-      const { data: tracksCount, error: tracksCountError } = await supabase
-        .from('tracks')
-        .select('id', { count: 'exact' })
-
-      if (tracksCountError) {
-        addLog(
-          'ERROR',
-          `Failed to get tracks count: ${tracksCountError.message}`,
-          'useTopTracks',
-          tracksCountError
-        )
-      } else {
-        addLog(
-          'INFO',
-          `Found ${tracksCount?.length ?? 0} total tracks`,
-          'useTopTracks'
-        )
-      }
-
       const { data: rawData, error } = await supabase
         .from('suggested_tracks')
         .select(
@@ -137,13 +95,8 @@ const useTopTracks = (): {
           .filter((track): track is TopTrack => track !== null)
 
         setTracks(formattedTracks)
-        addLog(
-          'INFO',
-          `Successfully loaded ${formattedTracks.length} top tracks`,
-          'useTopTracks'
-        )
+        setTracks(formattedTracks)
       } else {
-        addLog('INFO', 'No suggested tracks found', 'useTopTracks')
         setTracks([])
       }
     } catch (err) {
@@ -168,12 +121,6 @@ const useTopTracks = (): {
     }
 
     try {
-      addLog(
-        'INFO',
-        'Setting up real-time subscription for suggested tracks',
-        'useTopTracks'
-      )
-
       const subscription = supabase
         .channel('suggested_tracks_changes')
         .on(
@@ -183,13 +130,7 @@ const useTopTracks = (): {
             schema: 'public',
             table: 'suggested_tracks'
           },
-          (payload) => {
-            addLog(
-              'INFO',
-              `Suggested tracks change detected: ${payload.eventType} on ${payload.table}`,
-              'useTopTracks'
-            )
-
+          () => {
             // Refresh data when suggested_tracks changes
             void fetchTopTracks()
           }
@@ -201,26 +142,14 @@ const useTopTracks = (): {
             schema: 'public',
             table: 'tracks'
           },
-          (payload) => {
-            addLog(
-              'INFO',
-              `Tracks change detected: ${payload.eventType} on ${payload.table}`,
-              'useTopTracks'
-            )
-
+          () => {
             // Refresh data when tracks changes (affects suggested_tracks joins)
             void fetchTopTracks()
           }
         )
         .subscribe((status) => {
           // eslint-disable-next-line @typescript-eslint/no-unsafe-enum-comparison
-          if (status === 'SUBSCRIBED') {
-            addLog(
-              'INFO',
-              'Real-time subscription for suggested tracks established',
-              'useTopTracks'
-            )
-          } else if (
+          if (
             // eslint-disable-next-line @typescript-eslint/no-unsafe-enum-comparison
             status === 'CHANNEL_ERROR'
           ) {
@@ -284,7 +213,125 @@ export const AnalyticsTab = ({ username }: AnalyticsTabProps): JSX.Element => {
   const { data: queue, optimisticUpdate: queueOptimisticUpdate } =
     usePlaylistData(username)
   const [isAdding, setIsAdding] = useState(false)
+  const [addingTrackId, setAddingTrackId] = useState<string | null>(null)
   const { addLog } = useConsoleLogsContext()
+
+  // Check if a track is already in the playlist
+  const isTrackInPlaylist = useCallback(
+    (trackId: string): boolean => {
+      return (queue ?? []).some(
+        (item: JukeboxQueueItem) => item.tracks.spotify_track_id === trackId
+      )
+    },
+    [queue]
+  )
+
+  // Handle adding a single track to playlist
+  const handleAddSingleTrack = useCallback(
+    async (track: TopTrack): Promise<void> => {
+      if (!username) {
+        showToast('Username not found.', 'warning')
+        return
+      }
+
+      if (isTrackInPlaylist(track.spotify_track_id)) {
+        showToast('Track is already in the playlist.', 'info')
+        return
+      }
+
+      setAddingTrackId(track.spotify_track_id)
+      try {
+        addLog(
+          'INFO',
+          `Adding single track to playlist: ${track.name}`,
+          'AnalyticsTab'
+        )
+
+        // Optimistic update - add track to queue immediately
+        if (queueOptimisticUpdate && queue) {
+          const newQueueItem = {
+            id: `temp-${Date.now()}-${Math.random()}`, // Temporary ID
+            profile_id: '', // Will be set by backend
+            track_id: '', // Will be set by backend
+            votes: 1, // Single track gets 1 vote
+            queued_at: new Date().toISOString(),
+            tracks: {
+              id: track.spotify_track_id,
+              spotify_track_id: track.spotify_track_id,
+              name: track.name,
+              artist: track.artist,
+              album: 'Unknown Album',
+              genre: null,
+              created_at: new Date().toISOString(),
+              popularity: 0,
+              duration_ms: 0,
+              spotify_url: `spotify:track:${track.spotify_track_id}`,
+              release_year: 0
+            }
+          }
+
+          queueOptimisticUpdate((currentQueue) => [
+            ...currentQueue,
+            newQueueItem
+          ])
+          addLog(
+            'INFO',
+            'Optimistic update: Added single track to queue UI',
+            'AnalyticsTab'
+          )
+        }
+
+        const response = await fetch(`/api/playlist/${username}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            tracks: {
+              id: track.spotify_track_id,
+              name: track.name,
+              artists: [{ name: track.artist }],
+              album: { name: 'Unknown Album' },
+              duration_ms: 0,
+              popularity: 0,
+              uri: `spotify:track:${track.spotify_track_id}`
+            },
+            initialVotes: 1, // Single track gets 1 vote
+            source: 'admin' // Mark as admin-initiated
+          })
+        })
+
+        if (response.ok) {
+          showToast(`Added "${track.name}" to the playlist.`, 'success')
+          addLog(
+            'INFO',
+            `Successfully added single track to queue: ${track.name}`,
+            'AnalyticsTab'
+          )
+        } else {
+          const errorData = (await response.json()) as { error?: string }
+          showToast(
+            `Failed to add "${track.name}": ${errorData.error}`,
+            'warning'
+          )
+          addLog(
+            'ERROR',
+            `Failed to add single track ${track.name}: ${errorData.error}`,
+            'AnalyticsTab'
+          )
+        }
+      } catch (error) {
+        showToast(`Error adding "${track.name}" to the playlist.`, 'warning')
+        addLog(
+          'ERROR',
+          `Error adding single track ${track.name}`,
+          'AnalyticsTab',
+          error instanceof Error ? error : undefined
+        )
+      } finally {
+        setAddingTrackId(null)
+      }
+    },
+    [username, isTrackInPlaylist, queueOptimisticUpdate, queue, addLog]
+  )
 
   const handleAddToPlaylist = async (): Promise<void> => {
     setIsAdding(true)
@@ -366,7 +413,8 @@ export const AnalyticsTab = ({ username }: AnalyticsTabProps): JSX.Element => {
                 popularity: 0,
                 uri: `spotify:track:${track.spotify_track_id}`
               },
-              initialVotes: 2 // From Analytics
+              initialVotes: 2, // From Analytics
+              source: 'admin' // Mark as admin-initiated
             })
           })
           if (response.ok) {
@@ -447,7 +495,7 @@ export const AnalyticsTab = ({ username }: AnalyticsTabProps): JSX.Element => {
             disabled={isLoading || isAdding || tracks.length === 0}
             className='text-white rounded bg-blue-500 px-4 py-2 disabled:bg-gray-400'
           >
-            {isAdding ? 'Adding...' : 'Add to playlist'}
+            {isAdding ? 'Adding...' : 'Add All Tracks'}
           </button>
         </div>
       </div>
@@ -460,18 +508,45 @@ export const AnalyticsTab = ({ username }: AnalyticsTabProps): JSX.Element => {
               <th className='border-b px-4 py-2 text-left'>Count</th>
               <th className='border-b px-4 py-2 text-left'>Track</th>
               <th className='border-b px-4 py-2 text-left'>Artist</th>
+              <th className='border-b px-4 py-2 text-left'>Action</th>
             </tr>
           </thead>
           <tbody>
-            {tracks.map((track, index) => (
-              <tr key={index}>
-                <td className='border-b px-4 py-2 text-center'>
-                  {track.count}
-                </td>
-                <td className='border-b px-4 py-2'>{track.name}</td>
-                <td className='border-b px-4 py-2'>{track.artist}</td>
-              </tr>
-            ))}
+            {tracks.map((track, index) => {
+              const isInPlaylist = isTrackInPlaylist(track.spotify_track_id)
+              const isAddingThisTrack = addingTrackId === track.spotify_track_id
+
+              return (
+                <tr key={index}>
+                  <td className='border-b px-4 py-2 text-center'>
+                    {track.count}
+                  </td>
+                  <td className='border-b px-4 py-2'>{track.name}</td>
+                  <td className='border-b px-4 py-2'>{track.artist}</td>
+                  <td className='border-b px-4 py-2 text-center'>
+                    {!isInPlaylist ? (
+                      <button
+                        onClick={() => void handleAddSingleTrack(track)}
+                        disabled={isAddingThisTrack}
+                        className='text-white rounded bg-green-600 px-3 py-1 text-sm font-medium transition-colors hover:bg-green-700 disabled:cursor-not-allowed disabled:opacity-50'
+                        title={`Add "${track.name}" to playlist`}
+                      >
+                        {isAddingThisTrack ? (
+                          <div className='flex items-center gap-1'>
+                            <Loading className='h-3 w-3' />
+                            <span>Adding...</span>
+                          </div>
+                        ) : (
+                          '+'
+                        )}
+                      </button>
+                    ) : (
+                      <span className='text-sm text-gray-500'>In playlist</span>
+                    )}
+                  </td>
+                </tr>
+              )
+            })}
           </tbody>
         </table>
       )}

@@ -4,28 +4,9 @@ import { z } from 'zod'
 import { supabase } from '@/lib/supabase'
 import { createModuleLogger } from '@/shared/utils/logger'
 import { parseWithType } from '@/shared/types/utils'
+import type { JukeboxQueueItem } from '@/shared/types/queue'
 
 const logger = createModuleLogger('API Playlist')
-
-interface Track {
-  id: string
-  spotify_track_id: string
-  name: string
-  artist: string
-  album: string
-  duration_ms: number
-  popularity: number
-  spotify_uri: string
-}
-
-interface JukeboxQueueItem {
-  id: string
-  profile_id: string
-  track_id: string
-  votes: number
-  queued_at: string
-  tracks: Track
-}
 
 export async function GET(
   request: Request,
@@ -95,21 +76,18 @@ export async function GET(
   }
 }
 
-const trackSchema = z.object({
-  id: z.string(),
-  name: z.string(),
-  artists: z.array(z.object({ name: z.string() })).min(1),
-  album: z.object({
-    name: z.string()
-  }),
-  duration_ms: z.number(),
-  popularity: z.number(),
-  uri: z.string()
-})
-
 const addTrackSchema = z.object({
-  tracks: trackSchema,
-  initialVotes: z.number().optional()
+  tracks: z.object({
+    id: z.string(),
+    name: z.string(),
+    artists: z.array(z.object({ name: z.string() })),
+    album: z.object({ name: z.string() }),
+    duration_ms: z.number(),
+    popularity: z.number(),
+    uri: z.string()
+  }),
+  initialVotes: z.number().optional(),
+  source: z.enum(['user', 'system', 'admin', 'fallback']).default('user')
 })
 
 type AddTrackResponseBody =
@@ -148,15 +126,14 @@ export async function POST(
       `Playlist API - Incoming request body: ${JSON.stringify(body)}`
     )
     // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-argument
-    const parsed: z.infer<typeof addTrackSchema> = parseWithType(
-      addTrackSchema,
-      body
-    )
-    const { tracks, initialVotes } = parsed
+    const parsed = parseWithType(addTrackSchema, body)
+    const { tracks, initialVotes, source } = parsed
+    const requestSource = source ?? 'user'
     logger(
       'INFO',
       `Playlist API - Parsed tracks data: ${JSON.stringify(tracks)}`
     )
+    logger('INFO', `Playlist API - Request source: ${requestSource}`)
 
     // Fetch detailed track information from Spotify API to get release date and genre
     let detailedTrackInfo: {
@@ -211,6 +188,34 @@ export async function POST(
 
     const genre = detailedTrackInfo?.artists?.[0]?.genres?.[0] ?? null
 
+    // Safeguard: Validate that the Spotify track ID is not a UUID and is the correct format
+    logger('INFO', `Playlist API - Validating Spotify track ID: ${tracks.id}`)
+    logger('INFO', `Playlist API - Track ID length: ${tracks.id.length}`)
+    logger(
+      'INFO',
+      `Playlist API - Track ID contains hyphens: ${tracks.id.includes('-')}`
+    )
+    logger(
+      'INFO',
+      `Playlist API - Track ID alphanumeric test: ${!/^[0-9A-Za-z]+$/.test(tracks.id)}`
+    )
+
+    if (
+      tracks.id.includes('-') || // UUIDs have hyphens
+      tracks.id.length !== 22 || // Spotify track IDs are always 22 chars
+      !/^[0-9A-Za-z]+$/.test(tracks.id) // Only alphanumeric
+    ) {
+      logger('ERROR', `Invalid Spotify track ID: ${tracks.id}`)
+      logger(
+        'ERROR',
+        `Track ID validation failed - length: ${tracks.id.length}, contains hyphens: ${tracks.id.includes('-')}, alphanumeric: ${!/^[0-9A-Za-z]+$/.test(tracks.id)}`
+      )
+      return NextResponse.json(
+        { error: 'Invalid Spotify track ID provided' },
+        { status: 400 }
+      )
+    }
+
     const { data: upsertedTrack, error: upsertError } = await supabase
       .from('tracks')
       .upsert(
@@ -256,6 +261,37 @@ export async function POST(
       )
     }
 
+    // Check if track is already in the users queue
+    const { data: existingQueueItem, error: checkError } = await supabase
+      .from('jukebox_queue')
+      .select('id, tracks:track_id(spotify_track_id, name)')
+      .eq('profile_id', profile.id)
+      .eq('track_id', upsertedTrack.id)
+      .single()
+
+    if (checkError && checkError.code !== 'PGRST116') {
+      // PGRST116 not found which is expected
+      logger(
+        'ERROR',
+        `Error checking for duplicate track: ${JSON.stringify(checkError)}`
+      )
+      return NextResponse.json(
+        { error: 'Failed to check for duplicate track' },
+        { status: 500 }
+      )
+    }
+
+    if (existingQueueItem) {
+      logger(
+        'WARN',
+        `Track ${tracks.name} (${tracks.id}) is already in the queue for user ${username}`
+      )
+      return NextResponse.json(
+        { error: 'This track is already in your playlist' },
+        { status: 409 }
+      )
+    }
+
     const { error: insertError } = await supabase.from('jukebox_queue').insert({
       profile_id: profile.id,
       track_id: upsertedTrack.id,
@@ -279,27 +315,40 @@ export async function POST(
       )
     }
 
-    // Log the track suggestion for analytics
-    const { error: logError } = await supabase.rpc('log_track_suggestion', {
-      p_profile_id: profile.id,
-      p_spotify_track_id: tracks.id,
-      p_track_name: tracks.name,
-      p_artist_name: tracks.artists[0].name,
-      p_album_name: tracks.album.name,
-      p_duration_ms: tracks.duration_ms,
-      p_popularity: tracks.popularity,
-      p_spotify_url: tracks.uri,
-      p_genre: genre, // Use the genre we fetched from detailed track info
-      p_release_year: releaseYear // Use the release year we extracted from detailed track info
-    })
-
-    if (logError) {
+    // Only log track suggestions for user-initiated requests
+    if (requestSource === 'user') {
       logger(
-        'ERROR',
-        `Track suggestion logging error: ${JSON.stringify(logError)}`
+        'INFO',
+        `Logging track suggestion for user-initiated request: ${tracks.name}`
       )
-      logger('ERROR', 'Failed to log track suggestion', undefined, logError)
-      // Don't fail the entire request if logging fails, just log the error
+
+      // Log the track suggestion for analytics
+      const { error: logError } = await supabase.rpc('log_track_suggestion', {
+        p_profile_id: profile.id,
+        p_spotify_track_id: tracks.id,
+        p_track_name: tracks.name,
+        p_artist_name: tracks.artists[0].name,
+        p_album_name: tracks.album.name,
+        p_duration_ms: tracks.duration_ms,
+        p_popularity: tracks.popularity,
+        p_spotify_url: tracks.uri,
+        p_genre: genre, // Use the genre we fetched from detailed track info
+        p_release_year: releaseYear // Use the release year we extracted from detailed track info
+      })
+
+      if (logError) {
+        logger(
+          'ERROR',
+          `Track suggestion logging error: ${JSON.stringify(logError)}`
+        )
+        logger('ERROR', 'Failed to log track suggestion', undefined, logError)
+        // Don't fail the entire request if logging fails, just log the error
+      }
+    } else {
+      logger(
+        'INFO',
+        `Skipping track suggestion logging for ${requestSource} request: ${tracks.name}`
+      )
     }
 
     return NextResponse.json({ message: 'Track added to queue successfully' })

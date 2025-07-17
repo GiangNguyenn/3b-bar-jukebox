@@ -69,7 +69,6 @@ export function PlaylistDisplay({
           uris: [trackUri]
         }
       })
-      addLog('INFO', `Started playing track: ${trackUri}`, 'PlaylistDisplay')
     } catch (err) {
       const errorMessage =
         err instanceof Error ? err.message : 'Failed to play track'
@@ -95,11 +94,6 @@ export function PlaylistDisplay({
         optimisticUpdate((currentQueue) =>
           currentQueue.filter((item) => item.id !== queueId)
         )
-        addLog(
-          'INFO',
-          `Optimistic update: Removed track ${queueId} from UI`,
-          'PlaylistDisplay'
-        )
       }
 
       const response = await fetch(`/api/queue/${queueId}`, {
@@ -111,12 +105,6 @@ export function PlaylistDisplay({
         const errorData: { error?: string } = await response.json()
         throw new Error(errorData.error ?? 'Failed to delete track')
       }
-
-      addLog(
-        'INFO',
-        `Successfully deleted track ${queueId} from database`,
-        'PlaylistDisplay'
-      )
 
       // Trigger debounced refresh to sync with real-time updates
       void debouncedRefresh()
@@ -133,11 +121,6 @@ export function PlaylistDisplay({
 
       // If optimistic update was used, we should revert it on error
       // However, since we're using real-time subscriptions, the next update will correct the state
-      addLog(
-        'INFO',
-        'Error occurred during delete - real-time subscription will correct state',
-        'PlaylistDisplay'
-      )
     } finally {
       setDeletingTrackId(null)
     }
@@ -190,19 +173,6 @@ export function PlaylistDisplay({
           </thead>
           <tbody>
             {queue.map((item, index) => {
-              // Debug logging
-              addLog(
-                'INFO',
-                `Track comparison: ${JSON.stringify({
-                  queueTrackId: item.tracks.spotify_track_id,
-                  nowPlayingTrackId: currentlyPlaying?.item?.id,
-                  index,
-                  isMatch:
-                    currentlyPlaying?.item?.id === item.tracks.spotify_track_id
-                })}`,
-                'PlaylistDisplay'
-              )
-
               const isCurrentlyPlaying =
                 currentlyPlaying?.item?.id === item.tracks.spotify_track_id
               const isTrackLoading = loadingTrackId === item.tracks.spotify_url

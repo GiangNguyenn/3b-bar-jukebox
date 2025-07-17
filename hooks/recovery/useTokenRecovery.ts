@@ -45,9 +45,6 @@ export function useTokenRecovery() {
         setToken(tokenData.access_token)
         setConsecutiveFailures(0)
 
-        if (attempt > 0) {
-          addLog('INFO', 'Token recovery successful', 'useTokenRecovery')
-        }
         return tokenData.access_token
       } catch (err) {
         console.error('[useTokenRecovery] Error fetching token:', err)
