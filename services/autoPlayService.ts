@@ -393,6 +393,11 @@ class AutoPlayService {
       return
     }
 
+    // Check if we have valid track suggestions state
+    if (!this.trackSuggestionsState) {
+      logger('WARN', '[AutoFill] No track suggestions state available, using fallback defaults')
+    }
+
     logger('INFO', '[AutoFill] Starting auto-fill process')
 
     const targetQueueSize = this.autoFillTargetSize // Target number of tracks in queue
@@ -439,6 +444,15 @@ class AutoPlayService {
           maxOffset: this.trackSuggestionsState?.maxOffset || DEFAULT_MAX_OFFSET
         }
 
+        // Validate that all required fields are present
+        const requiredFields = ['genres', 'yearRange', 'popularity', 'allowExplicit', 'maxSongLength', 'songsBetweenRepeats', 'maxOffset']
+        const missingFields = requiredFields.filter(field => !(field in requestBody))
+        
+        if (missingFields.length > 0) {
+          logger('ERROR', `[AutoFill] Missing required fields: ${missingFields.join(', ')}`)
+          throw new Error(`Missing required fields: ${missingFields.join(', ')}`)
+        }
+
         // Get current queue to exclude existing tracks
         const currentQueue = this.queueManager.getQueue()
         const excludedTrackIds = currentQueue.map(
@@ -454,10 +468,28 @@ class AutoPlayService {
           'INFO',
           `[AutoFill] Attempt ${attempts} - User track suggestions config: ${JSON.stringify(this.trackSuggestionsState)}`
         )
+        logger(
+          'INFO',
+          `[AutoFill] Attempt ${attempts} - Track suggestions state type: ${typeof this.trackSuggestionsState}`
+        )
+        logger(
+          'INFO',
+          `[AutoFill] Attempt ${attempts} - Track suggestions state keys: ${this.trackSuggestionsState ? Object.keys(this.trackSuggestionsState).join(', ') : 'null'}`
+        )
 
         logger(
           'INFO',
           `[AutoFill] Attempt ${attempts} - Sending track suggestions request: ${JSON.stringify(requestBody)}`
+        )
+        
+        // Additional debugging to see exactly what's being sent
+        logger(
+          'INFO',
+          `[AutoFill] Attempt ${attempts} - Request body keys: ${Object.keys(requestBody).join(', ')}`
+        )
+        logger(
+          'INFO',
+          `[AutoFill] Attempt ${attempts} - Request body values: ${JSON.stringify(Object.values(requestBody))}`
         )
 
         const response = await fetch('/api/track-suggestions', {
