@@ -24,14 +24,6 @@ export function usePlaybackHealth(): PlaybackStatus {
 
   useEffect(() => {
     const intervalId = setInterval(async () => {
-      const intent = userIntentRef.current
-
-      if (intent !== 'playing') {
-        setPlaybackStatus(intent === 'paused' ? 'paused' : 'stopped')
-        lastCheckRef.current = { progress: null, uri: null }
-        return
-      }
-
       try {
         const currentPlaybackState = await sendApiRequest<SpotifyPlaybackState>(
           {
@@ -49,10 +41,16 @@ export function usePlaybackHealth(): PlaybackStatus {
         const lastCheck = lastCheckRef.current
         const currentProgress = currentPlaybackState.progress_ms ?? null
         const currentUri = currentPlaybackState.item.uri
+        const isActuallyPlaying = currentPlaybackState.is_playing
 
-        if (lastCheck.uri === null || lastCheck.uri !== currentUri) {
+        // Determine status based on actual Spotify playback state
+        if (!isActuallyPlaying) {
+          setPlaybackStatus('paused')
+        } else if (lastCheck.uri === null || lastCheck.uri !== currentUri) {
+          // New track started
           setPlaybackStatus('playing')
         } else {
+          // Same track, check for progress
           if (
             currentProgress !== null &&
             currentProgress === lastCheck.progress
@@ -60,7 +58,7 @@ export function usePlaybackHealth(): PlaybackStatus {
             setPlaybackStatus('stalled')
             addLog(
               'ERROR',
-              `Playback stalled. No progress in last 15s via API. Intent: ${intent}, Last Progress: ${lastCheck.progress}, Current Progress: ${currentProgress}.`,
+              `Playback stalled. No progress in last 15s via API. Last Progress: ${lastCheck.progress}, Current Progress: ${currentProgress}.`,
               'PlaybackHealth'
             )
           } else {

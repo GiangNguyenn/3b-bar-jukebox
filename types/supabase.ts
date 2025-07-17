@@ -90,9 +90,11 @@ export interface Database {
           name: string
           artist: string
           album: string
+          genre: string | null
+          release_year: number | null
           duration_ms: number
           popularity: number
-          spotify_uri: string
+          spotify_url: string | null
         }
         Insert: {
           id?: string
@@ -101,9 +103,11 @@ export interface Database {
           name: string
           artist: string
           album: string
+          genre?: string | null
+          release_year?: number | null
           duration_ms: number
           popularity: number
-          spotify_uri: string
+          spotify_url?: string | null
         }
         Update: {
           id?: string
@@ -112,9 +116,11 @@ export interface Database {
           name?: string
           artist?: string
           album?: string
+          genre?: string | null
+          release_year?: number | null
           duration_ms?: number
           popularity?: number
-          spotify_uri?: string
+          spotify_url?: string | null
         }
       }
       jukebox_queue: {

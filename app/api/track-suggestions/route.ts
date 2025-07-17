@@ -38,7 +38,8 @@ const refreshRequestSchema = z.object({
   allowExplicit: z.boolean(),
   maxSongLength: z.number().min(3).max(20), // In minutes
   songsBetweenRepeats: songsBetweenRepeatsSchema,
-  maxOffset: z.number().min(1).max(10000)
+  maxOffset: z.number().min(1).max(10000),
+  excludedTrackIds: z.array(z.string()).optional() // Optional array of track IDs to exclude
 })
 
 interface RefreshResponse {
@@ -132,7 +133,7 @@ export async function POST(
     // Use findSuggestedTrack with app tokens for server-side operation
     logger('INFO', '[Track Suggestions API] Calling findSuggestedTrack...')
     const result = await findSuggestedTrack(
-      [], // No excluded track IDs for this operation
+      validatedData.excludedTrackIds ?? [], // Use validated excludedTrackIds
       null, // No current track ID
       'US', // Default market
       {

@@ -389,69 +389,125 @@ class PlayerLifecycleService {
               this.lastKnownState.track_window.current_track?.uri ===
                 state.track_window.current_track?.uri
 
-            if (trackJustFinished && this.currentQueueTrack) {
-              const finishedTrackId = this.currentQueueTrack.id
+            // Additional track finished detection for edge cases
+            const isNearEnd =
+              state.duration > 0 && state.duration - state.position < 1000 // Within 1 second of end
+            const hasStalled =
+              this.lastKnownState &&
+              !this.lastKnownState.paused &&
+              state.paused &&
+              state.position === this.lastKnownState.position &&
+              this.lastKnownState.track_window.current_track?.uri ===
+                state.track_window.current_track?.uri
+
+            const trackFinished = trackJustFinished || (isNearEnd && hasStalled)
+
+            if (trackFinished) {
+              const currentSpotifyTrackId =
+                state.track_window?.current_track?.id
               this.log(
                 'INFO',
-                `Track finished: ${finishedTrackId}. Marking as played.`
+                `Track finished detected for Spotify track ID: ${currentSpotifyTrackId}`
               )
 
-              await queueManager.markAsPlayed(finishedTrackId)
+              // Find the queue item that matches the finished Spotify track
+              const queue = queueManager.getQueue()
+              const finishedQueueItem = queue.find(
+                (item) => item.tracks.spotify_track_id === currentSpotifyTrackId
+              )
 
-              // Check if queue is getting low and trigger auto-fill if needed
-              await this.checkAndAutoFillQueue()
-
-              const nextTrack = queueManager.getNextTrack()
-
-              if (nextTrack) {
+              if (finishedQueueItem) {
                 this.log(
                   'INFO',
-                  `Playing next track from queue: ${nextTrack.tracks.spotify_url}`
+                  `Found queue item for finished track: ${finishedQueueItem.id}`
                 )
-                this.currentQueueTrack = nextTrack
 
-                if (this.deviceId) {
-                  try {
-                    await sendApiRequest({
-                      path: 'me/player/play',
-                      method: 'PUT',
-                      body: {
-                        device_id: this.deviceId,
-                        uris: [nextTrack.tracks.spotify_url]
-                      }
-                    })
-                  } catch (error) {
-                    this.log('ERROR', 'Failed to play next track', error)
-                  }
-                } else {
+                try {
+                  // Mark the track as played in the queue
+                  await queueManager.markAsPlayed(finishedQueueItem.id)
                   this.log(
-                    'ERROR',
-                    'No device ID available to play next track.'
+                    'INFO',
+                    `Marked queue item ${finishedQueueItem.id} as played`
                   )
+
+                  // Check if queue is getting low and trigger auto-fill if needed
+                  await this.checkAndAutoFillQueue()
+
+                  // Get the next track from the queue
+                  const nextTrack = queueManager.getNextTrack()
+
+                  if (nextTrack) {
+                    this.log(
+                      'INFO',
+                      `Playing next track from queue: ${nextTrack.tracks.name}`
+                    )
+                    this.currentQueueTrack = nextTrack
+
+                    if (this.deviceId) {
+                      try {
+                        await sendApiRequest({
+                          path: 'me/player/play',
+                          method: 'PUT',
+                          body: {
+                            device_id: this.deviceId,
+                            uris: [
+                              `spotify:track:${nextTrack.tracks.spotify_track_id}`
+                            ]
+                          }
+                        })
+                        this.log(
+                          'INFO',
+                          `Successfully started playing next track: ${nextTrack.tracks.name}`
+                        )
+                      } catch (error) {
+                        this.log('ERROR', 'Failed to play next track', error)
+                      }
+                    } else {
+                      this.log(
+                        'ERROR',
+                        'No device ID available to play next track.'
+                      )
+                    }
+                  } else {
+                    this.log('INFO', 'Queue is empty. Playback stopped.')
+                    this.currentQueueTrack = null
+                  }
+                } catch (error) {
+                  this.log('ERROR', 'Error handling track finished', error)
                 }
               } else {
-                this.log('INFO', 'Queue is empty. Playback stopped.')
-                this.currentQueueTrack = null
+                this.log(
+                  'WARN',
+                  `No queue item found for finished Spotify track ID: ${currentSpotifyTrackId}`
+                )
               }
             }
 
             // --- State Synchronization Logic ---
             const currentSpotifyTrack = state.track_window?.current_track
             if (currentSpotifyTrack && !state.paused) {
+              // Find the queue item that matches the currently playing Spotify track
+              const queue = queueManager.getQueue()
+              const matchingQueueItem = queue.find(
+                (item) =>
+                  item.tracks.spotify_track_id === currentSpotifyTrack.id
+              )
+
               if (
-                this.currentQueueTrack?.tracks.id !== currentSpotifyTrack.id
+                matchingQueueItem &&
+                this.currentQueueTrack?.id !== matchingQueueItem.id
               ) {
-                const nextInQueue = queueManager.getNextTrack()
-                if (
-                  nextInQueue &&
-                  nextInQueue.tracks.id === currentSpotifyTrack.id
-                ) {
-                  this.log(
-                    'INFO',
-                    `Synced playing track with queue: ${nextInQueue.id}`
-                  )
-                  this.currentQueueTrack = nextInQueue
-                }
+                this.log(
+                  'INFO',
+                  `Synced playing track with queue: ${matchingQueueItem.id} (${matchingQueueItem.tracks.name})`
+                )
+                this.currentQueueTrack = matchingQueueItem
+              } else if (!matchingQueueItem && this.currentQueueTrack) {
+                this.log(
+                  'WARN',
+                  `Currently playing track ${currentSpotifyTrack.id} not found in queue`
+                )
+                this.currentQueueTrack = null
               }
             }
 
