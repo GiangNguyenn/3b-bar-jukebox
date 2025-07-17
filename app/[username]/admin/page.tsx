@@ -29,6 +29,14 @@ import { getAutoPlayService } from '@/services/autoPlayService'
 import { sendApiRequest } from '@/shared/api'
 import { AutoFillNotification } from '@/components/ui/auto-fill-notification'
 import { usePlaybackControls } from './hooks/usePlaybackControls'
+import {
+  FALLBACK_GENRES,
+  DEFAULT_YEAR_RANGE,
+  MIN_TRACK_POPULARITY,
+  DEFAULT_MAX_SONG_LENGTH_MINUTES,
+  DEFAULT_SONGS_BETWEEN_REPEATS,
+  DEFAULT_MAX_OFFSET
+} from '@/shared/constants/trackSuggestion'
 
 export default function AdminPage(): JSX.Element {
   // State
@@ -346,17 +354,6 @@ export default function AdminPage(): JSX.Element {
             }
           }
 
-          // Use user's track suggestions configuration
-          const requestBody = trackSuggestionsState || {
-            genres: ['Rock', 'Pop', 'Hip Hop', 'Electronic'],
-            yearRange: [1980, new Date().getFullYear()],
-            popularity: 30,
-            allowExplicit: true,
-            maxSongLength: 8,
-            songsBetweenRepeats: 20,
-            maxOffset: 50
-          }
-
           // Get current queue to exclude existing tracks
           const currentQueueForExclusion = (await fetch(
             `/api/playlist/${username}`
@@ -374,11 +371,29 @@ export default function AdminPage(): JSX.Element {
           )
 
           // Try track suggestions first
+          const mergedTrackSuggestions = {
+            genres:
+              trackSuggestionsState?.genres &&
+              trackSuggestionsState.genres.length > 0
+                ? trackSuggestionsState.genres
+                : [...FALLBACK_GENRES],
+            yearRange: trackSuggestionsState?.yearRange ?? DEFAULT_YEAR_RANGE,
+            popularity:
+              trackSuggestionsState?.popularity ?? MIN_TRACK_POPULARITY,
+            allowExplicit: trackSuggestionsState?.allowExplicit ?? true,
+            maxSongLength:
+              trackSuggestionsState?.maxSongLength ??
+              DEFAULT_MAX_SONG_LENGTH_MINUTES,
+            songsBetweenRepeats:
+              trackSuggestionsState?.songsBetweenRepeats ??
+              DEFAULT_SONGS_BETWEEN_REPEATS,
+            maxOffset: trackSuggestionsState?.maxOffset ?? DEFAULT_MAX_OFFSET
+          }
           const response = await fetch('/api/track-suggestions', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-              ...requestBody,
+              ...mergedTrackSuggestions,
               excludedTrackIds
             })
           })
