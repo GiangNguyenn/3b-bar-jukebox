@@ -163,22 +163,61 @@ export class SpotifyApiService implements SpotifyApiClient {
         if (nextTrack) {
           const trackUri = `spotify:track:${nextTrack.tracks.spotify_track_id}`
 
-          // Play the next track from our database queue
-          await this.apiClient({
-            path: `me/player/play?device_id=${deviceId}`,
-            method: 'PUT',
-            body: {
-              uris: [trackUri]
-            },
-            retryConfig: this.retryConfig
-          })
+          try {
+            // Play the next track from our database queue
+            await this.apiClient({
+              path: `me/player/play?device_id=${deviceId}`,
+              method: 'PUT',
+              body: {
+                uris: [trackUri]
+              },
+              retryConfig: this.retryConfig
+            })
 
-          showToast('Playback resumed', 'success')
-          return {
-            success: true,
-            resumedFrom: {
-              trackUri: trackUri,
-              position: 0
+            showToast('Playback resumed', 'success')
+            return {
+              success: true,
+              resumedFrom: {
+                trackUri: trackUri,
+                position: 0
+              }
+            }
+          } catch (error) {
+            // Handle "Restriction violated" errors by removing the problematic track and trying the next one
+            if (
+              error instanceof Error &&
+              error.message.includes('Restriction violated')
+            ) {
+              if (addLog) {
+                addLog(
+                  'WARN',
+                  `Restriction violated for track: ${nextTrack.tracks.name} (ID: ${nextTrack.id})`,
+                  'SpotifyApi'
+                )
+              }
+
+              // Remove the problematic track from the queue
+              await queueManager.markAsPlayed(nextTrack.id)
+
+              // Try to get the next track and play it
+              const nextNextTrack = queueManager.getNextTrack()
+              if (nextNextTrack) {
+                // Recursively call resumePlayback to try the next track
+                return this.resumePlayback()
+              } else {
+                if (addLog) {
+                  addLog(
+                    'WARN',
+                    'No more tracks available after removing problematic track',
+                    'SpotifyApi'
+                  )
+                }
+                showToast('No tracks available', 'info')
+                return { success: true }
+              }
+            } else {
+              // Re-throw other errors
+              throw error
             }
           }
         } else {

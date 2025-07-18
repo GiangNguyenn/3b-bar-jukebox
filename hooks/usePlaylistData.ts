@@ -36,12 +36,6 @@ export function usePlaylistData(username?: string) {
         }
         setError(null)
 
-        addLog(
-          'INFO',
-          `Fetching queue data for username: ${username}`,
-          'usePlaylistData'
-        )
-
         const response = await fetch(`/api/playlist/${username}`)
 
         if (!response.ok) {

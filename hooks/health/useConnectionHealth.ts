@@ -35,11 +35,6 @@ export function useConnectionHealth(): ConnectionStatus {
         : 'disconnected'
 
       if (newStatus !== lastConnectionStatus.current) {
-        addLog(
-          'INFO',
-          `Connection status changed to ${newStatus}`,
-          'ConnectionHealth'
-        )
         setConnectionStatus(newStatus)
         lastConnectionStatus.current = newStatus
       }
