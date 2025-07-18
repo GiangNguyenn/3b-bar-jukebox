@@ -17,6 +17,7 @@ interface TopTrack {
   name: string
   artist: string
   spotify_track_id: string
+  track_id: string // UUID from tracks table
 }
 
 type RawTrackData = {
@@ -45,6 +46,14 @@ const useTopTracks = (): {
   )
   const subscriptionRef = useRef<RealtimeChannel | null>(null)
 
+  // Optimistic update function
+  const optimisticUpdate = useCallback(
+    (updater: (currentTracks: TopTrack[]) => TopTrack[]) => {
+      setTracks((prevTracks) => updater(prevTracks))
+    },
+    []
+  )
+
   // Fetch top tracks data
   const fetchTopTracks = useCallback(async (): Promise<void> => {
     try {
@@ -57,7 +66,7 @@ const useTopTracks = (): {
           `
           count,
           track_id,
-          tracks(name, artist, spotify_track_id)
+          tracks(name, artist, spotify_track_id, id)
         `
         )
         .order('count', { ascending: false })
@@ -89,7 +98,8 @@ const useTopTracks = (): {
               count: item.count,
               name: trackData.name,
               artist: trackData.artist,
-              spotify_track_id: trackData.spotify_track_id
+              spotify_track_id: trackData.spotify_track_id,
+              track_id: item.track_id // Add track_id to the returned object
             }
           })
           .filter((track): track is TopTrack => track !== null)
@@ -193,14 +203,6 @@ const useTopTracks = (): {
     }
   }, [fetchTopTracks, setupRealtimeSubscription, supabase])
 
-  // Optimistic update function
-  const optimisticUpdate = useCallback(
-    (updater: (currentTracks: TopTrack[]) => TopTrack[]) => {
-      setTracks((prevTracks) => updater(prevTracks))
-    },
-    []
-  )
-
   return { tracks, isLoading, error, optimisticUpdate }
 }
 
@@ -209,12 +211,78 @@ interface AnalyticsTabProps {
 }
 
 export const AnalyticsTab = ({ username }: AnalyticsTabProps): JSX.Element => {
-  const { tracks, isLoading, error } = useTopTracks()
+  const { tracks, isLoading, error, optimisticUpdate } = useTopTracks()
   const { data: queue, optimisticUpdate: queueOptimisticUpdate } =
     usePlaylistData(username)
   const [isAdding, setIsAdding] = useState(false)
   const [addingTrackId, setAddingTrackId] = useState<string | null>(null)
+  const [deletingTrackId, setDeletingTrackId] = useState<string | null>(null)
   const { addLog } = useConsoleLogsContext()
+
+  // Handle deleting a suggested track
+  const handleDeleteTrack = useCallback(
+    async (track: TopTrack): Promise<void> => {
+      if (!track.track_id) {
+        showToast('Track ID not found.', 'warning')
+        return
+      }
+
+      setDeletingTrackId(track.track_id)
+      try {
+        addLog(
+          'INFO',
+          `Deleting suggested track: ${track.name}`,
+          'AnalyticsTab'
+        )
+
+        // Optimistic update - remove track from list immediately
+        optimisticUpdate((currentTracks) =>
+          currentTracks.filter((t) => t.track_id !== track.track_id)
+        )
+
+        const response = await fetch('/api/suggested-tracks/delete', {
+          method: 'DELETE',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ trackId: track.track_id })
+        })
+
+        if (response.ok) {
+          showToast(
+            `Successfully deleted "${track.name}" from suggested tracks.`,
+            'success'
+          )
+          addLog(
+            'INFO',
+            `Successfully deleted suggested track: ${track.name}`,
+            'AnalyticsTab'
+          )
+        } else {
+          const errorData = (await response.json()) as { error?: string }
+          showToast(`Failed to delete track: ${errorData.error}`, 'warning')
+          addLog(
+            'ERROR',
+            `Failed to delete suggested track ${track.name}: ${errorData.error}`,
+            'AnalyticsTab'
+          )
+          // Revert optimistic update on error
+          optimisticUpdate((currentTracks) => [...currentTracks, track])
+        }
+      } catch (error) {
+        showToast('An error occurred while deleting the track.', 'warning')
+        addLog(
+          'ERROR',
+          `Error deleting suggested track ${track.name}`,
+          'AnalyticsTab',
+          error instanceof Error ? error : undefined
+        )
+        // Revert optimistic update on error
+        optimisticUpdate((currentTracks) => [...currentTracks, track])
+      } finally {
+        setDeletingTrackId(null)
+      }
+    },
+    [optimisticUpdate, addLog]
+  )
 
   // Check if a track is already in the playlist
   const isTrackInPlaylist = useCallback(
@@ -508,13 +576,17 @@ export const AnalyticsTab = ({ username }: AnalyticsTabProps): JSX.Element => {
               <th className='border-b px-4 py-2 text-left'>Count</th>
               <th className='border-b px-4 py-2 text-left'>Track</th>
               <th className='border-b px-4 py-2 text-left'>Artist</th>
-              <th className='border-b px-4 py-2 text-left'>Action</th>
+              <th className='border-b px-4 py-2 text-center'>
+                Add to Playlist
+              </th>
+              <th className='border-b px-4 py-2 text-center'>Delete</th>
             </tr>
           </thead>
           <tbody>
             {tracks.map((track, index) => {
               const isInPlaylist = isTrackInPlaylist(track.spotify_track_id)
               const isAddingThisTrack = addingTrackId === track.spotify_track_id
+              const isDeletingThisTrack = deletingTrackId === track.track_id
 
               return (
                 <tr key={index}>
@@ -542,6 +614,20 @@ export const AnalyticsTab = ({ username }: AnalyticsTabProps): JSX.Element => {
                       </button>
                     ) : (
                       <span className='text-sm text-gray-500'>In playlist</span>
+                    )}
+                  </td>
+                  <td className='border-b px-4 py-2 text-center'>
+                    {isDeletingThisTrack ? (
+                      <Loading className='h-4 w-4' />
+                    ) : (
+                      <button
+                        onClick={() => void handleDeleteTrack(track)}
+                        disabled={isDeletingThisTrack}
+                        className='text-white rounded bg-red-600 px-3 py-1 text-sm font-medium transition-colors hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50'
+                        title={`Delete "${track.name}" from suggested tracks`}
+                      >
+                        -
+                      </button>
                     )}
                   </td>
                 </tr>

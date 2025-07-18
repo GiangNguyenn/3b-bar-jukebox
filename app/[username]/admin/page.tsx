@@ -71,6 +71,15 @@ export default function AdminPage(): JSX.Element {
   const trackSuggestionsState = trackSuggestions.state
   const updateTrackSuggestionsState = trackSuggestions.updateState
 
+  // Debug track suggestions state
+  useEffect(() => {
+    addLog(
+      'INFO',
+      `[AdminPage] Track suggestions state updated: ${JSON.stringify(trackSuggestionsState)}`,
+      'AdminPage'
+    )
+  }, [trackSuggestionsState, addLog])
+
   // First, use the health monitor hook
   const healthStatus = useSpotifyHealthMonitor()
 
@@ -129,7 +138,82 @@ export default function AdminPage(): JSX.Element {
 
     // Update the service when track suggestions state changes
     if (trackSuggestionsState) {
-      autoPlayService.setTrackSuggestionsState(trackSuggestionsState)
+      // Check if track suggestions state has all required fields
+      const requiredFields = [
+        'genres',
+        'yearRange',
+        'popularity',
+        'allowExplicit',
+        'maxSongLength',
+        'songsBetweenRepeats',
+        'maxOffset'
+      ]
+      const hasAllFields = requiredFields.every(
+        (field) => field in trackSuggestionsState
+      )
+
+      if (hasAllFields) {
+        autoPlayService.setTrackSuggestionsState(trackSuggestionsState)
+        addLog(
+          'INFO',
+          `[AdminPage] Updated auto-play service with complete track suggestions state: ${JSON.stringify(trackSuggestionsState)}`,
+          'AdminPage'
+        )
+      } else {
+        addLog(
+          'WARN',
+          `[AdminPage] Track suggestions state incomplete, not updating auto-play service. Missing: ${requiredFields.filter((field) => !(field in trackSuggestionsState)).join(', ')}`,
+          'AdminPage'
+        )
+      }
+    }
+
+    // Mark the service as initialized after all initial setup is complete
+    if (username && deviceId) {
+      // Check if track suggestions state is available and complete
+      if (trackSuggestionsState) {
+        const requiredFields = [
+          'genres',
+          'yearRange',
+          'popularity',
+          'allowExplicit',
+          'maxSongLength',
+          'songsBetweenRepeats',
+          'maxOffset'
+        ]
+        const hasAllFields = requiredFields.every(
+          (field) => field in trackSuggestionsState
+        )
+
+        if (hasAllFields) {
+          autoPlayService.markAsInitialized()
+          addLog(
+            'INFO',
+            `[AdminPage] Auto-play service initialized with complete track suggestions state`,
+            'AdminPage'
+          )
+        } else {
+          addLog(
+            'WARN',
+            `[AdminPage] Auto-play service not initialized - track suggestions state missing fields: ${requiredFields.filter((field) => !(field in trackSuggestionsState)).join(', ')}`,
+            'AdminPage'
+          )
+        }
+      } else {
+        // Initialize without track suggestions state (will use fallbacks)
+        autoPlayService.markAsInitialized()
+        addLog(
+          'INFO',
+          `[AdminPage] Auto-play service initialized without track suggestions state (will use fallbacks)`,
+          'AdminPage'
+        )
+      }
+    } else {
+      addLog(
+        'WARN',
+        `[AdminPage] Auto-play service not initialized - missing: username=${!!username}, deviceId=${!!deviceId}`,
+        'AdminPage'
+      )
     }
 
     return (): void => {
@@ -751,7 +835,7 @@ export default function AdminPage(): JSX.Element {
                   ) : recoveryState.isRecovering ? (
                     'Recovering...'
                   ) : (
-                    'Refresh Playlist'
+                    'Fill Playlist'
                   )}
                 </button>
                 <button

@@ -404,10 +404,15 @@ export async function findSuggestedTrack(
   const genres = params?.genres?.length ? params.genres : [...FALLBACK_GENRES]
 
   const yearRange = params?.yearRange ?? DEFAULT_YEAR_RANGE
-  const minPopularity = params?.popularity ?? MIN_TRACK_POPULARITY
+  let minPopularity = params?.popularity ?? MIN_TRACK_POPULARITY
   const allowExplicit = params?.allowExplicit ?? false
   const maxSongLength = params?.maxSongLength ?? DEFAULT_MAX_SONG_LENGTH_MINUTES
   const maxOffset = params?.maxOffset ?? DEFAULT_MAX_OFFSET
+
+  // For specific genres with limited tracks, reduce popularity threshold after some attempts
+  const isSpecificGenre =
+    genres.length === 1 && genres[0] !== 'Pop' && genres[0] !== 'Rock'
+  let popularityReduced = false
 
   logger(
     'INFO',

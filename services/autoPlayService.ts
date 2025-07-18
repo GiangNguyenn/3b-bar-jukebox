@@ -1,8 +1,8 @@
-import { SpotifyPlaybackState } from '@/shared/types/spotify'
 import { JukeboxQueueItem } from '@/shared/types/queue'
 import { sendApiRequest } from '@/shared/api'
 import { QueueManager } from './queueManager'
 import { createModuleLogger } from '@/shared/utils/logger'
+import { SpotifyPlaybackState } from '@/shared/types/spotify'
 import {
   FALLBACK_GENRES,
   DEFAULT_YEAR_RANGE,
@@ -45,6 +45,7 @@ class AutoPlayService {
   private autoFillMaxAttempts: number
   private trackSuggestionsState: any = null // User's track suggestions configuration
   private isAutoPlayDisabled: boolean = false // Flag to temporarily disable auto-play during manual operations
+  private isInitialized: boolean = false // Flag to track if the service is properly initialized
 
   constructor(config: AutoPlayServiceConfig = {}) {
     this.checkInterval = config.checkInterval || 1000 // Reduced from 2000ms to 1000ms for faster detection
@@ -69,14 +70,14 @@ class AutoPlayService {
     logger('INFO', 'Starting auto-play service')
     logger(
       'INFO',
-      `[AutoPlayService] Configuration - checkInterval: ${this.checkInterval}, username: ${this.username}, deviceId: ${this.deviceId}`
+      `Configuration - checkInterval: ${this.checkInterval}, username: ${this.username}, deviceId: ${this.deviceId}`
     )
 
     this.intervalRef = setInterval(() => {
       void this.checkPlaybackState()
     }, this.checkInterval)
 
-    logger('INFO', '[AutoPlayService] Auto-play service started successfully')
+    logger('INFO', 'Auto-play service started successfully')
   }
 
   public stop(): void {
@@ -99,39 +100,71 @@ class AutoPlayService {
   }
 
   public setUsername(username: string | null): void {
-    logger('INFO', `[AutoPlayService] Setting username: ${username}`)
+    logger('INFO', `Setting username: ${username}`)
     this.username = username
-    logger('INFO', `[AutoPlayService] Updated username: ${this.username}`)
+    logger('INFO', `Updated username: ${this.username}`)
   }
 
   public updateQueue(queue: JukeboxQueueItem[]): void {
-    logger(
-      'INFO',
-      `[AutoPlayService] Updating queue with ${queue.length} tracks`
-    )
+    logger('INFO', `Updating queue with ${queue.length} tracks`)
     this.queueManager.updateQueue(queue)
-    logger(
-      'INFO',
-      `[AutoPlayService] Updated queue with ${queue.length} tracks`
-    )
+    logger('INFO', `Updated queue with ${queue.length} tracks`)
   }
 
   public setTrackSuggestionsState(state: any): void {
-    this.trackSuggestionsState = state
+    console.log(
+      '[setTrackSuggestionsState] Setting track suggestions state:',
+      state
+    )
+    console.log(
+      '[setTrackSuggestionsState] State type:',
+      typeof state,
+      'is null:',
+      state === null,
+      'is undefined:',
+      state === undefined
+    )
+
     logger(
       'INFO',
-      `[AutoPlayService] Updated track suggestions state: ${JSON.stringify(state)}`
+      `[setTrackSuggestionsState] Setting track suggestions state: ${JSON.stringify(state)}`
     )
+    logger(
+      'INFO',
+      `[setTrackSuggestionsState] State type: ${typeof state}, is null: ${state === null}, is undefined: ${state === undefined}`
+    )
+
+    this.trackSuggestionsState = state
+
+    // If this is the first time setting the state and we have a queue, trigger an auto-fill check
+    if (state && this.isRunning && this.username) {
+      const queue = this.queueManager.getQueue()
+      if (queue.length < this.autoFillTargetSize) {
+        logger(
+          'INFO',
+          `Track suggestions state initialized, checking if auto-fill is needed`
+        )
+        // Use setTimeout to avoid blocking the current operation
+        setTimeout(() => {
+          void this.checkAndAutoFillQueue()
+        }, 1000)
+      }
+    }
   }
 
   public disableAutoPlay(): void {
     this.isAutoPlayDisabled = true
-    logger('INFO', '[AutoPlayService] Auto-play temporarily disabled')
+    logger('INFO', 'Auto-play temporarily disabled')
   }
 
   public enableAutoPlay(): void {
     this.isAutoPlayDisabled = false
-    logger('INFO', '[AutoPlayService] Auto-play re-enabled')
+    logger('INFO', 'Auto-play re-enabled')
+  }
+
+  public markAsInitialized(): void {
+    this.isInitialized = true
+    logger('INFO', 'Service marked as initialized')
   }
 
   private async checkPlaybackState(): Promise<void> {
@@ -150,17 +183,9 @@ class AutoPlayService {
       const isPlaying = currentState.is_playing
       const progress = currentState.progress_ms || 0
       const duration = currentState.item?.duration_ms || 0
-      logger(
-        'INFO',
-        `[checkPlaybackState] Current state - trackId: ${currentTrackId}, isPlaying: ${isPlaying}, progress: ${progress}, duration: ${duration}`
-      )
 
       // Add more detailed logging for track finished detection
       const hasFinished = this.hasTrackFinished(currentState)
-      logger(
-        'INFO',
-        `[checkPlaybackState] Track finished detection: ${hasFinished}`
-      )
 
       // Reset lastProcessedTrackId if we're playing a different track
       if (currentTrackId && currentTrackId !== this.lastTrackId) {
@@ -213,7 +238,6 @@ class AutoPlayService {
 
   private hasTrackFinished(currentState: SpotifyPlaybackState): boolean {
     if (!this.lastPlaybackState || !currentState.item) {
-      logger('INFO', '[hasTrackFinished] No last state or current item')
       return false
     }
 
@@ -233,11 +257,6 @@ class AutoPlayService {
     const isNearEnd = duration > 0 && duration - progress < 500 // Very near end (500ms)
     const hasStalled = !hasProgressed && wasPlaying && isSameTrack // Track has stalled
 
-    logger(
-      'INFO',
-      `[hasTrackFinished] Conditions - isAtEnd: ${isAtEnd}, isNearEnd: ${isNearEnd}, isSameTrack: ${isSameTrack}, wasPlaying: ${wasPlaying}, isPaused: ${isPaused}, isStopped: ${isStopped}, hasProgressed: ${hasProgressed}, hasStalled: ${hasStalled}`
-    )
-
     // Track finished if:
     // 1. We were playing, now paused/stopped, same track, near end
     // 2. Track stopped and reset to beginning (natural end)
@@ -251,7 +270,6 @@ class AutoPlayService {
       (isNearEnd && hasStalled) ||
       (isPaused && isNearEnd && isSameTrack)
 
-    logger('INFO', `[hasTrackFinished] Track finished: ${finished}`)
     return finished
   }
 
@@ -339,30 +357,64 @@ class AutoPlayService {
   private async checkAndAutoFillQueue(): Promise<void> {
     const queue = this.queueManager.getQueue()
 
-    logger(
-      'INFO',
-      `[checkAndAutoFillQueue] Checking queue - length: ${queue.length}, isAutoFilling: ${this.isAutoFilling}, username: ${this.username}`
-    )
-    logger(
-      'INFO',
-      `[checkAndAutoFillQueue] Queue details: ${JSON.stringify(queue.map((item) => ({ id: item.id, name: item.tracks.name })))}`
-    )
-
     // Check if queue is low (3 or fewer tracks remaining)
     if (
       queue.length < this.autoFillTargetSize &&
       !this.isAutoFilling &&
-      this.username
+      this.username &&
+      this.isInitialized
     ) {
+      // Additional check to ensure we have valid track suggestions state or fallback defaults
+      const hasValidState = this.trackSuggestionsState || true // Always allow auto-fill with fallbacks
       logger(
         'INFO',
-        `[checkAndAutoFillQueue] Queue is below target (${queue.length}/${this.autoFillTargetSize} tracks), triggering auto-fill`
+        `[checkAndAutoFillQueue] Triggering auto-fill - queue: ${queue.length}/${this.autoFillTargetSize} tracks`
       )
       this.onQueueLow?.()
 
       try {
         this.isAutoFilling = true
         logger('INFO', '[checkAndAutoFillQueue] Starting auto-fill process')
+
+        // Small delay to ensure track suggestions state is properly loaded
+        if (!this.trackSuggestionsState) {
+          logger(
+            'INFO',
+            '[checkAndAutoFillQueue] No track suggestions state, waiting 1 second for initialization'
+          )
+          await new Promise((resolve) => setTimeout(resolve, 1000))
+        } else {
+          // Validate that track suggestions state has required fields
+          const requiredFields = [
+            'genres',
+            'yearRange',
+            'popularity',
+            'allowExplicit',
+            'maxSongLength',
+            'songsBetweenRepeats',
+            'maxOffset'
+          ]
+          const missingFields = requiredFields.filter(
+            (field: string) => !(field in this.trackSuggestionsState)
+          )
+
+          if (missingFields.length > 0) {
+            logger(
+              'WARN',
+              `[checkAndAutoFillQueue] Track suggestions state missing fields: ${missingFields.join(', ')}`
+            )
+            logger(
+              'WARN',
+              `[checkAndAutoFillQueue] Track suggestions state: ${JSON.stringify(this.trackSuggestionsState)}`
+            )
+          } else {
+            logger(
+              'INFO',
+              `[checkAndAutoFillQueue] Track suggestions state has all required fields`
+            )
+          }
+        }
+
         await this.autoFillQueue()
         logger('INFO', '[checkAndAutoFillQueue] Auto-fill process completed')
       } catch (error) {
@@ -379,11 +431,6 @@ class AutoPlayService {
           '[checkAndAutoFillQueue] Auto-fill process finished, resetting isAutoFilling flag'
         )
       }
-    } else {
-      logger(
-        'INFO',
-        `[checkAndAutoFillQueue] Queue check conditions not met - length: ${queue.length}, isAutoFilling: ${this.isAutoFilling}, username: ${this.username}`
-      )
     }
   }
 
@@ -398,6 +445,23 @@ class AutoPlayService {
       logger(
         'WARN',
         '[AutoFill] No track suggestions state available, using fallback defaults'
+      )
+      logger(
+        'WARN',
+        '[AutoFill] Track suggestions state is null/undefined - this indicates the state was not properly set'
+      )
+    } else {
+      logger(
+        'INFO',
+        `[AutoFill] Track suggestions state available: ${JSON.stringify(this.trackSuggestionsState)}`
+      )
+      logger(
+        'INFO',
+        `[AutoFill] Track suggestions state type: ${typeof this.trackSuggestionsState}`
+      )
+      logger(
+        'INFO',
+        `[AutoFill] Track suggestions state keys: ${Object.keys(this.trackSuggestionsState).join(', ')}`
       )
     }
 
@@ -431,20 +495,75 @@ class AutoPlayService {
 
       try {
         // Use user's track suggestions configuration for auto-fill with fallback defaults
+        // Handle the case where trackSuggestionsState might be null or undefined
+        const mergedTrackSuggestions = {
+          genres:
+            Array.isArray(this.trackSuggestionsState?.genres) &&
+            this.trackSuggestionsState.genres.length > 0
+              ? this.trackSuggestionsState.genres.filter(
+                  (genre: any) => typeof genre === 'string'
+                )
+              : [...FALLBACK_GENRES],
+          yearRange: Array.isArray(this.trackSuggestionsState?.yearRange)
+            ? ([
+                Math.max(
+                  1900,
+                  Math.min(
+                    new Date().getFullYear(),
+                    Math.floor(this.trackSuggestionsState.yearRange[0] ?? 1900)
+                  )
+                ),
+                Math.max(
+                  1900,
+                  Math.min(
+                    new Date().getFullYear(),
+                    Math.floor(
+                      this.trackSuggestionsState.yearRange[1] ??
+                        new Date().getFullYear()
+                    )
+                  )
+                )
+              ] as [number, number])
+            : DEFAULT_YEAR_RANGE,
+          popularity: Math.max(
+            0,
+            Math.min(
+              100,
+              this.trackSuggestionsState?.popularity ?? MIN_TRACK_POPULARITY
+            )
+          ),
+          allowExplicit: Boolean(
+            this.trackSuggestionsState?.allowExplicit ?? true
+          ),
+          maxSongLength: Math.max(
+            3,
+            Math.min(
+              20,
+              this.trackSuggestionsState?.maxSongLength ??
+                DEFAULT_MAX_SONG_LENGTH_MINUTES
+            )
+          ),
+          songsBetweenRepeats: Math.max(
+            2,
+            Math.min(
+              100,
+              Math.floor(
+                this.trackSuggestionsState?.songsBetweenRepeats ??
+                  DEFAULT_SONGS_BETWEEN_REPEATS
+              )
+            )
+          ),
+          maxOffset: Math.max(
+            1,
+            Math.min(
+              10000,
+              this.trackSuggestionsState?.maxOffset ?? DEFAULT_MAX_OFFSET
+            )
+          )
+        }
+
         const requestBody = {
-          genres: this.trackSuggestionsState?.genres || [...FALLBACK_GENRES],
-          yearRange:
-            this.trackSuggestionsState?.yearRange || DEFAULT_YEAR_RANGE,
-          popularity:
-            this.trackSuggestionsState?.popularity || MIN_TRACK_POPULARITY,
-          allowExplicit: this.trackSuggestionsState?.allowExplicit ?? true,
-          maxSongLength:
-            this.trackSuggestionsState?.maxSongLength ||
-            DEFAULT_MAX_SONG_LENGTH_MINUTES,
-          songsBetweenRepeats:
-            this.trackSuggestionsState?.songsBetweenRepeats ||
-            DEFAULT_SONGS_BETWEEN_REPEATS,
-          maxOffset: this.trackSuggestionsState?.maxOffset || DEFAULT_MAX_OFFSET
+          ...mergedTrackSuggestions
         }
 
         // Validate that all required fields are present
@@ -458,13 +577,25 @@ class AutoPlayService {
           'maxOffset'
         ]
         const missingFields = requiredFields.filter(
-          (field) => !(field in requestBody)
+          (field: string) => !(field in requestBody)
         )
 
         if (missingFields.length > 0) {
           logger(
             'ERROR',
             `[AutoFill] Missing required fields: ${missingFields.join(', ')}`
+          )
+          logger(
+            'ERROR',
+            `[AutoFill] Request body: ${JSON.stringify(requestBody)}`
+          )
+          logger(
+            'ERROR',
+            `[AutoFill] Request body keys: ${Object.keys(requestBody).join(', ')}`
+          )
+          logger(
+            'ERROR',
+            `[AutoFill] Track suggestions state that was used: ${JSON.stringify(this.trackSuggestionsState)}`
           )
           throw new Error(
             `Missing required fields: ${missingFields.join(', ')}`
@@ -482,179 +613,188 @@ class AutoPlayService {
           `[AutoFill] Attempt ${attempts} - Excluding ${excludedTrackIds.length} existing tracks from suggestions`
         )
 
-        logger(
-          'INFO',
-          `[AutoFill] Attempt ${attempts} - User track suggestions config: ${JSON.stringify(this.trackSuggestionsState)}`
+        // Add detailed logging for debugging the 400 error
+        console.log(
+          `[AutoFill] Attempt ${attempts} - TRACK SUGGESTIONS STATE:`,
+          this.trackSuggestionsState
         )
-        logger(
-          'INFO',
-          `[AutoFill] Attempt ${attempts} - Track suggestions state type: ${typeof this.trackSuggestionsState}`
+        console.log(
+          `[AutoFill] Attempt ${attempts} - MERGED TRACK SUGGESTIONS:`,
+          mergedTrackSuggestions
         )
-        logger(
-          'INFO',
-          `[AutoFill] Attempt ${attempts} - Track suggestions state keys: ${this.trackSuggestionsState ? Object.keys(this.trackSuggestionsState).join(', ') : 'null'}`
+        console.log(
+          `[AutoFill] Attempt ${attempts} - FINAL REQUEST BODY:`,
+          requestBody
         )
-
-        logger(
-          'INFO',
-          `[AutoFill] Attempt ${attempts} - Sending track suggestions request: ${JSON.stringify(requestBody)}`
-        )
-
-        // Additional debugging to see exactly what's being sent
-        logger(
-          'INFO',
-          `[AutoFill] Attempt ${attempts} - Request body keys: ${Object.keys(requestBody).join(', ')}`
-        )
-        logger(
-          'INFO',
-          `[AutoFill] Attempt ${attempts} - Request body values: ${JSON.stringify(Object.values(requestBody))}`
-        )
-
-        const response = await fetch('/api/track-suggestions', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            ...requestBody,
-            excludedTrackIds // Add excluded track IDs to prevent duplicates
-          })
+        console.log(`[AutoFill] Attempt ${attempts} - REQUEST BODY TYPES:`, {
+          genres: typeof requestBody.genres,
+          yearRange: typeof requestBody.yearRange,
+          popularity: typeof requestBody.popularity,
+          allowExplicit: typeof requestBody.allowExplicit,
+          maxSongLength: typeof requestBody.maxSongLength,
+          songsBetweenRepeats: typeof requestBody.songsBetweenRepeats,
+          maxOffset: typeof requestBody.maxOffset
+        })
+        console.log(`[AutoFill] Attempt ${attempts} - YEAR RANGE VALIDATION:`, {
+          originalYearRange: this.trackSuggestionsState?.yearRange,
+          processedYearRange: requestBody.yearRange,
+          currentYear: new Date().getFullYear(),
+          isValid: requestBody.yearRange[1] <= new Date().getFullYear()
         })
 
         logger(
           'INFO',
-          `[AutoFill] Attempt ${attempts} - Track suggestions response status: ${response.status}`
+          `[AutoFill] Attempt ${attempts} - TRACK SUGGESTIONS STATE: ${JSON.stringify(this.trackSuggestionsState)}`
+        )
+        logger(
+          'INFO',
+          `[AutoFill] Attempt ${attempts} - MERGED TRACK SUGGESTIONS: ${JSON.stringify(mergedTrackSuggestions)}`
+        )
+        logger(
+          'INFO',
+          `[AutoFill] Attempt ${attempts} - FINAL REQUEST BODY: ${JSON.stringify(requestBody)}`
+        )
+        logger(
+          'INFO',
+          `[AutoFill] Attempt ${attempts} - REQUEST BODY TYPES: ${JSON.stringify(
+            {
+              genres: typeof requestBody.genres,
+              yearRange: typeof requestBody.yearRange,
+              popularity: typeof requestBody.popularity,
+              allowExplicit: typeof requestBody.allowExplicit,
+              maxSongLength: typeof requestBody.maxSongLength,
+              songsBetweenRepeats: typeof requestBody.songsBetweenRepeats,
+              maxOffset: typeof requestBody.maxOffset
+            }
+          )}`
+        )
+        logger(
+          'INFO',
+          `[AutoFill] Attempt ${attempts} - Sending request: ${JSON.stringify(requestBody)}`
         )
 
-        if (!response.ok) {
-          const errorBody = await response.json()
-          logger(
-            'ERROR',
-            `[AutoFill] Attempt ${attempts} - Track Suggestions API error: ${JSON.stringify(errorBody)}`
-          )
+        let response: Response
+        let errorBody: any
 
-          // If it's a validation error, try with fallback parameters
-          if (response.status === 400 && errorBody.errors) {
-            logger(
-              'WARN',
-              `[AutoFill] Attempt ${attempts} - Validation error, trying with fallback parameters`
-            )
-
-            // Try with fallback parameters
-            const fallbackRequestBody = {
-              genres: [...FALLBACK_GENRES],
-              yearRange: DEFAULT_YEAR_RANGE,
-              popularity: MIN_TRACK_POPULARITY,
-              allowExplicit: true,
-              maxSongLength: DEFAULT_MAX_SONG_LENGTH_MINUTES,
-              songsBetweenRepeats: DEFAULT_SONGS_BETWEEN_REPEATS,
-              maxOffset: DEFAULT_MAX_OFFSET,
+        try {
+          console.log(
+            `[AutoFill] Attempt ${attempts} - ABOUT TO SEND REQUEST:`,
+            {
+              ...requestBody,
               excludedTrackIds
             }
-
-            const fallbackResponse = await fetch('/api/track-suggestions', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify(fallbackRequestBody)
+          )
+          console.log(
+            `[AutoFill] Attempt ${attempts} - REQUEST URL: /api/track-suggestions`
+          )
+          response = await fetch('/api/track-suggestions', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              ...requestBody,
+              excludedTrackIds
             })
+          })
 
-            if (!fallbackResponse.ok) {
-              const fallbackErrorBody = await fallbackResponse.json()
+          logger(
+            'INFO',
+            `[AutoFill] Attempt ${attempts} - RESPONSE RECEIVED - Status: ${response.status}`
+          )
+
+          if (!response.ok) {
+            logger(
+              'ERROR',
+              `[AutoFill] Attempt ${attempts} - REQUEST FAILED - Status: ${response.status}`
+            )
+
+            try {
+              errorBody = await response.json()
+              console.log(
+                `[AutoFill] Attempt ${attempts} - ERROR BODY:`,
+                errorBody
+              )
               logger(
                 'ERROR',
-                `[AutoFill] Attempt ${attempts} - Fallback Track Suggestions API also failed: ${JSON.stringify(fallbackErrorBody)}`
+                `[AutoFill] Attempt ${attempts} - ERROR BODY: ${JSON.stringify(errorBody)}`
               )
-              throw new Error(
-                'Failed to get track suggestions for auto-fill (both user config and fallback failed).'
-              )
-            }
 
-            // Use fallback response
-            const fallbackSuggestions = (await fallbackResponse.json()) as {
-              tracks: { id: string }[]
-            }
-
-            if (
-              !fallbackSuggestions.tracks ||
-              fallbackSuggestions.tracks.length === 0
-            ) {
-              throw new Error('No track suggestions available from fallback.')
-            }
-
-            // Process fallback suggestions
-            for (const track of fallbackSuggestions.tracks) {
-              try {
-                logger(
-                  'INFO',
-                  `[AutoFill] Attempt ${attempts} - Fetching full details for fallback track: ${track.id}`
-                )
-
-                const trackDetails = await sendApiRequest<{
-                  id: string
-                  name: string
-                  artists: Array<{ name: string }>
-                  album: { name: string }
-                  duration_ms: number
-                  popularity: number
-                  uri: string
-                }>({
-                  path: `tracks/${track.id}`,
-                  method: 'GET'
-                })
-
-                const playlistResponse = await fetch(
-                  `/api/playlist/${this.username}`,
-                  {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                      tracks: trackDetails,
-                      initialVotes: 1,
-                      source: 'system'
-                    })
-                  }
-                )
-
-                if (!playlistResponse.ok) {
-                  const playlistError = await playlistResponse.json()
-
-                  if (playlistResponse.status === 409) {
+              if (response.status === 400 && errorBody.errors) {
+                // Log validation errors
+                if (Array.isArray(errorBody.errors)) {
+                  errorBody.errors.forEach((error: any, index: number) => {
                     logger(
-                      'INFO',
-                      `[AutoFill] Attempt ${attempts} - Fallback track already in playlist: ${trackDetails.name}, skipping`
+                      'ERROR',
+                      `[AutoFill] Attempt ${attempts} - Validation error ${index + 1}: Field "${error.field}" - ${error.message}`
                     )
-                    continue
-                  }
-
-                  logger(
-                    'ERROR',
-                    `[AutoFill] Attempt ${attempts} - Failed to add fallback track to playlist: ${JSON.stringify(playlistError)}`
-                  )
-                } else {
-                  tracksAdded++
-                  logger(
-                    'INFO',
-                    `[AutoFill] Attempt ${attempts} - Successfully added fallback track to queue: ${trackDetails.name} (Total added: ${tracksAdded})`
-                  )
+                  })
                 }
+              }
+            } catch (parseError) {
+              logger(
+                'ERROR',
+                `[AutoFill] Attempt ${attempts} - Failed to parse error response: ${parseError}`
+              )
+            }
 
-                this.showAutoFillNotification(
-                  trackDetails.name,
-                  trackDetails.artists[0]?.name || 'Unknown Artist'
-                )
-              } catch (error) {
+            // Handle different types of 400 errors
+            if (response.status === 400) {
+              if (errorBody && errorBody.errors) {
+                // Validation error - log the validation errors
                 logger(
                   'ERROR',
-                  `[AutoFill] Attempt ${attempts} - Failed to add fallback track ${track.id} to queue`,
-                  undefined,
-                  error as Error
+                  `[AutoFill] Attempt ${attempts} - Validation error detected: ${JSON.stringify(errorBody.errors)}`
+                )
+                throw new Error(
+                  'Track suggestions validation failed. Please check your parameters.'
+                )
+              } else if (
+                errorBody &&
+                errorBody.success === false &&
+                errorBody.message
+              ) {
+                // No suitable tracks found - log the detailed error and inform user
+                logger(
+                  'WARN',
+                  `[AutoFill] Attempt ${attempts} - No suitable tracks found: ${errorBody.message}`
+                )
+
+                if (errorBody.searchDetails) {
+                  logger(
+                    'INFO',
+                    `[AutoFill] Attempt ${attempts} - Search details: ${JSON.stringify(errorBody.searchDetails)}`
+                  )
+
+                  if (errorBody.searchDetails.suggestions) {
+                    logger(
+                      'INFO',
+                      `[AutoFill] Attempt ${attempts} - Suggestions for user: ${errorBody.searchDetails.suggestions.join(', ')}`
+                    )
+                  }
+                }
+
+                // Inform user about why no tracks were found
+                const errorMessage = errorBody.message
+                const suggestions = errorBody.searchDetails?.suggestions || []
+
+                logger(
+                  'INFO',
+                  `[AutoFill] Attempt ${attempts} - Informing user: ${errorMessage}. Suggestions: ${suggestions.join(', ')}`
+                )
+
+                // Don't try with different parameters - just inform the user
+                throw new Error(
+                  `No tracks found with your current settings. ${suggestions.length > 0 ? `Suggestions: ${suggestions.join(', ')}` : ''}`
                 )
               }
             }
 
-            // Continue to next attempt
-            await new Promise((resolve) => setTimeout(resolve, 1000))
-            continue
+            throw new Error('Failed to get track suggestions for auto-fill.')
           }
-
+        } catch (fetchError) {
+          logger(
+            'ERROR',
+            `[AutoFill] Attempt ${attempts} - FETCH ERROR: ${fetchError}`
+          )
           throw new Error('Failed to get track suggestions for auto-fill.')
         }
 
@@ -748,6 +888,33 @@ class AutoPlayService {
               )
             }
 
+            // Update the last suggested track cache
+            try {
+              await fetch('/api/track-suggestions', {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  name: trackDetails.name,
+                  artist: trackDetails.artists[0]?.name || 'Unknown Artist',
+                  album: trackDetails.album.name,
+                  uri: trackDetails.uri,
+                  popularity: trackDetails.popularity,
+                  duration_ms: trackDetails.duration_ms,
+                  preview_url: null, // Spotify API doesn't return preview_url in track details
+                  genres: [] // We don't have genre info from the track details
+                })
+              })
+              logger(
+                'INFO',
+                `[AutoFill] Attempt ${attempts} - Updated last suggested track cache: ${trackDetails.name}`
+              )
+            } catch (cacheError) {
+              logger(
+                'WARN',
+                `[AutoFill] Attempt ${attempts} - Failed to update last suggested track cache: ${cacheError}`
+              )
+            }
+
             // Show popup notification for auto-added track
             this.showAutoFillNotification(
               trackDetails.name,
@@ -795,20 +962,16 @@ class AutoPlayService {
         // Small delay between fallback attempts
         await new Promise((resolve) => setTimeout(resolve, 1000))
       }
-    }
 
-    if (attempts >= maxAttempts) {
-      logger(
-        'WARN',
-        `[AutoFill] Reached maximum attempts (${maxAttempts}), stopping auto-fill process`
-      )
-    }
+      if (attempts >= maxAttempts) {
+        logger(
+          'WARN',
+          `[AutoFill] Reached maximum attempts (${maxAttempts}), stopping auto-fill process`
+        )
+      }
 
-    const finalQueueSize = this.queueManager.getQueue().length
-    logger(
-      'INFO',
-      `[AutoFill] Auto-fill process completed - Final queue size: ${finalQueueSize}, Tracks added this session: ${tracksAdded}, Total attempts: ${attempts}`
-    )
+      const finalQueueSize = this.queueManager.getQueue().length
+    }
   }
 
   private async fallbackToRandomTrack(): Promise<boolean> {
@@ -844,11 +1007,6 @@ class AutoPlayService {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(requestBody)
         })
-
-        logger(
-          'INFO',
-          `[Fallback] Random track response status: ${response.status}`
-        )
 
         if (!response.ok) {
           const errorBody = await response.json()
@@ -934,10 +1092,6 @@ class AutoPlayService {
             )
             return false
           } else {
-            logger(
-              'INFO',
-              `[Fallback] Successfully added random track to queue: ${result.track.name}`
-            )
           }
 
           // Show popup notification for fallback track
@@ -1046,6 +1200,7 @@ class AutoPlayService {
     deviceId: string | null
     username: string | null
     isAutoPlayDisabled: boolean
+    isInitialized: boolean
     queueLength: number
   } {
     return {
@@ -1053,6 +1208,7 @@ class AutoPlayService {
       deviceId: this.deviceId,
       username: this.username,
       isAutoPlayDisabled: this.isAutoPlayDisabled,
+      isInitialized: this.isInitialized,
       queueLength: this.queueManager.getQueue().length
     }
   }

@@ -59,9 +59,10 @@ interface UseTrackSuggestionsReturn {
 export function useTrackSuggestions(
   initialState?: Partial<TrackSuggestionsState>
 ): UseTrackSuggestionsReturn {
-  const [state, setState] = useState<TrackSuggestionsState>(() =>
-    getInitialState(initialState)
-  )
+  const [state, setState] = useState<TrackSuggestionsState>(() => {
+    const initialTrackState = getInitialState(initialState)
+    return initialTrackState
+  })
   const stateRef = useRef(state)
   const lastSavedStateRef = useRef<string>('')
 

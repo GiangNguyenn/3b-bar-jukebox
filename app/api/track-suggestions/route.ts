@@ -49,10 +49,10 @@ interface RefreshResponse {
   searchDetails?: {
     attempts: number
     totalTracksFound: number
-    excludedTrackIds: string[]
+    excludedTrackIds?: string[]
     minPopularity: number
     genresTried: string[]
-    trackDetails: Array<{
+    trackDetails?: Array<{
       name: string
       popularity: number
       isExcluded: boolean
@@ -60,6 +60,7 @@ interface RefreshResponse {
       duration_ms: number
       explicit: boolean
     }>
+    suggestions?: string[]
   }
 }
 
@@ -170,10 +171,53 @@ export async function POST(
         `[Track Suggestions API] Search details: ${JSON.stringify(result.searchDetails)}`
       )
 
+      // Analyze the search details to provide helpful feedback
+      const searchDetails = result.searchDetails
+      const totalTracksFound = searchDetails.totalTracksFound
+      const genresTried = searchDetails.genresTried
+      const minPopularity = searchDetails.minPopularity
+
+      let errorMessage = 'No suitable track found'
+      const suggestions = []
+
+      if (totalTracksFound === 0) {
+        errorMessage = `No tracks found for the specified genres: ${genresTried.join(', ')}`
+        suggestions.push('Try different genres or broader genre categories')
+      } else {
+        // Analyze why tracks were filtered out
+        const trackDetails = searchDetails.trackDetails
+        const lowPopularityCount = trackDetails.filter(
+          (t) => t.popularity < minPopularity
+        ).length
+        const excludedCount = trackDetails.filter((t) => t.isExcluded).length
+        const unplayableCount = trackDetails.filter((t) => !t.isPlayable).length
+
+        if (lowPopularityCount > 0) {
+          suggestions.push(
+            `Lower the minimum popularity (currently ${minPopularity})`
+          )
+        }
+        if (excludedCount > 0) {
+          suggestions.push('Some tracks were already in the queue')
+        }
+        if (unplayableCount > 0) {
+          suggestions.push('Some tracks are not playable in your region')
+        }
+      }
+
       return NextResponse.json(
         {
           success: false,
-          message: 'No suitable track found'
+          message: errorMessage,
+          searchDetails: {
+            attempts: searchDetails.attempts,
+            totalTracksFound,
+            excludedTrackIds: searchDetails.excludedTrackIds,
+            minPopularity,
+            genresTried,
+            trackDetails: searchDetails.trackDetails,
+            suggestions
+          }
         },
         { status: 400 }
       )
@@ -182,6 +226,23 @@ export async function POST(
     logger(
       'INFO',
       `[Track Suggestions API] Successfully found track: ${result.track.name} by ${result.track.artists.map((a) => a.name).join(', ')}`
+    )
+
+    // Store the successful track in server cache for the "Last Suggested Track" feature
+    serverCache = {
+      name: result.track.name,
+      artist: result.track.artists.map((a) => a.name).join(', '),
+      album: result.track.album.name,
+      uri: result.track.uri,
+      popularity: result.track.popularity,
+      duration_ms: result.track.duration_ms,
+      preview_url: result.track.preview_url,
+      genres: []
+    }
+
+    logger(
+      'INFO',
+      `[Track Suggestions API] Updated server cache with track: ${serverCache.name}`
     )
 
     return NextResponse.json({

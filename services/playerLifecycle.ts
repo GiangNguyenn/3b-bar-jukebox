@@ -102,38 +102,15 @@ class PlayerLifecycleService {
         `Queue is low (${queue.length} tracks remaining), triggering auto-fill`
       )
 
-      try {
-        // Get track suggestions
-        const response = await fetch('/api/track-suggestions', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({}) // Use default parameters for auto-fill
-        })
-
-        if (!response.ok) {
-          const errorBody = await response.json()
-          this.log(
-            'ERROR',
-            `Track Suggestions API error: ${JSON.stringify(errorBody)}`
-          )
-          return
-        }
-
-        const suggestions = (await response.json()) as {
-          tracks: { id: string }[]
-        }
-
-        this.log(
-          'INFO',
-          `Got ${suggestions.tracks.length} track suggestions for auto-fill`
-        )
-
-        // Note: We can't add tracks to queue here since we don't have username context
-        // This is primarily for logging purposes in the PlayerLifecycleService
-        // The actual auto-fill is handled by the AutoPlayService which has username context
-      } catch (error) {
-        this.log('ERROR', 'Failed to check auto-fill queue', error)
-      }
+      // Note: We can't add tracks to queue here since we don't have username context
+      // This is primarily for logging purposes in the PlayerLifecycleService
+      // The actual auto-fill is handled by the AutoPlayService which has username context
+      //
+      // Remove the API call since it's just for logging and we don't have the required context
+      this.log(
+        'INFO',
+        `Auto-fill needed but will be handled by AutoPlayService (no username context here)`
+      )
     }
   }
 
@@ -153,6 +130,58 @@ class PlayerLifecycleService {
       } else {
         console.log(logMessage)
       }
+    }
+  }
+
+  private async handleRestrictionViolatedError(): Promise<void> {
+    try {
+      // Get the current track that's causing the restriction error
+      const currentTrack = this.currentQueueTrack
+      if (!currentTrack) {
+        this.log(
+          'WARN',
+          'No current track found, cannot remove problematic track'
+        )
+        return
+      }
+
+      // Remove the problematic track from the queue by marking it as played
+      await queueManager.markAsPlayed(currentTrack.id)
+
+      // Get the next track from the queue
+      const nextTrack = queueManager.getNextTrack()
+
+      if (nextTrack) {
+        this.currentQueueTrack = nextTrack
+
+        if (this.deviceId) {
+          try {
+            await sendApiRequest({
+              path: 'me/player/play',
+              method: 'PUT',
+              body: {
+                device_id: this.deviceId,
+                uris: [`spotify:track:${nextTrack.tracks.spotify_track_id}`]
+              }
+            })
+          } catch (error) {
+            this.log(
+              'ERROR',
+              'Failed to play next track after restriction error',
+              error
+            )
+          }
+        } else {
+          this.log(
+            'ERROR',
+            'No device ID available to play next track after restriction error'
+          )
+        }
+      } else {
+        this.currentQueueTrack = null
+      }
+    } catch (error) {
+      this.log('ERROR', 'Error handling restriction violated error', error)
     }
   }
 
@@ -359,11 +388,21 @@ class PlayerLifecycleService {
 
         player.addListener('playback_error', ({ message }) => {
           this.log('ERROR', `Playback error: ${message}`)
-          // Don't change status for playback errors, let health monitor handle recovery
-          this.log(
-            'WARN',
-            'Playback error occurred, but recovery is handled by health monitor'
-          )
+
+          // Handle "Restriction violated" errors by removing the problematic track and playing the next one
+          if (message.includes('Restriction violated')) {
+            this.log(
+              'WARN',
+              'Restriction violated error detected - removing problematic track and playing next'
+            )
+            this.handleRestrictionViolatedError()
+          } else {
+            // Don't change status for other playback errors, let health monitor handle recovery
+            this.log(
+              'WARN',
+              'Playback error occurred, but recovery is handled by health monitor'
+            )
+          }
         })
 
         player.addListener('player_state_changed', (state: any) => {
