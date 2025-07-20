@@ -67,17 +67,13 @@ For detailed architecture information, see [docs/architecture.md](docs/architect
    SENTRY_DSN=your_sentry_dsn
    ```
 
-4. **Database Setup**
-
-   The project uses Supabase migrations. Ensure your Supabase project has the correct schema by running the migrations in `supabase/migrations/`.
-
-5. **Run development server**
+4. **Run development server**
 
    ```bash
    yarn dev
    ```
 
-6. **Open your browser**
+5. **Open your browser**
 
    Navigate to [http://localhost:3000](http://localhost:3000) to see the application.
 
@@ -174,23 +170,7 @@ See [docs/database-schema.md](docs/database-schema.md) for complete schema.
 - Health monitoring and alerts
 - Token refresh management
 
-## 🧪 Testing
-
-```bash
-# Run tests (when implemented)
-yarn test
-
-# Run tests in watch mode
-yarn test:watch
-```
-
 ## 📦 Deployment
-
-### Vercel (Recommended)
-
-1. Connect your repository to Vercel
-2. Set environment variables in Vercel dashboard
-3. Deploy automatically on push to main branch
 
 ### Manual Deployment
 
@@ -213,23 +193,9 @@ yarn start
 
 - [Architecture Documentation](docs/architecture.md)
 - [Database Schema](docs/database-schema.md)
-- [API Documentation](docs/api.md) (if available)
-
-## 🆘 Troubleshooting
-
-### Common Issues
-
-1. **Authentication Errors**: Ensure Spotify OAuth is properly configured in Supabase
-2. **Database Connection**: Verify Supabase environment variables
-3. **Spotify API Limits**: Check rate limiting and token refresh
-4. **Real-time Issues**: Verify Supabase Realtime is enabled
 
 ### Getting Help
 
 - Check the [architecture documentation](docs/architecture.md)
 - Review existing issues in the repository
-- Contact the development team
-
-## 📄 License
-
-[Add your license information here]
+  -If something is wrong, blame Giang.
