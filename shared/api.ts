@@ -122,12 +122,6 @@ export const sendApiRequest = async <T>({
     const normalizedPath = path.startsWith('/') ? path : `/${path}`
     const url = `${baseUrl}${normalizedPath}`
     try {
-      if (apiLogger) {
-        apiLogger('INFO', `[API Request] ${method}: ${url}`, 'API')
-      } else {
-        console.log(`[API Request] ${method}: ${url}`)
-      }
-
       const headers: Record<string, string> = {
         'Content-Type': 'application/json',
         ...(extraHeaders && { ...extraHeaders })
@@ -206,17 +200,7 @@ export const sendApiRequest = async <T>({
       }
 
       const data = await response.json()
-      if (apiLogger) {
-        apiLogger(
-          'INFO',
-          `[API Success] ${method}: ${url} - Status: ${response.status}`,
-          'API'
-        )
-      } else {
-        console.log(
-          `[API Success] ${method}: ${url} - Status: ${response.status}`
-        )
-      }
+
       return data as T
     } catch (error) {
       if (apiLogger) {
@@ -248,7 +232,7 @@ export const sendApiRequest = async <T>({
 import { TrackItem } from './types/spotify'
 
 export const logTrackSuggestion = async (
-  track: TrackItem['track'],
+  track: TrackItem['tracks'],
   profileId: string
 ): Promise<void> => {
   try {

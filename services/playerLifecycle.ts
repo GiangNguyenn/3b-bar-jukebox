@@ -11,7 +11,9 @@ import {
   SpotifyPlayerInstance,
   SpotifySDK
 } from '@/shared/types/spotify'
+import { JukeboxQueueItem } from '@/shared/types/queue'
 import { tokenManager } from '@/shared/token/tokenManager'
+import { queueManager } from '@/services/queueManager'
 
 type SpotifySDKEventTypes =
   | 'ready'
@@ -44,6 +46,9 @@ declare global {
 // Player lifecycle management service
 class PlayerLifecycleService {
   private playerRef: Spotify.Player | null = null
+  private lastKnownState: any | null = null
+  private currentQueueTrack: JukeboxQueueItem | null = null
+  private deviceId: string | null = null
   private cleanupTimeoutRef: NodeJS.Timeout | null = null
   private notReadyTimeoutRef: NodeJS.Timeout | null = null
   private reconnectionTimeoutRef: NodeJS.Timeout | null = null
@@ -80,6 +85,35 @@ class PlayerLifecycleService {
     this.addLog = logger
   }
 
+  async initializeQueue(playlistId: string) {
+    this.log('INFO', `Initializing queue with playlist ID: ${playlistId}`)
+    // The queueManager is now a singleton and doesn't need initialization here.
+    // The queue will be updated by another service that fetches playlist data.
+    this.currentQueueTrack = queueManager.getNextTrack() ?? null
+  }
+
+  private async checkAndAutoFillQueue(): Promise<void> {
+    const queue = queueManager.getQueue()
+
+    // Check if queue is low (3 or fewer tracks remaining)
+    if (queue.length <= 3) {
+      this.log(
+        'INFO',
+        `Queue is low (${queue.length} tracks remaining), triggering auto-fill`
+      )
+
+      // Note: We can't add tracks to queue here since we don't have username context
+      // This is primarily for logging purposes in the PlayerLifecycleService
+      // The actual auto-fill is handled by the AutoPlayService which has username context
+      //
+      // Remove the API call since it's just for logging and we don't have the required context
+      this.log(
+        'INFO',
+        `Auto-fill needed but will be handled by AutoPlayService (no username context here)`
+      )
+    }
+  }
+
   private log(level: LogLevel, message: string, error?: unknown) {
     if (this.addLog) {
       this.addLog(
@@ -96,6 +130,58 @@ class PlayerLifecycleService {
       } else {
         console.log(logMessage)
       }
+    }
+  }
+
+  private async handleRestrictionViolatedError(): Promise<void> {
+    try {
+      // Get the current track that's causing the restriction error
+      const currentTrack = this.currentQueueTrack
+      if (!currentTrack) {
+        this.log(
+          'WARN',
+          'No current track found, cannot remove problematic track'
+        )
+        return
+      }
+
+      // Remove the problematic track from the queue by marking it as played
+      await queueManager.markAsPlayed(currentTrack.id)
+
+      // Get the next track from the queue
+      const nextTrack = queueManager.getNextTrack()
+
+      if (nextTrack) {
+        this.currentQueueTrack = nextTrack
+
+        if (this.deviceId) {
+          try {
+            await sendApiRequest({
+              path: 'me/player/play',
+              method: 'PUT',
+              body: {
+                device_id: this.deviceId,
+                uris: [`spotify:track:${nextTrack.tracks.spotify_track_id}`]
+              }
+            })
+          } catch (error) {
+            this.log(
+              'ERROR',
+              'Failed to play next track after restriction error',
+              error
+            )
+          }
+        } else {
+          this.log(
+            'ERROR',
+            'No device ID available to play next track after restriction error'
+          )
+        }
+      } else {
+        this.currentQueueTrack = null
+      }
+    } catch (error) {
+      this.log('ERROR', 'Error handling restriction violated error', error)
     }
   }
 
@@ -157,7 +243,6 @@ class PlayerLifecycleService {
           )
 
           if (availableDevice) {
-            this.log('INFO', 'Found alternative device, attempting transfer')
             const transferSuccess = await transferPlaybackToDevice(
               availableDevice.id
             )
@@ -183,12 +268,9 @@ class PlayerLifecycleService {
   ): Promise<string> {
     return new Promise<string>(async (resolve, reject) => {
       if (this.playerRef) {
-        this.log('INFO', 'Player already exists, returning current device ID')
         reject(new Error('Player already exists'))
         return
       }
-
-      this.log('INFO', 'Creating new Spotify player instance')
 
       if (typeof window.Spotify === 'undefined') {
         this.log('ERROR', 'Spotify SDK not loaded')
@@ -213,9 +295,7 @@ class PlayerLifecycleService {
           name: 'Jukebox Player',
           getOAuthToken: async (cb) => {
             try {
-              this.log('INFO', 'Requesting token from token manager')
               const token = await tokenManager.getToken()
-              this.log('INFO', 'Token received from token manager')
               cb(token)
             } catch (error) {
               this.log('ERROR', 'Error getting token from token manager', error)
@@ -227,14 +307,11 @@ class PlayerLifecycleService {
 
         // Set up event listeners
         player.addListener('ready', async ({ device_id }) => {
-          this.log('INFO', `Ready with device ID: ${device_id}`)
-
           // Clear any not-ready timeout since we're ready
           if (this.notReadyTimeoutRef) {
             clearTimeout(this.notReadyTimeoutRef)
           }
 
-          this.log('INFO', 'Setting status to verifying')
           onStatusChange('verifying')
 
           // Use robust device verification with timeout
@@ -245,28 +322,20 @@ class PlayerLifecycleService {
               'Device setup verification failed, but proceeding anyway'
             )
             // Don't fail the initialization, just warn and proceed
-          } else {
-            this.log('INFO', 'Device setup verification successful')
           }
 
-          this.log('INFO', 'Setting device as ready')
+          this.deviceId = device_id
           onDeviceIdChange(device_id)
 
           // Automatically transfer playback to the new device
-          this.log(
-            'INFO',
-            `Transferring playback to new device ID: ${device_id}`
-          )
           const transferSuccess = await transferPlaybackToDevice(device_id)
           if (transferSuccess) {
-            this.log('INFO', 'Playback transferred successfully')
             onStatusChange('ready')
           } else {
             this.log('ERROR', 'Failed to transfer playback to new device')
             onStatusChange('error', 'Failed to transfer playback')
           }
 
-          this.log('INFO', 'Setting status to ready')
           onStatusChange('ready')
           resolve(device_id)
         })
@@ -286,11 +355,6 @@ class PlayerLifecycleService {
 
           // Try to refresh token and recreate player
           try {
-            this.log(
-              'INFO',
-              'Attempting automatic token refresh and player recovery'
-            )
-
             // Clear token cache to force refresh
             tokenManager.clearCache()
 
@@ -298,7 +362,6 @@ class PlayerLifecycleService {
             await tokenManager.getToken()
 
             // Recreate player with fresh token
-            this.log('INFO', 'Token refreshed, recreating player')
             onStatusChange('initializing', 'Refreshing authentication')
 
             // Destroy current player and recreate
@@ -325,14 +388,24 @@ class PlayerLifecycleService {
 
         player.addListener('playback_error', ({ message }) => {
           this.log('ERROR', `Playback error: ${message}`)
-          // Don't change status for playback errors, let health monitor handle recovery
-          this.log(
-            'WARN',
-            'Playback error occurred, but recovery is handled by health monitor'
-          )
+
+          // Handle "Restriction violated" errors by removing the problematic track and playing the next one
+          if (message.includes('Restriction violated')) {
+            this.log(
+              'WARN',
+              'Restriction violated error detected - removing problematic track and playing next'
+            )
+            this.handleRestrictionViolatedError()
+          } else {
+            // Don't change status for other playback errors, let health monitor handle recovery
+            this.log(
+              'WARN',
+              'Playback error occurred, but recovery is handled by health monitor'
+            )
+          }
         })
 
-        player.addListener('player_state_changed', (state) => {
+        player.addListener('player_state_changed', (state: any) => {
           if (!state) {
             this.log(
               'WARN',
@@ -342,40 +415,167 @@ class PlayerLifecycleService {
             return
           }
 
-          this.log(
-            'INFO',
-            `player_state_changed event: paused=${state.paused}, loading=${state.loading}, position=${state.position}`
-          )
+          // Use a self-invoking async function to handle async logic
+          ;(async () => {
+            // The queueManager is now a singleton and always available.
 
-          // Transform SDK state to our internal format
-          const transformedState = {
-            item: state.track_window?.current_track
-              ? {
-                  id: state.track_window.current_track.id,
-                  name: state.track_window.current_track.name,
-                  uri: state.track_window.current_track.uri,
-                  duration_ms: state.track_window.current_track.duration_ms,
-                  artists: state.track_window.current_track.artists.map(
-                    (artist) => ({
-                      name: artist.name,
-                      id: artist.uri.split(':').pop() || ''
-                    })
-                  ),
-                  album: {
-                    name: state.track_window.current_track.album.name,
-                    id:
-                      state.track_window.current_track.album.uri
-                        .split(':')
-                        .pop() || ''
+            // --- Track Finished Logic ---
+            const trackJustFinished =
+              this.lastKnownState &&
+              !this.lastKnownState.paused && // was playing
+              state.paused && // is now paused
+              state.position === 0 && // at the beginning
+              this.lastKnownState.track_window.current_track?.uri ===
+                state.track_window.current_track?.uri
+
+            // Additional track finished detection for edge cases
+            const isNearEnd =
+              state.duration > 0 && state.duration - state.position < 1000 // Within 1 second of end
+            const hasStalled =
+              this.lastKnownState &&
+              !this.lastKnownState.paused &&
+              state.paused &&
+              state.position === this.lastKnownState.position &&
+              this.lastKnownState.track_window.current_track?.uri ===
+                state.track_window.current_track?.uri
+
+            const trackFinished = trackJustFinished || (isNearEnd && hasStalled)
+
+            if (trackFinished) {
+              const currentSpotifyTrackId =
+                state.track_window?.current_track?.id
+              this.log(
+                'INFO',
+                `Track finished detected for Spotify track ID: ${currentSpotifyTrackId}`
+              )
+
+              // Find the queue item that matches the finished Spotify track
+              const queue = queueManager.getQueue()
+              const finishedQueueItem = queue.find(
+                (item) => item.tracks.spotify_track_id === currentSpotifyTrackId
+              )
+
+              if (finishedQueueItem) {
+                this.log(
+                  'INFO',
+                  `Found queue item for finished track: ${finishedQueueItem.id}`
+                )
+
+                try {
+                  // Mark the track as played in the queue
+                  await queueManager.markAsPlayed(finishedQueueItem.id)
+                  this.log(
+                    'INFO',
+                    `Marked queue item ${finishedQueueItem.id} as played`
+                  )
+
+                  // Check if queue is getting low and trigger auto-fill if needed
+                  await this.checkAndAutoFillQueue()
+
+                  // Get the next track from the queue
+                  const nextTrack = queueManager.getNextTrack()
+
+                  if (nextTrack) {
+                    this.log(
+                      'INFO',
+                      `Playing next track from queue: ${nextTrack.tracks.name}`
+                    )
+                    this.currentQueueTrack = nextTrack
+
+                    if (this.deviceId) {
+                      try {
+                        await sendApiRequest({
+                          path: 'me/player/play',
+                          method: 'PUT',
+                          body: {
+                            device_id: this.deviceId,
+                            uris: [
+                              `spotify:track:${nextTrack.tracks.spotify_track_id}`
+                            ]
+                          }
+                        })
+                        this.log(
+                          'INFO',
+                          `Successfully started playing next track: ${nextTrack.tracks.name}`
+                        )
+                      } catch (error) {
+                        this.log('ERROR', 'Failed to play next track', error)
+                      }
+                    } else {
+                      this.log(
+                        'ERROR',
+                        'No device ID available to play next track.'
+                      )
+                    }
+                  } else {
+                    this.log('INFO', 'Queue is empty. Playback stopped.')
+                    this.currentQueueTrack = null
                   }
+                } catch (error) {
+                  this.log('ERROR', 'Error handling track finished', error)
                 }
-              : null,
-            is_playing: !state.paused,
-            progress_ms: state.position,
-            duration_ms: state.duration
-          }
+              } else {
+                this.log(
+                  'WARN',
+                  `No queue item found for finished Spotify track ID: ${currentSpotifyTrackId}`
+                )
+              }
+            }
 
-          onPlaybackStateChange(transformedState)
+            // --- State Synchronization Logic ---
+            const currentSpotifyTrack = state.track_window?.current_track
+            if (currentSpotifyTrack && !state.paused) {
+              // Find the queue item that matches the currently playing Spotify track
+              const queue = queueManager.getQueue()
+              const matchingQueueItem = queue.find(
+                (item) =>
+                  item.tracks.spotify_track_id === currentSpotifyTrack.id
+              )
+
+              if (
+                matchingQueueItem &&
+                this.currentQueueTrack?.id !== matchingQueueItem.id
+              ) {
+                this.log(
+                  'INFO',
+                  `Synced playing track with queue: ${matchingQueueItem.id} (${matchingQueueItem.tracks.name})`
+                )
+                this.currentQueueTrack = matchingQueueItem
+              } else if (!matchingQueueItem && this.currentQueueTrack) {
+                this.log(
+                  'WARN',
+                  `Currently playing track ${currentSpotifyTrack.id} not found in queue`
+                )
+                this.currentQueueTrack = null
+              }
+            }
+
+            this.lastKnownState = state
+
+            // --- State Transformation for UI ---
+            const transformedState = {
+              item: state.track_window?.current_track
+                ? {
+                    id: state.track_window.current_track.id,
+                    name: state.track_window.current_track.name,
+                    uri: state.track_window.current_track.uri,
+                    duration_ms: state.track_window.current_track.duration_ms,
+                    artists: state.track_window.current_track.artists.map(
+                      (artist: any) => ({
+                        name: artist.name
+                      })
+                    ),
+                    album: {
+                      name: state.track_window.current_track.album.name
+                    }
+                  }
+                : null,
+              is_playing: !state.paused,
+              progress_ms: state.position,
+              duration_ms: state.duration
+            }
+            onPlaybackStateChange(transformedState)
+          })()
         })
 
         // Connect to Spotify

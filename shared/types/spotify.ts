@@ -39,7 +39,7 @@ export interface SpotifyDevice {
   volume_percent: number
 }
 
-export type TrackDetails = TrackItem['track'] & { uri: string }
+export type TrackDetails = TrackItem['tracks'] & { uri: string }
 
 export interface SpotifyTokenResponse {
   access_token: string
@@ -61,7 +61,7 @@ export interface TrackItem {
     }
   }
   is_local: boolean
-  track: {
+  tracks: {
     id: string
     uri: string
     name: string

@@ -173,13 +173,6 @@ export async function validatePlaybackStateWithDetails(
     trackName?: string
   }
 }> {
-  console.log('[Playback Validation] Starting validation:', {
-    playlistId,
-    trackUri,
-    position,
-    timestamp: new Date().toISOString()
-  })
-
   try {
     // Validate playlist exists and is accessible
     const playlistResponse = await sendApiRequest<PlaylistResponse>({
@@ -237,16 +230,6 @@ export async function validatePlaybackStateWithDetails(
     const positionValid = position >= 0 && position < 3600000 // Max 1 hour
 
     const isValid = trackValid && positionValid
-
-    console.log('[Playback Validation] Validation complete:', {
-      isValid,
-      playlistValid: true,
-      trackValid,
-      positionValid,
-      playlistName: playlistResponse.name,
-      trackName,
-      timestamp: new Date().toISOString()
-    })
 
     return {
       isValid,

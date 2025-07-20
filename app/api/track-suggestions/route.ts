@@ -1,8 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { songsBetweenRepeatsSchema } from '@/app/[username]/admin/components/track-suggestions/validations/trackSuggestions'
-import { PlaylistRefreshServiceImpl } from '@/services/playlistRefresh'
+import { findSuggestedTrack } from '@/services/trackSuggestion'
 import { type Genre } from '@/shared/constants/trackSuggestion'
+import { createModuleLogger } from '@/shared/utils/logger'
+
+const logger = createModuleLogger('API Track Suggestions')
 
 export const runtime = 'nodejs'
 export const maxDuration = 60 // 60 seconds
@@ -22,9 +25,6 @@ interface LastSuggestedTrack {
 // Server-side cache for the last suggested track
 let serverCache: LastSuggestedTrack | null = null
 
-// Keep a reference to the service instance
-let serviceInstance: PlaylistRefreshServiceImpl | null = null
-
 const refreshRequestSchema = z.object({
   genres: z
     .array(z.string() as z.ZodType<Genre>)
@@ -38,19 +38,21 @@ const refreshRequestSchema = z.object({
   allowExplicit: z.boolean(),
   maxSongLength: z.number().min(3).max(20), // In minutes
   songsBetweenRepeats: songsBetweenRepeatsSchema,
-  maxOffset: z.number().min(1).max(10000)
+  maxOffset: z.number().min(1).max(10000),
+  excludedTrackIds: z.array(z.string()).optional() // Optional array of track IDs to exclude
 })
 
 interface RefreshResponse {
   success: boolean
   message?: string
+  tracks?: Array<{ id: string }>
   searchDetails?: {
     attempts: number
     totalTracksFound: number
-    excludedTrackIds: string[]
+    excludedTrackIds?: string[]
     minPopularity: number
     genresTried: string[]
-    trackDetails: Array<{
+    trackDetails?: Array<{
       name: string
       popularity: number
       isExcluded: boolean
@@ -58,6 +60,7 @@ interface RefreshResponse {
       duration_ms: number
       explicit: boolean
     }>
+    suggestions?: string[]
   }
 }
 
@@ -78,8 +81,8 @@ export function GET(request: NextRequest): NextResponse {
       }
 
       // Otherwise, get the track from the service
-      const service = PlaylistRefreshServiceImpl.getInstance()
-      const track = service.getLastSuggestedTrack()
+      // For now, return null since we're not using the service anymore
+      const track = null
 
       // Update server cache if we got a track
       if (track) {
@@ -93,7 +96,7 @@ export function GET(request: NextRequest): NextResponse {
         timestamp: Date.now()
       })
     } catch (error) {
-      console.error('[Last Suggested Track] Error:', error)
+      logger('ERROR', `[Last Suggested Track] Error: ${JSON.stringify(error)}`)
       return NextResponse.json(
         {
           success: false,
@@ -113,41 +116,153 @@ export async function POST(
   request: Request
 ): Promise<NextResponse<RefreshResponse>> {
   try {
+    logger('INFO', '[Track Suggestions API] Starting POST request')
+
     const body = (await request.json()) as unknown
+
+    logger(
+      'INFO',
+      `[Track Suggestions API] Request body: ${JSON.stringify(body)}`
+    )
+
     const validatedData = refreshRequestSchema.parse(body)
+    logger(
+      'INFO',
+      `[Track Suggestions API] Validated data: ${JSON.stringify(validatedData)}`
+    )
 
-    // Use the cached instance if available, otherwise create a new one
-    serviceInstance ??= PlaylistRefreshServiceImpl.getInstance()
+    // Use findSuggestedTrack with app tokens for server-side operation
+    logger('INFO', '[Track Suggestions API] Calling findSuggestedTrack...')
+    const result = await findSuggestedTrack(
+      validatedData.excludedTrackIds ?? [], // Use validated excludedTrackIds
+      null, // No current track ID
+      'US', // Default market
+      {
+        genres: validatedData.genres,
+        yearRange: validatedData.yearRange,
+        popularity: validatedData.popularity,
+        allowExplicit: validatedData.allowExplicit,
+        maxSongLength: validatedData.maxSongLength,
+        songsBetweenRepeats: validatedData.songsBetweenRepeats,
+        maxOffset: validatedData.maxOffset
+      },
+      true // Use app token for server-side operations
+    )
 
-    const result = await serviceInstance.refreshPlaylist(true, {
-      genres: validatedData.genres,
-      yearRange: validatedData.yearRange,
-      popularity: validatedData.popularity,
-      allowExplicit: validatedData.allowExplicit,
-      maxSongLength: validatedData.maxSongLength,
-      songsBetweenRepeats: validatedData.songsBetweenRepeats,
-      maxOffset: validatedData.maxOffset
-    })
+    logger(
+      'INFO',
+      `[Track Suggestions API] findSuggestedTrack result: ${JSON.stringify({
+        trackFound: !!result.track,
+        trackId: result.track?.id,
+        trackName: result.track?.name,
+        attempts: result.searchDetails.attempts,
+        totalTracksFound: result.searchDetails.totalTracksFound,
+        genresTried: result.searchDetails.genresTried
+      })}`
+    )
 
-    if (!result.success) {
+    if (!result.track) {
+      logger(
+        'ERROR',
+        `[Track Suggestions API] No suitable track found after ${result.searchDetails.attempts} attempts`
+      )
+      logger(
+        'ERROR',
+        `[Track Suggestions API] Search details: ${JSON.stringify(result.searchDetails)}`
+      )
+
+      // Analyze the search details to provide helpful feedback
+      const searchDetails = result.searchDetails
+      const totalTracksFound = searchDetails.totalTracksFound
+      const genresTried = searchDetails.genresTried
+      const minPopularity = searchDetails.minPopularity
+
+      let errorMessage = 'No suitable track found'
+      const suggestions = []
+
+      if (totalTracksFound === 0) {
+        errorMessage = `No tracks found for the specified genres: ${genresTried.join(', ')}`
+        suggestions.push('Try different genres or broader genre categories')
+      } else {
+        // Analyze why tracks were filtered out
+        const trackDetails = searchDetails.trackDetails
+        const lowPopularityCount = trackDetails.filter(
+          (t) => t.popularity < minPopularity
+        ).length
+        const excludedCount = trackDetails.filter((t) => t.isExcluded).length
+        const unplayableCount = trackDetails.filter((t) => !t.isPlayable).length
+
+        if (lowPopularityCount > 0) {
+          suggestions.push(
+            `Lower the minimum popularity (currently ${minPopularity})`
+          )
+        }
+        if (excludedCount > 0) {
+          suggestions.push('Some tracks were already in the queue')
+        }
+        if (unplayableCount > 0) {
+          suggestions.push('Some tracks are not playable in your region')
+        }
+      }
+
       return NextResponse.json(
         {
           success: false,
-          message: result.message
+          message: errorMessage,
+          searchDetails: {
+            attempts: searchDetails.attempts,
+            totalTracksFound,
+            excludedTrackIds: searchDetails.excludedTrackIds,
+            minPopularity,
+            genresTried,
+            trackDetails: searchDetails.trackDetails,
+            suggestions
+          }
         },
         { status: 400 }
       )
     }
 
+    logger(
+      'INFO',
+      `[Track Suggestions API] Successfully found track: ${result.track.name} by ${result.track.artists.map((a) => a.name).join(', ')}`
+    )
+
+    // Store the successful track in server cache for the "Last Suggested Track" feature
+    serverCache = {
+      name: result.track.name,
+      artist: result.track.artists.map((a) => a.name).join(', '),
+      album: result.track.album.name,
+      uri: result.track.uri,
+      popularity: result.track.popularity,
+      duration_ms: result.track.duration_ms,
+      preview_url: result.track.preview_url,
+      genres: []
+    }
+
+    logger(
+      'INFO',
+      `[Track Suggestions API] Updated server cache with track: ${serverCache.name}`
+    )
+
     return NextResponse.json({
       success: true,
-      message: result.message,
-      searchDetails: result.diagnosticInfo as RefreshResponse['searchDetails']
+      message: 'Track suggestion found successfully',
+      tracks: [
+        {
+          id: result.track.id
+        }
+      ],
+      searchDetails: result.searchDetails as RefreshResponse['searchDetails']
     })
   } catch (error) {
-    console.error('[API Refresh Site] Error:', error)
+    logger('ERROR', `[Track Suggestions API] Error: ${JSON.stringify(error)}`)
 
     if (error instanceof z.ZodError) {
+      logger(
+        'ERROR',
+        `[Track Suggestions API] Validation error: ${JSON.stringify(error.errors)}`
+      )
       return NextResponse.json(
         {
           success: false,
@@ -162,6 +277,11 @@ export async function POST(
 
     const errorMessage =
       error instanceof Error ? error.message : 'An error occurred'
+
+    logger(
+      'ERROR',
+      `[Track Suggestions API] Final error response: ${errorMessage}`
+    )
 
     return NextResponse.json(
       {
@@ -194,7 +314,10 @@ export async function PUT(request: Request): Promise<NextResponse> {
       timestamp: Date.now()
     })
   } catch (error) {
-    console.error('[Last Suggested Track] Error updating cache:', error)
+    logger(
+      'ERROR',
+      `[Last Suggested Track] Error updating cache: ${JSON.stringify(error)}`
+    )
     return NextResponse.json(
       {
         success: false,

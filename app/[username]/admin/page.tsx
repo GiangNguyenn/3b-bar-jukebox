@@ -2,63 +2,68 @@
 'use client'
 
 import { useCallback, useEffect, useState, useRef } from 'react'
+import { useParams } from 'next/navigation'
 import { usePlaybackIntentStore } from '@/hooks/usePlaybackIntent'
 import {
   useSpotifyPlayerStore,
   useAdminSpotifyPlayerHook
 } from '@/hooks/useSpotifyPlayer'
-import { useFixedPlaylist } from '@/hooks/useFixedPlaylist'
 import { useConsoleLogsContext } from '@/hooks/ConsoleLogsProvider'
-import { usePlaylist } from '@/hooks/usePlaylist'
+import { usePlaylistData } from '@/hooks/usePlaylistData'
 import { useTrackSuggestions } from './components/track-suggestions/hooks/useTrackSuggestions'
 import { useSpotifyHealthMonitor } from '@/hooks/useSpotifyHealthMonitor'
-import { useAutoPlaylistRefresh } from '@/hooks/useAutoPlaylistRefresh'
-import { SpotifyApiService } from '@/services/spotifyApi'
 import { RecoveryStatus } from '@/components/ui/recovery-status'
 import { HealthStatusSection } from './components/dashboard/health-status-section'
 import { TrackSuggestionsTab } from './components/track-suggestions/track-suggestions-tab'
 import { PlaylistDisplay } from './components/playlist/playlist-display'
 import { AnalyticsTab } from './components/analytics/analytics-tab'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { type PlaybackInfo } from '@/shared/types/health'
 import { type TrackSuggestionsState } from '@/shared/types/trackSuggestions'
 import { useRecoverySystem } from '@/hooks/recovery'
 import { ErrorMessage } from '@/components/ui/error-message'
-import { Loading, PlaylistSkeleton } from '@/components/ui'
+import { Loading } from '@/components/ui'
 import { useTokenHealth } from '@/hooks/health/useTokenHealth'
 import { tokenManager } from '@/shared/token/tokenManager'
+import { queueManager } from '@/services/queueManager'
+import { getAutoPlayService } from '@/services/autoPlayService'
+import { sendApiRequest } from '@/shared/api'
+import { AutoFillNotification } from '@/components/ui/auto-fill-notification'
+import { usePlaybackControls } from './hooks/usePlaybackControls'
+import {
+  FALLBACK_GENRES,
+  DEFAULT_YEAR_RANGE,
+  MIN_TRACK_POPULARITY,
+  DEFAULT_MAX_SONG_LENGTH_MINUTES,
+  DEFAULT_SONGS_BETWEEN_REPEATS,
+  DEFAULT_MAX_OFFSET
+} from '@/shared/constants/trackSuggestion'
 
 export default function AdminPage(): JSX.Element {
   // State
   const [isLoading, setIsLoading] = useState(false)
   const [isRefreshing, setIsRefreshing] = useState(false)
-  const [playbackInfo, setPlaybackInfo] = useState<PlaybackInfo | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [activeTab, setActiveTab] = useState<
     'dashboard' | 'playlist' | 'settings' | 'logs' | 'analytics'
   >('dashboard')
+  const [volume, setVolume] = useState(50)
   const initializationAttemptedRef = useRef(false)
 
   // Hooks
-  const {
-    deviceId,
-    isReady,
-    playbackState,
-    status: playerStatus
-  } = useSpotifyPlayerStore()
+  const params = useParams()
+  const username = params?.username as string | undefined
+  const { deviceId, isReady, status: playerStatus } = useSpotifyPlayerStore()
   const { createPlayer } = useAdminSpotifyPlayerHook()
-  const {
-    fixedPlaylistId,
-    isLoading: isFixedPlaylistLoading,
-    error: fixedPlaylistError
-  } = useFixedPlaylist()
   const { addLog } = useConsoleLogsContext()
-  const { userIntent, setUserIntent } = usePlaybackIntentStore()
-
-  // Use the playlist hook
-  const playlistHookResult = usePlaylist(fixedPlaylistId ?? '')
-  const playlistRefreshError = playlistHookResult.error
-  const refreshPlaylist = playlistHookResult.refreshPlaylist
+  const { setUserIntent } = usePlaybackIntentStore()
+  // Use the enhanced playlist hook with real-time subscriptions
+  const {
+    data: queue,
+    isLoading: queueLoading,
+    error: playlistError,
+    mutate: refreshQueue,
+    optimisticUpdate
+  } = usePlaylistData(username)
 
   // Use the track suggestions hook
   // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
@@ -66,50 +71,186 @@ export default function AdminPage(): JSX.Element {
   const trackSuggestionsState = trackSuggestions.state
   const updateTrackSuggestionsState = trackSuggestions.updateState
 
+  // Debug track suggestions state
+  useEffect(() => {
+    addLog(
+      'INFO',
+      `[AdminPage] Track suggestions state updated: ${JSON.stringify(trackSuggestionsState)}`,
+      'AdminPage'
+    )
+  }, [trackSuggestionsState, addLog])
+
   // First, use the health monitor hook
   const healthStatus = useSpotifyHealthMonitor()
 
   // Get recovery system for manual recovery
   const { state: recoveryState, recover } = useRecoverySystem(
     deviceId,
-    fixedPlaylistId,
-    undefined // No callback needed for admin page
+    null // No playlist ID needed for admin page
   )
 
   // Add token health monitoring
   const tokenHealth = useTokenHealth()
 
-  // Enable automatic playlist refresh every 3 minutes
-  useAutoPlaylistRefresh({
-    isEnabled: isReady && !!fixedPlaylistId,
-    trackSuggestionsState,
-    refreshPlaylist
-  })
+  // Use the existing playback controls hook
+  const { handlePlayPause, isActuallyPlaying } = usePlaybackControls()
 
-  // Create a more reliable playback state indicator
-  const getIsActuallyPlaying = useCallback(() => {
-    return userIntent === 'playing'
-  }, [userIntent])
+  // Initialize auto-play service
+  useEffect(() => {
+    const autoPlayService = getAutoPlayService({
+      checkInterval: 2000, // Check every 2 seconds
+      deviceId: deviceId ?? null,
+      username: username ?? null,
+      onTrackFinished: () => {
+        // Refresh queue when track finishes to update the UI
+        void refreshQueue()
+      },
+      onNextTrackStarted: () => {
+        setUserIntent('playing')
+        // Refresh queue when next track starts to update the UI
+        void refreshQueue()
+      },
+      onQueueEmpty: () => {
+        setUserIntent('paused')
+      },
+      onQueueLow: () => {
+        // Auto-fill will be handled by the service
+      }
+    })
+
+    // Start the auto-play service
+    autoPlayService.start()
+
+    // Update the service when device ID changes
+    if (deviceId) {
+      autoPlayService.setDeviceId(deviceId)
+    }
+
+    // Update the service when username changes
+    if (username) {
+      autoPlayService.setUsername(username)
+    }
+
+    // Update the service when queue changes
+    if (queue) {
+      autoPlayService.updateQueue(queue)
+    }
+
+    // Update the service when track suggestions state changes
+    if (trackSuggestionsState) {
+      // Check if track suggestions state has all required fields
+      const requiredFields = [
+        'genres',
+        'yearRange',
+        'popularity',
+        'allowExplicit',
+        'maxSongLength',
+        'songsBetweenRepeats',
+        'maxOffset'
+      ]
+      const hasAllFields = requiredFields.every(
+        (field) => field in trackSuggestionsState
+      )
+
+      if (hasAllFields) {
+        autoPlayService.setTrackSuggestionsState(trackSuggestionsState)
+        addLog(
+          'INFO',
+          `[AdminPage] Updated auto-play service with complete track suggestions state: ${JSON.stringify(trackSuggestionsState)}`,
+          'AdminPage'
+        )
+      } else {
+        addLog(
+          'WARN',
+          `[AdminPage] Track suggestions state incomplete, not updating auto-play service. Missing: ${requiredFields.filter((field) => !(field in trackSuggestionsState)).join(', ')}`,
+          'AdminPage'
+        )
+      }
+    }
+
+    // Mark the service as initialized after all initial setup is complete
+    if (username && deviceId) {
+      // Check if track suggestions state is available and complete
+      if (trackSuggestionsState) {
+        const requiredFields = [
+          'genres',
+          'yearRange',
+          'popularity',
+          'allowExplicit',
+          'maxSongLength',
+          'songsBetweenRepeats',
+          'maxOffset'
+        ]
+        const hasAllFields = requiredFields.every(
+          (field) => field in trackSuggestionsState
+        )
+
+        if (hasAllFields) {
+          autoPlayService.markAsInitialized()
+          addLog(
+            'INFO',
+            `[AdminPage] Auto-play service initialized with complete track suggestions state`,
+            'AdminPage'
+          )
+        } else {
+          addLog(
+            'WARN',
+            `[AdminPage] Auto-play service not initialized - track suggestions state missing fields: ${requiredFields.filter((field) => !(field in trackSuggestionsState)).join(', ')}`,
+            'AdminPage'
+          )
+        }
+      } else {
+        // Initialize without track suggestions state (will use fallbacks)
+        autoPlayService.markAsInitialized()
+        addLog(
+          'INFO',
+          `[AdminPage] Auto-play service initialized without track suggestions state (will use fallbacks)`,
+          'AdminPage'
+        )
+      }
+    } else {
+      addLog(
+        'WARN',
+        `[AdminPage] Auto-play service not initialized - missing: username=${!!username}, deviceId=${!!deviceId}`,
+        'AdminPage'
+      )
+    }
+
+    return (): void => {
+      autoPlayService.stop()
+    }
+  }, [
+    deviceId,
+    username,
+    queue,
+    trackSuggestionsState,
+    addLog,
+    setUserIntent,
+    refreshQueue
+  ])
+
+  // Update QueueManager with queue data
+  useEffect(() => {
+    if (queue) {
+      queueManager.updateQueue(queue)
+    }
+  }, [queue])
 
   // Initialize the player when the component mounts
   useEffect(() => {
     const initializePlayer = async (): Promise<void> => {
-      // Only initialize if not ready, SDK is available, and we haven't attempted initialization yet
+      // Only initialize if not ready, SDK is available, we haven't attempted initialization yet,
+      // and recovery is not in progress
       if (
         playerStatus === 'initializing' &&
         typeof window !== 'undefined' &&
         window.Spotify &&
-        !initializationAttemptedRef.current
+        !initializationAttemptedRef.current &&
+        !recoveryState.isRecovering
       ) {
         try {
           initializationAttemptedRef.current = true
-          addLog(
-            'INFO',
-            `Initializing Spotify player... (status: ${playerStatus})`,
-            'AdminPage'
-          )
           await createPlayer()
-          addLog('INFO', 'Spotify player initialization completed', 'AdminPage')
         } catch (error) {
           addLog(
             'ERROR',
@@ -120,92 +261,19 @@ export default function AdminPage(): JSX.Element {
           // Reset the flag on error so we can retry
           initializationAttemptedRef.current = false
         }
-      } else {
-        addLog(
-          'INFO',
-          `Skipping player initialization - status: ${playerStatus}, SDK available: ${typeof window !== 'undefined' && !!window.Spotify}, already attempted: ${initializationAttemptedRef.current}`,
-          'AdminPage'
-        )
       }
     }
 
     void initializePlayer()
-  }, [playerStatus, addLog, createPlayer])
-
-  const handlePlayPause = useCallback(async (): Promise<void> => {
-    if (!deviceId) return
-
-    try {
-      setIsLoading(true)
-      const spotifyApi = SpotifyApiService.getInstance()
-
-      if (getIsActuallyPlaying()) {
-        // If currently playing, pause playback
-        await spotifyApi.pausePlayback(deviceId)
-        setUserIntent('paused')
-        setPlaybackInfo((prev) => (prev ? { ...prev, isPlaying: false } : null))
-      } else {
-        // If not playing, resume playback
-        await spotifyApi.resumePlayback()
-        setUserIntent('playing')
-        setPlaybackInfo((prev) =>
-          prev
-            ? {
-                ...prev,
-                isPlaying: true,
-                lastProgressCheck: Date.now(),
-                progressStalled: false
-              }
-            : null
-        )
-      }
-
-      // Add a small delay to allow the Spotify API to update
-      await new Promise((resolve) => setTimeout(resolve, 500))
-
-      // Refresh the playback state
-      const state = await spotifyApi.getPlaybackState()
-      if (state) {
-        setPlaybackInfo((prev: PlaybackInfo | null) =>
-          prev
-            ? {
-                ...prev,
-                isPlaying: state.is_playing,
-                currentTrack: state.item?.name ?? '',
-                progress: state.progress_ms ?? 0,
-                duration_ms: state.item?.duration_ms ?? 0,
-                timeUntilEnd:
-                  state.item?.duration_ms && state.progress_ms
-                    ? state.item.duration_ms - state.progress_ms
-                    : 0,
-                lastProgressCheck: Date.now(),
-                progressStalled: false
-              }
-            : null
-        )
-      }
-    } catch (error) {
-      addLog(
-        'ERROR',
-        'Playback control failed',
-        'Playback',
-        error instanceof Error ? error : undefined
-      )
-    } finally {
-      setIsLoading(false)
-    }
-  }, [deviceId, getIsActuallyPlaying, addLog, setUserIntent])
+  }, [playerStatus, addLog, createPlayer, recoveryState.isRecovering])
 
   // Manual recovery trigger for user-initiated recovery (e.g., device mismatch, connection issues)
   const handleForceRecovery = useCallback(async (): Promise<void> => {
     try {
       setIsLoading(true)
-      addLog('INFO', 'Manual recovery triggered by user', 'AdminPage')
 
       // Trigger the recovery system
       await recover()
-
-      addLog('INFO', 'Manual recovery completed', 'AdminPage')
     } catch (error) {
       addLog(
         'ERROR',
@@ -230,23 +298,287 @@ export default function AdminPage(): JSX.Element {
   const handleRefreshPlaylist = useCallback(async (): Promise<void> => {
     try {
       setIsRefreshing(true)
-      addLog('INFO', 'Refreshing playlist...', 'AdminPage')
-      await refreshPlaylist(trackSuggestionsState)
-      addLog('INFO', 'Playlist refreshed successfully', 'AdminPage')
+
+      if (!username) {
+        throw new Error('Username is not set.')
+      }
+
+      // Note: We don't disable auto-play during manual refresh anymore
+      // as it should continue working normally during queue operations
+
+      addLog(
+        'INFO',
+        `[AdminPage] Manual refresh started - trackSuggestionsState: ${JSON.stringify(trackSuggestionsState)}`,
+        'AdminPage'
+      )
+
+      // Get current queue to check size and exclude existing tracks
+      const currentQueue = (await fetch(`/api/playlist/${username}`).then(
+        (res) => res.json()
+      )) as Array<{ tracks: { spotify_track_id: string } }>
+      const currentQueueSize = currentQueue.length
+      const targetQueueSize = 3 // Reduced from 10 to 3 tracks
+      const maxAttempts = 20 // Same max attempts as AutoPlayService
+
+      addLog(
+        'INFO',
+        `[AdminPage] Manual refresh - Current queue: ${currentQueueSize}, Target: ${targetQueueSize}`,
+        'AdminPage'
+      )
+
+      // If we've already reached the target, stop
+      if (currentQueueSize >= targetQueueSize) {
+        addLog(
+          'INFO',
+          `[AdminPage] Manual refresh - Target queue size already reached (${currentQueueSize}/${targetQueueSize})`,
+          'AdminPage'
+        )
+        return
+      }
+
+      let attempts = 0
+      let tracksAdded = 0
+
+      while (attempts < maxAttempts) {
+        attempts++
+
+        // Check current queue size again
+        const updatedQueue = (await fetch(`/api/playlist/${username}`).then(
+          (res) => res.json()
+        )) as Array<{ tracks: { spotify_track_id: string } }>
+        const updatedQueueSize = updatedQueue.length
+
+        addLog(
+          'INFO',
+          `[AdminPage] Manual refresh - Attempt ${attempts}/${maxAttempts} - Current queue: ${updatedQueueSize}, Target: ${targetQueueSize}, Tracks added: ${tracksAdded}`,
+          'AdminPage'
+        )
+
+        // If we've reached the target, stop
+        if (updatedQueueSize >= targetQueueSize) {
+          addLog(
+            'INFO',
+            `[AdminPage] Manual refresh - Target queue size reached (${updatedQueueSize}/${targetQueueSize}), stopping`,
+            'AdminPage'
+          )
+          break
+        }
+
+        try {
+          // Helper function for random track fallback
+          const tryRandomTrack = async (): Promise<void> => {
+            try {
+              const randomTrackResponse = await fetch('/api/random-track', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ username, excludedTrackIds })
+              })
+
+              if (randomTrackResponse.ok) {
+                const randomTrackResult =
+                  (await randomTrackResponse.json()) as {
+                    success: boolean
+                    track: {
+                      id: string
+                      spotify_track_id: string
+                      name: string
+                      artist: string
+                      album: string
+                      duration_ms: number
+                      popularity: number
+                      spotify_url: string
+                    }
+                  }
+
+                if (randomTrackResult.success && randomTrackResult.track) {
+                  const playlistResponse = await fetch(
+                    `/api/playlist/${username}`,
+                    {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({
+                        tracks: {
+                          id: randomTrackResult.track.spotify_track_id,
+                          name: randomTrackResult.track.name,
+                          artists: [{ name: randomTrackResult.track.artist }],
+                          album: { name: randomTrackResult.track.album },
+                          duration_ms: randomTrackResult.track.duration_ms,
+                          popularity: randomTrackResult.track.popularity,
+                          uri: randomTrackResult.track.spotify_url
+                        },
+                        initialVotes: 1,
+                        source: 'fallback'
+                      })
+                    }
+                  )
+
+                  if (playlistResponse.ok) {
+                    tracksAdded++
+                    addLog(
+                      'INFO',
+                      `[AdminPage] Manual refresh - Attempt ${attempts} - Successfully added random track: ${randomTrackResult.track.name} (Total added: ${tracksAdded})`,
+                      'AdminPage'
+                    )
+                  } else if (playlistResponse.status === 409) {
+                    addLog(
+                      'INFO',
+                      `[AdminPage] Manual refresh - Attempt ${attempts} - Random track already in playlist: ${randomTrackResult.track.name}`,
+                      'AdminPage'
+                    )
+                  }
+                }
+              }
+            } catch (error) {
+              addLog(
+                'ERROR',
+                `[AdminPage] Manual refresh - Attempt ${attempts} - Failed to get random track`,
+                'AdminPage',
+                error instanceof Error ? error : undefined
+              )
+            }
+          }
+
+          // Get current queue to exclude existing tracks
+          const currentQueueForExclusion = (await fetch(
+            `/api/playlist/${username}`
+          ).then((res) => res.json())) as Array<{
+            tracks: { spotify_track_id: string }
+          }>
+          const excludedTrackIds = currentQueueForExclusion.map(
+            (item) => item.tracks.spotify_track_id
+          )
+
+          addLog(
+            'INFO',
+            `[AdminPage] Manual refresh - Attempt ${attempts} - Excluding ${excludedTrackIds.length} existing tracks`,
+            'AdminPage'
+          )
+
+          // Try track suggestions first
+          const mergedTrackSuggestions = {
+            genres:
+              trackSuggestionsState?.genres &&
+              trackSuggestionsState.genres.length > 0
+                ? trackSuggestionsState.genres
+                : [...FALLBACK_GENRES],
+            yearRange: trackSuggestionsState?.yearRange ?? DEFAULT_YEAR_RANGE,
+            popularity:
+              trackSuggestionsState?.popularity ?? MIN_TRACK_POPULARITY,
+            allowExplicit: trackSuggestionsState?.allowExplicit ?? true,
+            maxSongLength:
+              trackSuggestionsState?.maxSongLength ??
+              DEFAULT_MAX_SONG_LENGTH_MINUTES,
+            songsBetweenRepeats:
+              trackSuggestionsState?.songsBetweenRepeats ??
+              DEFAULT_SONGS_BETWEEN_REPEATS,
+            maxOffset: trackSuggestionsState?.maxOffset ?? DEFAULT_MAX_OFFSET
+          }
+          const response = await fetch('/api/track-suggestions', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              ...mergedTrackSuggestions,
+              excludedTrackIds
+            })
+          })
+
+          if (response.ok) {
+            // Process track suggestions
+            const suggestions = (await response.json()) as {
+              tracks: { id: string }[]
+            }
+
+            if (suggestions.tracks && suggestions.tracks.length > 0) {
+              for (const track of suggestions.tracks) {
+                try {
+                  const trackDetails = await sendApiRequest<{
+                    id: string
+                    name: string
+                    artists: Array<{ name: string }>
+                    album: { name: string }
+                    duration_ms: number
+                    popularity: number
+                    uri: string
+                  }>({
+                    path: `tracks/${track.id}`,
+                    method: 'GET'
+                  })
+
+                  const playlistResponse = await fetch(
+                    `/api/playlist/${username}`,
+                    {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({
+                        tracks: trackDetails,
+                        initialVotes: 1,
+                        source: 'admin'
+                      })
+                    }
+                  )
+
+                  if (playlistResponse.ok) {
+                    tracksAdded++
+                    addLog(
+                      'INFO',
+                      `[AdminPage] Manual refresh - Attempt ${attempts} - Successfully added track: ${trackDetails.name} (Total added: ${tracksAdded})`,
+                      'AdminPage'
+                    )
+                  } else if (playlistResponse.status === 409) {
+                    addLog(
+                      'INFO',
+                      `[AdminPage] Manual refresh - Attempt ${attempts} - Track already in playlist: ${trackDetails.name}`,
+                      'AdminPage'
+                    )
+                  }
+                } catch (error) {
+                  addLog(
+                    'ERROR',
+                    `[AdminPage] Manual refresh - Attempt ${attempts} - Failed to add track ${track.id}`,
+                    'AdminPage',
+                    error instanceof Error ? error : undefined
+                  )
+                }
+              }
+            } else {
+              // No suggestions available, try random track
+              await tryRandomTrack()
+            }
+          } else {
+            // Track suggestions failed, try random track
+            await tryRandomTrack()
+          }
+        } catch (error) {
+          addLog(
+            'ERROR',
+            `[AdminPage] Manual refresh - Attempt ${attempts} - Unexpected error`,
+            'AdminPage',
+            error instanceof Error ? error : undefined
+          )
+        }
+      }
+
+      addLog(
+        'INFO',
+        `[AdminPage] Manual refresh completed - Total tracks added: ${tracksAdded}`,
+        'AdminPage'
+      )
+
+      await refreshQueue()
     } catch (error) {
       addLog(
         'ERROR',
-        'Failed to refresh playlist',
+        'Failed to auto-fill queue',
         'AdminPage',
         error instanceof Error ? error : undefined
       )
       setError(
-        error instanceof Error ? error.message : 'Failed to refresh playlist'
+        error instanceof Error ? error.message : 'Failed to auto-fill queue'
       )
     } finally {
       setIsRefreshing(false)
     }
-  }, [refreshPlaylist, trackSuggestionsState, addLog])
+  }, [trackSuggestionsState, addLog, refreshQueue, username])
 
   // Add missing functions
   const handleTabChange = useCallback((value: string): void => {
@@ -273,7 +605,6 @@ export default function AdminPage(): JSX.Element {
   const handleTokenError = useCallback(async (): Promise<void> => {
     try {
       setIsLoading(true)
-      addLog('INFO', 'Attempting automatic token recovery', 'AdminPage')
 
       // Clear token cache
       tokenManager.clearCache()
@@ -284,7 +615,6 @@ export default function AdminPage(): JSX.Element {
       // Reinitialize player
       await createPlayer()
 
-      addLog('INFO', 'Automatic token recovery successful', 'AdminPage')
       setError(null)
     } catch (error) {
       addLog(
@@ -302,14 +632,9 @@ export default function AdminPage(): JSX.Element {
   // Automatic token recovery when token health is in error state
   useEffect(() => {
     if (tokenHealth.status === 'error' && !isLoading && isReady) {
-      addLog(
-        'INFO',
-        'Token health error detected, triggering automatic recovery',
-        'AdminPage'
-      )
       void handleTokenError()
     }
-  }, [tokenHealth.status, isLoading, isReady, handleTokenError, addLog])
+  }, [tokenHealth.status, isLoading, isReady, handleTokenError])
 
   // Proactive token refresh interval - check every minute
   useEffect(() => {
@@ -318,10 +643,7 @@ export default function AdminPage(): JSX.Element {
     const interval = setInterval(() => {
       void (async (): Promise<void> => {
         try {
-          const wasRefreshed = await tokenManager.refreshIfNeeded()
-          if (wasRefreshed) {
-            addLog('INFO', 'Proactive token refresh completed', 'AdminPage')
-          }
+          await tokenManager.refreshIfNeeded()
         } catch (error) {
           addLog(
             'ERROR',
@@ -336,59 +658,37 @@ export default function AdminPage(): JSX.Element {
     return (): void => clearInterval(interval)
   }, [isReady, addLog])
 
-  useEffect(() => {
-    addLog(
-      'INFO',
-      `AdminPage render: playbackState=${JSON.stringify(playbackState)}, healthStatus.playback=${healthStatus.playback}`,
-      'AdminPage'
-    )
-  }, [playbackState, healthStatus.playback, addLog])
-
   // Automatically trigger recovery if playback stalls
   useEffect(() => {
     if (healthStatus.playback === 'stalled' && !recoveryState.isRecovering) {
-      addLog(
-        'INFO',
-        'Playback stall detected, triggering automatic recovery.',
-        'AdminPage'
-      )
       void recover()
     }
-  }, [healthStatus.playback, recoveryState.isRecovering, recover, addLog])
+  }, [healthStatus.playback, recoveryState.isRecovering, recover])
 
-  // Update error handling
-  if (fixedPlaylistError) {
+  if (playlistError) {
     return (
       <div className='p-4 text-red-500'>
         <p>
-          Error loading playlist:{' '}
-          {fixedPlaylistError instanceof Error
-            ? fixedPlaylistError.message
-            : String(fixedPlaylistError)}
+          Error loading queue:{' '}
+          {typeof playlistError === 'string'
+            ? playlistError
+            : String(playlistError)}
         </p>
       </div>
     )
   }
 
-  if (isFixedPlaylistLoading) {
-    return <PlaylistSkeleton />
-  }
-
-  if (playlistRefreshError) {
+  if (queueLoading && (!queue || queue.length === 0)) {
     return (
-      <div className='p-4 text-red-500'>
-        <p>
-          Error refreshing playlist:{' '}
-          {playlistRefreshError instanceof Error
-            ? playlistRefreshError.message
-            : String(playlistRefreshError)}
-        </p>
+      <div className='p-4 text-gray-400'>
+        <p>Loading queue...</p>
       </div>
     )
   }
 
   return (
     <div className='text-white min-h-screen bg-black p-4'>
+      <AutoFillNotification />
       <RecoveryStatus
         isRecovering={recoveryState.isRecovering}
         message={recoveryState.message}
@@ -444,40 +744,77 @@ export default function AdminPage(): JSX.Element {
 
             <HealthStatusSection
               healthStatus={healthStatus}
-              playbackInfo={playbackInfo}
+              playbackInfo={null}
               formatTime={formatTime}
               isReady={isReady}
             />
 
             <div className='mt-8 space-y-4'>
               <h2 className='text-xl font-semibold'>Controls</h2>
+
+              {/* Play/Pause Button - Using existing playback controls hook */}
+              <div className='mb-4 flex justify-center'>
+                <button
+                  onClick={(): void => {
+                    void handlePlayPause()
+                  }}
+                  disabled={!isReady || recoveryState.isRecovering}
+                  className='text-white max-w-xs flex-1 rounded-lg bg-green-600 px-6 py-3 font-medium transition-colors hover:bg-green-700 disabled:cursor-not-allowed disabled:opacity-50'
+                >
+                  {isActuallyPlaying ? 'Pause' : 'Play'}
+                </button>
+              </div>
+
+              {/* Volume Control */}
+              <div className='mb-4'>
+                <label className='mb-2 block text-sm font-medium text-gray-300'>
+                  Volume
+                </label>
+                <div className='flex items-center gap-3'>
+                  <input
+                    type='range'
+                    min='0'
+                    max='100'
+                    value={volume}
+                    className='slider h-2 flex-1 cursor-pointer appearance-none rounded-lg bg-gray-700'
+                    onChange={(e): void => {
+                      const newVolume = parseInt(e.target.value)
+                      setVolume(newVolume)
+                      // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
+                      void (async () => {
+                        try {
+                          await sendApiRequest({
+                            path: `me/player/volume?volume_percent=${newVolume}&device_id=${deviceId}`,
+                            method: 'PUT'
+                          })
+                          addLog(
+                            'INFO',
+                            `Volume set to ${newVolume}%`,
+                            'AdminPage'
+                          )
+                        } catch (error) {
+                          addLog(
+                            'ERROR',
+                            'Failed to set volume',
+                            'AdminPage',
+                            error instanceof Error ? error : undefined
+                          )
+                        }
+                      })()
+                    }}
+                    disabled={!isReady || recoveryState.isRecovering}
+                  />
+                  <span className='min-w-[3rem] text-right text-sm text-gray-400'>
+                    {volume}%
+                  </span>
+                </div>
+              </div>
+
               <div className='flex gap-4'>
                 <button
-                  onClick={() => void handlePlayPause()}
-                  disabled={!isReady || isLoading || recoveryState.isRecovering}
-                  className={`text-white flex-1 rounded-lg px-4 py-2 font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
-                    getIsActuallyPlaying()
-                      ? 'bg-blue-600 hover:bg-blue-700'
-                      : 'bg-green-600 hover:bg-green-700'
-                  }`}
-                >
-                  {isLoading ? (
-                    <div className='flex items-center justify-center gap-2'>
-                      <Loading className='h-4 w-4' />
-                      <span>Loading...</span>
-                    </div>
-                  ) : !isReady ? (
-                    'Initializing...'
-                  ) : recoveryState.isRecovering ? (
-                    'Recovering...'
-                  ) : getIsActuallyPlaying() ? (
-                    'Pause'
-                  ) : (
-                    'Play'
-                  )}
-                </button>
-                <button
-                  onClick={() => void handleRefreshPlaylist()}
+                  onClick={() => {
+                    void handleRefreshPlaylist()
+                  }}
                   disabled={
                     !isReady ||
                     isRefreshing ||
@@ -498,7 +835,7 @@ export default function AdminPage(): JSX.Element {
                   ) : recoveryState.isRecovering ? (
                     'Recovering...'
                   ) : (
-                    'Refresh Playlist'
+                    'Fill Playlist'
                   )}
                 </button>
                 <button
@@ -529,11 +866,17 @@ export default function AdminPage(): JSX.Element {
           </TabsContent>
 
           <TabsContent value='playlist'>
-            <PlaylistDisplay playlistId={fixedPlaylistId ?? ''} />
+            <PlaylistDisplay
+              queue={queue ?? []}
+              onQueueChanged={async () => {
+                await refreshQueue()
+              }}
+              optimisticUpdate={optimisticUpdate}
+            />
           </TabsContent>
 
           <TabsContent value='analytics'>
-            <AnalyticsTab />
+            <AnalyticsTab username={username} />
           </TabsContent>
         </Tabs>
       </div>

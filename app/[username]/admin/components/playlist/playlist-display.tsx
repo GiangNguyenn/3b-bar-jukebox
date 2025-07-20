@@ -1,96 +1,58 @@
 'use client'
 
-import { useEffect, useState, useCallback } from 'react'
+import { useState } from 'react'
 import { sendApiRequest } from '@/shared/api'
 import { useSpotifyPlayerStore } from '@/hooks/useSpotifyPlayer'
-import { useNowPlayingTrackWithPosition } from '@/hooks/useNowPlayingTrackWithPosition'
+import { useNowPlayingTrack } from '@/hooks/useNowPlayingTrack'
 import { PlayIcon, TrashIcon } from '@heroicons/react/24/outline'
 import { ErrorMessage } from '@/components/ui/error-message'
 import { Loading } from '@/components/ui/loading'
 import { TableSkeleton } from '@/components/ui/skeleton'
-import { TrackDetails, SpotifyArtist } from '@/shared/types/spotify'
-
-import { TrackItem } from '@/shared/types/spotify'
-
-interface SpotifyPlaylistTrack {
-  track: TrackDetails | null
-}
+import { JukeboxQueueItem } from '@/shared/types/queue'
+import { useConsoleLogsContext } from '@/hooks/ConsoleLogsProvider'
+import { useDebouncedCallback } from 'use-debounce'
 
 interface PlaylistDisplayProps {
-  playlistId: string
+  queue: JukeboxQueueItem[]
+  onQueueChanged: () => Promise<void>
+  optimisticUpdate?: (
+    updater: (currentQueue: JukeboxQueueItem[]) => JukeboxQueueItem[]
+  ) => void
 }
 
 export function PlaylistDisplay({
-  playlistId
+  queue,
+  onQueueChanged,
+  optimisticUpdate
 }: PlaylistDisplayProps): JSX.Element {
-  const [tracks, setTracks] = useState<SpotifyPlaylistTrack[]>([])
-  const [isLoading, setIsLoading] = useState(true)
+  const [isLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [loadingTrackId, setLoadingTrackId] = useState<string | null>(null)
   const [deletingTrackId, setDeletingTrackId] = useState<string | null>(null)
   const { deviceId } = useSpotifyPlayerStore()
-  const nowPlaying = useNowPlayingTrackWithPosition(
-    tracks as unknown as TrackItem[]
-  )
-  const [duplicateTrackIds, setDuplicateTrackIds] = useState(new Set<string>())
+  const { addLog } = useConsoleLogsContext()
 
-  const fetchPlaylistTracks = useCallback(async (): Promise<void> => {
+  // Use the simpler useNowPlayingTrack hook
+  const { data: currentlyPlaying } = useNowPlayingTrack()
+
+  // Debounced refresh to prevent excessive API calls
+  const debouncedRefresh = useDebouncedCallback(async () => {
     try {
-      setIsLoading(true)
-      setError(null)
-
-      const response = await sendApiRequest<{
-        items: SpotifyPlaylistTrack[]
-      }>({
-        path: `playlists/${playlistId}/tracks`,
-        method: 'GET'
-      })
-
-      if (response?.items) {
-        setTracks(response.items)
-
-        const trackIds = response.items
-          .map((item) => item.track?.id)
-          .filter((id): id is string => !!id)
-
-        const idCounts = trackIds.reduce(
-          (acc, id) => {
-            acc[id] = (acc[id] || 0) + 1
-            return acc
-          },
-          {} as Record<string, number>
-        )
-
-        const duplicates = new Set(
-          Object.keys(idCounts).filter((id) => idCounts[id] > 1)
-        )
-        setDuplicateTrackIds(duplicates)
-      }
-    } catch (err) {
-      setError(
-        err instanceof Error ? err.message : 'Failed to fetch playlist tracks'
+      await onQueueChanged()
+      addLog(
+        'INFO',
+        'Queue refreshed after debounced update',
+        'PlaylistDisplay'
       )
-    } finally {
-      setIsLoading(false)
+    } catch (err) {
+      addLog(
+        'ERROR',
+        'Failed to refresh queue after debounced update',
+        'PlaylistDisplay',
+        err instanceof Error ? err : undefined
+      )
     }
-  }, [playlistId])
-
-  useEffect((): void => {
-    if (playlistId) {
-      void fetchPlaylistTracks()
-    }
-  }, [playlistId, fetchPlaylistTracks])
-
-  // Add auto-refresh effect
-  useEffect((): (() => void) => {
-    if (!playlistId) return () => undefined
-
-    const refreshInterval = setInterval(() => {
-      void fetchPlaylistTracks()
-    }, 180000) // 3 minutes
-
-    return () => clearInterval(refreshInterval)
-  }, [playlistId, fetchPlaylistTracks])
+  }, 1000)
 
   const handlePlayTrack = async (trackUri: string): Promise<void> => {
     if (!deviceId) {
@@ -104,205 +66,222 @@ export function PlaylistDisplay({
         path: `me/player/play?device_id=${deviceId}`,
         method: 'PUT',
         body: {
-          context_uri: `spotify:playlist:${playlistId}`,
-          offset: { uri: trackUri }
+          uris: [trackUri]
         }
       })
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to play track')
+      const errorMessage =
+        err instanceof Error ? err.message : 'Failed to play track'
+      setError(errorMessage)
+      addLog(
+        'ERROR',
+        `Failed to play track: ${errorMessage}`,
+        'PlaylistDisplay',
+        err instanceof Error ? err : undefined
+      )
     } finally {
       setLoadingTrackId(null)
     }
   }
 
-  const handleDeleteTrack = async (
-    trackUri: string,
-    position: number
-  ): Promise<void> => {
+  const handleDeleteTrack = async (queueId: string): Promise<void> => {
     try {
-      setDeletingTrackId(trackUri)
-      await sendApiRequest({
-        path: `playlists/${playlistId}/tracks`,
-        method: 'DELETE',
-        body: {
-          tracks: [{ uri: trackUri, positions: [position] }]
-        }
+      setDeletingTrackId(queueId)
+      setError(null)
+
+      // Optimistic update - remove track from UI immediately
+      if (optimisticUpdate) {
+        optimisticUpdate((currentQueue) =>
+          currentQueue.filter((item) => item.id !== queueId)
+        )
+      }
+
+      const response = await fetch(`/api/queue/${queueId}`, {
+        method: 'DELETE'
       })
-      // Remove the track from the local state by its position
-      setTracks((prev) => prev.filter((_, i) => i !== position))
+
+      if (!response.ok) {
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-argument
+        const errorData: { error?: string } = await response.json()
+        throw new Error(errorData.error ?? 'Failed to delete track')
+      }
+
+      // Trigger debounced refresh to sync with real-time updates
+      void debouncedRefresh()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to delete track')
+      const errorMessage =
+        err instanceof Error ? err.message : 'Failed to delete track'
+      setError(errorMessage)
+      addLog(
+        'ERROR',
+        `Failed to delete track: ${errorMessage}`,
+        'PlaylistDisplay',
+        err instanceof Error ? err : undefined
+      )
+
+      // If optimistic update was used, we should revert it on error
+      // However, since we're using real-time subscriptions, the next update will correct the state
     } finally {
       setDeletingTrackId(null)
     }
   }
 
-  if (isLoading) {
-    return <TableSkeleton rows={8} />
+  if (isLoading && queue.length === 0) {
+    return <TableSkeleton rows={10} />
   }
 
   if (error) {
-    return <ErrorMessage message={error} onDismiss={() => setError(null)} />
+    return (
+      <ErrorMessage message={error ?? ''} onDismiss={() => setError(null)} />
+    )
   }
 
-  if (tracks.length === 0) {
+  if (queue.length === 0) {
     return (
-      <div className='rounded-lg border border-gray-800 bg-gray-900/50 p-4 text-gray-400'>
-        No tracks found in playlist
+      <div className='rounded-lg border border-gray-800 bg-gray-900/50 p-4 text-center text-gray-400'>
+        The queue is empty. Add some tracks!
       </div>
     )
   }
 
   return (
     <div className='space-y-4'>
-      <div className='rounded-lg border border-gray-800 bg-gray-900/50'>
-        <div className='overflow-x-auto'>
-          <table className='w-full table-fixed'>
-            <thead>
-              <tr className='border-b border-gray-800'>
-                <th className='w-16 px-4 py-3 text-left text-sm font-medium text-gray-400'>
-                  #
-                </th>
-                <th className='w-1/3 px-4 py-3 text-left text-sm font-medium text-gray-400'>
-                  Title
-                </th>
-                <th className='w-1/4 px-4 py-3 text-left text-sm font-medium text-gray-400'>
-                  Artist
-                </th>
-                <th className='w-1/4 px-4 py-3 text-left text-sm font-medium text-gray-400'>
-                  Album
-                </th>
-                <th className='w-24 px-4 py-3 text-left text-sm font-medium text-gray-400'>
-                  Duration
-                </th>
-                <th className='w-24 px-4 py-3 text-left text-sm font-medium text-gray-400'>
-                  Actions
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {[...tracks].reverse().map((track, index) => {
-                const isCurrentlyPlaying =
-                  nowPlaying?.track.id === track.track?.id &&
-                  nowPlaying?.position === tracks.length - 1 - index
-                const isTrackLoading = loadingTrackId === track.track?.uri
-                const isTrackDeleting = deletingTrackId === track.track?.uri
-                const isNextTrack =
-                  nowPlaying?.position !== -1 &&
-                  nowPlaying?.position === tracks.length - 1 - index - 1
-                const isDuplicate = duplicateTrackIds.has(track.track?.id ?? '')
+      <div className='flex items-center justify-between'>
+        <h2 className='text-xl font-semibold'>Queue ({queue.length} tracks)</h2>
+      </div>
 
-                return (
-                  <tr
-                    key={`${track.track?.id}-${index}`}
-                    className={`border-b border-gray-800 last:border-0 hover:bg-gray-800/50 ${
-                      isCurrentlyPlaying ? 'bg-green-900/20' : ''
-                    } ${isNextTrack ? 'bg-blue-900/20' : ''} ${
-                      isDuplicate ? 'bg-yellow-900/20' : ''
-                    }`}
-                  >
-                    <td className='px-4 py-3 text-sm text-gray-400'>
-                      {isCurrentlyPlaying ? (
-                        <div className='flex items-center gap-2'>
-                          <span className='h-2 w-2 animate-pulse rounded-full bg-green-500'></span>
-                          {tracks.length - index}
-                        </div>
-                      ) : isNextTrack ? (
-                        <div className='flex items-center gap-2'>
-                          <span className='h-2 w-2 rounded-full bg-blue-500'></span>
-                          {tracks.length - index}
-                        </div>
-                      ) : (
-                        tracks.length - index
-                      )}
-                    </td>
-                    <td className='text-white px-4 py-3 text-sm'>
-                      {track.track?.name}
-                      {isCurrentlyPlaying && (
-                        <span className='ml-2 text-xs text-green-500'>
-                          (Now Playing)
-                        </span>
-                      )}
-                      {isNextTrack && (
-                        <span className='ml-2 text-xs text-blue-500'>
-                          (Next Up)
-                        </span>
-                      )}
-                    </td>
-                    <td className='px-4 py-3 text-sm text-gray-400'>
-                      {track.track?.artists
-                        ?.map((artist: SpotifyArtist) => artist.name)
-                        .join(', ')}
-                    </td>
-                    <td className='px-4 py-3 text-sm text-gray-400'>
-                      {track.track?.album?.name}
-                    </td>
-                    <td className='px-4 py-3 text-sm text-gray-400'>
-                      {formatDuration(track.track?.duration_ms ?? 0)}
-                    </td>
-                    <td className='px-4 py-3 text-sm'>
-                      <div className='flex items-center gap-2'>
-                        <button
-                          onClick={() =>
-                            track.track?.uri &&
-                            void handlePlayTrack(track.track.uri)
-                          }
-                          disabled={
-                            isTrackLoading ||
-                            isTrackDeleting ||
-                            !track.track?.uri
-                          }
-                          className='hover:text-white rounded p-1 text-gray-400 hover:bg-gray-700 disabled:cursor-not-allowed disabled:opacity-50'
-                          title='Play track'
-                        >
-                          {isTrackLoading ? (
-                            <Loading className='h-4 w-4' />
-                          ) : (
-                            <PlayIcon className='h-4 w-4' />
-                          )}
-                        </button>
-                        <button
-                          onClick={() =>
-                            track.track?.uri &&
-                            void handleDeleteTrack(
-                              track.track.uri,
-                              tracks.length - 1 - index
-                            )
-                          }
-                          disabled={
-                            isTrackLoading ||
-                            isTrackDeleting ||
-                            !track.track?.uri ||
-                            isNextTrack
-                          }
-                          className='hover:text-white rounded p-1 text-gray-400 hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50'
-                          title={
-                            isNextTrack
-                              ? "Can't delete next track"
-                              : 'Delete track'
-                          }
-                        >
-                          {isTrackDeleting ? (
-                            <Loading className='h-4 w-4' />
-                          ) : (
-                            <TrashIcon className='h-4 w-4' />
-                          )}
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
+      <div className='overflow-hidden rounded-lg border border-gray-800'>
+        <table className='w-full'>
+          <thead className='bg-gray-900/50'>
+            <tr>
+              <th className='px-4 py-3 text-left text-sm font-medium text-gray-400'>
+                #
+              </th>
+              <th className='px-4 py-3 text-left text-sm font-medium text-gray-400'>
+                Votes
+              </th>
+              <th className='px-4 py-3 text-left text-sm font-medium text-gray-400'>
+                Track
+              </th>
+              <th className='px-4 py-3 text-left text-sm font-medium text-gray-400'>
+                Artist
+              </th>
+              <th className='px-4 py-3 text-left text-sm font-medium text-gray-400'>
+                Actions
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {queue.map((item, index) => {
+              const isCurrentlyPlaying =
+                currentlyPlaying?.item?.id === item.tracks.spotify_track_id
+              const isTrackLoading = loadingTrackId === item.tracks.spotify_url
+              const isTrackDeleting = deletingTrackId === item.id
+
+              // Find the next track based on votes
+              let isNextTrack = false
+              if (isCurrentlyPlaying) {
+                // If this is the currently playing track, no next track indicator
+                isNextTrack = false
+              } else {
+                // Find the track with highest votes (excluding currently playing track)
+                const availableTracks = queue.filter(
+                  (track) =>
+                    currentlyPlaying?.item?.id !== track.tracks.spotify_track_id
                 )
-              })}
-            </tbody>
-          </table>
-        </div>
+                if (availableTracks.length > 0) {
+                  const nextTrack = availableTracks.reduce((highest, track) =>
+                    track.votes > highest.votes ? track : highest
+                  )
+                  isNextTrack = item.id === nextTrack.id
+                }
+              }
+
+              return (
+                <tr
+                  key={item.id}
+                  className={`border-b border-gray-800 last:border-0 hover:bg-gray-800/50 ${
+                    isCurrentlyPlaying ? 'bg-green-900/20' : ''
+                  } ${isNextTrack ? 'bg-blue-900/20' : ''}`}
+                >
+                  <td className='px-4 py-3 text-sm text-gray-400'>
+                    {isCurrentlyPlaying ? (
+                      <div className='flex items-center gap-2'>
+                        {index + 1}
+                        <span className='h-2 w-2 animate-pulse rounded-full bg-green-500'></span>
+                      </div>
+                    ) : isNextTrack ? (
+                      <div className='flex items-center gap-2'>
+                        {index + 1}
+                        <span className='h-2 w-2 rounded-full bg-blue-500'></span>
+                      </div>
+                    ) : (
+                      index + 1
+                    )}
+                  </td>
+                  <td className='px-4 py-3 text-sm text-gray-400'>
+                    {item.votes}
+                  </td>
+                  <td className='text-white px-4 py-3 text-sm'>
+                    <span title={item.tracks.name}>
+                      {item.tracks.name.length > 20
+                        ? `${item.tracks.name.substring(0, 20)}...`
+                        : item.tracks.name}
+                    </span>
+                    {isCurrentlyPlaying && (
+                      <span className='ml-2 text-xs text-green-500'>
+                        (Now Playing)
+                      </span>
+                    )}
+                    {isNextTrack && (
+                      <span className='ml-2 text-xs text-blue-500'>
+                        (Next Up)
+                      </span>
+                    )}
+                  </td>
+                  <td className='px-4 py-3 text-sm text-gray-400'>
+                    <span title={item.tracks.artist}>
+                      {item.tracks.artist.length > 20
+                        ? `${item.tracks.artist.substring(0, 20)}...`
+                        : item.tracks.artist}
+                    </span>
+                  </td>
+                  <td className='px-4 py-3 text-sm'>
+                    <div className='flex items-center gap-2'>
+                      <button
+                        onClick={() =>
+                          void handlePlayTrack(item.tracks.spotify_url)
+                        }
+                        disabled={isTrackLoading || isTrackDeleting}
+                        className='hover:text-white rounded p-1 text-gray-400 hover:bg-gray-700 disabled:cursor-not-allowed disabled:opacity-50'
+                        title='Play this track'
+                      >
+                        {isTrackLoading ? (
+                          <Loading className='h-4 w-4' />
+                        ) : (
+                          <PlayIcon className='h-4 w-4' />
+                        )}
+                      </button>
+                      <button
+                        onClick={() => void handleDeleteTrack(item.id)}
+                        disabled={isTrackLoading || isTrackDeleting}
+                        className='hover:text-white rounded p-1 text-gray-400 hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50'
+                        title='Remove from queue'
+                      >
+                        {isTrackDeleting ? (
+                          <Loading className='h-4 w-4' />
+                        ) : (
+                          <TrashIcon className='h-4 w-4' />
+                        )}
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
       </div>
     </div>
   )
-}
-
-function formatDuration(ms: number): string {
-  const minutes = Math.floor(ms / 60000)
-  const seconds = Math.floor((ms % 60000) / 1000)
-  return `${minutes}:${seconds.toString().padStart(2, '0')}`
 }
