@@ -1,28 +1,32 @@
 'use client'
 
-import { Suspense, useMemo, useEffect, useState, useCallback } from 'react'
-import { useGetPlaylist } from '@/hooks/useGetPlaylist'
-import { useFixedPlaylist } from '@/hooks/useFixedPlaylist'
-import { useTrackOperations } from '@/hooks/useTrackOperations'
+import { Suspense, useEffect, useState, useCallback } from 'react'
 import { useUserToken } from '@/hooks/useUserToken'
 import { useNowPlayingTrack } from '@/hooks/useNowPlayingTrack'
 import { useArtistExtract } from '@/hooks/useArtistExtract'
-import { useUpcomingTracks } from '@/hooks/useUpcomingTracks'
-import { TrackDetails, TrackItem } from '@/shared/types/spotify'
+import { usePlaylistData } from '@/hooks/usePlaylistData'
+import { TrackDetails } from '@/shared/types/spotify'
 import SearchInput from '@/components/SearchInput'
 import Playlist from '@/components/Playlist/Playlist'
 import { handleApiError } from '@/shared/utils/errorHandling'
 import { AppError } from '@/shared/utils/errorHandling'
+import { ERROR_MESSAGES } from '@/shared/constants/errors'
+import type { JukeboxQueueItem } from '@/shared/types/queue'
 import { useParams } from 'next/navigation'
 import { Loading, PlaylistSkeleton, ErrorMessage, Toast } from '@/components/ui'
-import { ERROR_MESSAGES } from '@/shared/constants/errors'
+import { AutoFillNotification } from '@/components/ui/auto-fill-notification'
+
+type VoteFeedback = {
+  message: string
+  variant: 'success' | 'warning'
+}
 
 export default function PlaylistPage(): JSX.Element {
   const params = useParams()
   const username = params?.username as string | undefined
+  const [voteFeedback, setVoteFeedback] = useState<VoteFeedback | null>(null)
 
   const {
-    token,
     loading: isTokenLoading,
     error: tokenError,
     isRecovering,
@@ -30,49 +34,28 @@ export default function PlaylistPage(): JSX.Element {
     fetchToken
   } = useUserToken()
 
-  const { fixedPlaylistId, isLoading: isPlaylistIdLoading } = useFixedPlaylist()
-
-  // Only enable useGetPlaylist when we have both token and playlistId, and token is not loading
-  const shouldEnablePlaylist = !isTokenLoading && !!token && !!fixedPlaylistId
-
   const {
-    data: playlist,
+    data: queue,
     error: playlistError,
     isLoading: isPlaylistLoading,
     isRefreshing: isPlaylistRefreshing,
-    refetch: refetchPlaylist,
-    addTrackOptimistically,
-    revertOptimisticUpdate
-  } = useGetPlaylist({
-    playlistId: fixedPlaylistId,
-    token,
-    enabled: shouldEnablePlaylist
-  })
+    mutate: refreshQueue,
+    optimisticUpdate
+  } = usePlaylistData(username)
 
-  const { addTrack, lastAddedTrack, clearLastAddedTrack } = useTrackOperations({
-    playlistId: fixedPlaylistId ?? '',
-    token,
-    username,
-    playlist,
-    addTrackOptimistically,
-    revertOptimisticUpdate,
-    refetch: () => {
-      void refetchPlaylist()
-    },
-    playlistError
-  })
-
-  // Get currently playing track using the user's token
   const { data: currentlyPlaying } = useNowPlayingTrack({
-    token,
-    enabled: !isTokenLoading && !!token
+    token: null, // Don't use user token for public pages
+    enabled: true, // Always enabled for public pages
+    refetchInterval: 5000 // Poll every 5 seconds for more responsive updates
   })
 
-  // Get only the upcoming tracks (tracks that are yet to be played)
-  const upcomingTracks = useUpcomingTracks(
-    playlist ?? undefined,
-    currentlyPlaying ?? undefined
-  )
+  // Force refresh queue when currently playing track changes
+  useEffect(() => {
+    if (currentlyPlaying?.item?.id) {
+      // Refresh queue to update the currently playing indicator
+      void refreshQueue()
+    }
+  }, [currentlyPlaying?.item?.id, currentlyPlaying?.item?.name, refreshQueue])
 
   const artistName = currentlyPlaying?.item?.artists[0]?.name
   const {
@@ -81,58 +64,165 @@ export default function PlaylistPage(): JSX.Element {
     error: extractError
   } = useArtistExtract(artistName)
 
-  // Include optimistic track in the display if it exists
-  const tracksToDisplay = useMemo(() => {
-    return upcomingTracks
-  }, [upcomingTracks])
+  const [lastAddedTrack, setLastAddedTrack] = useState<TrackDetails | null>(
+    null
+  )
 
   const handleAddTrack = useCallback(
     async (track: TrackDetails): Promise<void> => {
-      try {
-        const trackItem: TrackItem = {
-          added_at: new Date().toISOString(),
-          added_by: {
-            id: 'user',
-            type: 'user',
-            uri: 'spotify:user:user',
-            href: 'https://api.spotify.com/v1/users/user',
-            external_urls: {
-              spotify: 'https://open.spotify.com/user/user'
-            }
-          },
-          is_local: false,
-          track
+      if (!username) return
+
+      // Create optimistic queue item
+      const optimisticItem: JukeboxQueueItem = {
+        id: `temp-${Date.now()}-${track.id}`, // Temporary ID
+        profile_id: '', // Will be filled by the server
+        track_id: '', // Will be filled by the server
+        votes: 5, // Initial votes
+        queued_at: new Date().toISOString(),
+        tracks: {
+          id: '', // Will be filled by the server
+          spotify_track_id: track.id,
+          name: track.name,
+          artist: track.artists[0]?.name || 'Unknown Artist',
+          album: track.album.name,
+          genre: null,
+          created_at: new Date().toISOString(),
+          popularity: track.popularity,
+          duration_ms: track.duration_ms,
+          spotify_url: track.uri,
+          release_year: new Date().getFullYear() // Default to current year
         }
-        await addTrack(trackItem)
-      } catch (error) {
+      }
+
+      // Optimistically add the track to the queue
+      if (optimisticUpdate && queue) {
+        optimisticUpdate((currentQueue) => [optimisticItem, ...currentQueue])
+      }
+
+      try {
+        const response = await fetch(`/api/playlist/${username}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            tracks: track,
+            initialVotes: 5,
+            source: 'user' // Mark as user-initiated
+          })
+        })
+
+        if (!response.ok) {
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-unsafe-member-access
+          throw new AppError(
+            ERROR_MESSAGES.FAILED_TO_ADD,
+            response.status,
+            'PlaylistPage'
+          )
+        }
+
+        setLastAddedTrack(track)
+        // The real-time subscription will update the queue with the actual data
+        // so we don't need to call refreshQueue() here
+      } catch (error: unknown) {
+        // Remove the optimistic item on error
+        if (optimisticUpdate && queue) {
+          optimisticUpdate((currentQueue) =>
+            currentQueue.filter((item) => item.id !== optimisticItem.id)
+          )
+        }
+
         const appError = handleApiError(error, 'PlaylistPage')
         if (appError instanceof AppError) {
-          // Error is already handled by handleApiError
+          setVoteFeedback({ message: appError.message, variant: 'warning' })
         }
       }
     },
-    [addTrack]
+    [username, optimisticUpdate, queue]
   )
 
-  const [isTokenInvalid, setIsTokenInvalid] = useState(false)
+  const handleVote = useCallback(
+    async (queueId: string, voteDirection: 'up' | 'down'): Promise<void> => {
+      const VOTE_STORAGE_KEY = `vote_${queueId}`
+      if (localStorage.getItem(VOTE_STORAGE_KEY)) {
+        setVoteFeedback({
+          message: 'You have already voted for this track.',
+          variant: 'warning'
+        })
+        return
+      }
 
-  // Effect to handle token recovery
+      // Optimistic update - update vote count immediately
+      if (optimisticUpdate && queue) {
+        optimisticUpdate((currentQueue) =>
+          currentQueue.map((item) =>
+            item.id === queueId
+              ? {
+                  ...item,
+                  votes: item.votes + (voteDirection === 'up' ? 1 : -1)
+                }
+              : item
+          )
+        )
+      }
+
+      try {
+        const response = await fetch('/api/queue/vote', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ queueId, voteDirection })
+        })
+
+        if (!response.ok) {
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-unsafe-member-access
+          const errorData: { error?: string } = await response.json()
+          throw new Error(errorData.error ?? 'Failed to cast vote.')
+        }
+
+        localStorage.setItem(VOTE_STORAGE_KEY, 'true')
+        setVoteFeedback({ message: 'Vote recorded!', variant: 'success' })
+
+        // Real-time subscription will handle the update, but we can trigger a refresh
+        // to ensure we have the latest data
+        void refreshQueue()
+      } catch (error: unknown) {
+        // If optimistic update was used, the real-time subscription will correct the state
+        if (error instanceof Error) {
+          setVoteFeedback({
+            message: error.message,
+            variant: 'warning'
+          })
+        }
+        handleApiError(error, 'VoteError')
+      }
+    },
+    [refreshQueue, optimisticUpdate, queue]
+  )
+
+  const [isTokenInvalid, setIsTokenInvalid] = useState<boolean>(false)
+
   useEffect(() => {
-    if (playlistError === 'Token invalid' && !isRecovering) {
+    if (
+      playlistError &&
+      typeof playlistError === 'object' &&
+      'message' in playlistError &&
+      typeof (playlistError as { message: unknown }).message === 'string' &&
+      (playlistError as { message: string }).message.includes(
+        'Token invalid'
+      ) &&
+      !isRecovering
+    ) {
       setIsTokenInvalid(true)
     }
   }, [playlistError, isRecovering])
 
-  const handleTokenRecovery = useCallback(async () => {
+  const handleTokenRecovery = useCallback(async (): Promise<void> => {
     if (fetchToken) {
       const newToken = await fetchToken()
       if (newToken) {
         setIsTokenInvalid(false)
-        // Manually trigger a refetch of the playlist with the new token
-        void refetchPlaylist()
+        void refreshQueue()
       }
     }
-  }, [fetchToken, refetchPlaylist])
+  }, [fetchToken, refreshQueue])
 
   useEffect(() => {
     if (isTokenInvalid) {
@@ -140,22 +230,16 @@ export default function PlaylistPage(): JSX.Element {
     }
   }, [isTokenInvalid, handleTokenRecovery])
 
-  // Reload page when jukebox goes offline (can't recover from expired token)
   useEffect(() => {
     if (isJukeboxOffline) {
-      // Small delay to ensure the user sees the loading state briefly
       const reloadTimer = setTimeout(() => {
         window.location.reload()
       }, 1000)
-
       return (): void => clearTimeout(reloadTimer)
     }
-
-    // Return empty cleanup function when not offline
     return (): void => {}
   }, [isJukeboxOffline])
 
-  // Show jukebox offline state if circuit breaker is open
   if (isJukeboxOffline) {
     return (
       <div className='w-full'>
@@ -166,7 +250,6 @@ export default function PlaylistPage(): JSX.Element {
     )
   }
 
-  // Show token error if present
   if (tokenError) {
     return (
       <div className='w-full'>
@@ -182,13 +265,18 @@ export default function PlaylistPage(): JSX.Element {
     )
   }
 
-  // Show playlist error if present
   if (playlistError) {
+    const errorMessage =
+      playlistError &&
+      typeof playlistError === 'object' &&
+      'message' in playlistError
+        ? (playlistError as { message: string }).message
+        : 'An unknown error occurred while fetching the playlist.'
     return (
       <div className='w-full'>
         <div className='mx-auto flex w-full flex-col space-y-6 sm:w-10/12 md:w-8/12 lg:w-9/12'>
           <ErrorMessage
-            message={playlistError}
+            message={errorMessage}
             variant='error'
             className='text-center'
           />
@@ -197,14 +285,7 @@ export default function PlaylistPage(): JSX.Element {
     )
   }
 
-  // Show loading state during token loading or recovery
-  if (
-    isTokenLoading ||
-    isPlaylistIdLoading ||
-    isPlaylistLoading ||
-    isRecovering ||
-    isTokenInvalid
-  ) {
+  if (isTokenLoading || isPlaylistLoading || isRecovering || isTokenInvalid) {
     return (
       <Loading
         fullScreen
@@ -213,7 +294,7 @@ export default function PlaylistPage(): JSX.Element {
     )
   }
 
-  if (!playlist) {
+  if (!queue) {
     return (
       <div className='w-full'>
         <div className='mx-auto flex w-full flex-col space-y-6 sm:w-10/12 md:w-8/12 lg:w-9/12'>
@@ -229,12 +310,20 @@ export default function PlaylistPage(): JSX.Element {
 
   return (
     <div className='w-full'>
-      {/* Success Toast */}
+      <AutoFillNotification />
       {lastAddedTrack && (
         <Toast
-          message={`"${lastAddedTrack.track.name}" added to playlist`}
-          onDismiss={clearLastAddedTrack}
+          message={`"${lastAddedTrack.name}" added to playlist`}
+          onDismiss={() => setLastAddedTrack(null)}
           variant='success'
+          autoDismissMs={3000}
+        />
+      )}
+      {voteFeedback && (
+        <Toast
+          message={voteFeedback.message}
+          onDismiss={() => setVoteFeedback(null)}
+          variant={voteFeedback.variant}
           autoDismissMs={3000}
         />
       )}
@@ -242,22 +331,25 @@ export default function PlaylistPage(): JSX.Element {
       <div className='mx-auto flex w-full flex-col space-y-6 sm:w-10/12 md:w-8/12 lg:w-9/12'>
         <div className='mx-auto flex w-full overflow-hidden rounded-lg bg-primary-100 shadow-md sm:w-10/12 md:w-8/12 lg:w-9/12'>
           <div className='flex w-full flex-col p-5'>
-            <SearchInput onAddTrack={handleAddTrack} username={username} />
+            <SearchInput
+              onAddTrack={handleAddTrack}
+              username={username}
+              currentQueue={queue || []}
+            />
           </div>
         </div>
         <Suspense fallback={<PlaylistSkeleton />}>
           <div className='relative'>
-            {isPlaylistRefreshing && (
-              <div className='bg-white absolute inset-0 z-10 flex items-center justify-center rounded-lg bg-opacity-75'>
-                <Loading className='h-6 w-6' message='Refreshing...' />
-              </div>
-            )}
             <Playlist
-              tracks={tracksToDisplay}
+              tracks={queue || []}
               currentlyPlaying={currentlyPlaying}
               artistExtract={extract}
               isExtractLoading={isExtractLoading}
               extractError={extractError}
+              onVote={(queueId, voteDirection) => {
+                void handleVote(queueId, voteDirection)
+              }}
+              isRefreshing={isPlaylistRefreshing}
             />
           </div>
         </Suspense>

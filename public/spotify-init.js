@@ -2,7 +2,6 @@
 window.onSpotifyWebPlaybackSDKReady = () => {
   // Use requestAnimationFrame to ensure we're not in a render cycle
   requestAnimationFrame(() => {
-    console.log('[SpotifyPlayer] SDK Ready')
     window.Spotify = Spotify
     // Dispatch an event to notify that the SDK is ready
     window.dispatchEvent(new CustomEvent('spotifySDKReady'))
@@ -29,12 +28,10 @@ window.spotifySDKLoading = true
 if (window.Spotify) {
   // Use requestAnimationFrame to ensure we're not in a render cycle
   requestAnimationFrame(() => {
-    console.log('[SpotifyPlayer] SDK already loaded')
     window.spotifySDKLoading = false
     window.dispatchEvent(new CustomEvent('spotifySDKReady'))
   })
 } else {
-  console.log('[SpotifyPlayer] Loading SDK...')
   // Load the SDK script
   const script = document.createElement('script')
   script.src = 'https://sdk.scdn.co/spotify-player.js'
@@ -55,7 +52,6 @@ if (window.Spotify) {
   script.onload = () => {
     // Use requestAnimationFrame to ensure we're not in a render cycle
     requestAnimationFrame(() => {
-      console.log('[SpotifyPlayer] SDK script loaded')
       window.spotifySDKLoading = false
     })
   }

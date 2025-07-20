@@ -16,13 +16,6 @@ export async function verifyPlaybackResume(
   checkInterval: number = PLAYBACK_CHECK_INTERVAL
 ): Promise<PlaybackVerificationResult> {
   const startTime = Date.now()
-  console.log('[Playback Verification] Starting verification process', {
-    expectedContextUri,
-    currentDeviceId,
-    maxVerificationTime,
-    checkInterval,
-    timestamp: new Date().toISOString()
-  })
 
   const initialState = await sendApiRequest<SpotifyPlaybackState>({
     path: 'me/player?market=from_token',
@@ -40,10 +33,6 @@ export async function verifyPlaybackResume(
       )
       // Don't throw error, just log warnings and continue
     }
-  } else {
-    console.log(
-      '[Playback Verification] No initial playback state (this is normal during recovery)'
-    )
   }
 
   // Only validate device state if we have both a device ID and initial state
@@ -57,15 +46,6 @@ export async function verifyPlaybackResume(
       // Don't throw error, just log warnings and continue
     }
   }
-
-  console.log('[Playback Verification] Initial state:', {
-    deviceId: initialState?.device?.id,
-    isPlaying: initialState?.is_playing,
-    progress: initialState?.progress_ms,
-    context: initialState?.context?.uri,
-    currentTrack: initialState?.item?.name,
-    timestamp: new Date().toISOString()
-  })
 
   const initialProgress = initialState?.progress_ms ?? 0
   let lastProgress = initialProgress
@@ -96,13 +76,6 @@ export async function verifyPlaybackResume(
 
     // If we still don't have a state after several attempts, that's okay during recovery
     if (!currentState) {
-      console.log(
-        '[Playback Verification] No playback state yet (attempt',
-        attempts,
-        'of',
-        maxAttempts,
-        ')'
-      )
       continue
     }
 
@@ -131,13 +104,6 @@ export async function verifyPlaybackResume(
       }
     }
 
-    console.log('[Playback Verification] Progress check:', {
-      currentProgress,
-      lastProgress,
-      progressStalled,
-      timestamp: new Date().toISOString()
-    })
-
     // Check if we have successful playback
     if (
       !progressStalled &&
@@ -150,9 +116,6 @@ export async function verifyPlaybackResume(
 
   // If we never got a valid state, that's okay during recovery
   if (!currentState) {
-    console.log(
-      '[Playback Verification] No valid playback state obtained during verification period'
-    )
     const verificationResult: PlaybackVerificationResult = {
       isSuccessful: false,
       reason: 'No playback state available during verification',

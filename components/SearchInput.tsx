@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useConsoleLogsContext } from '@/hooks/ConsoleLogsProvider'
 import { TrackDetails } from '@/shared/types/spotify'
+import { JukeboxQueueItem } from '@/shared/types/queue'
 import { handleApiError } from '@/shared/utils/errorHandling'
 import { ErrorMessage } from '@/components/ui/error-message'
 import { Loading } from '@/components/ui/loading'
@@ -11,6 +12,7 @@ import Image from 'next/image'
 interface SearchInputProps {
   onAddTrack: (track: TrackDetails) => Promise<void>
   username?: string
+  currentQueue?: JukeboxQueueItem[]
 }
 
 interface SearchResponse {
@@ -21,7 +23,8 @@ interface SearchResponse {
 
 export default function SearchInput({
   onAddTrack,
-  username
+  username,
+  currentQueue = []
 }: SearchInputProps): JSX.Element {
   const { addLog } = useConsoleLogsContext()
   const [searchQuery, setSearchQuery] = useState('')
@@ -31,6 +34,16 @@ export default function SearchInput({
   const [isAddingTrack, setIsAddingTrack] = useState(false)
   const debounceRef = useRef<NodeJS.Timeout | null>(null)
   const abortControllerRef = useRef<AbortController | null>(null)
+
+  // Check if a track already exists in the queue
+  const isTrackInQueue = useCallback(
+    (trackId: string): boolean => {
+      return currentQueue.some(
+        (item) => item.tracks.spotify_track_id === trackId
+      )
+    },
+    [currentQueue]
+  )
 
   const handleSearch = useCallback(
     async (query: string): Promise<void> => {
@@ -70,7 +83,6 @@ export default function SearchInput({
         setSearchResults(data.tracks?.items ?? [])
       } catch (error) {
         if ((error as Error).name === 'AbortError') {
-          addLog('INFO', 'Search request aborted', 'SearchInput')
           return // Don't set error for aborted requests
         }
         addLog('ERROR', 'Error searching tracks', 'SearchInput', error as Error)
@@ -119,6 +131,12 @@ export default function SearchInput({
 
   const handleAddTrack = useCallback(
     async (track: TrackDetails): Promise<void> => {
+      // Check if track is already in queue
+      if (isTrackInQueue(track.id)) {
+        setError('This track is already in the playlist')
+        return
+      }
+
       try {
         setIsAddingTrack(true)
         setSearchResults([])
@@ -131,7 +149,7 @@ export default function SearchInput({
         setError(appError.message)
       }
     },
-    [onAddTrack, addLog]
+    [onAddTrack, addLog, isTrackInQueue]
   )
 
   return (
@@ -162,29 +180,41 @@ export default function SearchInput({
 
       {searchResults.length > 0 && (
         <div className='mt-4 max-h-96 overflow-y-auto rounded-lg border border-gray-200'>
-          {searchResults.map((track) => (
-            <div
-              key={track.id}
-              className='flex cursor-pointer items-center space-x-4 border-b border-gray-200 p-4 hover:bg-gray-50'
-              onClick={() => void handleAddTrack(track)}
-            >
-              {track.album.images[0] && (
-                <Image
-                  src={track.album.images[0].url}
-                  alt={track.album.name}
-                  width={48}
-                  height={48}
-                  className='rounded'
-                />
-              )}
-              <div>
-                <div className='font-medium'>{track.name}</div>
-                <div className='text-sm text-gray-500'>
-                  {track.artists.map((artist) => artist.name).join(', ')}
+          {searchResults.map((track) => {
+            const isDuplicate = isTrackInQueue(track.id)
+            return (
+              <div
+                key={track.id}
+                className={`flex cursor-pointer items-center space-x-4 border-b border-gray-200 p-4 ${
+                  isDuplicate
+                    ? 'cursor-not-allowed bg-gray-100 opacity-60'
+                    : 'hover:bg-gray-50'
+                }`}
+                onClick={() => !isDuplicate && void handleAddTrack(track)}
+              >
+                {track.album.images[0] && (
+                  <Image
+                    src={track.album.images[0].url}
+                    alt={track.album.name}
+                    width={48}
+                    height={48}
+                    className='rounded'
+                  />
+                )}
+                <div className='flex-1'>
+                  <div className='font-medium'>{track.name}</div>
+                  <div className='text-sm text-gray-500'>
+                    {track.artists.map((artist) => artist.name).join(', ')}
+                  </div>
+                  {isDuplicate && (
+                    <div className='mt-1 text-xs text-red-500'>
+                      Already in playlist
+                    </div>
+                  )}
                 </div>
               </div>
-            </div>
-          ))}
+            )
+          })}
         </div>
       )}
 

@@ -86,6 +86,19 @@ function filterTracksByCriteria(
     yearRange
   } = criteria
 
+  logger(
+    'INFO',
+    `[filterTracksByCriteria] Starting filter with ${tracks.length} tracks and criteria: ${JSON.stringify(
+      {
+        excludedIdsCount: excludedIds.length,
+        minPopularity,
+        maxSongLengthMs,
+        allowExplicit,
+        yearRange
+      }
+    )}`
+  )
+
   const candidates: TrackDetails[] = []
   const filteredOut = {
     excluded: 0,
@@ -102,12 +115,14 @@ function filterTracksByCriteria(
     // Check exclusion first (most restrictive)
     if (excludedIds.includes(track.id)) {
       filteredOut.excluded++
+      logger('INFO', `[filterTracksByCriteria] Track excluded: ${trackInfo}`)
       continue
     }
 
     // Check playability
     if (track.is_playable !== true) {
       filteredOut.unplayable++
+      logger('INFO', `[filterTracksByCriteria] Track unplayable: ${trackInfo}`)
       continue
     }
 
@@ -121,13 +136,17 @@ function filterTracksByCriteria(
     if (typeof track.popularity !== 'number' || isNaN(track.popularity)) {
       logger(
         'WARN',
-        `Invalid popularity value for track ${trackInfo}: ${track.popularity}`
+        `[filterTracksByCriteria] Invalid popularity value for track ${trackInfo}: ${track.popularity}`
       )
     }
 
     // Check popularity
     if (trackPopularity < minPopularity) {
       filteredOut.lowPopularity++
+      logger(
+        'INFO',
+        `[filterTracksByCriteria] Track low popularity (${trackPopularity} < ${minPopularity}): ${trackInfo}`
+      )
       continue
     }
 
@@ -137,12 +156,20 @@ function filterTracksByCriteria(
     const maxLengthMinutes = Math.round((maxSongLengthMs / 1000 / 60) * 10) / 10
     if (track.duration_ms > maxSongLengthMs) {
       filteredOut.tooLong++
+      logger(
+        'INFO',
+        `[filterTracksByCriteria] Track too long (${trackLengthMinutes}min > ${maxLengthMinutes}min): ${trackInfo}`
+      )
       continue
     }
 
     // Check explicit content
     if (!allowExplicit && track.explicit) {
       filteredOut.explicit++
+      logger(
+        'INFO',
+        `[filterTracksByCriteria] Track explicit (not allowed): ${trackInfo}`
+      )
       continue
     }
 
@@ -153,13 +180,26 @@ function filterTracksByCriteria(
 
       if (releaseYear < startYear || releaseYear > endYear) {
         filteredOut.wrongYear++
+        logger(
+          'INFO',
+          `[filterTracksByCriteria] Track wrong year (${releaseYear} not in ${startYear}-${endYear}): ${trackInfo}`
+        )
         continue
       }
     }
 
     // Track passes all criteria
     candidates.push(track)
+    logger(
+      'INFO',
+      `[filterTracksByCriteria] Track passed all criteria: ${trackInfo}`
+    )
   }
+
+  logger(
+    'INFO',
+    `[filterTracksByCriteria] Filter complete: ${candidates.length} candidates out of ${tracks.length} tracks. Filtered out: ${JSON.stringify(filteredOut)}`
+  )
 
   return { candidates, filteredOut }
 }
@@ -169,37 +209,78 @@ export async function searchTracksByGenre(
   yearRange: [number, number],
   market: string,
   minPopularity: number,
-  maxOffset: number
+  maxOffset: number,
+  useAppToken: boolean = false
 ): Promise<TrackDetails[]> {
   try {
     const [startYear, endYear] = yearRange
     const randomOffset = Math.floor(Math.random() * maxOffset)
+
+    logger(
+      'INFO',
+      `[searchTracksByGenre] Searching for genre "${genre}" with params: ${JSON.stringify(
+        {
+          yearRange: [startYear, endYear],
+          market,
+          minPopularity,
+          maxOffset,
+          randomOffset,
+          useAppToken
+        }
+      )}`
+    )
 
     // Construct the full request URL for logging
     const baseUrl =
       process.env.NEXT_PUBLIC_SPOTIFY_BASE_URL || 'https://api.spotify.com/v1'
     const fullUrl = `${baseUrl}/${SPOTIFY_SEARCH_ENDPOINT}?q=genre:${encodeURIComponent(genre)} year:${startYear}-${endYear}&type=track&limit=${TRACK_SEARCH_LIMIT}&market=${market}&offset=${randomOffset}`
 
-    logger('WARN', `[TrackSuggestion] Full Spotify API URL: ${fullUrl}`)
+    logger('INFO', `[searchTracksByGenre] Full Spotify API URL: ${fullUrl}`)
 
     const response = await sendApiRequest<{
       tracks: { items: TrackDetails[] }
     }>({
       path: `${SPOTIFY_SEARCH_ENDPOINT}?q=genre:${encodeURIComponent(genre)} year:${startYear}-${endYear}&type=track&limit=${TRACK_SEARCH_LIMIT}&market=${market}&offset=${randomOffset}`,
       method: 'GET',
+      useAppToken,
       debounceTime: 0 // Disable caching for search requests to ensure fresh results
     })
 
     const tracks = response.tracks?.items
     if (!Array.isArray(tracks)) {
+      logger(
+        'ERROR',
+        `[searchTracksByGenre] Unexpected API response format: ${JSON.stringify(response)}`
+      )
       throw new Error('Unexpected API response format')
+    }
+
+    logger(
+      'INFO',
+      `[searchTracksByGenre] Successfully retrieved ${tracks.length} tracks for genre "${genre}"`
+    )
+
+    // Log some sample tracks for debugging
+    if (tracks.length > 0) {
+      const sampleTracks = tracks.slice(0, 3).map((t) => ({
+        name: t.name,
+        artist: t.artists.map((a) => a.name).join(', '),
+        popularity: t.popularity,
+        duration_ms: t.duration_ms,
+        is_playable: t.is_playable,
+        explicit: t.explicit
+      }))
+      logger(
+        'INFO',
+        `[searchTracksByGenre] Sample tracks: ${JSON.stringify(sampleTracks)}`
+      )
     }
 
     return tracks
   } catch (error) {
     logger(
       'ERROR',
-      `Error searching tracks for genre ${genre}`,
+      `[searchTracksByGenre] Error searching tracks for genre "${genre}": ${error instanceof Error ? error.message : 'Unknown error'}`,
       undefined,
       error instanceof Error ? error : new Error('Unknown error')
     )
@@ -254,11 +335,37 @@ export async function findSuggestedTrack(
     maxSongLength: number // maxSongLength is in minutes
     songsBetweenRepeats: number
     maxOffset: number
-  }
+  },
+  useAppToken: boolean = false
 ): Promise<TrackSearchResult> {
+  logger(
+    'INFO',
+    `[findSuggestedTrack] Starting with params: ${JSON.stringify({
+      excludedTrackIds,
+      currentTrackId,
+      market,
+      useAppToken,
+      params: params
+        ? {
+            genres: params.genres,
+            yearRange: params.yearRange,
+            popularity: params.popularity,
+            allowExplicit: params.allowExplicit,
+            maxSongLength: params.maxSongLength,
+            songsBetweenRepeats: params.songsBetweenRepeats,
+            maxOffset: params.maxOffset
+          }
+        : null
+    })}`
+  )
+
   // Validate inputs
   const excludedValidation = validateExcludedTrackIds(excludedTrackIds)
   if (!excludedValidation.isValid) {
+    logger(
+      'ERROR',
+      `[findSuggestedTrack] Invalid excluded track IDs: ${excludedValidation.errors.join(', ')}`
+    )
     throw new Error(
       `Invalid excluded track IDs: ${excludedValidation.errors.join(', ')}`
     )
@@ -267,6 +374,10 @@ export async function findSuggestedTrack(
   if (params) {
     const paramsValidation = validateTrackSuggestionParams(params)
     if (!paramsValidation.isValid) {
+      logger(
+        'ERROR',
+        `[findSuggestedTrack] Invalid parameters: ${paramsValidation.errors.join(', ')}`
+      )
       throw new Error(
         `Invalid parameters: ${paramsValidation.errors.join(', ')}`
       )
@@ -293,15 +404,38 @@ export async function findSuggestedTrack(
   const genres = params?.genres?.length ? params.genres : [...FALLBACK_GENRES]
 
   const yearRange = params?.yearRange ?? DEFAULT_YEAR_RANGE
-  const minPopularity = params?.popularity ?? MIN_TRACK_POPULARITY
+  let minPopularity = params?.popularity ?? MIN_TRACK_POPULARITY
   const allowExplicit = params?.allowExplicit ?? false
   const maxSongLength = params?.maxSongLength ?? DEFAULT_MAX_SONG_LENGTH_MINUTES
   const maxOffset = params?.maxOffset ?? DEFAULT_MAX_OFFSET
+
+  // For specific genres with limited tracks, reduce popularity threshold after some attempts
+  const isSpecificGenre =
+    genres.length === 1 && genres[0] !== 'Pop' && genres[0] !== 'Rock'
+  let popularityReduced = false
+
+  logger(
+    'INFO',
+    `[findSuggestedTrack] Using parameters: ${JSON.stringify({
+      allExcludedIds,
+      genres,
+      yearRange,
+      minPopularity,
+      allowExplicit,
+      maxSongLength,
+      maxOffset
+    })}`
+  )
 
   while (attempts < DEFAULT_MAX_GENRE_ATTEMPTS) {
     // Try to get an untried genre first, fallback to random if all tried
     const genre = getUntriedGenre(genres, genresTried) ?? getRandomGenre(genres)
     genresTried.push(genre)
+
+    logger(
+      'INFO',
+      `[findSuggestedTrack] Attempt ${attempts + 1}/${DEFAULT_MAX_GENRE_ATTEMPTS} - Trying genre: ${genre}`
+    )
 
     try {
       const tracks = await searchTracksByGenre(
@@ -309,7 +443,13 @@ export async function findSuggestedTrack(
         yearRange,
         market,
         minPopularity,
-        maxOffset
+        maxOffset,
+        useAppToken
+      )
+
+      logger(
+        'INFO',
+        `[findSuggestedTrack] Found ${tracks.length} tracks for genre "${genre}"`
       )
 
       // Log details about the tracks we found
@@ -343,7 +483,22 @@ export async function findSuggestedTrack(
         yearRange
       })
 
+      logger(
+        'INFO',
+        `[findSuggestedTrack] Filter results for genre "${genre}": ${JSON.stringify(
+          {
+            totalTracks: tracks.length,
+            candidates: filterResult.candidates.length,
+            filteredOut: filterResult.filteredOut
+          }
+        )}`
+      )
+
       if (selectedTrack) {
+        logger(
+          'INFO',
+          `[findSuggestedTrack] Successfully selected track: ${selectedTrack.name} by ${selectedTrack.artists.map((a) => a.name).join(', ')}`
+        )
         return {
           track: selectedTrack,
           searchDetails: {
@@ -369,22 +524,30 @@ export async function findSuggestedTrack(
 
       logger(
         'WARN',
-        `No suitable track found for genre "${genre}" - ${filterResult.candidates.length} candidates out of ${tracks.length} total tracks (highest popularity: ${highestPopularity})`
+        `[findSuggestedTrack] No suitable track found for genre "${genre}" - ${filterResult.candidates.length} candidates out of ${tracks.length} total tracks (highest popularity: ${highestPopularity})`
       )
 
       attempts++
       if (attempts < DEFAULT_MAX_GENRE_ATTEMPTS) {
+        logger(
+          'INFO',
+          `[findSuggestedTrack] Waiting 1 second before next attempt...`
+        )
         await new Promise((resolve) => setTimeout(resolve, 1000))
       }
     } catch (error) {
       logger(
         'ERROR',
-        `Error searching tracks for genre "${genre}"`,
+        `[findSuggestedTrack] Error searching tracks for genre "${genre}"`,
         undefined,
         error instanceof Error ? error : new Error('Unknown error')
       )
       attempts++
       if (attempts < DEFAULT_MAX_GENRE_ATTEMPTS) {
+        logger(
+          'INFO',
+          `[findSuggestedTrack] Waiting 1 second before next attempt...`
+        )
         await new Promise((resolve) => setTimeout(resolve, 1000))
       }
     }
@@ -392,7 +555,7 @@ export async function findSuggestedTrack(
 
   logger(
     'ERROR',
-    `Failed to find suitable track after ${DEFAULT_MAX_GENRE_ATTEMPTS} attempts`
+    `[findSuggestedTrack] Failed to find suitable track after ${DEFAULT_MAX_GENRE_ATTEMPTS} attempts`
   )
 
   return {

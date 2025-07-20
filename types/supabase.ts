@@ -82,6 +82,73 @@ export interface Database {
           name?: string
         }
       }
+      tracks: {
+        Row: {
+          id: string
+          created_at: string
+          spotify_track_id: string
+          name: string
+          artist: string
+          album: string
+          genre: string | null
+          release_year: number | null
+          duration_ms: number
+          popularity: number
+          spotify_url: string | null
+        }
+        Insert: {
+          id?: string
+          created_at?: string
+          spotify_track_id: string
+          name: string
+          artist: string
+          album: string
+          genre?: string | null
+          release_year?: number | null
+          duration_ms: number
+          popularity: number
+          spotify_url?: string | null
+        }
+        Update: {
+          id?: string
+          created_at?: string
+          spotify_track_id?: string
+          name?: string
+          artist?: string
+          album?: string
+          genre?: string | null
+          release_year?: number | null
+          duration_ms?: number
+          popularity?: number
+          spotify_url?: string | null
+        }
+      }
+      jukebox_queue: {
+        Row: {
+          id: string
+          created_at: string
+          profile_id: string
+          track_id: string
+          votes: number
+          queued_at: string
+        }
+        Insert: {
+          id?: string
+          created_at?: string
+          profile_id: string
+          track_id: string
+          votes?: number
+          queued_at?: string
+        }
+        Update: {
+          id?: string
+          created_at?: string
+          profile_id?: string
+          track_id?: string
+          votes?: number
+          queued_at?: string
+        }
+      }
     }
     Views: {
       [_ in never]: never

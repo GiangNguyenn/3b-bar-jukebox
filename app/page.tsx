@@ -6,7 +6,6 @@ import { createBrowserClient } from '@supabase/ssr'
 import { usePremiumStatus } from '@/hooks/usePremiumStatus'
 import type { Database } from '@/types/supabase'
 import type { User } from '@supabase/supabase-js'
-import { useConsoleLogsContext } from '@/hooks/ConsoleLogsProvider'
 import { Loading } from '@/components/ui/loading'
 
 export default function Home(): JSX.Element {
@@ -19,7 +18,6 @@ export default function Home(): JSX.Element {
     error: premiumError,
     needsReauth
   } = usePremiumStatus()
-  const { addLog } = useConsoleLogsContext()
 
   const supabase = createBrowserClient<Database>(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -41,11 +39,6 @@ export default function Home(): JSX.Element {
   // Redirect non-premium users to premium-required page
   // Only redirect if there's no error and user is confirmed to be non-premium
   useEffect(() => {
-    addLog(
-      'INFO',
-      `Premium status check - user: ${!!user}, isPremium: ${isPremium}, isLoading: ${isPremiumLoading}, error: ${premiumError}, needsReauth: ${needsReauth}`,
-      'RootPage'
-    )
     if (
       user &&
       !isPremiumLoading &&
@@ -53,60 +46,9 @@ export default function Home(): JSX.Element {
       !premiumError &&
       !needsReauth
     ) {
-      addLog(
-        'INFO',
-        'Redirecting non-premium user to /premium-required',
-        'RootPage',
-        undefined
-      )
       void router.push('/premium-required')
     }
-  }, [
-    user,
-    isPremium,
-    isPremiumLoading,
-    router,
-    premiumError,
-    needsReauth,
-    addLog
-  ])
-
-  // Log state changes for debugging
-  useEffect(() => {
-    if (loading || isPremiumLoading) {
-      addLog('INFO', 'Showing loading screen', 'RootPage')
-    } else if (!user) {
-      addLog('INFO', 'No user found, showing sign in page', 'RootPage')
-    } else if (needsReauth) {
-      addLog(
-        'INFO',
-        'Re-authentication needed, showing sign in option',
-        'RootPage'
-      )
-    } else if (premiumError) {
-      addLog(
-        'INFO',
-        'Premium error detected, showing re-authentication option',
-        'RootPage'
-      )
-    } else if (!isPremium) {
-      addLog(
-        'INFO',
-        'User is not premium, showing redirect message',
-        'RootPage'
-      )
-    } else {
-      addLog('INFO', 'User is premium, showing admin button', 'RootPage')
-    }
-  }, [
-    loading,
-    isPremiumLoading,
-    user,
-    needsReauth,
-    premiumError,
-    isPremium,
-    addLog
-  ])
+  }, [user, isPremium, isPremiumLoading, router, premiumError, needsReauth])
 
   if (loading || isPremiumLoading) {
     return <Loading fullScreen />

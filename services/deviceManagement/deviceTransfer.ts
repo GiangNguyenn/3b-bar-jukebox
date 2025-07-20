@@ -118,19 +118,6 @@ export async function transferPlaybackToDevice(
         continue
       }
 
-      if (addLog) {
-        addLog(
-          'INFO',
-          `Playback transferred successfully to ${state.device.name}`,
-          'DeviceTransfer'
-        )
-      } else {
-        console.log('[Device Transfer] Playback transferred successfully:', {
-          deviceId,
-          deviceName: state.device.name
-        })
-      }
-
       return true
     } catch (error) {
       if (addLog) {
@@ -180,18 +167,6 @@ export async function cleanupOtherDevices(
     )
 
     if (otherDevices.length > 0) {
-      if (addLog) {
-        addLog(
-          'INFO',
-          `Found ${otherDevices.length} other active devices to clean up`,
-          'DeviceTransfer'
-        )
-      } else {
-        console.log('[Device Transfer] Found other active devices:', {
-          otherDevices: otherDevices.map((d) => ({ id: d.id, name: d.name }))
-        })
-      }
-
       // Transfer playback to target device
       const transferSuccessful = await transferPlaybackToDevice(targetDeviceId)
       if (!transferSuccessful) {

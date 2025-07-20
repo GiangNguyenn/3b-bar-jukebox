@@ -19,36 +19,19 @@ export default function SignIn(): JSX.Element {
     const signInWithSpotify = async (): Promise<void> => {
       // Prevent multiple OAuth calls
       if (hasInitiatedAuth.current) {
-        addLog('INFO', 'OAuth already initiated, skipping', 'SignIn')
         return
       }
 
       hasInitiatedAuth.current = true
       setError(null)
-      addLog('INFO', 'Starting OAuth flow with Spotify', 'SignIn')
 
       try {
         // Test Supabase configuration
-        const {
-          data: { session }
-        } = await supabase.auth.getSession()
-        addLog(
-          'INFO',
-          `Current session: ${session ? 'Exists' : 'None'}`,
-          'SignIn'
-        )
+        await supabase.auth.getSession()
 
         const oauthRedirectUrl = getOAuthRedirectUrl()
-        addLog('INFO', `OAuth redirect URL: ${oauthRedirectUrl}`, 'SignIn')
 
         // Check if we're already on the signin page to prevent loops
-        if (window.location.pathname === '/auth/signin') {
-          addLog(
-            'INFO',
-            'Already on signin page, proceeding with OAuth',
-            'SignIn'
-          )
-        }
 
         const { data, error } = await supabase.auth.signInWithOAuth({
           provider: 'spotify',
@@ -69,21 +52,9 @@ export default function SignIn(): JSX.Element {
           // Reset the flag so user can try again
           hasInitiatedAuth.current = false
         } else {
-          addLog(
-            'INFO',
-            'OAuth initiated successfully, redirecting to Spotify',
-            'SignIn'
-          )
-          addLog(
-            'INFO',
-            `OAuth response data: ${JSON.stringify(data)}`,
-            'SignIn'
-          )
-
           // Check if we got a URL to redirect to
           if (data?.url) {
-            addLog('INFO', `Redirecting to Spotify URL: ${data.url}`, 'SignIn')
-            // The redirect should happen automatically, but let's log it
+            // The redirect should happen automatically
           } else {
             addLog('WARN', 'No redirect URL received from OAuth', 'SignIn')
             setError('No redirect URL received from OAuth')
