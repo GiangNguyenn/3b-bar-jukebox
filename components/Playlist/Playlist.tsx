@@ -14,6 +14,7 @@ interface PlaylistProps {
   extractError: Error | null
   onVote: (queueId: string, direction: 'up' | 'down') => void
   isRefreshing?: boolean
+  primaryColor?: string
 }
 
 export default function Playlist({
@@ -23,7 +24,8 @@ export default function Playlist({
   isExtractLoading,
   extractError,
   onVote,
-  isRefreshing = false
+  isRefreshing = false,
+  primaryColor
 }: PlaylistProps): JSX.Element {
   const containerRef = useRef<HTMLDivElement>(null)
 
@@ -34,7 +36,10 @@ export default function Playlist({
 
   return (
     <div className='w-full'>
-      <div className='mx-auto flex w-full overflow-hidden rounded-lg bg-primary-100 shadow-md sm:w-10/12 md:w-8/12 lg:w-9/12'>
+      <div
+        className='mx-auto flex w-full overflow-hidden rounded-lg shadow-md sm:w-10/12 md:w-8/12 lg:w-9/12'
+        style={{ backgroundColor: primaryColor ?? '#C09A5E' }}
+      >
         <div className='flex w-full flex-col'>
           <NowPlaying
             nowPlaying={currentlyPlaying ?? undefined}

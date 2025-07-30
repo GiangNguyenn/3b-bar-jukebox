@@ -1,0 +1,185 @@
+'use client'
+
+import { useState } from 'react'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { LogoSection } from './sections/logo-section'
+import { TextSection } from './sections/text-section'
+import { TypographySection } from './sections/typography-section'
+import { ColorsSection } from './sections/colors-section'
+import { SeoSection } from './sections/seo-section'
+import { useBrandingSettings } from './hooks/useBrandingSettings'
+import { BrandingErrorBoundary } from './error-boundary'
+import { BrandingSettingsSkeleton } from './loading-states'
+import type { BrandingSettings } from './types'
+
+export function BrandingTab(): JSX.Element {
+  const {
+    settings,
+    loading,
+    error,
+    updateSettings,
+    updateLocalSettings, // Use this for form updates
+    hasUnsavedChanges,
+    originalSettings, // Add this to fix the ReferenceError
+    isNewUser
+  } = useBrandingSettings()
+  const [activeTab, setActiveTab] = useState('logo')
+  const [saving, setSaving] = useState(false)
+
+  if (loading) {
+    return <BrandingSettingsSkeleton />
+  }
+
+  if (error) {
+    return (
+      <div className='p-6 text-center'>
+        <div className='mb-4 text-red-600'>
+          <h3 className='text-lg font-semibold'>
+            Error loading branding settings
+          </h3>
+          <p className='text-sm'>{error}</p>
+        </div>
+        <button
+          onClick={() => window.location.reload()}
+          className='text-white rounded-md bg-blue-600 px-4 py-2 hover:bg-blue-700'
+        >
+          Try Again
+        </button>
+      </div>
+    )
+  }
+
+  if (!settings) {
+    return <div>No branding settings found</div>
+  }
+
+  const handleSave = async (): Promise<void> => {
+    setSaving(true)
+    try {
+      // Only send the fields that have changed and should be sent to API
+      const changes: Partial<BrandingSettings> = {}
+      const fieldsToSend = [
+        'logo_url',
+        'favicon_url',
+        'venue_name',
+        'subtitle',
+        'welcome_message',
+        'footer_text',
+        'font_family',
+        'font_size',
+        'font_weight',
+        'text_color',
+        'primary_color',
+        'secondary_color',
+        'background_color',
+        'accent_color_1',
+        'accent_color_2',
+        'accent_color_3',
+        'gradient_type',
+        'gradient_direction',
+        'gradient_stops',
+        'page_title',
+        'meta_description',
+        'open_graph_title'
+      ]
+
+      if (settings && originalSettings) {
+        fieldsToSend.forEach((key) => {
+          const k = key as keyof BrandingSettings
+          if (settings[k] !== originalSettings[k]) {
+            // Convert null to undefined for Partial type compatibility
+            const value = settings[k]
+            if (value !== null && value !== undefined) {
+              ;(changes as Record<string, unknown>)[k] = value
+            }
+          }
+        })
+      }
+
+      await updateSettings(changes)
+    } catch {
+      // Error handling is done in the hook
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const handleCancel = (): void => {
+    // Reset to last saved state by refetching
+    window.location.reload()
+  }
+
+  return (
+    <BrandingErrorBoundary>
+      <div className='space-y-6'>
+        {/* Welcome message for new users */}
+        {isNewUser && (
+          <div className='rounded-lg border border-blue-200 bg-blue-50 p-4'>
+            <h3 className='mb-2 text-lg font-semibold text-blue-800'>
+              Welcome to Branding Settings! 🎨
+            </h3>
+            <p className='text-sm text-blue-700'>
+              Customize your jukebox&apos;s appearance and branding. Your
+              changes will be saved automatically when you click &quot;Save
+              Changes&quot;.
+            </p>
+          </div>
+        )}
+
+        {/* Save/Cancel buttons */}
+        {hasUnsavedChanges && (
+          <div className='flex justify-end space-x-4'>
+            <button
+              onClick={handleCancel}
+              className='rounded-md border border-gray-300 px-4 py-2 text-gray-600 hover:bg-gray-50'
+            >
+              Cancel
+            </button>
+            <button
+              onClick={() => {
+                void handleSave()
+              }}
+              disabled={saving}
+              className='text-white rounded-md bg-blue-600 px-4 py-2 hover:bg-blue-700 disabled:opacity-50'
+            >
+              {saving ? 'Saving...' : 'Save Changes'}
+            </button>
+          </div>
+        )}
+
+        <Tabs value={activeTab} onValueChange={setActiveTab}>
+          <TabsList className='grid w-full grid-cols-5'>
+            <TabsTrigger value='logo'>Logo & Images</TabsTrigger>
+            <TabsTrigger value='text'>Text & Content</TabsTrigger>
+            <TabsTrigger value='typography'>Typography</TabsTrigger>
+            <TabsTrigger value='colors'>Colors & Theme</TabsTrigger>
+            <TabsTrigger value='seo'>SEO & Metadata</TabsTrigger>
+          </TabsList>
+
+          <TabsContent value='logo' className='space-y-4'>
+            <LogoSection settings={settings} onUpdate={updateLocalSettings} />
+          </TabsContent>
+
+          <TabsContent value='text' className='space-y-4'>
+            <TextSection settings={settings} onUpdate={updateLocalSettings} />
+          </TabsContent>
+
+          <TabsContent value='typography' className='space-y-4'>
+            <TypographySection
+              settings={settings}
+              onUpdate={updateLocalSettings}
+            />
+          </TabsContent>
+
+          <TabsContent value='colors' className='space-y-4'>
+            <ColorsSection settings={settings} onUpdate={updateLocalSettings} />
+          </TabsContent>
+
+          <TabsContent value='seo' className='space-y-4'>
+            <SeoSection settings={settings} onUpdate={updateLocalSettings} />
+          </TabsContent>
+        </Tabs>
+      </div>
+    </BrandingErrorBoundary>
+  )
+}
