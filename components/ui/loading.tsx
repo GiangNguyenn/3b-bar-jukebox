@@ -36,7 +36,7 @@ export function Loading({
 
   if (fullScreen) {
     return (
-      <div className='relative flex h-screen items-center justify-center bg-[var(--color-bg)]'>
+      <div className='relative flex h-screen items-center justify-center bg-background'>
         {content}
       </div>
     )

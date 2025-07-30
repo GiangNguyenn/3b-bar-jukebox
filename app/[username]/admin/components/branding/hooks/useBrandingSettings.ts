@@ -86,10 +86,12 @@ export function useBrandingSettings(): {
       })
 
       if (!response.ok) {
-        throw new Error('Failed to update branding settings')
+        const errorText = await response.text()
+        throw new Error(`Failed to update branding settings: ${response.status} ${errorText}`)
       }
 
       const data = (await response.json()) as BrandingSettings
+      
       setSettings(data)
       setOriginalSettings(data)
       setIsNewUser(false) // User now has saved settings
