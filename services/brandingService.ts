@@ -58,7 +58,7 @@ export class BrandingService {
       if (error instanceof Error && error.message.includes('PGRST116')) {
         return null
       }
-      
+
       logger(
         'ERROR',
         `Error in getBrandingSettings: ${error}`,
@@ -78,7 +78,7 @@ export class BrandingService {
     try {
       // Check if a record already exists
       const existingRecord = await this.getBrandingSettings(profileId)
-      
+
       // Define default values (matching database defaults)
       const defaultValues = {
         venue_name: '3B SAIGON JUKEBOX',
@@ -103,7 +103,7 @@ export class BrandingService {
           ...existingRecord,
           ...settings // User updates take precedence
         }
-        
+
         const { data, error } = await this.supabase
           .from('branding_settings')
           .upsert(upsertData, {
@@ -130,7 +130,7 @@ export class BrandingService {
           ...defaultValues,
           ...settings
         }
-        
+
         const { data, error } = await this.supabase
           .from('branding_settings')
           .upsert(upsertData, {
@@ -151,8 +151,6 @@ export class BrandingService {
 
         return data
       }
-
-
     } catch (error) {
       logger(
         'ERROR',
