@@ -137,7 +137,7 @@ export function BrandingTab(): JSX.Element {
         )}
 
         {/* Action buttons */}
-        <div className='flex justify-between items-center'>
+        <div className='flex items-center justify-between'>
           {/* Restore Defaults button - always visible */}
           <button
             onClick={() => {

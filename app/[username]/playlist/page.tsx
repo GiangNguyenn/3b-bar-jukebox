@@ -442,7 +442,10 @@ export default function PlaylistPage(): JSX.Element {
                 fontFamily: settings?.font_family ?? 'Belgrano',
                 fontSize: settings?.font_size ?? 'text-lg',
                 fontWeight: settings?.font_weight ?? 'normal',
-                color: settings?.secondary_color === '#191414' ? '#cccccc' : (settings?.secondary_color ?? '#cccccc')
+                color:
+                  settings?.secondary_color === '#191414'
+                    ? '#cccccc'
+                    : (settings?.secondary_color ?? '#cccccc')
               }}
             >
               {settings.subtitle}
