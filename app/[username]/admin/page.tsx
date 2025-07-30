@@ -17,6 +17,7 @@ import { HealthStatusSection } from './components/dashboard/health-status-sectio
 import { TrackSuggestionsTab } from './components/track-suggestions/track-suggestions-tab'
 import { PlaylistDisplay } from './components/playlist/playlist-display'
 import { AnalyticsTab } from './components/analytics/analytics-tab'
+import { BrandingTab } from './components/branding/branding-tab'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { type TrackSuggestionsState } from '@/shared/types/trackSuggestions'
 import { useRecoverySystem } from '@/hooks/recovery'
@@ -44,7 +45,7 @@ export default function AdminPage(): JSX.Element {
   const [isRefreshing, setIsRefreshing] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [activeTab, setActiveTab] = useState<
-    'dashboard' | 'playlist' | 'settings' | 'logs' | 'analytics'
+    'dashboard' | 'playlist' | 'settings' | 'logs' | 'analytics' | 'branding'
   >('dashboard')
   const [volume, setVolume] = useState(50)
   const initializationAttemptedRef = useRef(false)
@@ -706,7 +707,7 @@ export default function AdminPage(): JSX.Element {
           }}
           className='space-y-4'
         >
-          <TabsList className='grid w-full grid-cols-4 bg-gray-800/50'>
+          <TabsList className='grid w-full grid-cols-5 bg-gray-800/50'>
             <TabsTrigger
               value='dashboard'
               className='data-[state=active]:text-white data-[state=active]:bg-gray-700 data-[state=active]:font-semibold'
@@ -717,7 +718,7 @@ export default function AdminPage(): JSX.Element {
               value='settings'
               className='data-[state=active]:text-white data-[state=active]:bg-gray-700 data-[state=active]:font-semibold'
             >
-              Track Suggestions
+              Suggestions
             </TabsTrigger>
             <TabsTrigger
               value='playlist'
@@ -730,6 +731,12 @@ export default function AdminPage(): JSX.Element {
               className='data-[state=active]:text-white data-[state=active]:bg-gray-700 data-[state=active]:font-semibold'
             >
               Analytics
+            </TabsTrigger>
+            <TabsTrigger
+              value='branding'
+              className='data-[state=active]:text-white data-[state=active]:bg-gray-700 data-[state=active]:font-semibold'
+            >
+              Branding
             </TabsTrigger>
           </TabsList>
 
@@ -877,6 +884,10 @@ export default function AdminPage(): JSX.Element {
 
           <TabsContent value='analytics'>
             <AnalyticsTab username={username} />
+          </TabsContent>
+
+          <TabsContent value='branding'>
+            <BrandingTab />
           </TabsContent>
         </Tabs>
       </div>

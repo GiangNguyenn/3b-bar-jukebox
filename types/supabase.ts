@@ -149,6 +149,92 @@ export interface Database {
           queued_at?: string
         }
       }
+      branding_settings: {
+        Row: {
+          id: string
+          profile_id: string
+          logo_url: string | null
+          favicon_url: string | null
+          venue_name: string | null
+          subtitle: string | null
+          welcome_message: string | null
+          footer_text: string | null
+          font_family: string | null
+          font_size: string | null
+          font_weight: string | null
+          text_color: string | null
+          primary_color: string | null
+          secondary_color: string | null
+          background_color: string | null
+          accent_color_1: string | null
+          accent_color_2: string | null
+          accent_color_3: string | null
+          gradient_type: string | null
+          gradient_direction: string | null
+          gradient_stops: string | null
+          page_title: string | null
+          meta_description: string | null
+          open_graph_title: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          profile_id: string
+          logo_url?: string | null
+          favicon_url?: string | null
+          venue_name?: string | null
+          subtitle?: string | null
+          welcome_message?: string | null
+          footer_text?: string | null
+          font_family?: string | null
+          font_size?: string | null
+          font_weight?: string | null
+          text_color?: string | null
+          primary_color?: string | null
+          secondary_color?: string | null
+          background_color?: string | null
+          accent_color_1?: string | null
+          accent_color_2?: string | null
+          accent_color_3?: string | null
+          gradient_type?: string | null
+          gradient_direction?: string | null
+          gradient_stops?: string | null
+          page_title?: string | null
+          meta_description?: string | null
+          open_graph_title?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          profile_id?: string
+          logo_url?: string | null
+          favicon_url?: string | null
+          venue_name?: string | null
+          subtitle?: string | null
+          welcome_message?: string | null
+          footer_text?: string | null
+          font_family?: string | null
+          font_size?: string | null
+          font_weight?: string | null
+          text_color?: string | null
+          primary_color?: string | null
+          secondary_color?: string | null
+          background_color?: string | null
+          accent_color_1?: string | null
+          accent_color_2?: string | null
+          accent_color_3?: string | null
+          gradient_type?: string | null
+          gradient_direction?: string | null
+          gradient_stops?: string | null
+          page_title?: string | null
+          meta_description?: string | null
+          open_graph_title?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+      }
     }
     Views: {
       [_ in never]: never

@@ -7,6 +7,11 @@ const nextConfig = {
         protocol: 'https',
         hostname: 'i.scdn.co',
         pathname: '/**'
+      },
+      {
+        protocol: 'https',
+        hostname: '*.supabase.co',
+        pathname: '/**'
       }
     ]
   }
