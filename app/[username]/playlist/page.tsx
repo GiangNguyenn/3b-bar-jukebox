@@ -437,12 +437,12 @@ export default function PlaylistPage(): JSX.Element {
           </h1>
           {settings?.subtitle && (
             <p
-              className='mt-2 text-lg'
+              className='mt-2 text-lg opacity-80'
               style={{
                 fontFamily: settings?.font_family ?? 'Belgrano',
-                fontSize: settings?.font_size ?? 'text-4xl',
+                fontSize: settings?.font_size ?? 'text-lg',
                 fontWeight: settings?.font_weight ?? 'normal',
-                color: settings?.secondary_color ?? '#191414'
+                color: settings?.secondary_color === '#191414' ? '#cccccc' : (settings?.secondary_color ?? '#cccccc')
               }}
             >
               {settings.subtitle}

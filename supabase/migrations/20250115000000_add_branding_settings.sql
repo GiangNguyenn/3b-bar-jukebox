@@ -1,5 +1,5 @@
 -- Create branding_settings table
-CREATE TABLE public.branding_settings (
+CREATE TABLE IF NOT EXISTS public.branding_settings (
     id uuid NOT NULL DEFAULT gen_random_uuid(),
     profile_id uuid NOT NULL,
     
@@ -58,6 +58,8 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+-- Drop trigger if it exists, then create it
+DROP TRIGGER IF EXISTS branding_settings_updated_at ON public.branding_settings;
 CREATE TRIGGER branding_settings_updated_at
     BEFORE UPDATE ON public.branding_settings
     FOR EACH ROW

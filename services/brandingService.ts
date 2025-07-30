@@ -54,6 +54,11 @@ export class BrandingService {
 
       return data
     } catch (error) {
+      // Don't throw error for PGRST116 (no rows found), just return null
+      if (error instanceof Error && error.message.includes('PGRST116')) {
+        return null
+      }
+      
       logger(
         'ERROR',
         `Error in getBrandingSettings: ${error}`,
@@ -71,30 +76,83 @@ export class BrandingService {
     >
   ) {
     try {
-      const upsertData = {
-        profile_id: profileId,
-        ...settings
+      // Check if a record already exists
+      const existingRecord = await this.getBrandingSettings(profileId)
+      
+      // Define default values (matching database defaults)
+      const defaultValues = {
+        venue_name: '3B SAIGON JUKEBOX',
+        font_family: 'Belgrano',
+        font_size: 'text-4xl',
+        font_weight: 'normal',
+        text_color: '#ffffff',
+        primary_color: '#C09A5E',
+        secondary_color: '#191414',
+        background_color: '#000000',
+        gradient_type: 'none',
+        page_title: '3B SAIGON JUKEBOX',
+        meta_description: 'A boutique beer & music experience',
+        open_graph_title: '3B SAIGON JUKEBOX'
       }
 
-      const { data, error } = await this.supabase
-        .from('branding_settings')
-        .upsert(upsertData, {
-          onConflict: 'profile_id'
-        })
-        .select()
-        .single()
+      // If updating an existing record, apply defaults to missing fields
+      if (existingRecord) {
+        const upsertData = {
+          profile_id: profileId,
+          ...defaultValues,
+          ...existingRecord,
+          ...settings // User updates take precedence
+        }
+        
+        const { data, error } = await this.supabase
+          .from('branding_settings')
+          .upsert(upsertData, {
+            onConflict: 'profile_id'
+          })
+          .select()
+          .single()
 
-      if (error) {
-        logger(
-          'ERROR',
-          `Error upserting branding settings: ${error.message}`,
-          'BrandingService',
-          error
-        )
-        throw error
+        if (error) {
+          logger(
+            'ERROR',
+            `Error upserting branding settings: ${error.message}`,
+            'BrandingService',
+            error instanceof Error ? error : undefined
+          )
+          throw error
+        }
+
+        return data
+      } else {
+        // For new records, apply defaults to missing fields
+        const upsertData = {
+          profile_id: profileId,
+          ...defaultValues,
+          ...settings
+        }
+        
+        const { data, error } = await this.supabase
+          .from('branding_settings')
+          .upsert(upsertData, {
+            onConflict: 'profile_id'
+          })
+          .select()
+          .single()
+
+        if (error) {
+          logger(
+            'ERROR',
+            `Error upserting branding settings: ${error.message}`,
+            'BrandingService',
+            error instanceof Error ? error : undefined
+          )
+          throw error
+        }
+
+        return data
       }
 
-      return data
+
     } catch (error) {
       logger(
         'ERROR',

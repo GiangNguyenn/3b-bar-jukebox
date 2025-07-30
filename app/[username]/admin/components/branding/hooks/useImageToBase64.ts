@@ -38,4 +38,4 @@ export function useImageToBase64(): {
     uploadFile,
     uploading
   }
-} 
+}

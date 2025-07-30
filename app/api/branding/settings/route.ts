@@ -93,6 +93,7 @@ export async function PUT(request: Request): Promise<NextResponse> {
     const {
       data: { user }
     } = await supabase.auth.getUser()
+    
     if (!user) {
       return NextResponse.json({ error: 'Not authenticated' }, { status: 401 })
     }

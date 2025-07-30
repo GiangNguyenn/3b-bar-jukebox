@@ -19,12 +19,14 @@ export function BrandingTab(): JSX.Element {
     error,
     updateSettings,
     updateLocalSettings, // Use this for form updates
+    resetSettings,
     hasUnsavedChanges,
     originalSettings, // Add this to fix the ReferenceError
     isNewUser
   } = useBrandingSettings()
   const [activeTab, setActiveTab] = useState('logo')
   const [saving, setSaving] = useState(false)
+  const [resetting, setResetting] = useState(false)
 
   if (loading) {
     return <BrandingSettingsSkeleton />
@@ -87,11 +89,8 @@ export function BrandingTab(): JSX.Element {
         fieldsToSend.forEach((key) => {
           const k = key as keyof BrandingSettings
           if (settings[k] !== originalSettings[k]) {
-            // Convert null to undefined for Partial type compatibility
-            const value = settings[k]
-            if (value !== null && value !== undefined) {
-              ;(changes as Record<string, unknown>)[k] = value
-            }
+            // Send the value as-is, including null values
+            ;(changes as Record<string, unknown>)[k] = settings[k]
           }
         })
       }
@@ -107,6 +106,17 @@ export function BrandingTab(): JSX.Element {
   const handleCancel = (): void => {
     // Reset to last saved state by refetching
     window.location.reload()
+  }
+
+  const handleReset = async (): Promise<void> => {
+    setResetting(true)
+    try {
+      await resetSettings()
+    } catch {
+      // Error handling is done in the hook
+    } finally {
+      setResetting(false)
+    }
   }
 
   return (
@@ -126,26 +136,40 @@ export function BrandingTab(): JSX.Element {
           </div>
         )}
 
-        {/* Save/Cancel buttons */}
-        {hasUnsavedChanges && (
-          <div className='flex justify-end space-x-4'>
-            <button
-              onClick={handleCancel}
-              className='rounded-md border border-gray-300 px-4 py-2 text-gray-600 hover:bg-gray-50'
-            >
-              Cancel
-            </button>
-            <button
-              onClick={() => {
-                void handleSave()
-              }}
-              disabled={saving}
-              className='text-white rounded-md bg-blue-600 px-4 py-2 hover:bg-blue-700 disabled:opacity-50'
-            >
-              {saving ? 'Saving...' : 'Save Changes'}
-            </button>
-          </div>
-        )}
+        {/* Action buttons */}
+        <div className='flex justify-between items-center'>
+          {/* Restore Defaults button - always visible */}
+          <button
+            onClick={() => {
+              void handleReset()
+            }}
+            disabled={resetting}
+            className='rounded-md border border-red-300 px-4 py-2 text-red-600 hover:bg-red-50 disabled:opacity-50'
+          >
+            {resetting ? 'Resetting...' : 'Restore Defaults'}
+          </button>
+
+          {/* Save/Cancel buttons - only visible when there are unsaved changes */}
+          {hasUnsavedChanges && (
+            <div className='flex space-x-4'>
+              <button
+                onClick={handleCancel}
+                className='rounded-md border border-gray-300 px-4 py-2 text-gray-600 hover:bg-gray-50'
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => {
+                  void handleSave()
+                }}
+                disabled={saving}
+                className='text-white rounded-md bg-blue-600 px-4 py-2 hover:bg-blue-700 disabled:opacity-50'
+              >
+                {saving ? 'Saving...' : 'Save Changes'}
+              </button>
+            </div>
+          )}
+        </div>
 
         <Tabs value={activeTab} onValueChange={setActiveTab}>
           <TabsList className='grid w-full grid-cols-5'>
