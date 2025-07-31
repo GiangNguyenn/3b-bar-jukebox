@@ -13,6 +13,10 @@ interface SearchInputProps {
   onAddTrack: (track: TrackDetails) => Promise<void>
   username?: string
   currentQueue?: JukeboxQueueItem[]
+  textColor?: string
+  secondaryColor?: string
+  accentColor1?: string
+  accentColor3?: string
 }
 
 interface SearchResponse {
@@ -24,7 +28,11 @@ interface SearchResponse {
 export default function SearchInput({
   onAddTrack,
   username,
-  currentQueue = []
+  currentQueue = [],
+  textColor = '#000000',
+  secondaryColor = '#6b7280',
+  accentColor1 = '#d1d5db',
+  accentColor3 = '#f3f4f6'
 }: SearchInputProps): JSX.Element {
   const { addLog } = useConsoleLogsContext()
   const [searchQuery, setSearchQuery] = useState('')
@@ -160,7 +168,8 @@ export default function SearchInput({
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
           placeholder='Search for a song... (type at least 3 characters)'
-          className='w-full rounded-lg border border-gray-300 p-2 pr-4 focus:border-blue-500 focus:outline-none'
+          className='w-full rounded-lg border p-2 pr-4 text-black focus:outline-none'
+          style={{ borderColor: accentColor1 }}
           disabled={isAddingTrack}
         />
         {(isSearching || isAddingTrack) && (
@@ -179,17 +188,33 @@ export default function SearchInput({
       )}
 
       {searchResults.length > 0 && (
-        <div className='mt-4 max-h-96 overflow-y-auto rounded-lg border border-gray-200'>
+        <div
+          className='mt-4 max-h-96 overflow-y-auto rounded-lg border'
+          style={{ borderColor: accentColor1 }}
+        >
           {searchResults.map((track) => {
             const isDuplicate = isTrackInQueue(track.id)
             return (
               <div
                 key={track.id}
-                className={`flex cursor-pointer items-center space-x-4 border-b border-gray-200 p-4 ${
-                  isDuplicate
-                    ? 'cursor-not-allowed bg-gray-100 opacity-60'
-                    : 'hover:bg-gray-50'
+                className={`flex cursor-pointer items-center space-x-4 border-b p-4 ${
+                  isDuplicate ? 'cursor-not-allowed bg-gray-100 opacity-60' : ''
                 }`}
+                style={{
+                  borderBottomColor: accentColor1,
+                  backgroundColor: isDuplicate ? undefined : 'transparent',
+                  transition: 'background-color 0.2s ease'
+                }}
+                onMouseEnter={(e) => {
+                  if (!isDuplicate) {
+                    e.currentTarget.style.backgroundColor = accentColor3
+                  }
+                }}
+                onMouseLeave={(e) => {
+                  if (!isDuplicate) {
+                    e.currentTarget.style.backgroundColor = 'transparent'
+                  }
+                }}
                 onClick={() => !isDuplicate && void handleAddTrack(track)}
               >
                 {track.album.images[0] && (
@@ -202,8 +227,10 @@ export default function SearchInput({
                   />
                 )}
                 <div className='flex-1'>
-                  <div className='font-medium'>{track.name}</div>
-                  <div className='text-sm text-gray-500'>
+                  <div className='font-medium' style={{ color: textColor }}>
+                    {track.name}
+                  </div>
+                  <div className='text-sm' style={{ color: secondaryColor }}>
                     {track.artists.map((artist) => artist.name).join(', ')}
                   </div>
                   {isDuplicate && (

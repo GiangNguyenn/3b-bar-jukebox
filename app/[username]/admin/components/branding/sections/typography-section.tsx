@@ -68,8 +68,7 @@ export function TypographySection({
               ))}
             </select>
             <p className='mt-1 text-sm text-gray-500'>
-              Font family applied to venue name, subtitle, and footer text on
-              the playlist page.
+              Font family applied to the venue name on the playlist page.
             </p>
           </div>
 
@@ -93,8 +92,7 @@ export function TypographySection({
               ))}
             </select>
             <p className='mt-1 text-sm text-gray-500'>
-              Font size applied to venue name (main header), subtitle, and
-              footer text on the playlist page.
+              Font size applied to the venue name on the playlist page.
             </p>
           </div>
 
@@ -118,28 +116,7 @@ export function TypographySection({
               ))}
             </select>
             <p className='mt-1 text-sm text-gray-500'>
-              Font weight applied to venue name, subtitle, and footer text on
-              the playlist page.
-            </p>
-          </div>
-
-          <div>
-            <label
-              htmlFor='text-color'
-              className='mb-2 block text-sm font-medium text-gray-700'
-            >
-              Text Color
-            </label>
-            <input
-              id='text-color'
-              type='color'
-              value={settings.text_color ?? '#ffffff'}
-              onChange={(e) => onUpdate({ text_color: e.target.value })}
-              className='h-10 w-20 cursor-pointer rounded border border-gray-300'
-            />
-            <p className='mt-1 text-sm text-gray-500'>
-              Color applied to venue name and welcome message. Subtitle and
-              footer use secondary color instead.
+              Font weight applied to the venue name on the playlist page.
             </p>
           </div>
         </div>

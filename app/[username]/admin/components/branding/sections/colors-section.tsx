@@ -54,30 +54,6 @@ export function ColorsSection({
 
           <div>
             <label
-              htmlFor='secondary-color'
-              className='mb-2 block text-sm font-medium text-gray-700'
-            >
-              Secondary Color
-            </label>
-            <input
-              id='secondary-color'
-              type='color'
-              value={settings.secondary_color ?? '#191414'}
-              onChange={(e) => onUpdate({ secondary_color: e.target.value })}
-              className='h-10 w-20 cursor-pointer rounded border border-gray-300'
-            />
-            <p className='mt-1 text-sm text-gray-500'>
-              Color used for subtitle and footer text on the playlist page.
-            </p>
-          </div>
-        </div>
-      </Card>
-
-      <Card className='p-6'>
-        <h3 className='mb-4 text-lg font-semibold'>Background & Text</h3>
-        <div className='space-y-4'>
-          <div>
-            <label
               htmlFor='background-color'
               className='mb-2 block text-sm font-medium text-gray-700'
             >
@@ -92,6 +68,30 @@ export function ColorsSection({
             />
             <p className='mt-1 text-sm text-gray-500'>
               Main page background color applied to the entire playlist page.
+            </p>
+          </div>
+        </div>
+      </Card>
+
+      <Card className='p-6'>
+        <h3 className='mb-4 text-lg font-semibold'>Text Colors</h3>
+        <div className='space-y-4'>
+          <div>
+            <label
+              htmlFor='secondary-color'
+              className='mb-2 block text-sm font-medium text-gray-700'
+            >
+              Secondary Color
+            </label>
+            <input
+              id='secondary-color'
+              type='color'
+              value={settings.secondary_color ?? '#191414'}
+              onChange={(e) => onUpdate({ secondary_color: e.target.value })}
+              className='h-10 w-20 cursor-pointer rounded border border-gray-300'
+            />
+            <p className='mt-1 text-sm text-gray-500'>
+              Color used for subtitle and footer text on the playlist page.
             </p>
           </div>
 
@@ -110,8 +110,7 @@ export function ColorsSection({
               className='h-10 w-20 cursor-pointer rounded border border-gray-300'
             />
             <p className='mt-1 text-sm text-gray-500'>
-              Color applied to venue name and welcome message. Subtitle and
-              footer use secondary color instead.
+              Color applied to the venue name on the playlist page.
             </p>
           </div>
         </div>
@@ -135,8 +134,9 @@ export function ColorsSection({
               className='h-10 w-20 cursor-pointer rounded border border-gray-300'
             />
             <p className='mt-1 text-sm text-gray-500'>
-              Border color applied to the search input container on the playlist
-              page.
+              Border color applied to all borders throughout the playlist page
+              (search input, search results container, playlist queue header,
+              footer) except the logo.
             </p>
           </div>
 
@@ -155,8 +155,8 @@ export function ColorsSection({
               className='h-10 w-20 cursor-pointer rounded border border-gray-300'
             />
             <p className='mt-1 text-sm text-gray-500'>
-              Border color and rounded corners applied to the venue logo on the
-              playlist page.
+              Color applied to the voting arrow icons (upvote and downvote
+              buttons) in the playlist queue.
             </p>
           </div>
 
@@ -175,8 +175,8 @@ export function ColorsSection({
               className='h-10 w-20 cursor-pointer rounded border border-gray-300'
             />
             <p className='mt-1 text-sm text-gray-500'>
-              Top border color applied to the footer section on the playlist
-              page.
+              Background color applied to hover effects on search results in the
+              playlist page.
             </p>
           </div>
         </div>
@@ -206,38 +206,41 @@ export function ColorsSection({
             </select>
             <p className='mt-1 text-sm text-gray-500'>
               Type of background gradient applied to the entire playlist page
-              background.
+              background. Linear gradients transition from primary color to
+              accent color 3, while radial gradients create a circular pattern.
             </p>
           </div>
 
-          {settings.gradient_type && settings.gradient_type !== 'none' && (
-            <div>
-              <label
-                htmlFor='gradient-direction'
-                className='mb-2 block text-sm font-medium text-gray-700'
-              >
-                Gradient Direction
-              </label>
-              <select
-                id='gradient-direction'
-                value={settings.gradient_direction ?? 'to-b'}
-                onChange={(e) =>
-                  onUpdate({ gradient_direction: e.target.value })
-                }
-                className='w-full rounded-md border border-gray-300 px-3 py-2 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500'
-              >
-                {gradientDirections.map((direction) => (
-                  <option key={direction.value} value={direction.value}>
-                    {direction.label}
-                  </option>
-                ))}
-              </select>
-              <p className='mt-1 text-sm text-gray-500'>
-                Direction of the gradient applied to the playlist page
-                background.
-              </p>
-            </div>
-          )}
+          {settings.gradient_type &&
+            settings.gradient_type !== 'none' &&
+            settings.gradient_type === 'linear' && (
+              <div>
+                <label
+                  htmlFor='gradient-direction'
+                  className='mb-2 block text-sm font-medium text-gray-700'
+                >
+                  Gradient Direction
+                </label>
+                <select
+                  id='gradient-direction'
+                  value={settings.gradient_direction ?? 'to-b'}
+                  onChange={(e) =>
+                    onUpdate({ gradient_direction: e.target.value })
+                  }
+                  className='w-full rounded-md border border-gray-300 px-3 py-2 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500'
+                >
+                  {gradientDirections.map((direction) => (
+                    <option key={direction.value} value={direction.value}>
+                      {direction.label}
+                    </option>
+                  ))}
+                </select>
+                <p className='mt-1 text-sm text-gray-500'>
+                  Direction of the linear gradient applied to the playlist page
+                  background.
+                </p>
+              </div>
+            )}
         </div>
       </Card>
     </div>

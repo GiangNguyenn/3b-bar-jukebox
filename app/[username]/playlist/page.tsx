@@ -30,6 +30,31 @@ export default function PlaylistPage(): JSX.Element {
     username ?? ''
   )
 
+  // Helper function to convert Tailwind text classes to CSS values
+  const getFontSizeValue = (
+    tailwindClass: string | null | undefined
+  ): string => {
+    if (!tailwindClass) return '2.25rem' // text-4xl default
+
+    const sizeMap: Record<string, string> = {
+      'text-xs': '0.75rem',
+      'text-sm': '0.875rem',
+      'text-base': '1rem',
+      'text-lg': '1.125rem',
+      'text-xl': '1.25rem',
+      'text-2xl': '1.5rem',
+      'text-3xl': '1.875rem',
+      'text-4xl': '2.25rem',
+      'text-5xl': '3rem',
+      'text-6xl': '3.75rem',
+      'text-7xl': '4.5rem',
+      'text-8xl': '6rem',
+      'text-9xl': '8rem'
+    }
+
+    return sizeMap[tailwindClass] || '2.25rem'
+  }
+
   const {
     loading: isTokenLoading,
     error: tokenError,
@@ -335,19 +360,25 @@ export default function PlaylistPage(): JSX.Element {
 
     // Apply gradient if configured
     if (settings?.gradient_type && settings.gradient_type !== 'none') {
-      const direction = settings.gradient_direction ?? 'to-b'
-      const stops = settings.gradient_stops
-        ? (JSON.parse(settings.gradient_stops) as Array<{
-            color: string
-            position: number
-          }>)
-        : []
+      const tailwindDirection = settings.gradient_direction ?? 'to-b'
+      const primaryColor = settings?.primary_color ?? '#C09A5E'
+      const accentColor3 = settings?.accent_color_3 ?? '#f3f4f6'
 
-      if (stops.length > 0) {
-        const gradientString = stops
-          .map((stop) => `${stop.color} ${stop.position}%`)
-          .join(', ')
-        style.background = `linear-gradient(${direction}, ${gradientString})`
+      // Convert Tailwind direction to CSS direction
+      const directionMap: Record<string, string> = {
+        'to-b': 'to bottom',
+        'to-r': 'to right',
+        'to-br': 'to bottom right',
+        'to-bl': 'to bottom left',
+        'to-t': 'to top',
+        'to-l': 'to left'
+      }
+      const cssDirection = directionMap[tailwindDirection] || 'to bottom'
+
+      if (settings.gradient_type === 'linear') {
+        style.background = `linear-gradient(${cssDirection}, ${primaryColor}, ${accentColor3})`
+      } else if (settings.gradient_type === 'radial') {
+        style.background = `radial-gradient(circle, ${primaryColor}, ${accentColor3})`
       }
     }
 
@@ -414,21 +445,14 @@ export default function PlaylistPage(): JSX.Element {
             height={100}
             alt='Venue Logo'
             className='h-24 w-24 object-contain'
-            style={{
-              border: settings?.accent_color_2
-                ? `2px solid ${settings.accent_color_2}`
-                : 'none',
-              borderRadius: settings?.accent_color_2 ? '8px' : '0'
-            }}
           />
         </div>
 
         <div className='text-center'>
           <h1
-            className='font-bold'
             style={{
               fontFamily: settings?.font_family ?? 'Belgrano',
-              fontSize: settings?.font_size ?? 'text-4xl',
+              fontSize: getFontSizeValue(settings?.font_size),
               fontWeight: settings?.font_weight ?? 'normal',
               color: settings?.text_color ?? '#ffffff'
             }}
@@ -440,8 +464,6 @@ export default function PlaylistPage(): JSX.Element {
               className='mt-2 text-lg opacity-80'
               style={{
                 fontFamily: settings?.font_family ?? 'Belgrano',
-                fontSize: settings?.font_size ?? 'text-lg',
-                fontWeight: settings?.font_weight ?? 'normal',
                 color:
                   settings?.secondary_color === '#191414'
                     ? '#cccccc'
@@ -470,6 +492,10 @@ export default function PlaylistPage(): JSX.Element {
               onAddTrack={handleAddTrack}
               username={username}
               currentQueue={queue || []}
+              textColor={settings?.text_color ?? '#000000'}
+              secondaryColor={settings?.secondary_color ?? '#6b7280'}
+              accentColor1={settings?.accent_color_1 ?? '#d1d5db'}
+              accentColor3={settings?.accent_color_3 ?? '#f3f4f6'}
             />
           </div>
         </div>
@@ -486,6 +512,11 @@ export default function PlaylistPage(): JSX.Element {
               }}
               isRefreshing={isPlaylistRefreshing}
               primaryColor={settings?.primary_color ?? undefined}
+              textColor={settings?.text_color ?? '#000000'}
+              secondaryColor={settings?.secondary_color ?? '#6b7280'}
+              accentColor2={settings?.accent_color_2 ?? '#6b7280'}
+              accentColor1={settings?.accent_color_1 ?? '#d1d5db'}
+              accentColor3={settings?.accent_color_3 ?? '#f3f4f6'}
             />
           </div>
         </Suspense>
@@ -496,20 +527,16 @@ export default function PlaylistPage(): JSX.Element {
         <footer
           className='mt-8 p-6 text-center'
           style={{
-            borderTop: settings?.accent_color_3
-              ? `1px solid ${settings.accent_color_3}`
+            borderTop: settings?.accent_color_1
+              ? `1px solid ${settings.accent_color_1}`
               : 'none',
-            paddingTop: settings?.accent_color_3 ? '1.5rem' : '1.5rem'
+            paddingTop: settings?.accent_color_1 ? '1.5rem' : '1.5rem'
           }}
         >
           <p
             className='text-sm opacity-60'
             style={{
               fontFamily: settings?.font_family ?? 'Belgrano',
-              fontSize: settings?.font_size
-                ? settings.font_size.replace('text-', '') + 'px'
-                : '14px',
-              fontWeight: settings?.font_weight ?? 'normal',
               color:
                 settings?.secondary_color ?? settings.text_color ?? '#cccccc'
             }}

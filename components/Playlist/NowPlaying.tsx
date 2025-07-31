@@ -7,10 +7,19 @@ interface INowPlayingProps {
   artistExtract: string | null
   isExtractLoading: boolean
   extractError: Error | null
+  textColor?: string
+  secondaryColor?: string
 }
 
 const NowPlaying: React.FC<INowPlayingProps> = memo(
-  ({ nowPlaying, artistExtract, isExtractLoading, extractError }) => {
+  ({
+    nowPlaying,
+    artistExtract,
+    isExtractLoading,
+    extractError,
+    textColor = '#000000',
+    secondaryColor = '#6b7280'
+  }) => {
     if (!nowPlaying?.item) {
       return (
         <div className='bg-white flex flex-col items-center justify-start rounded-lg p-2 shadow-lg sm:flex-row'>
@@ -39,12 +48,15 @@ const NowPlaying: React.FC<INowPlayingProps> = memo(
           <span className='text-xs font-bold uppercase tracking-wide text-gray-600'>
             Now Playing
           </span>
-          <span className='truncate pt-1 text-sm font-semibold capitalize text-secondary-500'>
+          <div
+            className='truncate text-base font-semibold'
+            style={{ color: textColor }}
+          >
             {name}
-          </span>
-          <span className='truncate text-xs font-medium uppercase text-gray-500'>
+          </div>
+          <div className='truncate text-sm' style={{ color: secondaryColor }}>
             - {artists.map((artist) => artist.name).join(', ')}
-          </span>
+          </div>
           {isExtractLoading && (
             <span className='text-xs italic text-gray-500'>
               Loading artist info...
