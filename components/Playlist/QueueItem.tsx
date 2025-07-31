@@ -9,6 +9,10 @@ interface IQueueItemProps {
   queueId: string
   onVote: (queueId: string, direction: 'up' | 'down') => void
   isPlaying?: boolean
+  textColor?: string
+  secondaryColor?: string
+  accentColor2?: string
+  accentColor3?: string
 }
 
 const QueueItem: React.FC<IQueueItemProps> = ({
@@ -16,7 +20,11 @@ const QueueItem: React.FC<IQueueItemProps> = ({
   votes,
   queueId,
   onVote,
-  isPlaying = false
+  isPlaying = false,
+  textColor = '#000000',
+  secondaryColor = '#6b7280',
+  accentColor2 = '#6b7280',
+  accentColor3 = '#f3f4f6'
 }): JSX.Element | null => {
   const { url: artworkUrl, isLoading: isArtworkLoading } = useTrackArtwork(
     track.tracks?.spotify_track_id ?? ''
@@ -61,7 +69,10 @@ const QueueItem: React.FC<IQueueItemProps> = ({
         )}
       </div>
       <div className='min-w-0 flex-1'>
-        <p className='truncate text-sm font-medium text-gray-900'>
+        <p
+          className='truncate text-sm font-medium'
+          style={{ color: textColor }}
+        >
           {track.tracks.name}
           {isPlaying && (
             <span className='ml-2 text-xs font-bold text-green-600'>
@@ -69,11 +80,24 @@ const QueueItem: React.FC<IQueueItemProps> = ({
             </span>
           )}
         </p>
-        <p className='truncate text-sm text-gray-500'>{track.tracks.artist}</p>
+        <p className='truncate text-sm' style={{ color: secondaryColor }}>
+          {track.tracks.artist}
+        </p>
       </div>
       <div className='flex items-center space-x-2'>
         <button
-          className='p-1 text-gray-400 hover:text-green-500'
+          className='rounded p-1'
+          style={{
+            color: accentColor2,
+            backgroundColor: 'transparent',
+            transition: 'background-color 0.2s ease'
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.backgroundColor = accentColor3
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.backgroundColor = 'transparent'
+          }}
           onClick={() => onVote(queueId, 'up')}
         >
           {/* Placeholder for upvote icon */}
@@ -93,7 +117,18 @@ const QueueItem: React.FC<IQueueItemProps> = ({
         </button>
         <span className='text-sm font-semibold text-gray-700'>{votes}</span>
         <button
-          className='p-1 text-gray-400 hover:text-red-500'
+          className='rounded p-1'
+          style={{
+            color: accentColor2,
+            backgroundColor: 'transparent',
+            transition: 'background-color 0.2s ease'
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.backgroundColor = accentColor3
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.backgroundColor = 'transparent'
+          }}
           onClick={() => onVote(queueId, 'down')}
         >
           {/* Placeholder for downvote icon */}

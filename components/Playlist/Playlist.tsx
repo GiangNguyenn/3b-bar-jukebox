@@ -15,6 +15,11 @@ interface PlaylistProps {
   onVote: (queueId: string, direction: 'up' | 'down') => void
   isRefreshing?: boolean
   primaryColor?: string
+  textColor?: string
+  secondaryColor?: string
+  accentColor2?: string
+  accentColor1?: string
+  accentColor3?: string
 }
 
 export default function Playlist({
@@ -25,7 +30,12 @@ export default function Playlist({
   extractError,
   onVote,
   isRefreshing = false,
-  primaryColor
+  primaryColor,
+  textColor,
+  secondaryColor,
+  accentColor2,
+  accentColor1,
+  accentColor3
 }: PlaylistProps): JSX.Element {
   const containerRef = useRef<HTMLDivElement>(null)
 
@@ -46,9 +56,14 @@ export default function Playlist({
             artistExtract={artistExtract}
             isExtractLoading={isExtractLoading}
             extractError={extractError}
+            textColor={textColor}
+            secondaryColor={secondaryColor}
           />
           <div className='flex flex-col p-5'>
-            <div className='mb-2 flex items-center justify-between border-b pb-1'>
+            <div
+              className='mb-2 flex items-center justify-between border-b pb-1'
+              style={{ borderBottomColor: accentColor1 }}
+            >
               <span className='text-base font-semibold uppercase text-gray-700'>
                 Playlist Queue
               </span>
@@ -76,6 +91,10 @@ export default function Playlist({
                       item.tracks.spotify_track_id === currentlyPlaying.item.id
                     )
                   }
+                  textColor={textColor}
+                  secondaryColor={secondaryColor}
+                  accentColor2={accentColor2}
+                  accentColor3={accentColor3}
                 />
               ))}
             </div>
