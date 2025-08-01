@@ -70,8 +70,7 @@ export function LogoSection({
             />
             <p className='mt-1 text-sm text-gray-500'>
               PNG, JPG, or SVG. Max 5MB. Recommended: 200x200px to 500x500px.
-              Displayed above the venue name on the playlist page with accent
-              color 2 border.
+              Displayed above the venue name on the playlist page.
             </p>
             {uploading && (
               <p className='mt-1 text-sm text-blue-600'>Converting logo...</p>

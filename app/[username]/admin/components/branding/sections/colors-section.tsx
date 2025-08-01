@@ -78,25 +78,6 @@ export function ColorsSection({
         <div className='space-y-4'>
           <div>
             <label
-              htmlFor='secondary-color'
-              className='mb-2 block text-sm font-medium text-gray-700'
-            >
-              Secondary Color
-            </label>
-            <input
-              id='secondary-color'
-              type='color'
-              value={settings.secondary_color ?? '#191414'}
-              onChange={(e) => onUpdate({ secondary_color: e.target.value })}
-              className='h-10 w-20 cursor-pointer rounded border border-gray-300'
-            />
-            <p className='mt-1 text-sm text-gray-500'>
-              Color used for subtitle and footer text on the playlist page.
-            </p>
-          </div>
-
-          <div>
-            <label
               htmlFor='text-color'
               className='mb-2 block text-sm font-medium text-gray-700'
             >
@@ -111,6 +92,25 @@ export function ColorsSection({
             />
             <p className='mt-1 text-sm text-gray-500'>
               Color applied to the venue name on the playlist page.
+            </p>
+          </div>
+
+          <div>
+            <label
+              htmlFor='secondary-color'
+              className='mb-2 block text-sm font-medium text-gray-700'
+            >
+              Secondary Color
+            </label>
+            <input
+              id='secondary-color'
+              type='color'
+              value={settings.secondary_color ?? '#191414'}
+              onChange={(e) => onUpdate({ secondary_color: e.target.value })}
+              className='h-10 w-20 cursor-pointer rounded border border-gray-300'
+            />
+            <p className='mt-1 text-sm text-gray-500'>
+              Color used for subtitle and footer text on the playlist page.
             </p>
           </div>
         </div>
