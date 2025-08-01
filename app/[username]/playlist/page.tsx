@@ -1,6 +1,7 @@
 'use client'
 
 import { Suspense, useEffect, useState, useCallback } from 'react'
+import Image from 'next/image'
 import { useUserToken } from '@/hooks/useUserToken'
 import { useNowPlayingTrack } from '@/hooks/useNowPlayingTrack'
 import { useArtistExtract } from '@/hooks/useArtistExtract'
@@ -26,6 +27,7 @@ export default function PlaylistPage(): JSX.Element {
   const params = useParams()
   const username = params?.username as string | undefined
   const [voteFeedback, setVoteFeedback] = useState<VoteFeedback | null>(null)
+  const [showWelcomeMessage, setShowWelcomeMessage] = useState(false)
   const { settings, loading: brandingLoading } = usePublicBranding(
     username ?? ''
   )
@@ -77,6 +79,31 @@ export default function PlaylistPage(): JSX.Element {
     enabled: true, // Always enabled for public pages
     refetchInterval: 5000 // Poll every 5 seconds for more responsive updates
   })
+
+  // Manage welcome message timing
+  useEffect(() => {
+    const hasWelcomeMessage =
+      settings?.welcome_message && settings.welcome_message.trim() !== ''
+    const allLoadingComplete =
+      !brandingLoading && !isTokenLoading && !isPlaylistLoading && !isRecovering
+
+    if (hasWelcomeMessage && allLoadingComplete) {
+      setShowWelcomeMessage(true)
+      const timer = setTimeout(() => {
+        setShowWelcomeMessage(false)
+      }, 2000) // 2 seconds
+
+      return () => clearTimeout(timer)
+    }
+
+    return undefined
+  }, [
+    brandingLoading,
+    isTokenLoading,
+    isPlaylistLoading,
+    isRecovering,
+    settings
+  ])
 
   // Update page title, meta description, and Open Graph title when branding settings change
   useEffect(() => {
@@ -385,21 +412,46 @@ export default function PlaylistPage(): JSX.Element {
     return style
   }
 
-  // Show loading screen for any loading state
+  // Early returns for loading states
+  if (brandingLoading) {
+    const loadingMessage = 'Loading...'
+    return <Loading fullScreen message={loadingMessage} />
+  }
+
+  if (!settings) {
+    const loadingMessage = 'Loading...'
+    return <Loading fullScreen message={loadingMessage} />
+  }
+
+  // Show welcome message immediately after branding loads, regardless of other loading states
+  const hasWelcomeMessage =
+    settings?.welcome_message && settings.welcome_message.trim() !== ''
   if (
-    isTokenLoading ||
-    isPlaylistLoading ||
-    isRecovering ||
-    isTokenInvalid ||
-    brandingLoading
+    hasWelcomeMessage &&
+    (isTokenLoading || isPlaylistLoading || isRecovering)
   ) {
     const loadingMessage = isRecovering
       ? ERROR_MESSAGES.RECONNECTING
-      : settings?.welcome_message && settings.welcome_message.trim() !== ''
-        ? settings.welcome_message
-        : 'Loading...'
+      : (settings.welcome_message ?? 'Loading...')
 
     return <Loading fullScreen message={loadingMessage} />
+  }
+
+  // If we have a welcome message but no other loading, show it briefly
+  if (
+    hasWelcomeMessage &&
+    !isTokenLoading &&
+    !isPlaylistLoading &&
+    !isRecovering
+  ) {
+    if (showWelcomeMessage) {
+      return (
+        <Loading
+          fullScreen
+          message={settings.welcome_message ?? 'Loading...'}
+        />
+      )
+    }
   }
 
   if (!queue) {
@@ -437,15 +489,17 @@ export default function PlaylistPage(): JSX.Element {
       )}
 
       {/* Custom Header with Branding */}
-      <div className='flex flex-col items-center justify-center space-y-4 p-4'>
-        <div className='relative'>
-          <img
-            src={settings?.logo_url ?? '/logo.png'}
-            width={100}
-            height={100}
-            alt='Venue Logo'
-            className='h-24 w-24 object-contain'
-          />
+      <div className='mx-auto flex w-full flex-col items-center justify-center space-y-4 p-4 sm:w-10/12 md:w-8/12 lg:w-9/12'>
+        <div className='mx-auto flex w-full overflow-hidden sm:w-10/12 md:w-8/12 lg:w-9/12'>
+          <div className='flex w-full flex-col items-center justify-center'>
+            <Image
+              src={settings?.logo_url ?? '/logo.png'}
+              alt='Venue Logo'
+              width={200}
+              height={200}
+              className='mx-auto h-auto w-auto max-w-full object-contain'
+            />
+          </div>
         </div>
 
         <div className='text-center'>

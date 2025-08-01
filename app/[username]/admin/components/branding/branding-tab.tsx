@@ -8,6 +8,7 @@ import { TypographySection } from './sections/typography-section'
 import { ColorsSection } from './sections/colors-section'
 import { SeoSection } from './sections/seo-section'
 import { useBrandingSettings } from './hooks/useBrandingSettings'
+import { useBrandingStore } from '@/stores/brandingStore'
 import { BrandingErrorBoundary } from './error-boundary'
 import { BrandingSettingsSkeleton } from './loading-states'
 import type { BrandingSettings } from './types'
@@ -20,11 +21,11 @@ export function BrandingTab(): JSX.Element {
     updateSettings,
     updateLocalSettings, // Use this for form updates
     resetSettings,
-    hasUnsavedChanges,
     originalSettings, // Add this to fix the ReferenceError
     isNewUser
   } = useBrandingSettings()
-  const [activeTab, setActiveTab] = useState('logo')
+  const { activeSubTab, setActiveSubTab, hasUnsavedChanges } =
+    useBrandingStore()
   const [saving, setSaving] = useState(false)
   const [resetting, setResetting] = useState(false)
 
@@ -52,7 +53,17 @@ export function BrandingTab(): JSX.Element {
   }
 
   if (!settings) {
-    return <div>No branding settings found</div>
+    return (
+      <div className='p-6 text-center'>
+        <div className='mb-4 text-gray-600'>
+          <h3 className='text-lg font-semibold'>No branding settings found</h3>
+          <p className='text-sm'>
+            Branding settings will be created automatically when you save your
+            first changes.
+          </p>
+        </div>
+      </div>
+    )
   }
 
   const handleSave = async (): Promise<void> => {
@@ -171,13 +182,38 @@ export function BrandingTab(): JSX.Element {
           )}
         </div>
 
-        <Tabs value={activeTab} onValueChange={setActiveTab}>
+        <Tabs value={activeSubTab} onValueChange={setActiveSubTab}>
           <TabsList className='grid w-full grid-cols-5'>
-            <TabsTrigger value='logo'>Logo & Images</TabsTrigger>
-            <TabsTrigger value='text'>Text & Content</TabsTrigger>
-            <TabsTrigger value='typography'>Typography</TabsTrigger>
-            <TabsTrigger value='colors'>Colors & Theme</TabsTrigger>
-            <TabsTrigger value='seo'>SEO & Metadata</TabsTrigger>
+            <TabsTrigger
+              value='logo'
+              className='data-[state=active]:text-white data-[state=active]:bg-gray-700 data-[state=active]:font-semibold'
+            >
+              Logo & Images
+            </TabsTrigger>
+            <TabsTrigger
+              value='text'
+              className='data-[state=active]:text-white data-[state=active]:bg-gray-700 data-[state=active]:font-semibold'
+            >
+              Text & Content
+            </TabsTrigger>
+            <TabsTrigger
+              value='typography'
+              className='data-[state=active]:text-white data-[state=active]:bg-gray-700 data-[state=active]:font-semibold'
+            >
+              Typography
+            </TabsTrigger>
+            <TabsTrigger
+              value='colors'
+              className='data-[state=active]:text-white data-[state=active]:bg-gray-700 data-[state=active]:font-semibold'
+            >
+              Colors & Theme
+            </TabsTrigger>
+            <TabsTrigger
+              value='seo'
+              className='data-[state=active]:text-white data-[state=active]:bg-gray-700 data-[state=active]:font-semibold'
+            >
+              SEO & Metadata
+            </TabsTrigger>
           </TabsList>
 
           <TabsContent value='logo' className='space-y-4'>

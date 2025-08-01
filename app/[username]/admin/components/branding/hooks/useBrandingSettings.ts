@@ -1,7 +1,8 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useEffect, useCallback } from 'react'
 import { createBrowserClient } from '@supabase/ssr'
 import type { Database } from '@/types/supabase'
 import { getDefaultBrandingSettings } from '../utils/default-settings'
+import { useBrandingStore } from '@/stores/brandingStore'
 
 type BrandingSettings = Database['public']['Tables']['branding_settings']['Row']
 
@@ -12,16 +13,25 @@ export function useBrandingSettings(): {
   updateSettings: (updates: Partial<BrandingSettings>) => Promise<void>
   updateLocalSettings: (updates: Partial<BrandingSettings>) => void
   resetSettings: () => Promise<void>
+  refreshSettings: () => Promise<void>
   hasUnsavedChanges: boolean
   originalSettings: BrandingSettings | null
   isNewUser: boolean
 } {
-  const [settings, setSettings] = useState<BrandingSettings | null>(null)
-  const [originalSettings, setOriginalSettings] =
-    useState<BrandingSettings | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-  const [isNewUser, setIsNewUser] = useState(false)
+  const {
+    settings,
+    originalSettings,
+    loading,
+    error,
+    isNewUser,
+    setSettings,
+    setOriginalSettings,
+    setLoading,
+    setError,
+    setIsNewUser,
+    updateSettings: updateStoreSettings,
+    hasUnsavedChanges
+  } = useBrandingStore()
 
   const supabase = createBrowserClient<Database>(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -106,9 +116,7 @@ export function useBrandingSettings(): {
 
   // Local update function for form fields (no API call)
   const updateLocalSettings = (updates: Partial<BrandingSettings>): void => {
-    if (settings) {
-      setSettings({ ...settings, ...updates })
-    }
+    updateStoreSettings(updates)
   }
 
   const resetSettings = async (): Promise<void> => {
@@ -129,16 +137,21 @@ export function useBrandingSettings(): {
     }
   }
 
-  useEffect(() => {
-    void fetchSettings()
+  // Function to manually refresh settings (useful after saves)
+  const refreshSettings = useCallback(async (): Promise<void> => {
+    await fetchSettings()
   }, [fetchSettings])
 
-  // Check if there are unsaved changes
-  const hasUnsavedChanges = Boolean(
-    settings &&
-      originalSettings &&
-      JSON.stringify(settings) !== JSON.stringify(originalSettings)
-  )
+  useEffect(() => {
+    // Only fetch settings if we don't already have them in the store
+    if (!settings && !loading && !error) {
+      setLoading(true)
+      // Small delay to ensure loading state is set before fetch
+      setTimeout(() => {
+        void fetchSettings()
+      }, 0)
+    }
+  }, [fetchSettings, settings, loading, error])
 
   return {
     settings,
@@ -147,6 +160,7 @@ export function useBrandingSettings(): {
     updateSettings,
     updateLocalSettings, // Add this to the return
     resetSettings,
+    refreshSettings,
     hasUnsavedChanges,
     originalSettings,
     isNewUser
