@@ -69,8 +69,8 @@ export function LogoSection({
               className='w-full rounded-md border border-gray-300 px-3 py-2 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500'
             />
             <p className='mt-1 text-sm text-gray-500'>
-              PNG, JPG, or SVG. Max 5MB. Recommended: 200x200px to 500x500px.
-              Displayed above the venue name on the playlist page.
+              PNG, JPG, or SVG. Max 5MB. Recommended: 1600x450px (32:9 aspect ratio).
+              Displayed above the venue name on the playlist page in a landscape banner format.
             </p>
             {uploading && (
               <p className='mt-1 text-sm text-blue-600'>Converting logo...</p>

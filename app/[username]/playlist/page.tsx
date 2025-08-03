@@ -491,13 +491,13 @@ export default function PlaylistPage(): JSX.Element {
       {/* Custom Header with Branding */}
       <div className='mx-auto flex w-full flex-col items-center justify-center space-y-4 p-4 sm:w-10/12 md:w-8/12 lg:w-9/12'>
         <div className='mx-auto flex w-full overflow-hidden sm:w-10/12 md:w-8/12 lg:w-9/12'>
-          <div className='flex w-full flex-col items-center justify-center'>
+          <div className='relative flex w-full aspect-[32/9] items-center justify-center overflow-hidden'>
             <Image
               src={settings?.logo_url ?? '/logo.png'}
               alt='Venue Logo'
-              width={200}
-              height={200}
-              className='mx-auto h-auto w-auto max-w-full object-contain'
+              fill
+              className='object-contain'
+              sizes='(max-width: 640px) 100vw, (max-width: 768px) 83.333333vw, (max-width: 1024px) 66.666667vw, 75vw'
             />
           </div>
         </div>
