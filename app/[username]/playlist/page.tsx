@@ -491,7 +491,7 @@ export default function PlaylistPage(): JSX.Element {
       {/* Custom Header with Branding */}
       <div className='mx-auto flex w-full flex-col items-center justify-center space-y-4 p-4 sm:w-10/12 md:w-8/12 lg:w-9/12'>
         <div className='mx-auto flex w-full overflow-hidden sm:w-10/12 md:w-8/12 lg:w-9/12'>
-          <div className='relative flex w-full aspect-[32/9] items-center justify-center overflow-hidden'>
+          <div className='relative flex aspect-[32/9] w-full items-center justify-center overflow-hidden'>
             <Image
               src={settings?.logo_url ?? '/logo.png'}
               alt='Venue Logo'
