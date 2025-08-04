@@ -35,8 +35,10 @@ export function useSubscription(profileId?: string): UseSubscriptionReturn {
       setError(null)
 
       // Get user's current plan type
-      const { data: planTypeData, error: planTypeError } = await supabase
-        .rpc('get_user_plan_type', { user_profile_id: profileId })
+      const { data: planTypeData, error: planTypeError } = await supabase.rpc(
+        'get_user_plan_type',
+        { user_profile_id: profileId }
+      )
 
       if (planTypeError) {
         console.error('Error getting plan type:', planTypeError)
@@ -50,14 +52,15 @@ export function useSubscription(profileId?: string): UseSubscriptionReturn {
       }
 
       // Get active subscription details
-      const { data: subscriptionData, error: subscriptionError } = await supabase
-        .from('subscriptions')
-        .select('*')
-        .eq('profile_id', profileId)
-        .eq('status', 'active')
-        .order('created_at', { ascending: false })
-        .limit(1)
-        .single()
+      const { data: subscriptionData, error: subscriptionError } =
+        await supabase
+          .from('subscriptions')
+          .select('*')
+          .eq('profile_id', profileId)
+          .eq('status', 'active')
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .single()
 
       if (subscriptionError && subscriptionError.code !== 'PGRST116') {
         // PGRST116 is "no rows returned" which is expected for users without subscriptions
@@ -95,15 +98,18 @@ export function useSubscription(profileId?: string): UseSubscriptionReturn {
 }
 
 // Hook for checking if a specific feature is available based on subscription
-export function useFeatureAccess(profileId?: string, requiredPlan: 'free' | 'premium' = 'free') {
+export function useFeatureAccess(
+  profileId?: string,
+  requiredPlan: 'free' | 'premium' = 'free'
+) {
   const { planType, hasPremiumAccess, isLoading } = useSubscription(profileId)
 
   const hasAccess = () => {
     if (isLoading || !planType) return false
-    
+
     if (requiredPlan === 'free') return true
     if (requiredPlan === 'premium') return hasPremiumAccess
-    
+
     return false
   }
 
@@ -117,4 +123,4 @@ export function useFeatureAccess(profileId?: string, requiredPlan: 'free' | 'pre
 // Hook for premium-only features
 export function usePremiumFeature(profileId?: string) {
   return useFeatureAccess(profileId, 'premium')
-} 
+}

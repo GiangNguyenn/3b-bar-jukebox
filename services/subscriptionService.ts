@@ -3,8 +3,10 @@ import { cookies } from 'next/headers'
 import type { Database } from '@/types/supabase'
 
 type Subscription = Database['public']['Tables']['subscriptions']['Row']
-type SubscriptionInsert = Database['public']['Tables']['subscriptions']['Insert']
-type SubscriptionUpdate = Database['public']['Tables']['subscriptions']['Update']
+type SubscriptionInsert =
+  Database['public']['Tables']['subscriptions']['Insert']
+type SubscriptionUpdate =
+  Database['public']['Tables']['subscriptions']['Update']
 
 export class SubscriptionService {
   private supabase
@@ -40,8 +42,9 @@ export class SubscriptionService {
    * Uses the database function get_user_plan_type for efficient querying
    */
   async getUserPlanType(profileId: string): Promise<'free' | 'premium'> {
-    const { data, error } = await this.supabase
-      .rpc('get_user_plan_type', { user_profile_id: profileId })
+    const { data, error } = await this.supabase.rpc('get_user_plan_type', {
+      user_profile_id: profileId
+    })
 
     if (error) {
       console.error('Error getting user plan type:', error)
@@ -56,15 +59,16 @@ export class SubscriptionService {
    * Uses the database function has_premium_access for efficient querying
    */
   async hasPremiumAccess(profileId: string): Promise<boolean> {
-    const { data, error } = await this.supabase
-      .rpc('has_premium_access', { user_profile_id: profileId })
+    const { data, error } = await this.supabase.rpc('has_premium_access', {
+      user_profile_id: profileId
+    })
 
     if (error) {
       console.error('Error checking premium access:', error)
       return false // Default to false on error
     }
 
-    return data as boolean || false
+    return (data as boolean) || false
   }
 
   /**
@@ -72,8 +76,10 @@ export class SubscriptionService {
    * Uses the database function get_user_subscription_details for efficient querying
    */
   async getUserSubscriptionDetails(profileId: string) {
-    const { data, error } = await this.supabase
-      .rpc('get_user_subscription_details', { user_profile_id: profileId })
+    const { data, error } = await this.supabase.rpc(
+      'get_user_subscription_details',
+      { user_profile_id: profileId }
+    )
 
     if (error) {
       console.error('Error getting subscription details:', error)
@@ -107,7 +113,9 @@ export class SubscriptionService {
   /**
    * Create a new subscription
    */
-  async createSubscription(subscription: SubscriptionInsert): Promise<Subscription | null> {
+  async createSubscription(
+    subscription: SubscriptionInsert
+  ): Promise<Subscription | null> {
     const { data, error } = await this.supabase
       .from('subscriptions')
       .insert(subscription)
@@ -125,7 +133,10 @@ export class SubscriptionService {
   /**
    * Update an existing subscription
    */
-  async updateSubscription(id: string, updates: SubscriptionUpdate): Promise<Subscription | null> {
+  async updateSubscription(
+    id: string,
+    updates: SubscriptionUpdate
+  ): Promise<Subscription | null> {
     const { data, error } = await this.supabase
       .from('subscriptions')
       .update(updates)
@@ -176,7 +187,9 @@ export class SubscriptionService {
   /**
    * Create a free subscription for a user
    */
-  async createFreeSubscription(profileId: string): Promise<Subscription | null> {
+  async createFreeSubscription(
+    profileId: string
+  ): Promise<Subscription | null> {
     return this.createSubscription({
       profile_id: profileId,
       plan_type: 'free',
@@ -198,7 +211,9 @@ export class SubscriptionService {
   /**
    * Get subscription by Stripe subscription ID
    */
-  async getSubscriptionByStripeId(stripeSubscriptionId: string): Promise<Subscription | null> {
+  async getSubscriptionByStripeId(
+    stripeSubscriptionId: string
+  ): Promise<Subscription | null> {
     const { data, error } = await this.supabase
       .from('subscriptions')
       .select('*')
@@ -216,7 +231,9 @@ export class SubscriptionService {
   /**
    * Get subscription by Stripe customer ID
    */
-  async getSubscriptionsByStripeCustomerId(stripeCustomerId: string): Promise<Subscription[]> {
+  async getSubscriptionsByStripeCustomerId(
+    stripeCustomerId: string
+  ): Promise<Subscription[]> {
     const { data, error } = await this.supabase
       .from('subscriptions')
       .select('*')
@@ -233,4 +250,4 @@ export class SubscriptionService {
 }
 
 // Export a singleton instance
-export const subscriptionService = new SubscriptionService() 
+export const subscriptionService = new SubscriptionService()

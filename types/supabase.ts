@@ -272,7 +272,12 @@ export interface Database {
           stripe_customer_id?: string | null
           plan_type?: 'free' | 'premium'
           payment_type?: 'monthly' | 'lifetime'
-          status?: 'active' | 'canceled' | 'past_due' | 'trialing' | 'incomplete'
+          status?:
+            | 'active'
+            | 'canceled'
+            | 'past_due'
+            | 'trialing'
+            | 'incomplete'
           current_period_start?: string | null
           current_period_end?: string | null
           created_at?: string
