@@ -24,6 +24,7 @@ export interface Database {
           spotify_product_type: string | null
           is_premium: boolean | null
           premium_verified_at: string | null
+          subscription_id: string | null
         }
         Insert: {
           id: string
@@ -39,6 +40,7 @@ export interface Database {
           spotify_product_type?: string | null
           is_premium?: boolean | null
           premium_verified_at?: string | null
+          subscription_id?: string | null
         }
         Update: {
           id?: string
@@ -54,6 +56,7 @@ export interface Database {
           spotify_product_type?: string | null
           is_premium?: boolean | null
           premium_verified_at?: string | null
+          subscription_id?: string | null
         }
       }
       playlists: {
@@ -231,6 +234,47 @@ export interface Database {
           page_title?: string | null
           meta_description?: string | null
           open_graph_title?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+      }
+      subscriptions: {
+        Row: {
+          id: string
+          profile_id: string
+          stripe_subscription_id: string | null
+          stripe_customer_id: string | null
+          plan_type: 'free' | 'premium'
+          payment_type: 'monthly' | 'lifetime'
+          status: 'active' | 'canceled' | 'past_due' | 'trialing' | 'incomplete'
+          current_period_start: string | null
+          current_period_end: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          profile_id: string
+          stripe_subscription_id?: string | null
+          stripe_customer_id?: string | null
+          plan_type: 'free' | 'premium'
+          payment_type: 'monthly' | 'lifetime'
+          status: 'active' | 'canceled' | 'past_due' | 'trialing' | 'incomplete'
+          current_period_start?: string | null
+          current_period_end?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          profile_id?: string
+          stripe_subscription_id?: string | null
+          stripe_customer_id?: string | null
+          plan_type?: 'free' | 'premium'
+          payment_type?: 'monthly' | 'lifetime'
+          status?: 'active' | 'canceled' | 'past_due' | 'trialing' | 'incomplete'
+          current_period_start?: string | null
+          current_period_end?: string | null
           created_at?: string
           updated_at?: string
         }
