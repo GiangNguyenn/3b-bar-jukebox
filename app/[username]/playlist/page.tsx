@@ -388,7 +388,7 @@ export default function PlaylistPage(): JSX.Element {
     // Apply gradient if configured
     if (settings?.gradient_type && settings.gradient_type !== 'none') {
       const tailwindDirection = settings.gradient_direction ?? 'to-b'
-      const primaryColor = settings?.primary_color ?? '#C09A5E'
+      const backgroundColor = settings?.background_color ?? '#000000'
       const accentColor3 = settings?.accent_color_3 ?? '#f3f4f6'
 
       // Convert Tailwind direction to CSS direction
@@ -403,9 +403,9 @@ export default function PlaylistPage(): JSX.Element {
       const cssDirection = directionMap[tailwindDirection] || 'to bottom'
 
       if (settings.gradient_type === 'linear') {
-        style.background = `linear-gradient(${cssDirection}, ${primaryColor}, ${accentColor3})`
+        style.background = `linear-gradient(${cssDirection}, ${backgroundColor}, ${accentColor3})`
       } else if (settings.gradient_type === 'radial') {
-        style.background = `radial-gradient(circle, ${primaryColor}, ${accentColor3})`
+        style.background = `radial-gradient(circle, ${backgroundColor}, ${accentColor3})`
       }
     }
 
