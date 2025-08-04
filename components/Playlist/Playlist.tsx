@@ -14,6 +14,12 @@ interface PlaylistProps {
   extractError: Error | null
   onVote: (queueId: string, direction: 'up' | 'down') => void
   isRefreshing?: boolean
+  primaryColor?: string
+  textColor?: string
+  secondaryColor?: string
+  accentColor2?: string
+  accentColor1?: string
+  accentColor3?: string
 }
 
 export default function Playlist({
@@ -23,7 +29,13 @@ export default function Playlist({
   isExtractLoading,
   extractError,
   onVote,
-  isRefreshing = false
+  isRefreshing = false,
+  primaryColor,
+  textColor,
+  secondaryColor,
+  accentColor2,
+  accentColor1,
+  accentColor3
 }: PlaylistProps): JSX.Element {
   const containerRef = useRef<HTMLDivElement>(null)
 
@@ -34,16 +46,24 @@ export default function Playlist({
 
   return (
     <div className='w-full'>
-      <div className='mx-auto flex w-full overflow-hidden rounded-lg bg-primary-100 shadow-md sm:w-10/12 md:w-8/12 lg:w-9/12'>
+      <div
+        className='mx-auto flex w-full overflow-hidden rounded-lg shadow-md sm:w-10/12 md:w-8/12 lg:w-9/12'
+        style={{ backgroundColor: primaryColor ?? '#C09A5E' }}
+      >
         <div className='flex w-full flex-col'>
           <NowPlaying
             nowPlaying={currentlyPlaying ?? undefined}
             artistExtract={artistExtract}
             isExtractLoading={isExtractLoading}
             extractError={extractError}
+            textColor={textColor}
+            secondaryColor={secondaryColor}
           />
           <div className='flex flex-col p-5'>
-            <div className='mb-2 flex items-center justify-between border-b pb-1'>
+            <div
+              className='mb-2 flex items-center justify-between border-b pb-1'
+              style={{ borderBottomColor: accentColor1 }}
+            >
               <span className='text-base font-semibold uppercase text-gray-700'>
                 Playlist Queue
               </span>
@@ -71,6 +91,10 @@ export default function Playlist({
                       item.tracks.spotify_track_id === currentlyPlaying.item.id
                     )
                   }
+                  textColor={textColor}
+                  secondaryColor={secondaryColor}
+                  accentColor2={accentColor2}
+                  accentColor3={accentColor3}
                 />
               ))}
             </div>

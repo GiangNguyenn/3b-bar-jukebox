@@ -17,7 +17,9 @@ import { HealthStatusSection } from './components/dashboard/health-status-sectio
 import { TrackSuggestionsTab } from './components/track-suggestions/track-suggestions-tab'
 import { PlaylistDisplay } from './components/playlist/playlist-display'
 import { AnalyticsTab } from './components/analytics/analytics-tab'
+import { BrandingTab } from './components/branding/branding-tab'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+
 import { type TrackSuggestionsState } from '@/shared/types/trackSuggestions'
 import { useRecoverySystem } from '@/hooks/recovery'
 import { ErrorMessage } from '@/components/ui/error-message'
@@ -44,7 +46,7 @@ export default function AdminPage(): JSX.Element {
   const [isRefreshing, setIsRefreshing] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [activeTab, setActiveTab] = useState<
-    'dashboard' | 'playlist' | 'settings' | 'logs' | 'analytics'
+    'dashboard' | 'playlist' | 'settings' | 'logs' | 'analytics' | 'branding'
   >('dashboard')
   const [volume, setVolume] = useState(50)
   const initializationAttemptedRef = useRef(false)
@@ -317,7 +319,7 @@ export default function AdminPage(): JSX.Element {
         (res) => res.json()
       )) as Array<{ tracks: { spotify_track_id: string } }>
       const currentQueueSize = currentQueue.length
-      const targetQueueSize = 3 // Reduced from 10 to 3 tracks
+      const targetQueueSize = 5 // Target 5 tracks in the queue
       const maxAttempts = 20 // Same max attempts as AutoPlayService
 
       addLog(
@@ -583,7 +585,13 @@ export default function AdminPage(): JSX.Element {
   // Add missing functions
   const handleTabChange = useCallback((value: string): void => {
     setActiveTab(
-      value as 'dashboard' | 'playlist' | 'settings' | 'logs' | 'analytics'
+      value as
+        | 'dashboard'
+        | 'playlist'
+        | 'settings'
+        | 'logs'
+        | 'analytics'
+        | 'branding'
     )
   }, [])
 
@@ -680,8 +688,13 @@ export default function AdminPage(): JSX.Element {
 
   if (queueLoading && (!queue || queue.length === 0)) {
     return (
-      <div className='p-4 text-gray-400'>
-        <p>Loading queue...</p>
+      <div className='text-white min-h-screen bg-black p-4'>
+        <div className='mx-auto max-w-xl space-y-4'>
+          <div className='flex items-center justify-center p-8'>
+            <Loading className='h-8 w-8' />
+            <span className='ml-3 text-lg'>Loading admin page...</span>
+          </div>
+        </div>
       </div>
     )
   }
@@ -706,7 +719,7 @@ export default function AdminPage(): JSX.Element {
           }}
           className='space-y-4'
         >
-          <TabsList className='grid w-full grid-cols-4 bg-gray-800/50'>
+          <TabsList className='grid w-full grid-cols-5 bg-gray-800/50'>
             <TabsTrigger
               value='dashboard'
               className='data-[state=active]:text-white data-[state=active]:bg-gray-700 data-[state=active]:font-semibold'
@@ -717,7 +730,7 @@ export default function AdminPage(): JSX.Element {
               value='settings'
               className='data-[state=active]:text-white data-[state=active]:bg-gray-700 data-[state=active]:font-semibold'
             >
-              Track Suggestions
+              Suggestions
             </TabsTrigger>
             <TabsTrigger
               value='playlist'
@@ -730,6 +743,12 @@ export default function AdminPage(): JSX.Element {
               className='data-[state=active]:text-white data-[state=active]:bg-gray-700 data-[state=active]:font-semibold'
             >
               Analytics
+            </TabsTrigger>
+            <TabsTrigger
+              value='branding'
+              className='data-[state=active]:text-white data-[state=active]:bg-gray-700 data-[state=active]:font-semibold'
+            >
+              Branding
             </TabsTrigger>
           </TabsList>
 
@@ -877,6 +896,10 @@ export default function AdminPage(): JSX.Element {
 
           <TabsContent value='analytics'>
             <AnalyticsTab username={username} />
+          </TabsContent>
+
+          <TabsContent value='branding'>
+            <BrandingTab />
           </TabsContent>
         </Tabs>
       </div>
