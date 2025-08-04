@@ -201,6 +201,33 @@ export class SubscriptionService {
   }
 
   /**
+   * Ensure user has a subscription (create free one if none exists)
+   */
+  async ensureUserHasSubscription(
+    profileId: string
+  ): Promise<Subscription | null> {
+    // Check if user already has an active subscription
+    const existingSubscription = await this.getActiveSubscription(profileId)
+
+    if (existingSubscription) {
+      return existingSubscription
+    }
+
+    // Create a free subscription if none exists
+    const newSubscription = await this.createFreeSubscription(profileId)
+
+    if (newSubscription) {
+      // Update the profile to link to the new subscription
+      await this.supabase
+        .from('profiles')
+        .update({ subscription_id: newSubscription.id })
+        .eq('id', profileId)
+    }
+
+    return newSubscription
+  }
+
+  /**
    * Check if user has any active subscription
    */
   async hasActiveSubscription(profileId: string): Promise<boolean> {

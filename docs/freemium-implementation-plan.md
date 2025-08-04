@@ -30,11 +30,11 @@ This document outlines the step-by-step implementation plan for transitioning JM
 
 **Acceptance Criteria:**
 
-- [ ] Add `subscription_id` foreign key to profiles table
-- [ ] Create migration script for existing profiles
-- [ ] Update profile creation logic to handle subscription links
-- [ ] Implement helper functions to get user's current plan type
-- [ ] Handle cases where users have no active subscription (default to 'free')
+- [x] Add `subscription_id` foreign key to profiles table
+- [x] Create migration script for existing profiles
+- [x] Update profile creation logic to handle subscription links
+- [x] Implement helper functions to get user's current plan type
+- [x] Handle cases where users have no active subscription (default to 'free')
 
 ### Epic: Stripe Integration Setup
 
