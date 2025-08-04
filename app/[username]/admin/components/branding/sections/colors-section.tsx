@@ -206,7 +206,7 @@ export function ColorsSection({
             </select>
             <p className='mt-1 text-sm text-gray-500'>
               Type of background gradient applied to the entire playlist page
-              background. Linear gradients transition from primary color to
+              background. Linear gradients transition from background color to
               accent color 3, while radial gradients create a circular pattern.
             </p>
           </div>
