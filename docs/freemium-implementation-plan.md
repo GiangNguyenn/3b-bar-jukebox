@@ -46,11 +46,11 @@ This document outlines the step-by-step implementation plan for transitioning JM
 
 **Acceptance Criteria:**
 
-- [ ] Set up Stripe account and API keys
-- [ ] Configure webhook endpoints for subscription events
-- [ ] Create Stripe products for monthly and lifetime plans
-- [ ] Set up test environment with sandbox keys
-- [ ] Implement webhook signature verification
+- [x] Set up Stripe account and API keys
+- [x] Configure webhook endpoints for subscription events
+- [x] Create Stripe products for monthly and lifetime plans
+- [x] Set up test environment with sandbox keys
+- [x] Implement webhook signature verification
 
 #### User Story 1.4: Create Subscription Service
 
