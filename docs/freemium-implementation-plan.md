@@ -60,11 +60,11 @@ This document outlines the step-by-step implementation plan for transitioning JM
 
 **Acceptance Criteria:**
 
-- [ ] Create subscription service with CRUD operations
-- [ ] Implement Stripe customer creation and management
-- [ ] Handle subscription creation, updates, and cancellation
-- [ ] Implement webhook event processing
-- [ ] Add proper error handling and logging
+- [x] Create subscription service with CRUD operations
+- [x] Implement Stripe customer creation and management
+- [x] Handle subscription creation, updates, and cancellation
+- [x] Implement webhook event processing
+- [x] Add proper error handling and logging
 
 #### User Story 1.5: Optimize Subscription Queries
 

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { stripeService } from '@/services/stripeService'
+import { subscriptionService } from '@/services/subscriptionService'
 import { createModuleLogger } from '@/shared/utils/logger'
 
 const logger = createModuleLogger('SubscriptionWebhook')
@@ -31,36 +32,12 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   }
 
   try {
-    switch (event.type) {
-      case 'customer.subscription.created':
-        await stripeService.handleSubscriptionCreated(event)
-        break
-
-      case 'customer.subscription.updated':
-        await stripeService.handleSubscriptionUpdated(event)
-        break
-
-      case 'customer.subscription.deleted':
-        await stripeService.handleSubscriptionDeleted(event)
-        break
-
-      case 'invoice.payment_succeeded':
-        await stripeService.handlePaymentSucceeded(event)
-        break
-
-      case 'invoice.payment_failed':
-        await stripeService.handlePaymentFailed(event)
-        break
-
-      default:
-        logger('INFO', `Unhandled event type: ${event.type}`)
-    }
-
+    await subscriptionService.processWebhookEvent(event)
     return NextResponse.json({ received: true })
   } catch (error) {
     logger(
       'ERROR',
-      'Error processing webhook',
+      'Error processing webhook event',
       'SubscriptionWebhook',
       error as Error
     )

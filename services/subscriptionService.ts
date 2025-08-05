@@ -1,6 +1,7 @@
-import { createServerClient } from '@supabase/ssr'
-import { cookies } from 'next/headers'
+import { createClient } from '@supabase/supabase-js'
 import type { Database } from '@/types/supabase'
+import { stripeService } from './stripeService'
+import { createModuleLogger } from '@/shared/utils/logger'
 
 type Subscription = Database['public']['Tables']['subscriptions']['Row']
 type SubscriptionInsert =
@@ -8,180 +9,191 @@ type SubscriptionInsert =
 type SubscriptionUpdate =
   Database['public']['Tables']['subscriptions']['Update']
 
+const logger = createModuleLogger('SubscriptionService')
+
 export class SubscriptionService {
   private supabase
 
   constructor() {
-    const cookieStore = cookies()
-    this.supabase = createServerClient<Database>(
+    this.supabase = createClient<Database>(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-      {
-        cookies: {
-          getAll() {
-            return cookieStore.getAll()
-          },
-          setAll(cookiesToSet) {
-            try {
-              cookiesToSet.forEach(({ name, value, options }) =>
-                cookieStore.set(name, value, options)
-              )
-            } catch {
-              // The `setAll` method was called from a Server Component.
-              // This can be ignored if you have middleware refreshing
-              // user sessions.
-            }
-          }
-        }
-      }
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
     )
   }
 
   /**
-   * Get user's current plan type
-   * Uses the database function get_user_plan_type for efficient querying
-   */
-  async getUserPlanType(profileId: string): Promise<'free' | 'premium'> {
-    const { data, error } = await this.supabase.rpc('get_user_plan_type', {
-      user_profile_id: profileId
-    })
-
-    if (error) {
-      console.error('Error getting user plan type:', error)
-      return 'free' // Default to free on error
-    }
-
-    return (data as 'free' | 'premium') || 'free'
-  }
-
-  /**
-   * Check if user has premium access
-   * Uses the database function has_premium_access for efficient querying
-   */
-  async hasPremiumAccess(profileId: string): Promise<boolean> {
-    const { data, error } = await this.supabase.rpc('has_premium_access', {
-      user_profile_id: profileId
-    })
-
-    if (error) {
-      console.error('Error checking premium access:', error)
-      return false // Default to false on error
-    }
-
-    return (data as boolean) || false
-  }
-
-  /**
-   * Get user's subscription details
-   * Uses the database function get_user_subscription_details for efficient querying
-   */
-  async getUserSubscriptionDetails(profileId: string) {
-    const { data, error } = await this.supabase.rpc(
-      'get_user_subscription_details',
-      { user_profile_id: profileId }
-    )
-
-    if (error) {
-      console.error('Error getting subscription details:', error)
-      return null
-    }
-
-    return data?.[0] || null
-  }
-
-  /**
-   * Get user's active subscription
-   */
-  async getActiveSubscription(profileId: string): Promise<Subscription | null> {
-    const { data, error } = await this.supabase
-      .from('subscriptions')
-      .select('*')
-      .eq('profile_id', profileId)
-      .eq('status', 'active')
-      .order('created_at', { ascending: false })
-      .limit(1)
-      .single()
-
-    if (error) {
-      console.error('Error getting active subscription:', error)
-      return null
-    }
-
-    return data
-  }
-
-  /**
-   * Create a new subscription
+   * Create a new subscription record
    */
   async createSubscription(
-    subscription: SubscriptionInsert
+    subscriptionData: SubscriptionInsert
   ): Promise<Subscription | null> {
-    const { data, error } = await this.supabase
-      .from('subscriptions')
-      .insert(subscription)
-      .select()
-      .single()
+    try {
+      const { data, error } = await this.supabase
+        .from('subscriptions')
+        .insert(subscriptionData)
+        .select()
+        .single()
 
-    if (error) {
-      console.error('Error creating subscription:', error)
+      if (error) {
+        logger(
+          'ERROR',
+          'Failed to create subscription',
+          'SubscriptionService',
+          error as Error
+        )
+        return null
+      }
+
+      logger('INFO', `Created subscription: ${data.id}`)
+      return data
+    } catch (error) {
+      logger(
+        'ERROR',
+        'Error creating subscription',
+        'SubscriptionService',
+        error as Error
+      )
       return null
     }
-
-    return data
   }
 
   /**
-   * Update an existing subscription
+   * Get subscription by ID
+   */
+  async getSubscriptionById(id: string): Promise<Subscription | null> {
+    try {
+      const { data, error } = await this.supabase
+        .from('subscriptions')
+        .select('*')
+        .eq('id', id)
+        .single()
+
+      if (error) {
+        logger(
+          'ERROR',
+          'Failed to get subscription by ID',
+          'SubscriptionService',
+          error as Error
+        )
+        return null
+      }
+
+      return data
+    } catch (error) {
+      logger(
+        'ERROR',
+        'Error getting subscription by ID',
+        'SubscriptionService',
+        error as Error
+      )
+      return null
+    }
+  }
+
+  /**
+   * Get subscription by profile ID
+   */
+  async getSubscriptionByProfileId(
+    profileId: string
+  ): Promise<Subscription | null> {
+    try {
+      const { data, error } = await this.supabase
+        .from('subscriptions')
+        .select('*')
+        .eq('profile_id', profileId)
+        .single()
+
+      if (error) {
+        logger(
+          'ERROR',
+          'Failed to get subscription by profile ID',
+          'SubscriptionService',
+          error as Error
+        )
+        return null
+      }
+
+      return data
+    } catch (error) {
+      logger(
+        'ERROR',
+        'Error getting subscription by profile ID',
+        'SubscriptionService',
+        error as Error
+      )
+      return null
+    }
+  }
+
+  /**
+   * Update subscription
    */
   async updateSubscription(
     id: string,
     updates: SubscriptionUpdate
   ): Promise<Subscription | null> {
-    const { data, error } = await this.supabase
-      .from('subscriptions')
-      .update(updates)
-      .eq('id', id)
-      .select()
-      .single()
+    try {
+      const { data, error } = await this.supabase
+        .from('subscriptions')
+        .update(updates)
+        .eq('id', id)
+        .select()
+        .single()
 
-    if (error) {
-      console.error('Error updating subscription:', error)
+      if (error) {
+        logger(
+          'ERROR',
+          'Failed to update subscription',
+          'SubscriptionService',
+          error as Error
+        )
+        return null
+      }
+
+      logger('INFO', `Updated subscription: ${id}`)
+      return data
+    } catch (error) {
+      logger(
+        'ERROR',
+        'Error updating subscription',
+        'SubscriptionService',
+        error as Error
+      )
       return null
     }
-
-    return data
   }
 
   /**
-   * Cancel a subscription
+   * Delete subscription
    */
-  async cancelSubscription(id: string): Promise<Subscription | null> {
-    return this.updateSubscription(id, { status: 'canceled' })
-  }
+  async deleteSubscription(id: string): Promise<boolean> {
+    try {
+      const { error } = await this.supabase
+        .from('subscriptions')
+        .delete()
+        .eq('id', id)
 
-  /**
-   * Reactivate a subscription
-   */
-  async reactivateSubscription(id: string): Promise<Subscription | null> {
-    return this.updateSubscription(id, { status: 'active' })
-  }
+      if (error) {
+        logger(
+          'ERROR',
+          'Failed to delete subscription',
+          'SubscriptionService',
+          error as Error
+        )
+        return false
+      }
 
-  /**
-   * Get all subscriptions for a user
-   */
-  async getUserSubscriptions(profileId: string): Promise<Subscription[]> {
-    const { data, error } = await this.supabase
-      .from('subscriptions')
-      .select('*')
-      .eq('profile_id', profileId)
-      .order('created_at', { ascending: false })
-
-    if (error) {
-      console.error('Error getting user subscriptions:', error)
-      return []
+      logger('INFO', `Deleted subscription: ${id}`)
+      return true
+    } catch (error) {
+      logger(
+        'ERROR',
+        'Error deleting subscription',
+        'SubscriptionService',
+        error as Error
+      )
+      return false
     }
-
-    return data || []
   }
 
   /**
@@ -190,89 +202,254 @@ export class SubscriptionService {
   async createFreeSubscription(
     profileId: string
   ): Promise<Subscription | null> {
-    return this.createSubscription({
+    const subscriptionData: SubscriptionInsert = {
       profile_id: profileId,
       plan_type: 'free',
-      payment_type: 'monthly', // Default for free users
+      payment_type: 'monthly',
       status: 'active',
       stripe_subscription_id: null,
-      stripe_customer_id: null
-    })
+      stripe_customer_id: null,
+      current_period_start: null,
+      current_period_end: null
+    }
+
+    return this.createSubscription(subscriptionData)
   }
 
   /**
-   * Ensure user has a subscription (create free one if none exists)
+   * Create a premium subscription via Stripe
    */
-  async ensureUserHasSubscription(
-    profileId: string
+  async createPremiumSubscription(
+    profileId: string,
+    customerId: string,
+    stripeSubscriptionId: string,
+    paymentType: 'monthly' | 'lifetime'
   ): Promise<Subscription | null> {
-    // Check if user already has an active subscription
-    const existingSubscription = await this.getActiveSubscription(profileId)
-
-    if (existingSubscription) {
-      return existingSubscription
+    const subscriptionData: SubscriptionInsert = {
+      profile_id: profileId,
+      plan_type: 'premium',
+      payment_type: paymentType,
+      status: 'active',
+      stripe_subscription_id: stripeSubscriptionId,
+      stripe_customer_id: customerId,
+      current_period_start: new Date().toISOString(),
+      current_period_end:
+        paymentType === 'lifetime'
+          ? null
+          : new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString() // 30 days from now
     }
 
-    // Create a free subscription if none exists
-    const newSubscription = await this.createFreeSubscription(profileId)
-
-    if (newSubscription) {
-      // Update the profile to link to the new subscription
-      await this.supabase
-        .from('profiles')
-        .update({ subscription_id: newSubscription.id })
-        .eq('id', profileId)
-    }
-
-    return newSubscription
+    return this.createSubscription(subscriptionData)
   }
 
   /**
-   * Check if user has any active subscription
+   * Cancel a subscription
    */
-  async hasActiveSubscription(profileId: string): Promise<boolean> {
-    const subscription = await this.getActiveSubscription(profileId)
-    return subscription !== null
-  }
+  async cancelSubscription(subscriptionId: string): Promise<boolean> {
+    try {
+      // Update local subscription status
+      const updated = await this.updateSubscription(subscriptionId, {
+        status: 'canceled'
+      })
 
-  /**
-   * Get subscription by Stripe subscription ID
-   */
-  async getSubscriptionByStripeId(
-    stripeSubscriptionId: string
-  ): Promise<Subscription | null> {
-    const { data, error } = await this.supabase
-      .from('subscriptions')
-      .select('*')
-      .eq('stripe_subscription_id', stripeSubscriptionId)
-      .single()
+      if (!updated) {
+        return false
+      }
 
-    if (error) {
-      console.error('Error getting subscription by Stripe ID:', error)
-      return null
+      // Cancel in Stripe if it's a premium subscription
+      const subscription = await this.getSubscriptionById(subscriptionId)
+      if (subscription?.stripe_subscription_id) {
+        await stripeService.cancelSubscription(
+          subscription.stripe_subscription_id
+        )
+      }
+
+      logger('INFO', `Canceled subscription: ${subscriptionId}`)
+      return true
+    } catch (error) {
+      logger(
+        'ERROR',
+        'Error canceling subscription',
+        'SubscriptionService',
+        error as Error
+      )
+      return false
     }
-
-    return data
   }
 
   /**
-   * Get subscription by Stripe customer ID
+   * Reactivate a subscription
    */
-  async getSubscriptionsByStripeCustomerId(
-    stripeCustomerId: string
-  ): Promise<Subscription[]> {
-    const { data, error } = await this.supabase
-      .from('subscriptions')
-      .select('*')
-      .eq('stripe_customer_id', stripeCustomerId)
-      .order('created_at', { ascending: false })
+  async reactivateSubscription(subscriptionId: string): Promise<boolean> {
+    try {
+      // Update local subscription status
+      const updated = await this.updateSubscription(subscriptionId, {
+        status: 'active'
+      })
 
-    if (error) {
-      console.error('Error getting subscriptions by Stripe customer ID:', error)
+      if (!updated) {
+        return false
+      }
+
+      // Reactivate in Stripe if it's a premium subscription
+      const subscription = await this.getSubscriptionById(subscriptionId)
+      if (subscription?.stripe_subscription_id) {
+        await stripeService.reactivateSubscription(
+          subscription.stripe_subscription_id
+        )
+      }
+
+      logger('INFO', `Reactivated subscription: ${subscriptionId}`)
+      return true
+    } catch (error) {
+      logger(
+        'ERROR',
+        'Error reactivating subscription',
+        'SubscriptionService',
+        error as Error
+      )
+      return false
+    }
+  }
+
+  /**
+   * Get user's current plan type
+   */
+  async getUserPlanType(profileId: string): Promise<'free' | 'premium'> {
+    try {
+      const subscription = await this.getSubscriptionByProfileId(profileId)
+      return subscription?.plan_type || 'free'
+    } catch (error) {
+      logger(
+        'ERROR',
+        'Error getting user plan type',
+        'SubscriptionService',
+        error as Error
+      )
+      return 'free'
+    }
+  }
+
+  /**
+   * Check if user has premium access
+   */
+  async hasPremiumAccess(profileId: string): Promise<boolean> {
+    try {
+      const subscription = await this.getSubscriptionByProfileId(profileId)
+      return (
+        subscription?.plan_type === 'premium' &&
+        subscription?.status === 'active'
+      )
+    } catch (error) {
+      logger(
+        'ERROR',
+        'Error checking premium access',
+        'SubscriptionService',
+        error as Error
+      )
+      return false
+    }
+  }
+
+  /**
+   * Get all subscriptions for a user
+   */
+  async getUserSubscriptions(profileId: string): Promise<Subscription[]> {
+    try {
+      const { data, error } = await this.supabase
+        .from('subscriptions')
+        .select('*')
+        .eq('profile_id', profileId)
+        .order('created_at', { ascending: false })
+
+      if (error) {
+        logger(
+          'ERROR',
+          'Failed to get user subscriptions',
+          'SubscriptionService',
+          error as Error
+        )
+        return []
+      }
+
+      return data || []
+    } catch (error) {
+      logger(
+        'ERROR',
+        'Error getting user subscriptions',
+        'SubscriptionService',
+        error as Error
+      )
       return []
     }
+  }
 
-    return data || []
+  /**
+   * Get active subscription for a user
+   */
+  async getActiveSubscription(profileId: string): Promise<Subscription | null> {
+    try {
+      const { data, error } = await this.supabase
+        .from('subscriptions')
+        .select('*')
+        .eq('profile_id', profileId)
+        .eq('status', 'active')
+        .single()
+
+      if (error) {
+        logger(
+          'ERROR',
+          'Failed to get active subscription',
+          'SubscriptionService',
+          error as Error
+        )
+        return null
+      }
+
+      return data
+    } catch (error) {
+      logger(
+        'ERROR',
+        'Error getting active subscription',
+        'SubscriptionService',
+        error as Error
+      )
+      return null
+    }
+  }
+
+  /**
+   * Process webhook events
+   */
+  async processWebhookEvent(event: any): Promise<void> {
+    try {
+      switch (event.type) {
+        case 'customer.subscription.created':
+          await stripeService.handleSubscriptionCreated(event)
+          break
+        case 'customer.subscription.updated':
+          await stripeService.handleSubscriptionUpdated(event)
+          break
+        case 'customer.subscription.deleted':
+          await stripeService.handleSubscriptionDeleted(event)
+          break
+        case 'invoice.payment_succeeded':
+          await stripeService.handlePaymentSucceeded(event)
+          break
+        case 'invoice.payment_failed':
+          await stripeService.handlePaymentFailed(event)
+          break
+        default:
+          logger('INFO', `Unhandled webhook event type: ${event.type}`)
+      }
+    } catch (error) {
+      logger(
+        'ERROR',
+        'Error processing webhook event',
+        'SubscriptionService',
+        error as Error
+      )
+    }
   }
 }
 
