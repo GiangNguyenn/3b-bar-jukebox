@@ -115,23 +115,9 @@ This document outlines the step-by-step implementation plan for transitioning JM
 - [x] Process failed payments gracefully
 - [x] Update user subscription status immediately after payment
 
-#### User Story 2.3: Create Subscription Management Dashboard
-
-**As a** user  
-**I want** to manage my subscription settings  
-**So that** I can update payment methods or cancel my subscription
-
-**Acceptance Criteria:**
-
-- [ ] Create subscription status page
-- [ ] Allow users to update payment methods
-- [ ] Provide subscription cancellation option
-- [ ] Show billing history and invoices
-- [ ] Display current plan and next billing date
-
 ### Epic: Feature Access Control
 
-#### User Story 2.4: Implement Tier-Based Access Control
+#### User Story 2.3: Implement Tier-Based Access Control
 
 **As a** developer  
 **I want** to restrict features based on subscription tier  
