@@ -1,6 +1,7 @@
 import { createClient } from '@supabase/supabase-js'
 import type { Database } from '@/types/supabase'
 import { stripeService } from './stripeService'
+import { subscriptionCache } from './subscriptionCache'
 import { createModuleLogger } from '@/shared/utils/logger'
 
 type Subscription = Database['public']['Tables']['subscriptions']['Row']
@@ -313,12 +314,11 @@ export class SubscriptionService {
   }
 
   /**
-   * Get user's current plan type
+   * Get user's current plan type (optimized with caching)
    */
   async getUserPlanType(profileId: string): Promise<'free' | 'premium'> {
     try {
-      const subscription = await this.getSubscriptionByProfileId(profileId)
-      return subscription?.plan_type || 'free'
+      return await subscriptionCache.getUserPlanType(profileId)
     } catch (error) {
       logger(
         'ERROR',
@@ -331,15 +331,11 @@ export class SubscriptionService {
   }
 
   /**
-   * Check if user has premium access
+   * Check if user has premium access (optimized with caching)
    */
   async hasPremiumAccess(profileId: string): Promise<boolean> {
     try {
-      const subscription = await this.getSubscriptionByProfileId(profileId)
-      return (
-        subscription?.plan_type === 'premium' &&
-        subscription?.status === 'active'
-      )
+      return await subscriptionCache.hasPremiumAccess(profileId)
     } catch (error) {
       logger(
         'ERROR',
@@ -385,28 +381,11 @@ export class SubscriptionService {
   }
 
   /**
-   * Get active subscription for a user
+   * Get active subscription for a user (optimized with caching)
    */
   async getActiveSubscription(profileId: string): Promise<Subscription | null> {
     try {
-      const { data, error } = await this.supabase
-        .from('subscriptions')
-        .select('*')
-        .eq('profile_id', profileId)
-        .eq('status', 'active')
-        .single()
-
-      if (error) {
-        logger(
-          'ERROR',
-          'Failed to get active subscription',
-          'SubscriptionService',
-          error as Error
-        )
-        return null
-      }
-
-      return data
+      return await subscriptionCache.getActiveSubscription(profileId)
     } catch (error) {
       logger(
         'ERROR',
@@ -450,6 +429,54 @@ export class SubscriptionService {
         error as Error
       )
     }
+  }
+
+  /**
+   * Get user subscription status (optimized)
+   */
+  async getUserSubscriptionStatus(profileId: string) {
+    try {
+      return await subscriptionCache.getUserSubscriptionStatus(profileId)
+    } catch (error) {
+      logger(
+        'ERROR',
+        'Error getting subscription status',
+        'SubscriptionService',
+        error as Error
+      )
+      return null
+    }
+  }
+
+  /**
+   * Get user subscription summary (optimized)
+   */
+  async getUserSubscriptionSummary(profileId: string) {
+    try {
+      return await subscriptionCache.getUserSubscriptionSummary(profileId)
+    } catch (error) {
+      logger(
+        'ERROR',
+        'Error getting subscription summary',
+        'SubscriptionService',
+        error as Error
+      )
+      return null
+    }
+  }
+
+  /**
+   * Get cache statistics
+   */
+  getCacheStats() {
+    return subscriptionCache.getCacheStats()
+  }
+
+  /**
+   * Clear all cache
+   */
+  clearCache(): void {
+    subscriptionCache.clearCache()
   }
 }
 
