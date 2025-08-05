@@ -44,18 +44,24 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     }
 
     const body = await request.json()
-    const { subscriptionType, successUrl, cancelUrl } = body as {
-      subscriptionType: string
-      successUrl: string
-      cancelUrl: string
+    const { planType, successUrl, cancelUrl } = body as {
+      planType: string
+      successUrl?: string
+      cancelUrl?: string
     }
 
-    if (!subscriptionType || !successUrl || !cancelUrl) {
+    if (!planType) {
       return NextResponse.json(
         { error: 'Missing required parameters' },
         { status: 400 }
       )
     }
+
+    // Set default URLs if not provided
+    const defaultSuccessUrl = `${request.nextUrl.origin}/admin`
+    const defaultCancelUrl = `${request.nextUrl.origin}/admin`
+    const finalSuccessUrl = successUrl || defaultSuccessUrl
+    const finalCancelUrl = cancelUrl || defaultCancelUrl
 
     // Get user profile
     const { data: profile } = await supabase
@@ -87,19 +93,19 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
     let session: Stripe.Checkout.Session
 
-    if (subscriptionType === 'monthly') {
+    if (planType === 'monthly') {
       session = await stripeService.createMonthlyCheckoutSession(
         customerId as string,
         user.id,
-        successUrl,
-        cancelUrl
+        finalSuccessUrl,
+        finalCancelUrl
       )
-    } else if (subscriptionType === 'lifetime') {
+    } else if (planType === 'lifetime') {
       session = await stripeService.createLifetimeCheckoutSession(
         customerId as string,
         user.id,
-        successUrl,
-        cancelUrl
+        finalSuccessUrl,
+        finalCancelUrl
       )
     } else {
       return NextResponse.json(

@@ -86,17 +86,21 @@ This document outlines the step-by-step implementation plan for transitioning JM
 
 #### User Story 2.1: Create Plan Selection Interface
 
-**As a** user  
-**I want** to see available plans and their features  
-**So that** I can choose the right subscription for my needs
+**As an** admin  
+**I want** to see available plans and manage subscription settings  
+**So that** I can choose the right subscription for my venue
 
 **Acceptance Criteria:**
 
-- [ ] Create pricing page with plan comparison
-- [ ] Display feature matrix clearly
-- [ ] Show monthly vs lifetime pricing options
-- [ ] Include upgrade prompts for existing users
-- [ ] Make plan selection intuitive and mobile-friendly
+- [x] Add "Subscription" tab to admin interface alongside Dashboard, Suggestions, Playlist, Analytics, and Branding tabs
+- [x] Create subscription management page within the admin interface (not public-facing)
+- [x] Display current subscription status (Free/Premium, plan type, billing cycle)
+- [x] Show plan comparison matrix with Free vs Premium features clearly displayed
+- [x] Include an upgrade options from the monthly ($5) to lifetime ($99) plans
+- [x] Display billing information including next billing date, payment method, and billing history
+- [x] Provide subscription management controls (cancel, reactivate)
+- [x] Integrate with existing admin authentication (ProtectedRoute component)
+- [x] Make subscription management intuitive and consistent with existing admin UI patterns
 
 #### User Story 2.2: Implement Payment Flow
 

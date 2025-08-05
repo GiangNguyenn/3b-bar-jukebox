@@ -18,6 +18,7 @@ import { TrackSuggestionsTab } from './components/track-suggestions/track-sugges
 import { PlaylistDisplay } from './components/playlist/playlist-display'
 import { AnalyticsTab } from './components/analytics/analytics-tab'
 import { BrandingTab } from './components/branding/branding-tab'
+import { SubscriptionTab } from './components/subscription/subscription-tab'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 
 import { type TrackSuggestionsState } from '@/shared/types/trackSuggestions'
@@ -46,7 +47,13 @@ export default function AdminPage(): JSX.Element {
   const [isRefreshing, setIsRefreshing] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [activeTab, setActiveTab] = useState<
-    'dashboard' | 'playlist' | 'settings' | 'logs' | 'analytics' | 'branding'
+    | 'dashboard'
+    | 'playlist'
+    | 'settings'
+    | 'logs'
+    | 'analytics'
+    | 'branding'
+    | 'subscription'
   >('dashboard')
   const [volume, setVolume] = useState(50)
   const initializationAttemptedRef = useRef(false)
@@ -592,6 +599,7 @@ export default function AdminPage(): JSX.Element {
         | 'logs'
         | 'analytics'
         | 'branding'
+        | 'subscription'
     )
   }, [])
 
@@ -719,7 +727,7 @@ export default function AdminPage(): JSX.Element {
           }}
           className='space-y-4'
         >
-          <TabsList className='grid w-full grid-cols-5 bg-gray-800/50'>
+          <TabsList className='grid w-full grid-cols-6 bg-gray-800/50'>
             <TabsTrigger
               value='dashboard'
               className='data-[state=active]:text-white data-[state=active]:bg-gray-700 data-[state=active]:font-semibold'
@@ -749,6 +757,12 @@ export default function AdminPage(): JSX.Element {
               className='data-[state=active]:text-white data-[state=active]:bg-gray-700 data-[state=active]:font-semibold'
             >
               Branding
+            </TabsTrigger>
+            <TabsTrigger
+              value='subscription'
+              className='data-[state=active]:text-white data-[state=active]:bg-gray-700 data-[state=active]:font-semibold'
+            >
+              Subscription
             </TabsTrigger>
           </TabsList>
 
@@ -900,6 +914,10 @@ export default function AdminPage(): JSX.Element {
 
           <TabsContent value='branding'>
             <BrandingTab />
+          </TabsContent>
+
+          <TabsContent value='subscription'>
+            <SubscriptionTab />
           </TabsContent>
         </Tabs>
       </div>
