@@ -58,10 +58,10 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     }
 
     // Set default URLs if not provided
-    const defaultSuccessUrl = `${request.nextUrl.origin}/admin`
-    const defaultCancelUrl = `${request.nextUrl.origin}/admin`
-    const finalSuccessUrl = successUrl || defaultSuccessUrl
-    const finalCancelUrl = cancelUrl || defaultCancelUrl
+    const defaultSuccessUrl = `${request.nextUrl.origin}/api/subscriptions/payment-success?session_id={CHECKOUT_SESSION_ID}`
+    const defaultCancelUrl = `${request.nextUrl.origin}/admin?payment=cancelled`
+    const finalSuccessUrl = successUrl ?? defaultSuccessUrl
+    const finalCancelUrl = cancelUrl ?? defaultCancelUrl
 
     // Get user profile
     const { data: profile } = await supabase
@@ -94,6 +94,24 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     let session: Stripe.Checkout.Session
 
     if (planType === 'monthly') {
+      logger(
+        'INFO',
+        `Creating monthly checkout session for customer ${customerId}`,
+        'SubscriptionCheckout'
+      )
+
+      if (!process.env.STRIPE_MONTHLY_PRICE_ID) {
+        logger(
+          'ERROR',
+          'STRIPE_MONTHLY_PRICE_ID environment variable is not set',
+          'SubscriptionCheckout'
+        )
+        return NextResponse.json(
+          { error: 'Stripe configuration error' },
+          { status: 500 }
+        )
+      }
+
       session = await stripeService.createMonthlyCheckoutSession(
         customerId as string,
         user.id,
@@ -101,6 +119,24 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         finalCancelUrl
       )
     } else if (planType === 'lifetime') {
+      logger(
+        'INFO',
+        `Creating lifetime checkout session for customer ${customerId}`,
+        'SubscriptionCheckout'
+      )
+
+      if (!process.env.STRIPE_LIFETIME_PRODUCT_ID) {
+        logger(
+          'ERROR',
+          'STRIPE_LIFETIME_PRODUCT_ID environment variable is not set',
+          'SubscriptionCheckout'
+        )
+        return NextResponse.json(
+          { error: 'Stripe configuration error' },
+          { status: 500 }
+        )
+      }
+
       session = await stripeService.createLifetimeCheckoutSession(
         customerId as string,
         user.id,
@@ -108,6 +144,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         finalCancelUrl
       )
     } else {
+      logger('ERROR', `Invalid plan type: ${planType}`, 'SubscriptionCheckout')
       return NextResponse.json(
         { error: 'Invalid subscription type' },
         { status: 400 }

@@ -71,7 +71,7 @@ export function SubscriptionTab(): JSX.Element {
   useEffect(() => {
     if (profileError || subscriptionError) {
       setError(
-        profileError || subscriptionError || 'Failed to load subscription data'
+        profileError ?? subscriptionError ?? 'Failed to load subscription data'
       )
       setIsLoading(false)
     }
@@ -245,19 +245,6 @@ export function SubscriptionTab(): JSX.Element {
     return new Date(dateString).toLocaleDateString()
   }
 
-  const getStatusColor = (status: string): string => {
-    switch (status) {
-      case 'active':
-        return 'text-green-500'
-      case 'canceled':
-        return 'text-red-500'
-      case 'past_due':
-        return 'text-yellow-500'
-      default:
-        return 'text-gray-500'
-    }
-  }
-
   return (
     <div className='space-y-6'>
       <h2 className='text-xl font-semibold'>Subscription Management</h2>
@@ -317,7 +304,7 @@ export function SubscriptionTab(): JSX.Element {
           {/* Free Plan */}
           <div className='rounded-lg border border-gray-600 p-4'>
             <h4 className='mb-2 text-lg font-semibold'>Free Plan</h4>
-            <p className='mb-4 text-2xl font-bold'>$0/month</p>
+            <p className='mb-4 text-2xl font-bold'>$0 USD/month</p>
             <ul className='space-y-2 text-sm'>
               <li className='flex items-center'>
                 <span className='mr-2 text-green-500'>✓</span>
@@ -349,7 +336,7 @@ export function SubscriptionTab(): JSX.Element {
           {/* Monthly Plan */}
           <div className='rounded-lg border border-blue-500 bg-blue-500/10 p-4'>
             <h4 className='mb-2 text-lg font-semibold'>Monthly Plan</h4>
-            <p className='mb-4 text-2xl font-bold'>$5/month</p>
+            <p className='mb-4 text-2xl font-bold'>$5 USD/month</p>
             <ul className='space-y-2 text-sm'>
               <li className='flex items-center'>
                 <span className='mr-2 text-green-500'>✓</span>
@@ -381,7 +368,7 @@ export function SubscriptionTab(): JSX.Element {
           {/* Lifetime Plan */}
           <div className='rounded-lg border border-purple-500 bg-purple-500/10 p-4'>
             <h4 className='mb-2 text-lg font-semibold'>Lifetime Plan</h4>
-            <p className='mb-4 text-2xl font-bold'>$99</p>
+            <p className='mb-4 text-2xl font-bold'>$99 USD</p>
             <p className='mb-4 text-sm text-gray-400'>One-time payment</p>
             <ul className='space-y-2 text-sm'>
               <li className='flex items-center'>
@@ -434,7 +421,7 @@ export function SubscriptionTab(): JSX.Element {
                     <span>Processing...</span>
                   </div>
                 ) : (
-                  'Upgrade to Monthly ($5/month)'
+                  'Upgrade to Monthly ($5 USD/month)'
                 )}
               </button>
               <button
@@ -450,7 +437,7 @@ export function SubscriptionTab(): JSX.Element {
                     <span>Processing...</span>
                   </div>
                 ) : (
-                  'Upgrade to Lifetime ($99)'
+                  'Upgrade to Lifetime ($99 USD)'
                 )}
               </button>
             </div>

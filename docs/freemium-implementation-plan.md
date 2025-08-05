@@ -110,11 +110,10 @@ This document outlines the step-by-step implementation plan for transitioning JM
 
 **Acceptance Criteria:**
 
-- [ ] Integrate Stripe Checkout for payment processing
-- [ ] Handle successful payment confirmation
-- [ ] Process failed payments gracefully
-- [ ] Send confirmation emails for successful payments
-- [ ] Update user subscription status immediately after payment
+- [x] Integrate Stripe Checkout for payment processing
+- [x] Handle successful payment confirmation
+- [x] Process failed payments gracefully
+- [x] Update user subscription status immediately after payment
 
 #### User Story 2.3: Create Subscription Management Dashboard
 

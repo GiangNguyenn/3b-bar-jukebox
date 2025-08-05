@@ -161,25 +161,35 @@ export class StripeService {
     successUrl: string,
     cancelUrl: string
   ): Promise<Stripe.Checkout.Session> {
-    const session = await this.stripe.checkout.sessions.create({
-      customer: customerId,
-      payment_method_types: ['card'],
-      line_items: [
-        {
-          price: process.env.STRIPE_MONTHLY_PRICE_ID!,
-          quantity: 1
+    try {
+      const session = await this.stripe.checkout.sessions.create({
+        customer: customerId,
+        payment_method_types: ['card'],
+        line_items: [
+          {
+            price: process.env.STRIPE_MONTHLY_PRICE_ID!,
+            quantity: 1
+          }
+        ],
+        mode: 'subscription',
+        success_url: successUrl,
+        cancel_url: cancelUrl,
+        metadata: {
+          profile_id: profileId,
+          subscription_type: 'monthly'
         }
-      ],
-      mode: 'subscription',
-      success_url: successUrl,
-      cancel_url: cancelUrl,
-      metadata: {
-        profile_id: profileId,
-        subscription_type: 'monthly'
-      }
-    })
+      })
 
-    return session
+      return session
+    } catch (error) {
+      logger(
+        'ERROR',
+        'Failed to create monthly checkout session',
+        'StripeService',
+        error as Error
+      )
+      throw error
+    }
   }
 
   /**
@@ -191,26 +201,49 @@ export class StripeService {
     successUrl: string,
     cancelUrl: string
   ): Promise<Stripe.Checkout.Session> {
-    const session = await this.stripe.checkout.sessions.create({
-      customer: customerId,
-      payment_method_types: ['card'],
-      line_items: [
-        {
-          price_data: {
-            currency: 'usd',
-            product: process.env.STRIPE_LIFETIME_PRODUCT_ID!,
-            unit_amount: 9900 // $99.00 in cents
-          },
-          quantity: 1
+    try {
+      const session = await this.stripe.checkout.sessions.create({
+        customer: customerId,
+        payment_method_types: ['card'],
+        line_items: [
+          {
+            price_data: {
+              currency: 'usd',
+              product: process.env.STRIPE_LIFETIME_PRODUCT_ID!,
+              unit_amount: 9900 // $99.00 in cents
+            },
+            quantity: 1
+          }
+        ],
+        mode: 'payment',
+        success_url: successUrl,
+        cancel_url: cancelUrl,
+        metadata: {
+          profile_id: profileId,
+          subscription_type: 'lifetime'
         }
-      ],
-      mode: 'payment',
-      success_url: successUrl,
-      cancel_url: cancelUrl,
-      metadata: {
-        profile_id: profileId,
-        subscription_type: 'lifetime'
-      }
+      })
+
+      return session
+    } catch (error) {
+      logger(
+        'ERROR',
+        'Failed to create lifetime checkout session',
+        'StripeService',
+        error as Error
+      )
+      throw error
+    }
+  }
+
+  /**
+   * Get a checkout session
+   */
+  async getCheckoutSession(
+    sessionId: string
+  ): Promise<Stripe.Checkout.Session> {
+    const session = await this.stripe.checkout.sessions.retrieve(sessionId, {
+      expand: ['subscription', 'payment_intent']
     })
 
     return session
