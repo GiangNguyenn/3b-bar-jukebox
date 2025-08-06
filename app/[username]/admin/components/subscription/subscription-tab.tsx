@@ -549,22 +549,22 @@ export function SubscriptionTab(): JSX.Element {
               </div>
             )}
 
-            {/* TESTING ONLY - Delete all subscription data */}
+            {/* Delete all subscription data */}
             <div className='mt-6 border-t border-red-500/30 pt-6'>
               <div className='rounded-lg border border-red-500/50 bg-red-900/20 p-4'>
                 <h4 className='mb-2 font-semibold text-red-400'>
-                  🧪 TESTING ONLY
+                  🗑️ Delete Subscription Data
                 </h4>
                 <p className='mb-3 text-sm text-red-300'>
                   This will permanently delete all subscription data for the
-                  current user. Use only for testing purposes.
+                  current user. This action cannot be undone.
                 </p>
                 <button
                   onClick={(): void => {
                     const handleDelete = async (): Promise<void> => {
                       if (
                         confirm(
-                          '⚠️ TESTING ONLY: This will delete ALL subscription data for the current user. Are you sure?'
+                          '⚠️ WARNING: This will permanently delete ALL subscription data for the current user. This action cannot be undone. Are you sure?'
                         )
                       ) {
                         try {
@@ -616,7 +616,7 @@ export function SubscriptionTab(): JSX.Element {
                   }}
                   className='text-white w-full rounded-lg bg-red-600 px-6 py-3 font-medium transition-colors hover:bg-red-700'
                 >
-                  🗑️ Delete All Subscription Data (Testing Only)
+                  🗑️ Delete All Subscription Data
                 </button>
               </div>
             </div>
