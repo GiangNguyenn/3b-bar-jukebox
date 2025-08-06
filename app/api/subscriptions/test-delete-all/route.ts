@@ -10,22 +10,9 @@ export async function DELETE(): Promise<NextResponse> {
   try {
     logger(
       'INFO',
-      '🧪 Test delete all subscriptions endpoint called',
+      '🗑️ Delete all subscriptions endpoint called',
       'TestDeleteAllSubscriptions'
     )
-
-    // Only allow in development environment
-    if (process.env.NODE_ENV !== 'development') {
-      logger(
-        'ERROR',
-        '🧪 Endpoint called in non-development environment',
-        'TestDeleteAllSubscriptions'
-      )
-      return NextResponse.json(
-        { error: 'This endpoint is only available in development' },
-        { status: 403 }
-      )
-    }
 
     const cookieStore = cookies()
     const supabase = createServerClient<Database>(
@@ -52,7 +39,7 @@ export async function DELETE(): Promise<NextResponse> {
     )
 
     // Get current user
-    logger('INFO', '🧪 Getting current user...', 'TestDeleteAllSubscriptions')
+    logger('INFO', '🗑️ Getting current user...', 'TestDeleteAllSubscriptions')
     const result = (await supabase.auth.getUser()) as {
       data: { user: { id: string } | null }
       error: unknown
@@ -61,7 +48,7 @@ export async function DELETE(): Promise<NextResponse> {
     const userError = result.error
 
     if (userError || !user) {
-      logger('ERROR', '🧪 User not authenticated', 'TestDeleteAllSubscriptions')
+      logger('ERROR', '🗑️ User not authenticated', 'TestDeleteAllSubscriptions')
       return NextResponse.json(
         { error: 'User not authenticated' },
         { status: 401 }
@@ -70,7 +57,7 @@ export async function DELETE(): Promise<NextResponse> {
 
     logger(
       'INFO',
-      `🧪 User authenticated: ${user.id}`,
+      `🗑️ User authenticated: ${user.id}`,
       'TestDeleteAllSubscriptions'
     )
 
@@ -91,7 +78,7 @@ export async function DELETE(): Promise<NextResponse> {
     // First, update the profile to remove subscription_id reference
     logger(
       'INFO',
-      `🧪 Updating profile to remove subscription reference for user: ${user.id}`,
+      `🗑️ Updating profile to remove subscription reference for user: ${user.id}`,
       'TestDeleteAllSubscriptions'
     )
     const { error: updateError } = await supabase
@@ -102,7 +89,7 @@ export async function DELETE(): Promise<NextResponse> {
     if (updateError) {
       logger(
         'ERROR',
-        `🧪 Error updating profile: ${updateError.message}`,
+        `🗑️ Error updating profile: ${updateError.message}`,
         'TestDeleteAllSubscriptions'
       )
       return NextResponse.json(
@@ -114,7 +101,7 @@ export async function DELETE(): Promise<NextResponse> {
     // Now delete all subscriptions for this user
     logger(
       'INFO',
-      `🧪 Deleting subscriptions for user: ${user.id}`,
+      `🗑️ Deleting subscriptions for user: ${user.id}`,
       'TestDeleteAllSubscriptions'
     )
     const { error: deleteError } = await supabase
@@ -125,7 +112,7 @@ export async function DELETE(): Promise<NextResponse> {
     if (deleteError) {
       logger(
         'ERROR',
-        `🧪 Error deleting subscriptions: ${deleteError.message}`,
+        `🗑️ Error deleting subscriptions: ${deleteError.message}`,
         'TestDeleteAllSubscriptions'
       )
       return NextResponse.json(
@@ -136,13 +123,13 @@ export async function DELETE(): Promise<NextResponse> {
 
     logger(
       'INFO',
-      `🧪 Successfully deleted subscriptions for user: ${user.id}`,
+      `🗑️ Successfully deleted subscriptions for user: ${user.id}`,
       'TestDeleteAllSubscriptions'
     )
 
     logger(
       'INFO',
-      `Successfully deleted all subscription data for user: ${user.id}`,
+      `🗑️ Successfully deleted all subscription data for user: ${user.id}`,
       'TestDeleteAllSubscriptions'
     )
 
@@ -153,7 +140,7 @@ export async function DELETE(): Promise<NextResponse> {
   } catch (error) {
     logger(
       'ERROR',
-      'Unexpected error in test delete all subscriptions',
+      'Unexpected error in delete all subscriptions',
       'TestDeleteAllSubscriptions',
       error as Error
     )
