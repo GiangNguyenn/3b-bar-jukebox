@@ -1,6 +1,7 @@
 import type { Metadata } from 'next'
 import { Belgrano } from 'next/font/google'
 import Script from 'next/script'
+import { Analytics } from '@vercel/analytics/react'
 import './globals.css'
 import Header from '@/components/Header'
 import { ConsoleLogsProvider } from '@/hooks/ConsoleLogsProvider'
@@ -101,6 +102,7 @@ export default function RootLayout({
             {children}
           </ConsoleLogsProvider>
         </ToastProvider>
+        <Analytics />
       </body>
     </html>
   )
