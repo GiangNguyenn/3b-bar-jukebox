@@ -57,12 +57,6 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       )
     }
 
-    // Set default URLs if not provided
-    const defaultSuccessUrl = `${request.nextUrl.origin}/api/subscriptions/payment-success?session_id={CHECKOUT_SESSION_ID}`
-    const defaultCancelUrl = `${request.nextUrl.origin}/admin?payment=cancelled`
-    const finalSuccessUrl = successUrl ?? defaultSuccessUrl
-    const finalCancelUrl = cancelUrl ?? defaultCancelUrl
-
     // Get user profile
     const { data: profile } = await supabase
       .from('profiles')
@@ -74,29 +68,18 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       return NextResponse.json({ error: 'Profile not found' }, { status: 404 })
     }
 
-    // Get or create Stripe customer
-    let customerId = profile.stripe_customer_id
-
-    if (!customerId) {
-      const customer = await stripeService.createCustomer(
-        user.email!,
-        profile.display_name
-      )
-      customerId = customer.id
-
-      // Update profile with Stripe customer ID
-      await supabase
-        .from('profiles')
-        .update({ stripe_customer_id: customerId })
-        .eq('id', user.id)
-    }
+    // Set default URLs if not provided
+    const defaultSuccessUrl = `${request.nextUrl.origin}/api/subscriptions/payment-success?session_id={CHECKOUT_SESSION_ID}`
+    const defaultCancelUrl = `${request.nextUrl.origin}/${profile.display_name ?? user.email?.split('@')[0] ?? 'user'}/admin?payment=cancelled`
+    const finalSuccessUrl = successUrl ?? defaultSuccessUrl
+    const finalCancelUrl = cancelUrl ?? defaultCancelUrl
 
     let session: Stripe.Checkout.Session
 
     if (planType === 'monthly') {
       logger(
         'INFO',
-        `Creating monthly checkout session for customer ${customerId}`,
+        `Creating monthly checkout session with auto customer creation`,
         'SubscriptionCheckout'
       )
 
@@ -112,16 +95,30 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         )
       }
 
-      session = await stripeService.createMonthlyCheckoutSession(
-        customerId as string,
-        user.id,
-        finalSuccessUrl,
-        finalCancelUrl
-      )
+      try {
+        session = await stripeService.createMonthlyCheckoutSessionAuto(
+          user.id,
+          finalSuccessUrl,
+          finalCancelUrl
+        )
+      } catch (stripeError) {
+        logger(
+          'ERROR',
+          `Stripe API error creating monthly checkout session: ${stripeError instanceof Error ? stripeError.message : 'Unknown error'}`,
+          'SubscriptionCheckout',
+          stripeError as Error
+        )
+        return NextResponse.json(
+          {
+            error: `Stripe API error: ${stripeError instanceof Error ? stripeError.message : 'Unknown error'}`
+          },
+          { status: 500 }
+        )
+      }
     } else if (planType === 'lifetime') {
       logger(
         'INFO',
-        `Creating lifetime checkout session for customer ${customerId}`,
+        `Creating lifetime checkout session with auto customer creation`,
         'SubscriptionCheckout'
       )
 
@@ -137,12 +134,26 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         )
       }
 
-      session = await stripeService.createLifetimeCheckoutSession(
-        customerId as string,
-        user.id,
-        finalSuccessUrl,
-        finalCancelUrl
-      )
+      try {
+        session = await stripeService.createLifetimeCheckoutSessionAuto(
+          user.id,
+          finalSuccessUrl,
+          finalCancelUrl
+        )
+      } catch (stripeError) {
+        logger(
+          'ERROR',
+          `Stripe API error creating lifetime checkout session: ${stripeError instanceof Error ? stripeError.message : 'Unknown error'}`,
+          'SubscriptionCheckout',
+          stripeError as Error
+        )
+        return NextResponse.json(
+          {
+            error: `Stripe API error: ${stripeError instanceof Error ? stripeError.message : 'Unknown error'}`
+          },
+          { status: 500 }
+        )
+      }
     } else {
       logger('ERROR', `Invalid plan type: ${planType}`, 'SubscriptionCheckout')
       return NextResponse.json(
@@ -158,12 +169,14 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   } catch (error) {
     logger(
       'ERROR',
-      'Error creating checkout session',
+      `Error creating checkout session: ${error instanceof Error ? error.message : 'Unknown error'}`,
       'SubscriptionCheckout',
       error as Error
     )
     return NextResponse.json(
-      { error: 'Failed to create checkout session' },
+      {
+        error: `Failed to create checkout session: ${error instanceof Error ? error.message : 'Unknown error'}`
+      },
       { status: 500 }
     )
   }

@@ -112,19 +112,6 @@ class AutoPlayService {
   }
 
   public setTrackSuggestionsState(state: any): void {
-    console.log(
-      '[setTrackSuggestionsState] Setting track suggestions state:',
-      state
-    )
-    console.log(
-      '[setTrackSuggestionsState] State type:',
-      typeof state,
-      'is null:',
-      state === null,
-      'is undefined:',
-      state === undefined
-    )
-
     logger(
       'INFO',
       `[setTrackSuggestionsState] Setting track suggestions state: ${JSON.stringify(state)}`
@@ -613,35 +600,6 @@ class AutoPlayService {
           `[AutoFill] Attempt ${attempts} - Excluding ${excludedTrackIds.length} existing tracks from suggestions`
         )
 
-        // Add detailed logging for debugging the 400 error
-        console.log(
-          `[AutoFill] Attempt ${attempts} - TRACK SUGGESTIONS STATE:`,
-          this.trackSuggestionsState
-        )
-        console.log(
-          `[AutoFill] Attempt ${attempts} - MERGED TRACK SUGGESTIONS:`,
-          mergedTrackSuggestions
-        )
-        console.log(
-          `[AutoFill] Attempt ${attempts} - FINAL REQUEST BODY:`,
-          requestBody
-        )
-        console.log(`[AutoFill] Attempt ${attempts} - REQUEST BODY TYPES:`, {
-          genres: typeof requestBody.genres,
-          yearRange: typeof requestBody.yearRange,
-          popularity: typeof requestBody.popularity,
-          allowExplicit: typeof requestBody.allowExplicit,
-          maxSongLength: typeof requestBody.maxSongLength,
-          songsBetweenRepeats: typeof requestBody.songsBetweenRepeats,
-          maxOffset: typeof requestBody.maxOffset
-        })
-        console.log(`[AutoFill] Attempt ${attempts} - YEAR RANGE VALIDATION:`, {
-          originalYearRange: this.trackSuggestionsState?.yearRange,
-          processedYearRange: requestBody.yearRange,
-          currentYear: new Date().getFullYear(),
-          isValid: requestBody.yearRange[1] <= new Date().getFullYear()
-        })
-
         logger(
           'INFO',
           `[AutoFill] Attempt ${attempts} - TRACK SUGGESTIONS STATE: ${JSON.stringify(this.trackSuggestionsState)}`
@@ -677,16 +635,6 @@ class AutoPlayService {
         let errorBody: any
 
         try {
-          console.log(
-            `[AutoFill] Attempt ${attempts} - ABOUT TO SEND REQUEST:`,
-            {
-              ...requestBody,
-              excludedTrackIds
-            }
-          )
-          console.log(
-            `[AutoFill] Attempt ${attempts} - REQUEST URL: /api/track-suggestions`
-          )
           response = await fetch('/api/track-suggestions', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -709,10 +657,6 @@ class AutoPlayService {
 
             try {
               errorBody = await response.json()
-              console.log(
-                `[AutoFill] Attempt ${attempts} - ERROR BODY:`,
-                errorBody
-              )
               logger(
                 'ERROR',
                 `[AutoFill] Attempt ${attempts} - ERROR BODY: ${JSON.stringify(errorBody)}`
@@ -828,7 +772,7 @@ class AutoPlayService {
             const trackDetails = await sendApiRequest<{
               id: string
               name: string
-              artists: Array<{ name: string }>
+              artists: Array<{ id: string; name: string }>
               album: { name: string }
               duration_ms: number
               popularity: number
@@ -890,6 +834,33 @@ class AutoPlayService {
 
             // Update the last suggested track cache
             try {
+              // Fetch artist genres for the track
+              let artistGenres: string[] = []
+              try {
+                if (trackDetails.artists && trackDetails.artists.length > 0) {
+                  const artistId = trackDetails.artists[0].id
+                  const artistResponse = await fetch(
+                    `https://api.spotify.com/v1/artists/${artistId}`,
+                    {
+                      headers: {
+                        Authorization: `Bearer ${await this.getAccessToken()}`
+                      }
+                    }
+                  )
+
+                  if (artistResponse.ok) {
+                    const artistData = await artistResponse.json()
+                    artistGenres = artistData.genres || []
+                  }
+                }
+              } catch (genreError) {
+                logger(
+                  'WARN',
+                  `[AutoFill] Attempt ${attempts} - Failed to fetch artist genres: ${genreError instanceof Error ? genreError.message : 'Unknown error'}`
+                )
+                // Continue with empty genres array if fetch fails
+              }
+
               await fetch('/api/track-suggestions', {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
@@ -901,7 +872,7 @@ class AutoPlayService {
                   popularity: trackDetails.popularity,
                   duration_ms: trackDetails.duration_ms,
                   preview_url: null, // Spotify API doesn't return preview_url in track details
-                  genres: [] // We don't have genre info from the track details
+                  genres: artistGenres
                 })
               })
               logger(
@@ -1167,6 +1138,23 @@ class AutoPlayService {
       logger('INFO', `Successfully started playing: ${track.tracks.name}`)
     } catch (error) {
       logger('ERROR', 'Failed to play next track', undefined, error as Error)
+    }
+  }
+
+  private async getAccessToken(): Promise<string | null> {
+    try {
+      // Use the existing sendApiRequest to get a token
+      // This will use the admin credentials from the database
+      const response = await sendApiRequest<{ access_token: string }>({
+        path: 'token',
+        method: 'GET',
+        isLocalApi: true
+      })
+
+      return response?.access_token || null
+    } catch (error) {
+      logger('ERROR', 'Failed to get access token', undefined, error as Error)
+      return null
     }
   }
 

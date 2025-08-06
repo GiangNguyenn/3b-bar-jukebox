@@ -19,6 +19,7 @@ import { PlaylistDisplay } from './components/playlist/playlist-display'
 import { AnalyticsTab } from './components/analytics/analytics-tab'
 import { BrandingTab } from './components/branding/branding-tab'
 import { SubscriptionTab } from './components/subscription/subscription-tab'
+import { PremiumNotice } from './components/PremiumNotice'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 
 import { type TrackSuggestionsState } from '@/shared/types/trackSuggestions'
@@ -32,6 +33,8 @@ import { getAutoPlayService } from '@/services/autoPlayService'
 import { sendApiRequest } from '@/shared/api'
 import { AutoFillNotification } from '@/components/ui/auto-fill-notification'
 import { usePlaybackControls } from './hooks/usePlaybackControls'
+import { useSubscription } from '@/hooks/useSubscription'
+import { useGetProfile } from '@/hooks/useGetProfile'
 import {
   FALLBACK_GENRES,
   DEFAULT_YEAR_RANGE,
@@ -98,11 +101,24 @@ export default function AdminPage(): JSX.Element {
     null // No playlist ID needed for admin page
   )
 
+  // Get premium status
+  const { profile, loading: profileLoading } = useGetProfile()
+
+  const { hasPremiumAccess, isLoading: subscriptionLoading } = useSubscription(
+    profile?.id
+  )
+
+  // Determine if premium features should be disabled
+  // Only disable if we're not loading AND the user doesn't have premium access
+  const isPremiumDisabled =
+    !subscriptionLoading && !profileLoading && !hasPremiumAccess
+
   // Add token health monitoring
   const tokenHealth = useTokenHealth()
 
   // Use the existing playback controls hook
-  const { handlePlayPause, isActuallyPlaying } = usePlaybackControls()
+  const { handlePlayPause, handleSkip, isActuallyPlaying, isSkipLoading } =
+    usePlaybackControls()
 
   // Initialize auto-play service
   useEffect(() => {
@@ -735,16 +751,16 @@ export default function AdminPage(): JSX.Element {
               Dashboard
             </TabsTrigger>
             <TabsTrigger
-              value='settings'
-              className='data-[state=active]:text-white data-[state=active]:bg-gray-700 data-[state=active]:font-semibold'
-            >
-              Suggestions
-            </TabsTrigger>
-            <TabsTrigger
               value='playlist'
               className='data-[state=active]:text-white data-[state=active]:bg-gray-700 data-[state=active]:font-semibold'
             >
               Playlist
+            </TabsTrigger>
+            <TabsTrigger
+              value='settings'
+              className='data-[state=active]:text-white data-[state=active]:bg-gray-700 data-[state=active]:font-semibold'
+            >
+              Suggestions
             </TabsTrigger>
             <TabsTrigger
               value='analytics'
@@ -785,16 +801,37 @@ export default function AdminPage(): JSX.Element {
             <div className='mt-8 space-y-4'>
               <h2 className='text-xl font-semibold'>Controls</h2>
 
-              {/* Play/Pause Button - Using existing playback controls hook */}
-              <div className='mb-4 flex justify-center'>
+              {/* Play/Pause and Skip Buttons - Using existing playback controls hook */}
+              <div className='mb-4 flex justify-center gap-4'>
                 <button
                   onClick={(): void => {
                     void handlePlayPause()
                   }}
                   disabled={!isReady || recoveryState.isRecovering}
-                  className='text-white max-w-xs flex-1 rounded-lg bg-green-600 px-6 py-3 font-medium transition-colors hover:bg-green-700 disabled:cursor-not-allowed disabled:opacity-50'
+                  className='text-white flex-1 rounded-lg bg-green-600 px-6 py-3 font-medium transition-colors hover:bg-green-700 disabled:cursor-not-allowed disabled:opacity-50'
                 >
                   {isActuallyPlaying ? 'Pause' : 'Play'}
+                </button>
+                <button
+                  onClick={(): void => {
+                    void handleSkip()
+                  }}
+                  disabled={
+                    !isReady ||
+                    recoveryState.isRecovering ||
+                    !isActuallyPlaying ||
+                    isSkipLoading
+                  }
+                  className='text-white flex-1 rounded-lg bg-blue-600 px-6 py-3 font-medium transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50'
+                >
+                  {isSkipLoading ? (
+                    <div className='flex items-center justify-center gap-2'>
+                      <Loading className='h-4 w-4' />
+                      <span>Skipping...</span>
+                    </div>
+                  ) : (
+                    'Skip'
+                  )}
                 </button>
               </div>
 
@@ -892,10 +929,22 @@ export default function AdminPage(): JSX.Element {
           </TabsContent>
 
           <TabsContent value='settings'>
-            <TrackSuggestionsTab
-              onStateChange={handleTrackSuggestionsStateChange}
-              initialState={{ maxOffset: 10 }}
-            />
+            {isPremiumDisabled ? (
+              <div className='space-y-4'>
+                <PremiumNotice />
+                <div className='pointer-events-none opacity-50'>
+                  <TrackSuggestionsTab
+                    onStateChange={handleTrackSuggestionsStateChange}
+                    initialState={{ maxOffset: 10 }}
+                  />
+                </div>
+              </div>
+            ) : (
+              <TrackSuggestionsTab
+                onStateChange={handleTrackSuggestionsStateChange}
+                initialState={{ maxOffset: 10 }}
+              />
+            )}
           </TabsContent>
 
           <TabsContent value='playlist'>
@@ -909,11 +958,29 @@ export default function AdminPage(): JSX.Element {
           </TabsContent>
 
           <TabsContent value='analytics'>
-            <AnalyticsTab username={username} />
+            {isPremiumDisabled ? (
+              <div className='space-y-4'>
+                <PremiumNotice />
+                <div className='pointer-events-none opacity-50'>
+                  <AnalyticsTab username={username} />
+                </div>
+              </div>
+            ) : (
+              <AnalyticsTab username={username} />
+            )}
           </TabsContent>
 
           <TabsContent value='branding'>
-            <BrandingTab />
+            {isPremiumDisabled ? (
+              <div className='space-y-4'>
+                <PremiumNotice />
+                <div className='pointer-events-none opacity-50'>
+                  <BrandingTab />
+                </div>
+              </div>
+            ) : (
+              <BrandingTab />
+            )}
           </TabsContent>
 
           <TabsContent value='subscription'>

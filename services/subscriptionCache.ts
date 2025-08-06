@@ -214,7 +214,7 @@ export class SubscriptionCacheService {
         .from('subscriptions')
         .select('*')
         .eq('profile_id', profileId)
-        .eq('status', 'active')
+        .in('status', ['active', 'canceling'])
         .single()
 
       if (error) {

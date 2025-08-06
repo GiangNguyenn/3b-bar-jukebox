@@ -13,9 +13,16 @@ export class StripeService {
   private supabase
 
   constructor() {
-    this.stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
+    if (!process.env.STRIPE_SECRET_KEY) {
+      logger('ERROR', 'STRIPE_SECRET_KEY is not set', 'StripeService')
+      throw new Error('STRIPE_SECRET_KEY is not set')
+    }
+
+    this.stripe = new Stripe(process.env.STRIPE_SECRET_KEY, {
       apiVersion: '2025-07-30.basil'
     })
+
+    logger('INFO', 'Stripe client initialized successfully', 'StripeService')
 
     // Use direct Supabase client for webhook operations (no cookies needed)
     this.supabase = createClient<Database>(
@@ -229,6 +236,114 @@ export class StripeService {
       logger(
         'ERROR',
         'Failed to create lifetime checkout session',
+        'StripeService',
+        error as Error
+      )
+      throw error
+    }
+  }
+
+  /**
+   * Create checkout session for monthly subscription (auto-create customer)
+   */
+  async createMonthlyCheckoutSessionAuto(
+    profileId: string,
+    successUrl: string,
+    cancelUrl: string
+  ): Promise<Stripe.Checkout.Session> {
+    try {
+      logger(
+        'INFO',
+        `Creating monthly checkout session with price ID: ${process.env.STRIPE_MONTHLY_PRICE_ID}`,
+        'StripeService'
+      )
+
+      const session = await this.stripe.checkout.sessions.create({
+        payment_method_types: ['card'],
+        line_items: [
+          {
+            price: process.env.STRIPE_MONTHLY_PRICE_ID!,
+            quantity: 1
+          }
+        ],
+        mode: 'subscription',
+        success_url: successUrl,
+        cancel_url: cancelUrl,
+        metadata: {
+          profile_id: profileId,
+          subscription_type: 'monthly'
+        }
+        // Note: customer_creation is not supported in subscription mode
+        // Stripe will automatically create customers for subscriptions
+      })
+
+      logger(
+        'INFO',
+        `Successfully created monthly checkout session: ${session.id}`,
+        'StripeService'
+      )
+
+      return session
+    } catch (error) {
+      logger(
+        'ERROR',
+        `Failed to create monthly checkout session: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        'StripeService',
+        error as Error
+      )
+      throw error
+    }
+  }
+
+  /**
+   * Create checkout session for lifetime payment (auto-create customer)
+   */
+  async createLifetimeCheckoutSessionAuto(
+    profileId: string,
+    successUrl: string,
+    cancelUrl: string
+  ): Promise<Stripe.Checkout.Session> {
+    try {
+      logger(
+        'INFO',
+        `Creating lifetime checkout session with product ID: ${process.env.STRIPE_LIFETIME_PRODUCT_ID}`,
+        'StripeService'
+      )
+
+      const session = await this.stripe.checkout.sessions.create({
+        payment_method_types: ['card'],
+        line_items: [
+          {
+            price_data: {
+              currency: 'usd',
+              product: process.env.STRIPE_LIFETIME_PRODUCT_ID!,
+              unit_amount: 9900 // $99.00 in cents
+            },
+            quantity: 1
+          }
+        ],
+        mode: 'payment',
+        success_url: successUrl,
+        cancel_url: cancelUrl,
+        metadata: {
+          profile_id: profileId,
+          subscription_type: 'lifetime'
+        },
+        // Let Stripe collect customer email automatically (supported in payment mode)
+        customer_creation: 'always'
+      })
+
+      logger(
+        'INFO',
+        `Successfully created lifetime checkout session: ${session.id}`,
+        'StripeService'
+      )
+
+      return session
+    } catch (error) {
+      logger(
+        'ERROR',
+        `Failed to create lifetime checkout session: ${error instanceof Error ? error.message : 'Unknown error'}`,
         'StripeService',
         error as Error
       )

@@ -54,23 +54,22 @@ export function useSubscription(profileId?: string): UseSubscriptionReturn {
         setHasPremiumAccess(currentPlanType === 'premium')
       }
 
-      // Get active subscription details
+      // Get active or canceling subscription details
       const { data: subscriptionData, error: subscriptionError } =
         await supabase
           .from('subscriptions')
           .select('*')
           .eq('profile_id', profileId)
-          .eq('status', 'active')
+          .in('status', ['active', 'canceling'])
           .order('created_at', { ascending: false })
           .limit(1)
-          .single()
 
-      if (subscriptionError && subscriptionError.code !== 'PGRST116') {
-        // PGRST116 is "no rows returned" which is expected for users without subscriptions
+      if (subscriptionError) {
         console.error('Error getting subscription:', subscriptionError)
         setError('Failed to get subscription details')
       } else {
-        setSubscription(subscriptionData)
+        // subscriptionData will be an array, take the first item or null
+        setSubscription(subscriptionData?.[0] || null)
       }
     } catch (err) {
       console.error('Error in fetchSubscriptionData:', err)

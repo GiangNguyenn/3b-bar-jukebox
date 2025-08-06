@@ -1,9 +1,11 @@
+/* eslint-disable @typescript-eslint/no-unsafe-assignment */
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { songsBetweenRepeatsSchema } from '@/app/[username]/admin/components/track-suggestions/validations/trackSuggestions'
 import { findSuggestedTrack } from '@/services/trackSuggestion'
 import { type Genre } from '@/shared/constants/trackSuggestion'
 import { createModuleLogger } from '@/shared/utils/logger'
+import { sendApiRequest } from '@/shared/api'
 
 const logger = createModuleLogger('API Track Suggestions')
 
@@ -229,16 +231,124 @@ export async function POST(
     )
 
     // Store the successful track in server cache for the "Last Suggested Track" feature
-    serverCache = {
-      name: result.track.name,
-      artist: result.track.artists.map((a) => a.name).join(', '),
-      album: result.track.album.name,
-      uri: result.track.uri,
-      popularity: result.track.popularity,
-      duration_ms: result.track.duration_ms,
-      preview_url: result.track.preview_url,
-      genres: []
+    // Fetch artist genres for the track
+    let artistGenres: string[] = []
+    let primaryGenre: string | null = null
+    try {
+      if (result.track.artists && result.track.artists.length > 0) {
+        const artistId = result.track.artists[0].id
+        const artistResponse = await sendApiRequest<{ genres: string[] }>({
+          path: `artists/${artistId}`,
+          method: 'GET'
+        })
+        artistGenres = artistResponse.genres || []
+        primaryGenre = artistGenres[0] || null
+      }
+    } catch (error) {
+      logger(
+        'WARN',
+        `[Track Suggestions API] Failed to fetch artist genres: ${error instanceof Error ? error.message : 'Unknown error'}`
+      )
+      // Continue with empty genres array if fetch fails
     }
+
+    // Log the track suggestion to the database with proper genre information
+    try {
+      const { createServerClient } = await import('@supabase/ssr')
+      const { cookies } = await import('next/headers')
+
+      const cookieStore = cookies()
+      const supabase = createServerClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+        {
+          cookies: {
+            getAll() {
+              return cookieStore.getAll()
+            },
+            setAll(cookiesToSet) {
+              try {
+                cookiesToSet.forEach(({ name, value, options }) =>
+                  cookieStore.set(name, value, options)
+                )
+              } catch {
+                // The `setAll` method was called from a Server Component.
+                // This can be ignored if you have middleware refreshing
+                // user sessions.
+              }
+            }
+          }
+        }
+      )
+
+      // Get admin profile for database operations
+      const { data: adminProfile, error: adminError } = await supabase
+        .from('profiles')
+        .select('id')
+        .ilike('display_name', '3B')
+        .single()
+
+      if (!adminError && adminProfile) {
+        // Extract release year from album release date
+        const releaseYear = result.track.album.release_date
+          ? new Date(result.track.album.release_date).getFullYear()
+          : new Date().getFullYear()
+
+        // Log the track suggestion with proper genre information
+        const { error: logError } = await supabase.rpc('log_track_suggestion', {
+          p_profile_id: adminProfile.id,
+          p_spotify_track_id: result.track.id,
+          p_track_name: result.track.name,
+          p_artist_name: result.track.artists[0]?.name ?? 'Unknown Artist',
+          p_album_name: result.track.album.name,
+          p_duration_ms: result.track.duration_ms,
+          p_popularity: result.track.popularity,
+          p_spotify_url: result.track.uri,
+          p_genre: primaryGenre,
+          p_release_year: releaseYear
+        })
+
+        if (logError) {
+          logger(
+            'WARN',
+            `[Track Suggestions API] Failed to log track suggestion to database: ${JSON.stringify(logError)}`
+          )
+        } else {
+          logger(
+            'INFO',
+            `[Track Suggestions API] Successfully logged track suggestion to database: ${result.track.name}`
+          )
+        }
+      }
+    } catch (error) {
+      logger(
+        'WARN',
+        `[Track Suggestions API] Error logging track suggestion to database: ${error instanceof Error ? error.message : 'Unknown error'}`
+      )
+      // Continue with server cache update even if database logging fails
+    }
+
+    const track = result.track as {
+      id: string
+      name: string
+      artists: Array<{ name: string }>
+      album: { name: string }
+      uri: string
+      popularity: number
+      duration_ms: number
+      preview_url: string | null
+    }
+
+    serverCache = {
+      name: track.name,
+      artist: track.artists.map((a) => a.name).join(', '),
+      album: track.album.name,
+      uri: track.uri,
+      popularity: track.popularity,
+      duration_ms: track.duration_ms,
+      preview_url: track.preview_url,
+      genres: artistGenres
+    } satisfies LastSuggestedTrack
 
     logger(
       'INFO',
@@ -250,7 +360,7 @@ export async function POST(
       message: 'Track suggestion found successfully',
       tracks: [
         {
-          id: result.track.id
+          id: track.id
         }
       ],
       searchDetails: result.searchDetails as RefreshResponse['searchDetails']

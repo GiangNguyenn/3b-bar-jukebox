@@ -37,7 +37,7 @@ export class SubscriptionQueryUtils {
         `
         )
         .eq('id', profileId)
-        .eq('subscriptions.status', 'active')
+        .in('subscriptions.status', ['active', 'canceling'])
         .single()
 
       if (error) {
@@ -98,7 +98,7 @@ export class SubscriptionQueryUtils {
         `
         )
         .in('id', profileIds)
-        .eq('subscriptions.status', 'active')
+        .in('subscriptions.status', ['active', 'canceling'])
 
       if (error) {
         logger(
@@ -222,7 +222,7 @@ export class SubscriptionQueryUtils {
           .select('*')
           .not('subscription_id', 'is', null)
           .not('subscriptions.plan_type', 'eq', 'premium')
-          .eq('subscriptions.status', 'active')
+          .in('subscriptions.status', ['active', 'canceling'])
 
         if (error) {
           logger(
@@ -246,7 +246,7 @@ export class SubscriptionQueryUtils {
           `
           )
           .eq('subscriptions.plan_type', 'premium')
-          .eq('subscriptions.status', 'active')
+          .in('subscriptions.status', ['active', 'canceling'])
 
         if (error) {
           logger(
@@ -284,7 +284,7 @@ export class SubscriptionQueryUtils {
       const { data, error } = await this.supabase
         .from('subscriptions')
         .select('*')
-        .eq('status', 'active')
+        .in('status', ['active', 'canceling'])
         .lt('current_period_end', futureDate.toISOString())
         .gte('current_period_end', new Date().toISOString())
 

@@ -174,7 +174,7 @@ export default function SearchInput({
         />
         {(isSearching || isAddingTrack) && (
           <div className='absolute right-3 top-1/2 -translate-y-1/2'>
-            <Loading className='h-4 w-4' />
+            <Loading className='h-4 w-4 text-gray-500' />
           </div>
         )}
       </div>

@@ -93,7 +93,7 @@ export default function PlaylistPage(): JSX.Element {
         setShowWelcomeMessage(false)
       }, 2000) // 2 seconds
 
-      return () => clearTimeout(timer)
+      return (): void => clearTimeout(timer)
     }
 
     return undefined

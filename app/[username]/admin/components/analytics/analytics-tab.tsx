@@ -11,6 +11,8 @@ import { usePlaylistData } from '@/hooks/usePlaylistData'
 import ReleaseYearHistogram from './release-year-histogram'
 import { JukeboxQueueItem } from '@/shared/types/queue'
 import { useConsoleLogsContext } from '@/hooks/ConsoleLogsProvider'
+import { useSubscription } from '@/hooks/useSubscription'
+import { useGetProfile } from '@/hooks/useGetProfile'
 
 interface TopTrack {
   count: number
@@ -30,7 +32,9 @@ type RawTrackData = {
   } | null
 }
 
-const useTopTracks = (): {
+const useTopTracks = (
+  shouldFetchData: boolean = true
+): {
   tracks: TopTrack[]
   isLoading: boolean
   error: string | null
@@ -46,6 +50,80 @@ const useTopTracks = (): {
   )
   const subscriptionRef = useRef<RealtimeChannel | null>(null)
 
+  // Track if we've already fetched data for this shouldFetchData state
+  const hasFetchedRef = useRef(false)
+
+  // Direct fetch when shouldFetchData becomes true
+  useEffect(() => {
+    if (shouldFetchData && !hasFetchedRef.current) {
+      hasFetchedRef.current = true
+      setIsLoading(true)
+      // Call fetchTopTracks directly
+      void (async (): Promise<void> => {
+        try {
+          const { data: rawData, error } = await supabase
+            .from('suggested_tracks')
+            .select(
+              `
+              count,
+              track_id,
+              tracks(name, artist, spotify_track_id, id)
+            `
+            )
+            .order('count', { ascending: false })
+            .limit(50)
+
+          if (error) {
+            addLog(
+              'ERROR',
+              `Failed to fetch suggested tracks: ${error.message}`,
+              'useTopTracks',
+              error
+            )
+            setError(error.message)
+          } else {
+            const formattedTracks = (rawData as unknown as RawTrackData[])
+              .map((item): TopTrack | null => {
+                const trackData = item.tracks
+                if (!trackData) {
+                  addLog(
+                    'WARN',
+                    `No track data for item: ${item.track_id}`,
+                    'useTopTracks'
+                  )
+                  return null
+                }
+                return {
+                  count: item.count,
+                  name: trackData.name,
+                  artist: trackData.artist,
+                  spotify_track_id: trackData.spotify_track_id,
+                  track_id: item.track_id
+                }
+              })
+              .filter((track): track is TopTrack => track !== null)
+
+            setTracks(formattedTracks)
+          }
+        } catch (err) {
+          const errorMessage =
+            err instanceof Error ? err.message : 'An unknown error occurred'
+          setError(errorMessage)
+          addLog(
+            'ERROR',
+            `Failed to fetch top tracks: ${errorMessage}`,
+            'useTopTracks',
+            err instanceof Error ? err : undefined
+          )
+        } finally {
+          setIsLoading(false)
+        }
+      })()
+    } else if (!shouldFetchData) {
+      hasFetchedRef.current = false
+    }
+  }, [shouldFetchData, supabase, addLog])
+
   // Optimistic update function
   const optimisticUpdate = useCallback(
     (updater: (currentTracks: TopTrack[]) => TopTrack[]) => {
@@ -56,6 +134,25 @@ const useTopTracks = (): {
 
   // Fetch top tracks data
   const fetchTopTracks = useCallback(async (): Promise<void> => {
+    // If data fetching is disabled, return early
+    if (!shouldFetchData) {
+      addLog(
+        'INFO',
+        `[useTopTracks] Data fetching disabled - shouldFetchData: ${shouldFetchData}`,
+        'useTopTracks'
+      )
+      setIsLoading(false)
+      setError(null)
+      setTracks([])
+      return
+    }
+
+    addLog(
+      'INFO',
+      `[useTopTracks] Starting to fetch top tracks - shouldFetchData: ${shouldFetchData}`,
+      'useTopTracks'
+    )
+
     try {
       setIsLoading(true)
       setError(null)
@@ -122,7 +219,7 @@ const useTopTracks = (): {
     } finally {
       setIsLoading(false)
     }
-  }, [supabase, addLog])
+  }, [supabase, addLog, shouldFetchData])
 
   // Set up real-time subscription for suggested_tracks and tracks tables
   const setupRealtimeSubscription = useCallback(async (): Promise<void> => {
@@ -185,11 +282,19 @@ const useTopTracks = (): {
   // Initial setup
   useEffect(() => {
     const initialize = async (): Promise<void> => {
+      addLog(
+        'INFO',
+        `[useTopTracks] Initializing - shouldFetchData: ${shouldFetchData}`,
+        'useTopTracks'
+      )
+
       // Fetch initial data
       await fetchTopTracks()
 
-      // Set up real-time subscription
-      await setupRealtimeSubscription()
+      // Set up real-time subscription only if data fetching is enabled
+      if (shouldFetchData) {
+        await setupRealtimeSubscription()
+      }
     }
 
     void initialize()
@@ -201,7 +306,13 @@ const useTopTracks = (): {
         subscriptionRef.current = null
       }
     }
-  }, [fetchTopTracks, setupRealtimeSubscription, supabase])
+  }, [
+    shouldFetchData,
+    addLog,
+    fetchTopTracks,
+    setupRealtimeSubscription,
+    supabase
+  ])
 
   return { tracks, isLoading, error, optimisticUpdate }
 }
@@ -211,7 +322,22 @@ interface AnalyticsTabProps {
 }
 
 export const AnalyticsTab = ({ username }: AnalyticsTabProps): JSX.Element => {
-  const { tracks, isLoading, error, optimisticUpdate } = useTopTracks()
+  // Get current user's profile and subscription status
+  const {
+    profile,
+    loading: profileLoading,
+    error: profileError
+  } = useGetProfile()
+
+  const { hasPremiumAccess, isLoading: subscriptionLoading } = useSubscription(
+    profile?.id
+  )
+
+  // Only fetch data if user has premium access
+  const shouldFetchData = hasPremiumAccess === true
+
+  const { tracks, isLoading, error, optimisticUpdate } =
+    useTopTracks(shouldFetchData)
   const { data: queue, optimisticUpdate: queueOptimisticUpdate } =
     usePlaylistData(username)
   const [isAdding, setIsAdding] = useState(false)
@@ -543,12 +669,39 @@ export const AnalyticsTab = ({ username }: AnalyticsTabProps): JSX.Element => {
     }
   }
 
-  if (isLoading) {
-    return <Loading message='Loading top tracks...' />
+  // Show loading while checking subscription status
+  if (profileLoading || subscriptionLoading) {
+    return <Loading message='Checking premium access...' />
   }
 
-  if (error) {
-    return <ErrorMessage message={error} />
+  // Show error if profile or subscription check failed
+  if (profileError || error) {
+    return (
+      <ErrorMessage
+        message={profileError ?? error ?? 'Failed to load analytics'}
+      />
+    )
+  }
+
+  // If no premium access, show empty state
+  if (!shouldFetchData) {
+    return (
+      <div className='p-4'>
+        <div className='mb-4 flex items-center justify-between'>
+          <h2 className='text-2xl font-bold'>Top 50 Suggested Tracks</h2>
+        </div>
+        <div className='py-8 text-center'>
+          <p className='text-gray-400'>
+            Analytics are only available with Premium Access.
+          </p>
+        </div>
+      </div>
+    )
+  }
+
+  // Show loading while fetching analytics data
+  if (isLoading) {
+    return <Loading message='Loading top tracks...' />
   }
 
   return (

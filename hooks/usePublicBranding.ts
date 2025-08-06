@@ -64,7 +64,6 @@ export function usePublicBranding(username: string) {
           return
         }
 
-        console.log('Fetching branding settings for username:', username)
         const response = await fetch(`/api/branding/public/${username}`)
 
         if (!response.ok) {
@@ -79,7 +78,6 @@ export function usePublicBranding(username: string) {
         }
 
         const brandingSettings = await response.json()
-        console.log('Branding settings loaded:', brandingSettings)
         setSettings(brandingSettings)
       } catch (error) {
         console.error('Error fetching branding settings:', error)

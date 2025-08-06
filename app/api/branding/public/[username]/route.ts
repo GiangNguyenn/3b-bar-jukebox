@@ -11,10 +11,6 @@ export async function GET(
   { params }: { params: { username: string } }
 ): Promise<NextResponse> {
   try {
-    console.log(
-      'API Public Branding - Received request for username:',
-      params.username
-    )
     const cookieStore = cookies()
     const supabase = createServerClient<Database>(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,

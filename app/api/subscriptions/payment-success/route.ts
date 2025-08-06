@@ -95,7 +95,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     )
 
     // Redirect to admin page with success message
-    const adminUrl = `${request.nextUrl.origin}/admin?payment=success`
+    const adminUrl = `${request.nextUrl.origin}/${profile.display_name ?? user.email?.split('@')[0] ?? 'user'}/admin?payment=success`
     return NextResponse.redirect(adminUrl)
   } catch (error) {
     logger(

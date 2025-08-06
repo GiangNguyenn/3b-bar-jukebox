@@ -81,7 +81,14 @@ export function useBrandingSettings(): {
     } finally {
       setLoading(false)
     }
-  }, [supabase.auth])
+  }, [
+    supabase.auth,
+    setError,
+    setIsNewUser,
+    setLoading,
+    setOriginalSettings,
+    setSettings
+  ])
 
   const updateSettings = async (
     updates: Partial<BrandingSettings>
@@ -151,7 +158,7 @@ export function useBrandingSettings(): {
         void fetchSettings()
       }, 0)
     }
-  }, [fetchSettings, settings, loading, error])
+  }, [fetchSettings, settings, loading, error, setLoading])
 
   return {
     settings,

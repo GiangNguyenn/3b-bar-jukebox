@@ -138,8 +138,10 @@ export async function POST(
     // Fetch detailed track information from Spotify API to get release date and genre
     let detailedTrackInfo: {
       album?: { release_date?: string }
-      artists?: Array<{ genres?: string[] }>
+      artists?: Array<{ id: string; name: string }>
     } | null = null
+    let artistGenres: string[] = []
+
     try {
       // Get admin profile for Spotify API access
       const { data: adminProfile, error: adminError } = await supabase
@@ -151,7 +153,12 @@ export async function POST(
         .single()
 
       if (!adminError && adminProfile?.spotify_access_token) {
-        const response = await fetch(
+        logger(
+          'INFO',
+          `Playlist API - Admin profile found, access token available: ${!!adminProfile.spotify_access_token}`
+        )
+        // First, get track details (includes artist ID but not genres)
+        const trackResponse = await fetch(
           `https://api.spotify.com/v1/tracks/${tracks.id}`,
           {
             headers: {
@@ -160,15 +167,45 @@ export async function POST(
           }
         )
 
-        if (response.ok) {
-          detailedTrackInfo = (await response.json()) as {
+        logger(
+          'INFO',
+          `Playlist API - Track response status: ${trackResponse.status}`
+        )
+        if (trackResponse.ok) {
+          detailedTrackInfo = (await trackResponse.json()) as {
             album?: { release_date?: string }
-            artists?: Array<{ genres?: string[] }>
+            artists?: Array<{ id: string; name: string }>
           }
           logger(
             'INFO',
-            `Playlist API - Detailed track info: ${JSON.stringify(detailedTrackInfo)}`
+            `Playlist API - Track info: ${JSON.stringify(detailedTrackInfo)}`
           )
+
+          // Then, get artist genres if we have an artist ID
+          if (detailedTrackInfo?.artists?.[0]?.id) {
+            const artistId = detailedTrackInfo.artists[0].id
+            const artistResponse = await fetch(
+              `https://api.spotify.com/v1/artists/${artistId}`,
+              {
+                headers: {
+                  Authorization: `Bearer ${adminProfile.spotify_access_token}`
+                }
+              }
+            )
+
+            logger(
+              'INFO',
+              `Playlist API - Artist response status: ${artistResponse.status}`
+            )
+            if (artistResponse.ok) {
+              const artistData = await artistResponse.json()
+              artistGenres = (artistData as { genres?: string[] }).genres ?? []
+              logger(
+                'INFO',
+                `Playlist API - Artist genres: ${JSON.stringify(artistGenres)}`
+              )
+            }
+          }
         }
       }
     } catch (error) {
@@ -186,7 +223,15 @@ export async function POST(
       ? new Date(detailedTrackInfo.album.release_date).getFullYear()
       : new Date().getFullYear()
 
-    const genre = detailedTrackInfo?.artists?.[0]?.genres?.[0] ?? null
+    const genre = artistGenres[0] ?? null
+
+    // Add detailed logging for debugging
+    logger('INFO', `Playlist API - Final genre value: ${genre}`)
+    logger(
+      'INFO',
+      `Playlist API - All artist genres: ${JSON.stringify(artistGenres)}`
+    )
+    logger('INFO', `Playlist API - Release year: ${releaseYear}`)
 
     // Safeguard: Validate that the Spotify track ID is not a UUID and is the correct format
     logger('INFO', `Playlist API - Validating Spotify track ID: ${tracks.id}`)
@@ -216,6 +261,7 @@ export async function POST(
       )
     }
 
+    logger('INFO', `Playlist API - About to upsert track with genre: ${genre}`)
     const { data: upsertedTrack, error: upsertError } = await supabase
       .from('tracks')
       .upsert(

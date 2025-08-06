@@ -127,8 +127,6 @@ class PlayerLifecycleService {
       const logMessage = `[PlayerLifecycle] ${level}: ${message}`
       if (error) {
         console.error(logMessage, error)
-      } else {
-        console.log(logMessage)
       }
     }
   }

@@ -248,25 +248,47 @@ export class SubscriptionService {
    */
   async cancelSubscription(subscriptionId: string): Promise<boolean> {
     try {
-      // Update local subscription status
-      const updated = await this.updateSubscription(subscriptionId, {
-        status: 'canceled'
-      })
-
-      if (!updated) {
+      // Get the subscription first
+      const subscription = await this.getSubscriptionById(subscriptionId)
+      if (!subscription) {
+        logger('ERROR', `Subscription not found: ${subscriptionId}`)
         return false
       }
 
       // Cancel in Stripe if it's a premium subscription
-      const subscription = await this.getSubscriptionById(subscriptionId)
-      if (subscription?.stripe_subscription_id) {
+      if (subscription.stripe_subscription_id) {
         await stripeService.cancelSubscription(
           subscription.stripe_subscription_id
         )
-      }
 
-      logger('INFO', `Canceled subscription: ${subscriptionId}`)
-      return true
+        // Update local status to 'canceling' - this keeps premium access active
+        // until the end of the billing period, then webhook will change to 'canceled'
+        const updated = await this.updateSubscription(subscriptionId, {
+          status: 'canceling'
+        })
+
+        if (!updated) {
+          return false
+        }
+
+        logger(
+          'INFO',
+          `Initiated cancellation for subscription: ${subscriptionId} - status set to canceling`
+        )
+        return true
+      } else {
+        // For non-Stripe subscriptions, update status immediately
+        const updated = await this.updateSubscription(subscriptionId, {
+          status: 'canceled'
+        })
+
+        if (!updated) {
+          return false
+        }
+
+        logger('INFO', `Canceled non-Stripe subscription: ${subscriptionId}`)
+        return true
+      }
     } catch (error) {
       logger(
         'ERROR',
@@ -515,15 +537,60 @@ export class SubscriptionService {
         subscription.id
       )
       if (subscriptionRecord) {
-        await this.updateSubscription(subscriptionRecord.id, {
-          status: subscription.status,
-          current_period_start: new Date(
-            subscription.current_period_start * 1000
-          ).toISOString(),
-          current_period_end: new Date(
+        // If the subscription is canceled and we have a 'canceling' status,
+        // check if the current period has ended
+        if (
+          subscription.status === 'canceled' &&
+          subscriptionRecord.status === 'canceling'
+        ) {
+          const currentPeriodEnd = new Date(
             subscription.current_period_end * 1000
-          ).toISOString()
-        })
+          )
+          const now = new Date()
+
+          if (currentPeriodEnd <= now) {
+            // Period has ended, change to 'canceled'
+            await this.updateSubscription(subscriptionRecord.id, {
+              status: 'canceled',
+              current_period_start: new Date(
+                subscription.current_period_start * 1000
+              ).toISOString(),
+              current_period_end: new Date(
+                subscription.current_period_end * 1000
+              ).toISOString()
+            })
+            logger(
+              'INFO',
+              `Subscription period ended, status changed to canceled: ${subscription.id}`
+            )
+          } else {
+            // Period hasn't ended yet, keep as 'canceling'
+            await this.updateSubscription(subscriptionRecord.id, {
+              status: 'canceling',
+              current_period_start: new Date(
+                subscription.current_period_start * 1000
+              ).toISOString(),
+              current_period_end: new Date(
+                subscription.current_period_end * 1000
+              ).toISOString()
+            })
+            logger(
+              'INFO',
+              `Subscription still in canceling period: ${subscription.id}`
+            )
+          }
+        } else {
+          // Normal status update
+          await this.updateSubscription(subscriptionRecord.id, {
+            status: subscription.status,
+            current_period_start: new Date(
+              subscription.current_period_start * 1000
+            ).toISOString(),
+            current_period_end: new Date(
+              subscription.current_period_end * 1000
+            ).toISOString()
+          })
+        }
       }
 
       logger('INFO', `Subscription updated: ${subscription.id}`)
