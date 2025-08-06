@@ -37,7 +37,8 @@ export class AuthService {
     const { data, error } =
       await this.supabase.auth.exchangeCodeForSession(code)
     if (error || !data.session) {
-      const errorMessage = error?.message ?? 'Failed to exchange code for session'
+      const errorMessage =
+        error?.message ?? 'Failed to exchange code for session'
       throw new Error(errorMessage)
     }
     return data.session
@@ -73,30 +74,41 @@ export class AuthService {
   ): Promise<void> {
     // First attempt: try to upsert with the original display_name
     const { error } = await this.supabase.from('profiles').upsert(profileData)
-    
+
     if (error) {
       // Check if it's a unique constraint violation on display_name
       const errorCode = typeof error.code === 'string' ? error.code : undefined
-      const errorMessage = typeof error.message === 'string' ? error.message : undefined
-      
+      const errorMessage =
+        typeof error.message === 'string' ? error.message : undefined
+
       if (errorCode === '23505' && errorMessage?.includes('display_name')) {
-        logger('INFO', `Display name "${profileData.display_name}" is already taken, using spotify_user_id as fallback`)
-        
+        logger(
+          'INFO',
+          `Display name "${profileData.display_name}" is already taken, using spotify_user_id as fallback`
+        )
+
         // Retry with spotify_user_id as display_name
         const fallbackProfileData = {
           ...profileData,
           display_name: profileData.spotify_user_id
         }
-        
+
         const { error: fallbackError } = await this.supabase
           .from('profiles')
           .upsert(fallbackProfileData)
-        
+
         if (fallbackError) {
-          logger('ERROR', 'Error upserting user profile with fallback display_name', 'AuthService', fallbackError)
-          throw new Error('Failed to create user profile with unique display name')
+          logger(
+            'ERROR',
+            'Error upserting user profile with fallback display_name',
+            'AuthService',
+            fallbackError
+          )
+          throw new Error(
+            'Failed to create user profile with unique display name'
+          )
         }
-        
+
         // Update the original profileData to reflect the change
         Object.assign(profileData, fallbackProfileData)
       } else {

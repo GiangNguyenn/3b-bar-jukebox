@@ -27,10 +27,13 @@ export function getBaseUrl(request?: Request): string {
   if (request) {
     const host = request.headers.get('host')
     const protocol = request.headers.get('x-forwarded-proto') || 'http'
-    
+
     if (host) {
       // Remove port if it's the default port
-      const cleanHost = host.replace(':3000', '').replace(':80', '').replace(':443', '')
+      const cleanHost = host
+        .replace(':3000', '')
+        .replace(':80', '')
+        .replace(':443', '')
       return `${protocol}://${cleanHost}`
     }
   }
@@ -41,7 +44,9 @@ export function getBaseUrl(request?: Request): string {
   }
 
   // Production fallback - this should be overridden by environment variables
-  console.warn('No VERCEL_URL or NEXT_PUBLIC_BASE_URL set in production. Please set one of these environment variables.')
+  console.warn(
+    'No VERCEL_URL or NEXT_PUBLIC_BASE_URL set in production. Please set one of these environment variables.'
+  )
   return 'http://localhost:3000' // Keep localhost as fallback but log warning
 }
 

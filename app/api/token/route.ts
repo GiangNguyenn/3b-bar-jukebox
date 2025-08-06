@@ -92,10 +92,11 @@ export async function GET(): Promise<
 
         if (spotifyAccessToken && spotifyRefreshToken) {
           // Create profile with conflict handling
-          const initialDisplayName = (user.user_metadata?.name as string | undefined) ??
+          const initialDisplayName =
+            (user.user_metadata?.name as string | undefined) ??
             user.email?.split('@')[0] ??
             'user'
-          
+
           let profileData = {
             id: user.id,
             spotify_user_id: user.id,
@@ -115,18 +116,25 @@ export async function GET(): Promise<
             .insert(profileData)
 
           // If there's a unique constraint violation, use spotify_user_id as fallback
-          if (createError && createError.code === '23505' && createError.message?.includes('display_name')) {
-            logger('INFO', `Display name "${initialDisplayName}" is already taken, using spotify_user_id as fallback`)
-            
+          if (
+            createError &&
+            createError.code === '23505' &&
+            createError.message?.includes('display_name')
+          ) {
+            logger(
+              'INFO',
+              `Display name "${initialDisplayName}" is already taken, using spotify_user_id as fallback`
+            )
+
             profileData = {
               ...profileData,
               display_name: user.id // Use user ID as display_name
             }
-            
+
             const { error: fallbackError } = await supabase
               .from('profiles')
               .insert(profileData)
-            
+
             if (fallbackError) {
               return NextResponse.json(
                 {

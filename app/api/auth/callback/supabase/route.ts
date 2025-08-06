@@ -30,7 +30,8 @@ export async function GET(request: Request): Promise<NextResponse> {
     const session = await authService.exchangeCodeForSession(code)
 
     // Type guard for session properties
-    const accessToken = typeof session.provider_token === 'string' ? session.provider_token : null
+    const accessToken =
+      typeof session.provider_token === 'string' ? session.provider_token : null
     if (!accessToken) {
       return NextResponse.redirect(
         `${getBaseUrl(request)}/auth/error?error=Spotify%20access%20token%20not%20found.`
@@ -49,8 +50,14 @@ export async function GET(request: Request): Promise<NextResponse> {
       is_premium: isPremium,
       spotify_product_type: userProfile.product,
       spotify_access_token: accessToken,
-      spotify_refresh_token: typeof session.provider_refresh_token === 'string' ? session.provider_refresh_token : null,
-      spotify_token_expires_at: typeof session.expires_at === 'number' ? session.expires_at : Math.floor(Date.now() / 1000) + 3600,
+      spotify_refresh_token:
+        typeof session.provider_refresh_token === 'string'
+          ? session.provider_refresh_token
+          : null,
+      spotify_token_expires_at:
+        typeof session.expires_at === 'number'
+          ? session.expires_at
+          : Math.floor(Date.now() / 1000) + 3600,
       premium_verified_at: new Date().toISOString()
     }
 

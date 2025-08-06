@@ -14,7 +14,13 @@ interface Subscription {
   stripe_customer_id: string | null
   plan_type: 'free' | 'premium'
   payment_type: 'monthly' | 'lifetime'
-  status: 'active' | 'canceled' | 'canceling' | 'past_due' | 'trialing' | 'incomplete'
+  status:
+    | 'active'
+    | 'canceled'
+    | 'canceling'
+    | 'past_due'
+    | 'trialing'
+    | 'incomplete'
   current_period_start: string | null
   current_period_end: string | null
   created_at: string
@@ -83,7 +89,12 @@ export async function POST(): Promise<NextResponse> {
     .single()
 
   if (subscriptionError) {
-    logger('ERROR', 'Error creating subscription', 'AuthProfile', subscriptionError)
+    logger(
+      'ERROR',
+      'Error creating subscription',
+      'AuthProfile',
+      subscriptionError
+    )
     return NextResponse.json(
       { error: 'Failed to create subscription' },
       { status: 500 }
@@ -99,8 +110,9 @@ export async function POST(): Promise<NextResponse> {
   }
 
   // Create profile with subscription link - handle display_name conflicts
-  const initialDisplayName = user.user_metadata?.full_name ?? user.email?.split('@')[0] ?? 'user'
-  
+  const initialDisplayName =
+    user.user_metadata?.full_name ?? user.email?.split('@')[0] ?? 'user'
+
   let profileData = {
     id: user.id,
     spotify_user_id: user.id, // Use user ID as spotify_user_id for now
@@ -115,18 +127,33 @@ export async function POST(): Promise<NextResponse> {
   const { error } = await supabase.from('profiles').insert([profileData])
 
   // If there's a unique constraint violation, use spotify_user_id as fallback
-  if (error && error.code === '23505' && error.message?.includes('display_name')) {
-    logger('INFO', `Display name "${initialDisplayName}" is already taken, using spotify_user_id as fallback`, 'AuthProfile')
-    
+  if (
+    error &&
+    error.code === '23505' &&
+    error.message?.includes('display_name')
+  ) {
+    logger(
+      'INFO',
+      `Display name "${initialDisplayName}" is already taken, using spotify_user_id as fallback`,
+      'AuthProfile'
+    )
+
     profileData = {
       ...profileData,
       display_name: user.id // Use user ID as display_name
     }
-    
-    const { error: fallbackError } = await supabase.from('profiles').insert([profileData])
-    
+
+    const { error: fallbackError } = await supabase
+      .from('profiles')
+      .insert([profileData])
+
     if (fallbackError) {
-      logger('ERROR', 'Error creating profile with fallback display_name', 'AuthProfile', fallbackError)
+      logger(
+        'ERROR',
+        'Error creating profile with fallback display_name',
+        'AuthProfile',
+        fallbackError
+      )
       return NextResponse.json(
         { error: 'Failed to create profile' },
         { status: 500 }
