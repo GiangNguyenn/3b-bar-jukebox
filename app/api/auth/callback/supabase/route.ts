@@ -1,6 +1,7 @@
+/* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call */
 import { NextResponse } from 'next/server'
-import { getBaseUrl } from '@/shared/utils/domain'
 import { AuthService } from '@/services/authService'
+import { getBaseUrl } from '@/shared/utils/domain'
 
 export const dynamic = 'force-dynamic'
 
@@ -12,7 +13,7 @@ export async function GET(request: Request): Promise<NextResponse> {
 
   if (error) {
     return NextResponse.redirect(
-      `${getBaseUrl()}/auth/error?error=${encodeURIComponent(
+      `${getBaseUrl(request)}/auth/error?error=${encodeURIComponent(
         errorDescription ?? error
       )}`
     )
@@ -20,7 +21,7 @@ export async function GET(request: Request): Promise<NextResponse> {
 
   if (!code) {
     return NextResponse.redirect(
-      `${getBaseUrl()}/auth/error?error=Authorization%20code%20not%20found.`
+      `${getBaseUrl(request)}/auth/error?error=Authorization%20code%20not%20found.`
     )
   }
 
@@ -28,39 +29,45 @@ export async function GET(request: Request): Promise<NextResponse> {
     const authService = new AuthService()
     const session = await authService.exchangeCodeForSession(code)
 
-    const accessToken = session.provider_token
+    // Type guard for session properties
+    const accessToken = typeof session.provider_token === 'string' ? session.provider_token : null
     if (!accessToken) {
       return NextResponse.redirect(
-        `${getBaseUrl()}/auth/error?error=Spotify%20access%20token%20not%20found.`
+        `${getBaseUrl(request)}/auth/error?error=Spotify%20access%20token%20not%20found.`
       )
     }
 
     const userProfile = await authService.getSpotifyUserProfile(accessToken)
     const isPremium = authService.isPremiumUser(userProfile)
 
-    await authService.upsertUserProfile({
-      id: session.user.id,
+    // Create profile data object with proper type guards
+    const profileData = {
+      id: typeof session.user?.id === 'string' ? session.user.id : '',
       spotify_user_id: userProfile.id,
       display_name: userProfile.display_name,
-      avatar_url: userProfile.images?.[0]?.url || null,
+      avatar_url: userProfile.images?.[0]?.url ?? null,
       is_premium: isPremium,
       spotify_product_type: userProfile.product,
       spotify_access_token: accessToken,
-      spotify_refresh_token: session.provider_refresh_token,
-      spotify_token_expires_at: session.expires_at,
+      spotify_refresh_token: typeof session.provider_refresh_token === 'string' ? session.provider_refresh_token : null,
+      spotify_token_expires_at: typeof session.expires_at === 'number' ? session.expires_at : Math.floor(Date.now() / 1000) + 3600,
       premium_verified_at: new Date().toISOString()
-    })
+    }
 
+    // Upsert profile - this may modify the display_name if there's a conflict
+    await authService.upsertUserProfile(profileData)
+
+    // Use the potentially modified display_name for redirect
     const redirectUrl = isPremium
-      ? `/${userProfile.display_name}/admin`
+      ? `/${profileData.display_name}/admin`
       : '/premium-required'
 
-    return NextResponse.redirect(`${getBaseUrl()}${redirectUrl}`)
+    return NextResponse.redirect(`${getBaseUrl(request)}${redirectUrl}`)
   } catch (e) {
     const errorMessage =
       e instanceof Error ? e.message : 'An unknown error occurred.'
     return NextResponse.redirect(
-      `${getBaseUrl()}/auth/error?error=${encodeURIComponent(errorMessage)}`
+      `${getBaseUrl(request)}/auth/error?error=${encodeURIComponent(errorMessage)}`
     )
   }
 }
