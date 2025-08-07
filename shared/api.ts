@@ -175,6 +175,46 @@ export const sendApiRequest = async <T>({
           )
         }
 
+        // Handle 401 Unauthorized - attempt token refresh and retry once
+        if (
+          response.status === 401 &&
+          !isLocalApi &&
+          !useAppToken &&
+          retryCount === 0
+        ) {
+          const log = await getLogger()
+          log(
+            'WARN',
+            `Token expired, attempting to refresh and retry request: ${method} ${url}`,
+            'TokenRefresh'
+          )
+
+          try {
+            // Clear the token cache to force a refresh
+            tokenManager.clearCache()
+
+            // Get a fresh token
+            const newToken = await tokenManager.getToken()
+            if (!newToken) {
+              throw new ApiError('Failed to refresh token')
+            }
+
+            // Retry the request with the new token
+            return makeRequest(retryCount + 1)
+          } catch (refreshError) {
+            const log = await getLogger()
+            log(
+              'ERROR',
+              `Token refresh failed: ${refreshError instanceof Error ? refreshError.message : 'Unknown error'}`,
+              'TokenRefresh',
+              refreshError instanceof Error ? refreshError : undefined
+            )
+            throw new ApiError('Token expired and refresh failed', {
+              status: 401
+            })
+          }
+        }
+
         if (response.status === 429) {
           const retryAfter =
             parseInt(response.headers.get('Retry-After') || '0', 10) || 5
@@ -229,50 +269,5 @@ export const sendApiRequest = async <T>({
   return promise
 }
 
-import { TrackItem } from './types/spotify'
-
-export const logTrackSuggestion = async (
-  track: TrackItem['tracks'],
-  profileId: string
-): Promise<void> => {
-  try {
-    const artistDetails = await sendApiRequest<{ genres: string[] }>({
-      path: `artists/${track.artists[0].id}`
-    })
-
-    await sendApiRequest({
-      path: 'log-suggestion',
-      method: 'POST',
-      isLocalApi: true,
-      body: {
-        profile_id: profileId,
-        track: {
-          id: track.id,
-          name: track.name,
-          artists: [
-            {
-              name: track.artists[0].name,
-              id: track.artists[0].id,
-              genres: artistDetails.genres
-            }
-          ],
-          album: track.album,
-          duration_ms: track.duration_ms,
-          popularity: track.popularity,
-          external_urls: {
-            spotify: `https://open.spotify.com/track/${track.id}`
-          }
-        }
-      },
-      debounceTime: 0
-    })
-  } catch (error) {
-    const log = await getLogger()
-    log(
-      'ERROR',
-      'Failed to log track suggestion',
-      'TrackSuggestion',
-      error as Error
-    )
-  }
-}
+// Note: logTrackSuggestion function removed - suggested_tracks table should only be updated
+// when users directly add tracks to their playlist, not from API suggestions

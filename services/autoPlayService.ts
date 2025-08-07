@@ -22,7 +22,7 @@ interface AutoPlayServiceConfig {
   onQueueEmpty?: () => void
   onQueueLow?: () => void // New callback for when queue is low
   username?: string | null // Username for auto-fill operations
-  autoFillTargetSize?: number // Target number of tracks for auto-fill (default: 3)
+  autoFillTargetSize?: number // Target number of tracks for auto-fill (default: 10)
   autoFillMaxAttempts?: number // Maximum attempts for auto-fill (default: 20)
 }
 
@@ -55,7 +55,7 @@ class AutoPlayService {
     this.onQueueEmpty = config.onQueueEmpty
     this.onQueueLow = config.onQueueLow
     this.username = config.username || null
-    this.autoFillTargetSize = config.autoFillTargetSize || 3
+    this.autoFillTargetSize = config.autoFillTargetSize || 10 // Default fallback, will be overridden by track suggestions state
     this.autoFillMaxAttempts = config.autoFillMaxAttempts || 20
     this.queueManager = QueueManager.getInstance()
   }
@@ -122,6 +122,15 @@ class AutoPlayService {
     )
 
     this.trackSuggestionsState = state
+
+    // Update autoFillTargetSize from track suggestions state if available
+    if (state?.autoFillTargetSize !== undefined) {
+      this.autoFillTargetSize = state.autoFillTargetSize
+      logger(
+        'INFO',
+        `[setTrackSuggestionsState] Updated autoFillTargetSize to: ${this.autoFillTargetSize}`
+      )
+    }
 
     // If this is the first time setting the state and we have a queue, trigger an auto-fill check
     if (state && this.isRunning && this.username) {
@@ -344,7 +353,7 @@ class AutoPlayService {
   private async checkAndAutoFillQueue(): Promise<void> {
     const queue = this.queueManager.getQueue()
 
-    // Check if queue is low (3 or fewer tracks remaining)
+    // Check if queue is low (10 or fewer tracks remaining)
     if (
       queue.length < this.autoFillTargetSize &&
       !this.isAutoFilling &&
@@ -379,7 +388,8 @@ class AutoPlayService {
             'allowExplicit',
             'maxSongLength',
             'songsBetweenRepeats',
-            'maxOffset'
+            'maxOffset',
+            'autoFillTargetSize'
           ]
           const missingFields = requiredFields.filter(
             (field: string) => !(field in this.trackSuggestionsState)

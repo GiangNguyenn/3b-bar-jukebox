@@ -264,9 +264,17 @@ export function PlaylistDisplay({
                       </button>
                       <button
                         onClick={() => void handleDeleteTrack(item.id)}
-                        disabled={isTrackLoading || isTrackDeleting}
+                        disabled={
+                          isTrackLoading ||
+                          isTrackDeleting ||
+                          isCurrentlyPlaying
+                        }
                         className='hover:text-white rounded p-1 text-gray-400 hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50'
-                        title='Remove from queue'
+                        title={
+                          isCurrentlyPlaying
+                            ? 'Cannot delete currently playing track'
+                            : 'Remove from queue'
+                        }
                       >
                         {isTrackDeleting ? (
                           <Loading className='h-4 w-4' />

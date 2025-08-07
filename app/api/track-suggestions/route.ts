@@ -233,7 +233,6 @@ export async function POST(
     // Store the successful track in server cache for the "Last Suggested Track" feature
     // Fetch artist genres for the track
     let artistGenres: string[] = []
-    let primaryGenre: string | null = null
     try {
       if (result.track.artists && result.track.artists.length > 0) {
         const artistId = result.track.artists[0].id
@@ -242,7 +241,8 @@ export async function POST(
           method: 'GET'
         })
         artistGenres = artistResponse.genres || []
-        primaryGenre = artistGenres[0] || null
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
+        const _primaryGenre: string | null = artistGenres[0] || null
       }
     } catch (error) {
       logger(
@@ -258,7 +258,8 @@ export async function POST(
       const { cookies } = await import('next/headers')
 
       const cookieStore = cookies()
-      const supabase = createServerClient(
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      const _supabase = createServerClient(
         process.env.NEXT_PUBLIC_SUPABASE_URL!,
         process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
         {
@@ -281,51 +282,14 @@ export async function POST(
         }
       )
 
-      // Get admin profile for database operations
-      const { data: adminProfile, error: adminError } = await supabase
-        .from('profiles')
-        .select('id')
-        .ilike('display_name', '3B')
-        .single()
-
-      if (!adminError && adminProfile) {
-        // Extract release year from album release date
-        const releaseYear = result.track.album.release_date
-          ? new Date(result.track.album.release_date).getFullYear()
-          : new Date().getFullYear()
-
-        // Log the track suggestion with proper genre information
-        const { error: logError } = await supabase.rpc('log_track_suggestion', {
-          p_profile_id: adminProfile.id,
-          p_spotify_track_id: result.track.id,
-          p_track_name: result.track.name,
-          p_artist_name: result.track.artists[0]?.name ?? 'Unknown Artist',
-          p_album_name: result.track.album.name,
-          p_duration_ms: result.track.duration_ms,
-          p_popularity: result.track.popularity,
-          p_spotify_url: result.track.uri,
-          p_genre: primaryGenre,
-          p_release_year: releaseYear
-        })
-
-        if (logError) {
-          logger(
-            'WARN',
-            `[Track Suggestions API] Failed to log track suggestion to database: ${JSON.stringify(logError)}`
-          )
-        } else {
-          logger(
-            'INFO',
-            `[Track Suggestions API] Successfully logged track suggestion to database: ${result.track.name}`
-          )
-        }
-      }
+      // Note: We no longer log track suggestions to the database from this API
+      // The suggested_tracks table should only be updated when users directly add tracks to their playlist
     } catch (error) {
       logger(
         'WARN',
-        `[Track Suggestions API] Error logging track suggestion to database: ${error instanceof Error ? error.message : 'Unknown error'}`
+        `[Track Suggestions API] Failed to initialize Supabase client: ${error instanceof Error ? error.message : 'Unknown error'}`
       )
-      // Continue with server cache update even if database logging fails
+      // Continue without database logging if Supabase initialization fails
     }
 
     const track = result.track as {

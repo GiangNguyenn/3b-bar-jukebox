@@ -95,8 +95,8 @@ class PlayerLifecycleService {
   private async checkAndAutoFillQueue(): Promise<void> {
     const queue = queueManager.getQueue()
 
-    // Check if queue is low (3 or fewer tracks remaining)
-    if (queue.length <= 3) {
+    // Check if queue is low (10 or fewer tracks remaining)
+    if (queue.length <= 10) {
       this.log(
         'INFO',
         `Queue is low (${queue.length} tracks remaining), triggering auto-fill`
