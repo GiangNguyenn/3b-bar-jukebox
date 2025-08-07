@@ -27,7 +27,7 @@ const Header = (): JSX.Element | null => {
         />
       </div>
       <h1 className='text-center font-[family-name:var(--font-belgrano)] text-4xl leading-tight text-primary-100'>
-        3B SAIGON JUKEBOX
+        3B JUKEBOX
       </h1>
     </div>
   )
