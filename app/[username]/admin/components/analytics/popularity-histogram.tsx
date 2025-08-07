@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-explicit-any */
 'use client'
 
 import { useEffect, useState } from 'react'
@@ -21,7 +22,6 @@ interface HistogramData {
 }
 
 // Custom tooltip component for popularity descriptions
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 const CustomTooltip = ({ active, payload, label }: any): JSX.Element | null => {
   if (active && payload && Array.isArray(payload) && payload.length > 0) {
     const getPopularityDescription = (range: string): string => {
@@ -46,13 +46,10 @@ const CustomTooltip = ({ active, payload, label }: any): JSX.Element | null => {
         className='bg-white rounded border p-3 opacity-100 shadow-lg'
         style={{ backgroundColor: 'white' }}
       >
-        {/* eslint-disable-next-line @typescript-eslint/no-unsafe-argument */}
         <p className='font-semibold text-black'>{`Popularity: ${label}`}</p>
-        {/* eslint-disable-next-line @typescript-eslint/no-unsafe-argument */}
         <p className='text-sm text-gray-600'>
           {getPopularityDescription(label)}
         </p>
-        {/* eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-explicit-any */}
         <p className='text-sm font-medium text-black'>{`Tracks: ${(payload as any)[0]?.value}`}</p>
       </div>
     )
@@ -107,17 +104,12 @@ export default function PopularityHistogram(): JSX.Element {
                 return 6
             }
           }
-          // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
-          // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
           return getOrder(a.popularity_range) - getOrder(b.popularity_range)
         })
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
         setData(sortedData)
       } catch (err: unknown) {
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
         const errorMessage =
           err instanceof Error ? err.message : 'An unknown error occurred'
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
         setError(errorMessage)
       } finally {
         setIsLoading(false)
