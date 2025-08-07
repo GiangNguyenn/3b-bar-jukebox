@@ -116,7 +116,8 @@ export default function PlaylistPage(): JSX.Element {
 
     // Update meta description
     const metaDescriptionContent =
-      settings?.meta_description?.trim() ?? 'The Ultimate Shared Music Experience'
+      settings?.meta_description?.trim() ??
+      'The Ultimate Shared Music Experience'
     let metaDescription = document.querySelector('meta[name="description"]')
     if (!metaDescription) {
       metaDescription = document.createElement('meta')
@@ -126,8 +127,7 @@ export default function PlaylistPage(): JSX.Element {
     metaDescription.setAttribute('content', metaDescriptionContent)
 
     // Update Open Graph title
-    const ogTitleContent =
-      settings?.open_graph_title?.trim() ?? '3B Jukebox'
+    const ogTitleContent = settings?.open_graph_title?.trim() ?? '3B Jukebox'
     let ogTitle = document.querySelector('meta[property="og:title"]')
     if (!ogTitle) {
       ogTitle = document.createElement('meta')
