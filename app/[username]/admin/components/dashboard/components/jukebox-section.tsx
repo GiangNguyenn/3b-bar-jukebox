@@ -1,6 +1,7 @@
 'use client'
 
 import { useParams } from 'next/navigation'
+import Image from 'next/image'
 import { useNowPlayingTrack } from '@/hooks/useNowPlayingTrack'
 import { Loading } from '@/components/ui'
 import { usePlaybackControls } from '../../../hooks/usePlaybackControls'
@@ -8,6 +9,7 @@ import { useSpotifyPlayerStore } from '@/hooks/useSpotifyPlayer'
 import { sendApiRequest } from '@/shared/api'
 import { useConsoleLogsContext } from '@/hooks/ConsoleLogsProvider'
 import { useState } from 'react'
+import { Copy, Check } from 'lucide-react'
 
 interface JukeboxSectionProps {
   className?: string
@@ -21,6 +23,7 @@ export function JukeboxSection({
   const { deviceId, isReady } = useSpotifyPlayerStore()
   const { addLog } = useConsoleLogsContext()
   const [volume, setVolume] = useState(50)
+  const [copied, setCopied] = useState(false)
 
   const { data: currentlyPlaying, isLoading } = useNowPlayingTrack({
     token: null, // Use admin credentials
@@ -35,6 +38,25 @@ export function JukeboxSection({
     if (username) {
       const jukeboxUrl = `/${username}/playlist`
       window.open(jukeboxUrl, '_blank')
+    }
+  }
+
+  const handleCopyLink = async (): Promise<void> => {
+    if (username) {
+      const jukeboxUrl = `${window.location.origin}/${username}/playlist`
+      try {
+        await navigator.clipboard.writeText(jukeboxUrl)
+        setCopied(true)
+        addLog('INFO', 'Jukebox link copied to clipboard', 'JukeboxSection')
+        setTimeout(() => setCopied(false), 2000)
+      } catch (error) {
+        addLog(
+          'ERROR',
+          'Failed to copy link to clipboard',
+          'JukeboxSection',
+          error instanceof Error ? error : undefined
+        )
+      }
     }
   }
 
@@ -77,9 +99,11 @@ export function JukeboxSection({
           <div className='space-y-3'>
             <div className='flex items-center gap-3'>
               {currentlyPlaying.item.album?.images?.[0]?.url && (
-                <img
+                <Image
                   src={currentlyPlaying.item.album.images[0].url}
                   alt={currentlyPlaying.item.name}
+                  width={48}
+                  height={48}
                   className='h-12 w-12 rounded-md object-cover'
                 />
               )}
@@ -222,6 +246,35 @@ export function JukeboxSection({
         >
           Open Jukebox
         </button>
+
+        {/* Copy Jukebox Link */}
+        {username && (
+          <div className='space-y-2'>
+            <div className='flex items-center justify-between rounded-lg border border-gray-700 bg-gray-800/50 px-3 py-2'>
+              <span className='flex-1 truncate text-sm text-gray-300'>
+                {`${window.location.origin}/${username}/playlist`}
+              </span>
+              <button
+                onClick={(): void => {
+                  void handleCopyLink()
+                }}
+                className='hover:text-white ml-2 flex-shrink-0 rounded p-1 text-gray-400 transition-colors hover:bg-gray-700'
+                title='Copy link to clipboard'
+              >
+                {copied ? (
+                  <Check className='h-4 w-4 text-green-500' />
+                ) : (
+                  <Copy className='h-4 w-4' />
+                )}
+              </button>
+            </div>
+            <p className='text-center text-xs text-gray-400'>
+              {copied
+                ? 'Link copied!'
+                : 'Public jukebox page - share with guests (no Spotify account required)'}
+            </p>
+          </div>
+        )}
       </div>
     </div>
   )
