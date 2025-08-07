@@ -77,15 +77,16 @@ export default function Home(): JSX.Element {
 
               {/* Main Value Proposition */}
               <div className='mx-auto mb-12 max-w-4xl'>
-                <h3 className='text-white mb-6 text-2xl font-bold md:text-3xl'>
-                  The Ultimate Shared Music Experience for Friends & Parties
-                </h3>
+                <h1 className='text-white mb-6 text-2xl font-bold md:text-3xl'>
+                  Jukebox for Spotify - The Ultimate Shared Playlist Experience
+                </h1>
                 <p className='text-xl leading-relaxed text-gray-300'>
-                  Whether you&apos;re hosting a party with friends or just
-                  hanging out, create the perfect playlist together. Our
-                  intelligent jukebox system connects directly to Spotify,
-                  letting everyone contribute to the music and build
-                  unforgettable atmospheres.
+                  Create the perfect collaborative playlist with our Spotify
+                  jukebox. Whether you&apos;re hosting a party with friends or
+                  just hanging out, our intelligent jukebox system connects
+                  directly to Spotify, letting everyone contribute to the music
+                  and build unforgettable atmospheres. The best jukebox for
+                  Spotify shared playlists.
                 </p>
               </div>
 
@@ -107,12 +108,12 @@ export default function Home(): JSX.Element {
         <div className='bg-black/50 py-20'>
           <div className='mx-auto max-w-7xl px-4 sm:px-6 lg:px-8'>
             <div className='mb-16 text-center'>
-              <h3 className='text-white mb-4 text-3xl font-bold md:text-4xl'>
-                Why Choose 3B Jukebox?
-              </h3>
+              <h2 className='text-white mb-4 text-3xl font-bold md:text-4xl'>
+                Why Choose Our Spotify Jukebox?
+              </h2>
               <p className='text-xl text-gray-300'>
-                The most advanced jukebox system for parties and social
-                gatherings
+                The most advanced jukebox for Spotify shared playlists and
+                collaborative music experiences
               </p>
             </div>
 
@@ -122,13 +123,14 @@ export default function Home(): JSX.Element {
                 <div className='mb-4 text-green-400'>
                   <FaSpotify className='text-4xl' />
                 </div>
-                <h4 className='text-white mb-4 text-xl font-bold'>
+                <h3 className='text-white mb-4 text-xl font-bold'>
                   Spotify Integration
-                </h4>
+                </h3>
                 <p className='text-gray-300'>
-                  Direct Spotify integration means access to millions of songs.
-                  No more managing local music libraries or dealing with
-                  licensing issues.
+                  Direct Spotify integration means access to millions of songs
+                  for your shared playlist. No more managing local music
+                  libraries or dealing with licensing issues. The perfect
+                  jukebox for Spotify.
                 </p>
               </div>
 
@@ -137,13 +139,14 @@ export default function Home(): JSX.Element {
                 <div className='mb-4 text-green-400'>
                   <FaUsers className='text-4xl' />
                 </div>
-                <h4 className='text-white mb-4 text-xl font-bold'>
+                <h3 className='text-white mb-4 text-xl font-bold'>
                   Collaborative Playlists
-                </h4>
+                </h3>
                 <p className='text-gray-300'>
-                  Let everyone contribute to the perfect playlist. Whether
-                  it&apos;s your friends at a party or your roommates at home,
-                  everyone gets a say in the music.
+                  Create the ultimate Spotify shared playlist where everyone
+                  contributes. Whether it&apos;s your friends at a party or your
+                  roommates at home, everyone gets a say in the music. The best
+                  collaborative playlist experience.
                 </p>
               </div>
 
@@ -214,11 +217,12 @@ export default function Home(): JSX.Element {
         <div className='bg-gray-900/50 py-20'>
           <div className='mx-auto max-w-7xl px-4 sm:px-6 lg:px-8'>
             <div className='mb-16 text-center'>
-              <h3 className='text-white mb-4 text-3xl font-bold md:text-4xl'>
+              <h2 className='text-white mb-4 text-3xl font-bold md:text-4xl'>
                 Simple, Transparent Pricing
-              </h3>
+              </h2>
               <p className='text-xl text-gray-300'>
-                Start free, upgrade when you&apos;re ready
+                Start free with our Spotify jukebox, upgrade when you&apos;re
+                ready
               </p>
             </div>
 
@@ -294,12 +298,13 @@ export default function Home(): JSX.Element {
         {/* Final CTA */}
         <div className='bg-black/50 py-16'>
           <div className='mx-auto max-w-4xl px-4 text-center sm:px-6 lg:px-8'>
-            <h3 className='text-white mb-6 text-3xl font-bold md:text-4xl'>
-              Ready to Create the Perfect Shared Music Experience?
-            </h3>
+            <h2 className='text-white mb-6 text-3xl font-bold md:text-4xl'>
+              Ready to Create the Perfect Spotify Shared Playlist?
+            </h2>
             <p className='mb-8 text-xl text-gray-300'>
-              Join hundreds of groups and parties already using 3B Jukebox to
-              create unforgettable music experiences.
+              Join hundreds of groups and parties already using our Spotify
+              jukebox to create unforgettable collaborative playlist
+              experiences.
             </p>
             <a
               href='/auth/signin'

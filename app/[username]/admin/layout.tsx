@@ -2,7 +2,7 @@ import { Metadata } from 'next'
 import { ProtectedRoute } from './components/ProtectedRoute'
 
 export const metadata: Metadata = {
-  metadataBase: new URL('https://3bsaigonjukebox.com'),
+  metadataBase: new URL('https://jukebox.beer'),
   title: 'Admin Dashboard'
 }
 

@@ -6,6 +6,7 @@ import './globals.css'
 import Header from '@/components/Header'
 import { ConsoleLogsProvider } from '@/hooks/ConsoleLogsProvider'
 import { ToastProvider } from '@/contexts/ToastContext'
+import StructuredData from './components/StructuredData'
 
 // const geistSans = localFont({
 //   src: "./fonts/GeistVF.woff",
@@ -25,16 +26,31 @@ const belgrano = Belgrano({
 })
 
 export const metadata: Metadata = {
-  metadataBase: new URL('https://3bsaigonjukebox.com'),
-  title: '3B Jukebox',
-  description: 'The Ultimate Shared Music Experience',
-  icons: {
-    icon: '/icon.ico',
-    shortcut: '/icon.ico',
-    apple: '/icon.ico'
-  },
-  keywords:
-    'jukebox, live music, craft beer, Saigon, Ho Chi Minh City, bar, music venue',
+  metadataBase: new URL('https://jukebox.beer'),
+  title:
+    'Jukebox for Spotify - Shared Playlist & Collaborative Music Experience',
+  description:
+    'Create the ultimate shared music experience with our Spotify jukebox. Perfect for parties, friends, and collaborative playlists. Let everyone contribute to the perfect playlist with our intelligent jukebox system.',
+  keywords: [
+    'jukebox for spotify',
+    'spotify shared playlist',
+    'collaborative music',
+    'party jukebox',
+    'shared music experience',
+    'spotify jukebox',
+    'group playlist',
+    'music for parties',
+    'collaborative playlist',
+    'spotify integration',
+    'jukebox app',
+    'music sharing',
+    'live music',
+    'craft beer',
+    'Saigon',
+    'Ho Chi Minh City',
+    'bar',
+    'music venue'
+  ].join(', '),
   authors: [{ name: '3B Saigon' }],
   creator: '3B Saigon',
   publisher: '3B Saigon',
@@ -46,25 +62,29 @@ export const metadata: Metadata = {
   openGraph: {
     type: 'website',
     locale: 'en_US',
-    url: 'https://3bsaigonjukebox.com',
-    siteName: '3B Jukebox',
-    title: '3B Jukebox',
-    description: 'The Ultimate Shared Music Experience',
+    url: 'https://jukebox.beer',
+    siteName: '3B Jukebox - Spotify Shared Playlist',
+    title:
+      'Jukebox for Spotify - Shared Playlist & Collaborative Music Experience',
+    description:
+      'Create the ultimate shared music experience with our Spotify jukebox. Perfect for parties, friends, and collaborative playlists. Let everyone contribute to the perfect playlist.',
     images: [
       {
-        url: '/images/og-image.jpg', // You'll need to add this image
+        url: '/logo.png',
         width: 1200,
         height: 630,
-        alt: '3B Jukebox - The Ultimate Shared Music Experience'
+        alt: '3B Jukebox - Spotify Shared Playlist & Collaborative Music Experience'
       }
     ]
   },
   twitter: {
     card: 'summary_large_image',
-    title: '3B Jukebox',
-    description: 'The Ultimate Shared Music Experience',
-    images: ['/images/og-image.jpg'], // Same image as OpenGraph
-    creator: '@3bsaigon' // Add your Twitter handle if you have one
+    title:
+      'Jukebox for Spotify - Shared Playlist & Collaborative Music Experience',
+    description:
+      'Create the ultimate shared music experience with our Spotify jukebox. Perfect for parties, friends, and collaborative playlists.',
+    images: ['/logo.png'],
+    creator: '@3bsaigon'
   },
   robots: {
     index: true,
@@ -78,10 +98,20 @@ export const metadata: Metadata = {
     }
   },
   verification: {
-    google: 'your-google-site-verification' // Add your Google Search Console verification code
+    google: 'cVa_mhwMZQx1VRfJrCcWUQk3lwyiUtNBUDxniMTVC7E'
   },
   alternates: {
-    canonical: 'https://3bsaigonjukebox.com' // Add your actual domain
+    canonical: 'https://jukebox.beer'
+  },
+  other: {
+    'application-name': '3B Jukebox',
+    'apple-mobile-web-app-title': '3B Jukebox',
+    'apple-mobile-web-app-capable': 'yes',
+    'apple-mobile-web-app-status-bar-style': 'default',
+    'mobile-web-app-capable': 'yes',
+    'msapplication-TileColor': '#000000',
+    'msapplication-config': '/browserconfig.xml',
+    manifest: '/manifest.json'
   }
 }
 
@@ -94,6 +124,11 @@ export default function RootLayout({
     <html lang='en' className=''>
       <head>
         <Script src='/spotify-init.js' strategy='afterInteractive' />
+        <StructuredData />
+        <meta
+          name='google-site-verification'
+          content='cVa_mhwMZQx1VRfJrCcWUQk3lwyiUtNBUDxniMTVC7E'
+        />
       </head>
       <body className={`${belgrano.variable} min-h-screen antialiased`}>
         <ToastProvider>
