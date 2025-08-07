@@ -30,7 +30,7 @@ export function SeoSection({
               value={settings.page_title ?? ''}
               onChange={(e) => onUpdate({ page_title: e.target.value })}
               maxLength={60}
-              placeholder='3B SAIGON JUKEBOX'
+              placeholder='3B Jukebox'
               className='w-full rounded-md border border-gray-300 px-3 py-2 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500'
             />
             <p className='mt-1 text-sm text-gray-500'>
@@ -52,7 +52,7 @@ export function SeoSection({
               onChange={(e) => onUpdate({ meta_description: e.target.value })}
               maxLength={160}
               rows={3}
-              placeholder='A boutique beer & music experience'
+              placeholder='The Ultimate Shared Music Experience'
               className='resize-vertical w-full rounded-md border border-gray-300 px-3 py-2 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500'
             />
             <p className='mt-1 text-sm text-gray-500'>
@@ -74,7 +74,7 @@ export function SeoSection({
               value={settings.open_graph_title ?? ''}
               onChange={(e) => onUpdate({ open_graph_title: e.target.value })}
               maxLength={60}
-              placeholder='3B SAIGON JUKEBOX'
+              placeholder='3B Jukebox'
               className='w-full rounded-md border border-gray-300 px-3 py-2 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500'
             />
             <p className='mt-1 text-sm text-gray-500'>

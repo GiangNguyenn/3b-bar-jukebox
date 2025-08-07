@@ -30,7 +30,7 @@ export function TextSection({
               value={settings.venue_name ?? ''}
               onChange={(e) => onUpdate({ venue_name: e.target.value })}
               maxLength={50}
-              placeholder='3B SAIGON JUKEBOX'
+              placeholder='3B Jukebox'
               className='w-full rounded-md border border-gray-300 px-3 py-2 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500'
             />
             <p className='mt-1 text-sm text-gray-500'>
@@ -53,7 +53,7 @@ export function TextSection({
               value={settings.subtitle ?? ''}
               onChange={(e) => onUpdate({ subtitle: e.target.value })}
               maxLength={100}
-              placeholder='A boutique beer & music experience'
+              placeholder='The Ultimate Shared Music Experience'
               className='w-full rounded-md border border-gray-300 px-3 py-2 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500'
             />
             <p className='mt-1 text-sm text-gray-500'>
