@@ -14,6 +14,7 @@ import { useTrackSuggestions } from './components/track-suggestions/hooks/useTra
 import { useSpotifyHealthMonitor } from '@/hooks/useSpotifyHealthMonitor'
 import { RecoveryStatus } from '@/components/ui/recovery-status'
 import { HealthStatusSection } from './components/dashboard/health-status-section'
+import { JukeboxSection } from './components/dashboard/components/jukebox-section'
 import { TrackSuggestionsTab } from './components/track-suggestions/track-suggestions-tab'
 import { PlaylistDisplay } from './components/playlist/playlist-display'
 import { AnalyticsTab } from './components/analytics/analytics-tab'
@@ -32,7 +33,7 @@ import { queueManager } from '@/services/queueManager'
 import { getAutoPlayService } from '@/services/autoPlayService'
 import { sendApiRequest } from '@/shared/api'
 import { AutoFillNotification } from '@/components/ui/auto-fill-notification'
-import { usePlaybackControls } from './hooks/usePlaybackControls'
+
 import { useSubscription } from '@/hooks/useSubscription'
 import { useGetProfile } from '@/hooks/useGetProfile'
 import {
@@ -47,7 +48,8 @@ import {
 export default function AdminPage(): JSX.Element {
   // State
   const [isLoading, setIsLoading] = useState(false)
-  const [isRefreshing, setIsRefreshing] = useState(false)
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const [_isRefreshing, setIsRefreshing] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [activeTab, setActiveTab] = useState<
     | 'dashboard'
@@ -58,7 +60,7 @@ export default function AdminPage(): JSX.Element {
     | 'branding'
     | 'subscription'
   >('dashboard')
-  const [volume, setVolume] = useState(50)
+
   const initializationAttemptedRef = useRef(false)
 
   // Hooks
@@ -116,10 +118,6 @@ export default function AdminPage(): JSX.Element {
   // Add token health monitoring
   const tokenHealth = useTokenHealth()
 
-  // Use the existing playback controls hook
-  const { handlePlayPause, handleSkip, isActuallyPlaying, isSkipLoading } =
-    usePlaybackControls()
-
   // Initialize auto-play service
   useEffect(() => {
     const autoPlayService = getAutoPlayService({
@@ -171,7 +169,8 @@ export default function AdminPage(): JSX.Element {
         'allowExplicit',
         'maxSongLength',
         'songsBetweenRepeats',
-        'maxOffset'
+        'maxOffset',
+        'autoFillTargetSize'
       ]
       const hasAllFields = requiredFields.every(
         (field) => field in trackSuggestionsState
@@ -204,7 +203,8 @@ export default function AdminPage(): JSX.Element {
           'allowExplicit',
           'maxSongLength',
           'songsBetweenRepeats',
-          'maxOffset'
+          'maxOffset',
+          'autoFillTargetSize'
         ]
         const hasAllFields = requiredFields.every(
           (field) => field in trackSuggestionsState
@@ -315,12 +315,14 @@ export default function AdminPage(): JSX.Element {
   }, [recover, addLog])
 
   // Create a wrapper for the force recovery handler
-  const handleForceRecoveryClick = useCallback((): void => {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const _handleForceRecoveryClick = useCallback((): void => {
     void handleForceRecovery()
   }, [handleForceRecovery])
 
   // Handle refresh playlist with loading state
-  const handleRefreshPlaylist = useCallback(async (): Promise<void> => {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const _handleRefreshPlaylist = useCallback(async (): Promise<void> => {
     try {
       setIsRefreshing(true)
 
@@ -798,134 +800,7 @@ export default function AdminPage(): JSX.Element {
               isReady={isReady}
             />
 
-            <div className='mt-8 space-y-4'>
-              <h2 className='text-xl font-semibold'>Controls</h2>
-
-              {/* Play/Pause and Skip Buttons - Using existing playback controls hook */}
-              <div className='mb-4 flex justify-center gap-4'>
-                <button
-                  onClick={(): void => {
-                    void handlePlayPause()
-                  }}
-                  disabled={!isReady || recoveryState.isRecovering}
-                  className='text-white flex-1 rounded-lg bg-green-600 px-6 py-3 font-medium transition-colors hover:bg-green-700 disabled:cursor-not-allowed disabled:opacity-50'
-                >
-                  {isActuallyPlaying ? 'Pause' : 'Play'}
-                </button>
-                <button
-                  onClick={(): void => {
-                    void handleSkip()
-                  }}
-                  disabled={
-                    !isReady ||
-                    recoveryState.isRecovering ||
-                    !isActuallyPlaying ||
-                    isSkipLoading
-                  }
-                  className='text-white flex-1 rounded-lg bg-blue-600 px-6 py-3 font-medium transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50'
-                >
-                  {isSkipLoading ? (
-                    <div className='flex items-center justify-center gap-2'>
-                      <Loading className='h-4 w-4' />
-                      <span>Skipping...</span>
-                    </div>
-                  ) : (
-                    'Skip'
-                  )}
-                </button>
-              </div>
-
-              {/* Volume Control */}
-              <div className='mb-4'>
-                <label className='mb-2 block text-sm font-medium text-gray-300'>
-                  Volume
-                </label>
-                <div className='flex items-center gap-3'>
-                  <input
-                    type='range'
-                    min='0'
-                    max='100'
-                    value={volume}
-                    className='slider h-2 flex-1 cursor-pointer appearance-none rounded-lg bg-gray-700'
-                    onChange={(e): void => {
-                      const newVolume = parseInt(e.target.value)
-                      setVolume(newVolume)
-                      // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
-                      void (async () => {
-                        try {
-                          await sendApiRequest({
-                            path: `me/player/volume?volume_percent=${newVolume}&device_id=${deviceId}`,
-                            method: 'PUT'
-                          })
-                          addLog(
-                            'INFO',
-                            `Volume set to ${newVolume}%`,
-                            'AdminPage'
-                          )
-                        } catch (error) {
-                          addLog(
-                            'ERROR',
-                            'Failed to set volume',
-                            'AdminPage',
-                            error instanceof Error ? error : undefined
-                          )
-                        }
-                      })()
-                    }}
-                    disabled={!isReady || recoveryState.isRecovering}
-                  />
-                  <span className='min-w-[3rem] text-right text-sm text-gray-400'>
-                    {volume}%
-                  </span>
-                </div>
-              </div>
-
-              <div className='flex gap-4'>
-                <button
-                  onClick={() => {
-                    void handleRefreshPlaylist()
-                  }}
-                  disabled={
-                    !isReady ||
-                    isRefreshing ||
-                    isLoading ||
-                    recoveryState.isRecovering
-                  }
-                  className='text-white flex-1 rounded-lg bg-purple-600 px-4 py-2 font-medium transition-colors hover:bg-purple-700 disabled:cursor-not-allowed disabled:opacity-50'
-                >
-                  {isRefreshing || isLoading ? (
-                    <div className='flex items-center justify-center gap-2'>
-                      <Loading className='h-4 w-4' />
-                      <span>
-                        {isRefreshing ? 'Refreshing...' : 'Loading...'}
-                      </span>
-                    </div>
-                  ) : !isReady ? (
-                    'Initializing...'
-                  ) : recoveryState.isRecovering ? (
-                    'Recovering...'
-                  ) : (
-                    'Fill Playlist'
-                  )}
-                </button>
-                <button
-                  onClick={handleForceRecoveryClick}
-                  disabled={isLoading}
-                  className='text-white flex-1 rounded-lg bg-orange-600 px-4 py-2 font-medium transition-colors hover:bg-orange-700 disabled:cursor-not-allowed disabled:opacity-50'
-                >
-                  {isLoading ? (
-                    <div className='flex items-center justify-center gap-2'>
-                      <Loading className='h-4 w-4' />
-                      <span>Loading...</span>
-                    </div>
-                  ) : recoveryState.isRecovering ? (
-                    'Recovering...'
-                  ) : (
-                    'Manual Recovery'
-                  )}
-                </button>
-              </div>
-            </div>
+            <JukeboxSection className='mt-8' />
           </TabsContent>
 
           <TabsContent value='settings'>

@@ -52,6 +52,8 @@ export function useNowPlayingTrack({
 
         if (!fetchResponse.ok) {
           if (fetchResponse.status === 401) {
+            // Token might be expired, but we can't refresh it here since we're using a direct token
+            // Just set data to null and let the caller handle token refresh
             setData(null)
             return
           }
@@ -115,6 +117,8 @@ export function useNowPlayingTrack({
 
       // Handle authentication errors gracefully
       if (err instanceof Error && err.message.includes('401')) {
+        // Token might be expired, but we can't refresh it here since we're using a direct token
+        // Just set data to null and let the caller handle token refresh
         setData(null)
         return
       }

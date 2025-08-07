@@ -19,5 +19,6 @@ export interface TrackSuggestionsState {
   maxSongLength: number
   songsBetweenRepeats: number
   maxOffset: number
+  autoFillTargetSize: number
   lastSuggestedTrack?: LastSuggestedTrackInfo
 }

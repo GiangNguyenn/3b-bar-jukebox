@@ -9,6 +9,7 @@ import { type Database } from '@/types/supabase'
 import { showToast } from '@/lib/toast'
 import { usePlaylistData } from '@/hooks/usePlaylistData'
 import ReleaseYearHistogram from './release-year-histogram'
+import PopularityHistogram from './popularity-histogram'
 import { JukeboxQueueItem } from '@/shared/types/queue'
 import { useConsoleLogsContext } from '@/hooks/ConsoleLogsProvider'
 import { useSubscription } from '@/hooks/useSubscription'
@@ -22,6 +23,22 @@ interface TopTrack {
   track_id: string // UUID from tracks table
 }
 
+interface TopArtist {
+  artist: string
+  total_count: number
+  unique_tracks: number
+  most_popular_track: string
+  most_popular_track_count: number
+}
+
+interface TopGenre {
+  genre: string
+  total_count: number
+  unique_tracks: number
+  most_popular_track: string
+  most_popular_track_count: number
+}
+
 type RawTrackData = {
   count: number
   track_id: string
@@ -30,6 +47,25 @@ type RawTrackData = {
     artist: string
     spotify_track_id: string
   } | null
+}
+
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+type _RawArtistData = {
+  artist: string
+  total_count: number
+  unique_tracks: number
+  most_popular_track: string
+  most_popular_track_count: number
+}
+
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+type _RawGenreData = {
+  genre: string
+  total_count: number
+  unique_tracks: number
+  most_popular_track: string
+  most_popular_track_count: number
 }
 
 const useTopTracks = (
@@ -106,6 +142,7 @@ const useTopTracks = (
             setTracks(formattedTracks)
           }
         } catch (err) {
+          /* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-argument */
           const errorMessage =
             err instanceof Error ? err.message : 'An unknown error occurred'
           setError(errorMessage)
@@ -115,6 +152,7 @@ const useTopTracks = (
             'useTopTracks',
             err instanceof Error ? err : undefined
           )
+          /* eslint-enable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-argument */
         } finally {
           setIsLoading(false)
         }
@@ -207,6 +245,7 @@ const useTopTracks = (
         setTracks([])
       }
     } catch (err) {
+      /* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-argument */
       const errorMessage =
         err instanceof Error ? err.message : 'An unknown error occurred'
       setError(errorMessage)
@@ -216,6 +255,7 @@ const useTopTracks = (
         'useTopTracks',
         err instanceof Error ? err : undefined
       )
+      /* eslint-enable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-argument */
     } finally {
       setIsLoading(false)
     }
@@ -270,12 +310,14 @@ const useTopTracks = (
 
       subscriptionRef.current = subscription
     } catch (err) {
+      /* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-argument */
       addLog(
         'ERROR',
         `Failed to set up real-time subscription: ${err instanceof Error ? err.message : 'Unknown error'}`,
         'useTopTracks',
         err instanceof Error ? err : undefined
       )
+      /* eslint-enable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-argument */
     }
   }, [supabase, fetchTopTracks, addLog])
 
@@ -317,6 +359,325 @@ const useTopTracks = (
   return { tracks, isLoading, error, optimisticUpdate }
 }
 
+const useTopArtists = (
+  shouldFetchData: boolean = true
+): {
+  artists: TopArtist[]
+  isLoading: boolean
+  error: string | null
+} => {
+  const [artists, setArtists] = useState<TopArtist[]>([])
+  const [isLoading, setIsLoading] = useState<boolean>(true)
+  const [error, setError] = useState<string | null>(null)
+  const { addLog } = useConsoleLogsContext()
+  const supabase = createBrowserClient<Database>(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  )
+
+  // Fetch top artists data
+  /* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-argument */
+  const fetchTopArtists = useCallback(async (): Promise<void> => {
+    // If data fetching is disabled, return early
+    if (!shouldFetchData) {
+      addLog(
+        'INFO',
+        `[useTopArtists] Data fetching disabled - shouldFetchData: ${shouldFetchData}`,
+        'useTopArtists'
+      )
+      setIsLoading(false)
+      setError(null)
+      setArtists([])
+      return
+    }
+
+    addLog(
+      'INFO',
+      `[useTopArtists] Starting to fetch top artists - shouldFetchData: ${shouldFetchData}`,
+      'useTopArtists'
+    )
+
+    try {
+      setIsLoading(true)
+      setError(null)
+
+      // Query to get top 5 artists with aggregated data
+      const { data: rawData, error } = await supabase
+        .from('suggested_tracks')
+        .select(
+          `
+          count,
+          tracks!inner(
+            artist,
+            name
+          )
+        `
+        )
+        .order('count', { ascending: false })
+
+      if (error) {
+        addLog(
+          'ERROR',
+          `Failed to fetch suggested tracks for artists: ${error.message}`,
+          'useTopArtists',
+          error
+        )
+        throw new Error(error.message)
+      }
+
+      if (rawData) {
+        // Process the data to aggregate by artist
+        const artistMap = new Map<
+          string,
+          {
+            total_count: number
+            tracks: Set<string>
+            track_counts: Map<string, number>
+          }
+        >()
+
+        // Aggregate data by artist
+        rawData.forEach((item) => {
+          // Handle the case where tracks is an array from the inner join
+          const trackData = Array.isArray(item.tracks)
+            ? item.tracks[0]
+            : item.tracks
+          if (!trackData) return
+
+          const artist = trackData.artist
+          const trackName = trackData.name
+          const count = item.count
+
+          if (!artistMap.has(artist)) {
+            artistMap.set(artist, {
+              total_count: 0,
+              tracks: new Set(),
+              track_counts: new Map()
+            })
+          }
+
+          const artistData = artistMap.get(artist)!
+          artistData.total_count += count
+          artistData.tracks.add(trackName)
+          artistData.track_counts.set(trackName, count)
+        })
+
+        // Convert to array and sort by total count
+        const sortedArtists = Array.from(artistMap.entries())
+          .map(([artist, data]) => {
+            // Find the most popular track for this artist
+            let mostPopularTrack = ''
+            let mostPopularCount = 0
+            data.track_counts.forEach((count, trackName) => {
+              if (count > mostPopularCount) {
+                mostPopularCount = count
+                mostPopularTrack = trackName
+              }
+            })
+
+            return {
+              artist,
+              total_count: data.total_count,
+              unique_tracks: data.tracks.size,
+              most_popular_track: mostPopularTrack,
+              most_popular_track_count: mostPopularCount
+            }
+          })
+          .sort((a, b) => b.total_count - a.total_count)
+          .slice(0, 5) // Get top 5
+
+        setArtists(sortedArtists)
+      } else {
+        setArtists([])
+      }
+    } catch (err) {
+      /* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-argument */
+      const errorMessage =
+        err instanceof Error ? err.message : 'An unknown error occurred'
+      setError(errorMessage)
+      addLog(
+        'ERROR',
+        `Failed to fetch top artists: ${errorMessage}`,
+        'useTopArtists',
+        err instanceof Error ? err : undefined
+      )
+      /* eslint-enable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-argument */
+    } finally {
+      setIsLoading(false)
+    }
+  }, [supabase, addLog, shouldFetchData])
+  /* eslint-enable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-argument */
+
+  // Initial fetch
+  useEffect(() => {
+    void fetchTopArtists()
+  }, [fetchTopArtists])
+
+  return { artists, isLoading, error }
+}
+
+const useTopGenres = (
+  shouldFetchData: boolean = true
+): {
+  genres: TopGenre[]
+  isLoading: boolean
+  error: string | null
+} => {
+  const [genres, setGenres] = useState<TopGenre[]>([])
+  const [isLoading, setIsLoading] = useState<boolean>(true)
+  const [error, setError] = useState<string | null>(null)
+  const { addLog } = useConsoleLogsContext()
+  const supabase = createBrowserClient<Database>(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  )
+
+  // Fetch top genres data
+  /* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-argument */
+  const fetchTopGenres = useCallback(async (): Promise<void> => {
+    // If data fetching is disabled, return early
+    if (!shouldFetchData) {
+      addLog(
+        'INFO',
+        `[useTopGenres] Data fetching disabled - shouldFetchData: ${shouldFetchData}`,
+        'useTopGenres'
+      )
+      setIsLoading(false)
+      setError(null)
+      setGenres([])
+      return
+    }
+
+    addLog(
+      'INFO',
+      `[useTopGenres] Starting to fetch top genres - shouldFetchData: ${shouldFetchData}`,
+      'useTopGenres'
+    )
+
+    try {
+      setIsLoading(true)
+      setError(null)
+
+      // Query to get top 5 genres with aggregated data
+      const { data: rawData, error } = await supabase
+        .from('suggested_tracks')
+        .select(
+          `
+          count,
+          tracks!inner(
+            genre,
+            name
+          )
+        `
+        )
+        .order('count', { ascending: false })
+
+      if (error) {
+        addLog(
+          'ERROR',
+          `Failed to fetch suggested tracks for genres: ${error.message}`,
+          'useTopGenres',
+          error
+        )
+        throw new Error(error.message)
+      }
+
+      if (rawData) {
+        // Process the data to aggregate by genre
+        const genreMap = new Map<
+          string,
+          {
+            total_count: number
+            tracks: Set<string>
+            track_counts: Map<string, number>
+          }
+        >()
+
+        // Aggregate data by genre
+        rawData.forEach((item) => {
+          // Handle the case where tracks is an array from the inner join
+          const trackData = Array.isArray(item.tracks)
+            ? item.tracks[0]
+            : item.tracks
+          if (!trackData) return
+
+          const genre = trackData.genre
+          const trackName = trackData.name
+          const count = item.count
+
+          // Skip tracks with null or empty genre
+          if (!genre || (typeof genre === 'string' && genre.trim() === '')) {
+            return
+          }
+
+          if (!genreMap.has(genre)) {
+            genreMap.set(genre, {
+              total_count: 0,
+              tracks: new Set(),
+              track_counts: new Map()
+            })
+          }
+
+          const genreData = genreMap.get(genre)!
+          genreData.total_count += count
+          genreData.tracks.add(trackName)
+          genreData.track_counts.set(trackName, count)
+        })
+
+        // Convert to array and sort by total count
+        const sortedGenres = Array.from(genreMap.entries())
+          .map(([genre, data]) => {
+            // Find the most popular track for this genre
+            let mostPopularTrack = ''
+            let mostPopularCount = 0
+            data.track_counts.forEach((count, trackName) => {
+              if (count > mostPopularCount) {
+                mostPopularCount = count
+                mostPopularTrack = trackName
+              }
+            })
+
+            return {
+              genre,
+              total_count: data.total_count,
+              unique_tracks: data.tracks.size,
+              most_popular_track: mostPopularTrack,
+              most_popular_track_count: mostPopularCount
+            }
+          })
+          .sort((a, b) => b.total_count - a.total_count)
+          .slice(0, 5) // Get top 5
+
+        setGenres(sortedGenres)
+      } else {
+        setGenres([])
+      }
+    } catch (err) {
+      /* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-argument */
+      const errorMessage =
+        err instanceof Error ? err.message : 'An unknown error occurred'
+      setError(errorMessage)
+      addLog(
+        'ERROR',
+        `Failed to fetch top genres: ${errorMessage}`,
+        'useTopGenres',
+        err instanceof Error ? err : undefined
+      )
+      /* eslint-enable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-argument */
+    } finally {
+      setIsLoading(false)
+    }
+  }, [supabase, addLog, shouldFetchData])
+  /* eslint-enable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-argument */
+
+  // Initial fetch
+  useEffect(() => {
+    void fetchTopGenres()
+  }, [fetchTopGenres])
+
+  return { genres, isLoading, error }
+}
+
 interface AnalyticsTabProps {
   username: string | undefined
 }
@@ -338,11 +699,26 @@ export const AnalyticsTab = ({ username }: AnalyticsTabProps): JSX.Element => {
 
   const { tracks, isLoading, error, optimisticUpdate } =
     useTopTracks(shouldFetchData)
+  const {
+    artists: topArtists,
+    isLoading: artistsLoading,
+    error: artistsError
+  } = useTopArtists(shouldFetchData)
+  const {
+    genres: topGenres,
+    isLoading: genresLoading,
+    error: genresError
+  } = useTopGenres(shouldFetchData)
   const { data: queue, optimisticUpdate: queueOptimisticUpdate } =
     usePlaylistData(username)
   const [isAdding, setIsAdding] = useState(false)
   const [addingTrackId, setAddingTrackId] = useState<string | null>(null)
   const [deletingTrackId, setDeletingTrackId] = useState<string | null>(null)
+  const [isTopTracksCollapsed, setIsTopTracksCollapsed] = useState(true)
+  const [isTopArtistsCollapsed, setIsTopArtistsCollapsed] = useState(true)
+  const [isTopGenresCollapsed, setIsTopGenresCollapsed] = useState(true)
+  const [isReleaseYearCollapsed, setIsReleaseYearCollapsed] = useState(true)
+  const [isPopularityCollapsed, setIsPopularityCollapsed] = useState(true)
   const { addLog } = useConsoleLogsContext()
 
   // Handle deleting a suggested track
@@ -675,10 +1051,16 @@ export const AnalyticsTab = ({ username }: AnalyticsTabProps): JSX.Element => {
   }
 
   // Show error if profile or subscription check failed
-  if (profileError || error) {
+  if (profileError || error || artistsError || genresError) {
     return (
       <ErrorMessage
-        message={profileError ?? error ?? 'Failed to load analytics'}
+        message={
+          profileError ??
+          error ??
+          artistsError ??
+          genresError ??
+          'Failed to load analytics'
+        }
       />
     )
   }
@@ -700,100 +1082,333 @@ export const AnalyticsTab = ({ username }: AnalyticsTabProps): JSX.Element => {
   }
 
   // Show loading while fetching analytics data
-  if (isLoading) {
-    return <Loading message='Loading top tracks...' />
+  if (isLoading || artistsLoading || genresLoading) {
+    return <Loading message='Loading analytics data...' />
   }
 
   return (
     <div className='p-4'>
-      <div className='mb-4 flex items-center justify-between'>
-        <h2 className='text-2xl font-bold'>Top 50 Suggested Tracks</h2>
-        <div className='flex items-center gap-4'>
-          <button
-            onClick={() => {
-              void handleAddToPlaylist()
-            }}
-            disabled={isLoading || isAdding || tracks.length === 0}
-            className='text-white rounded bg-blue-500 px-4 py-2 disabled:bg-gray-400'
+      {/* Top 50 Suggested Tracks - Collapsible Section */}
+      <div className='rounded-lg border'>
+        <button
+          type='button'
+          onClick={(): void => setIsTopTracksCollapsed(!isTopTracksCollapsed)}
+          className='flex w-full items-center justify-between px-4 py-3 text-left transition-colors hover:bg-gray-50'
+        >
+          <div className='flex items-center gap-4'>
+            <h2 className='text-2xl font-bold'>Top 50 Suggested Tracks</h2>
+            <button
+              onClick={(e) => {
+                e.stopPropagation()
+                void handleAddToPlaylist()
+              }}
+              disabled={isLoading || isAdding || tracks.length === 0}
+              className='text-white rounded bg-blue-500 px-4 py-2 disabled:bg-gray-400'
+            >
+              {isAdding ? 'Adding...' : 'Add All Tracks'}
+            </button>
+          </div>
+          <svg
+            className={`h-5 w-5 text-gray-500 transition-transform ${
+              isTopTracksCollapsed ? 'rotate-180' : ''
+            }`}
+            fill='none'
+            stroke='currentColor'
+            viewBox='0 0 24 24'
           >
-            {isAdding ? 'Adding...' : 'Add All Tracks'}
-          </button>
-        </div>
-      </div>
-      {tracks.length === 0 ? (
-        <p>No tracks have been suggested yet.</p>
-      ) : (
-        <table className='min-w-full'>
-          <thead>
-            <tr>
-              <th className='border-b px-4 py-2 text-left'>Count</th>
-              <th className='border-b px-4 py-2 text-left'>Track</th>
-              <th className='border-b px-4 py-2 text-left'>Artist</th>
-              <th className='border-b px-4 py-2 text-center'>
-                Add to Playlist
-              </th>
-              <th className='border-b px-4 py-2 text-center'>Delete</th>
-            </tr>
-          </thead>
-          <tbody>
-            {tracks.map((track, index) => {
-              const isInPlaylist = isTrackInPlaylist(track.spotify_track_id)
-              const isAddingThisTrack = addingTrackId === track.spotify_track_id
-              const isDeletingThisTrack = deletingTrackId === track.track_id
+            <path
+              strokeLinecap='round'
+              strokeLinejoin='round'
+              strokeWidth={2}
+              d='M19 9l-7 7-7-7'
+            />
+          </svg>
+        </button>
+        {!isTopTracksCollapsed && (
+          <div className='px-4 pb-4'>
+            {tracks.length === 0 ? (
+              <p>No tracks have been suggested yet.</p>
+            ) : (
+              <table className='min-w-full'>
+                <thead>
+                  <tr>
+                    <th className='border-b px-4 py-2 text-left'>Count</th>
+                    <th className='border-b px-4 py-2 text-left'>Track</th>
+                    <th className='border-b px-4 py-2 text-left'>Artist</th>
+                    <th className='border-b px-4 py-2 text-center'>
+                      Add to Playlist
+                    </th>
+                    <th className='border-b px-4 py-2 text-center'>Delete</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {tracks.map((track, index) => {
+                    const isInPlaylist = isTrackInPlaylist(
+                      track.spotify_track_id
+                    )
+                    const isAddingThisTrack =
+                      addingTrackId === track.spotify_track_id
+                    const isDeletingThisTrack =
+                      deletingTrackId === track.track_id
 
-              return (
-                <tr key={index}>
-                  <td className='border-b px-4 py-2 text-center'>
-                    {track.count}
-                  </td>
-                  <td className='border-b px-4 py-2'>{track.name}</td>
-                  <td className='border-b px-4 py-2'>{track.artist}</td>
-                  <td className='border-b px-4 py-2 text-center'>
-                    {!isInPlaylist ? (
-                      <button
-                        onClick={() => void handleAddSingleTrack(track)}
-                        disabled={isAddingThisTrack}
-                        className='text-white rounded bg-green-600 px-3 py-1 text-sm font-medium transition-colors hover:bg-green-700 disabled:cursor-not-allowed disabled:opacity-50'
-                        title={`Add "${track.name}" to playlist`}
-                      >
-                        {isAddingThisTrack ? (
-                          <div className='flex items-center gap-1'>
-                            <Loading className='h-3 w-3' />
-                            <span>Adding...</span>
-                          </div>
-                        ) : (
-                          '+'
-                        )}
-                      </button>
-                    ) : (
-                      <span className='text-sm text-gray-500'>In playlist</span>
-                    )}
-                  </td>
-                  <td className='border-b px-4 py-2 text-center'>
-                    {isDeletingThisTrack ? (
-                      <Loading className='h-4 w-4' />
-                    ) : (
-                      <button
-                        onClick={() => void handleDeleteTrack(track)}
-                        disabled={isDeletingThisTrack}
-                        className='text-white rounded bg-red-600 px-3 py-1 text-sm font-medium transition-colors hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50'
-                        title={`Delete "${track.name}" from suggested tracks`}
-                      >
-                        -
-                      </button>
-                    )}
-                  </td>
-                </tr>
-              )
-            })}
-          </tbody>
-        </table>
-      )}
-      <div className='mt-8'>
-        <h2 className='mb-4 text-2xl font-bold'>
-          Track Release Year Distribution
-        </h2>
-        <ReleaseYearHistogram />
+                    return (
+                      <tr key={index}>
+                        <td className='border-b px-4 py-2 text-center'>
+                          {track.count}
+                        </td>
+                        <td className='border-b px-4 py-2'>{track.name}</td>
+                        <td className='border-b px-4 py-2'>{track.artist}</td>
+                        <td className='border-b px-4 py-2 text-center'>
+                          {!isInPlaylist ? (
+                            <button
+                              onClick={() => void handleAddSingleTrack(track)}
+                              disabled={isAddingThisTrack}
+                              className='text-white rounded bg-green-600 px-3 py-1 text-sm font-medium transition-colors hover:bg-green-700 disabled:cursor-not-allowed disabled:opacity-50'
+                              title={`Add "${track.name}" to playlist`}
+                            >
+                              {isAddingThisTrack ? (
+                                <div className='flex items-center gap-1'>
+                                  <Loading className='h-3 w-3' />
+                                  <span>Adding...</span>
+                                </div>
+                              ) : (
+                                '+'
+                              )}
+                            </button>
+                          ) : (
+                            <span className='text-sm text-gray-500'>
+                              In playlist
+                            </span>
+                          )}
+                        </td>
+                        <td className='border-b px-4 py-2 text-center'>
+                          {isDeletingThisTrack ? (
+                            <Loading className='h-4 w-4' />
+                          ) : (
+                            <button
+                              onClick={() => void handleDeleteTrack(track)}
+                              disabled={isDeletingThisTrack}
+                              className='text-white rounded bg-red-600 px-3 py-1 text-sm font-medium transition-colors hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50'
+                              title={`Delete "${track.name}" from suggested tracks`}
+                            >
+                              -
+                            </button>
+                          )}
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Top 5 Artists Section - Collapsible */}
+      <div className='mt-8 rounded-lg border'>
+        <button
+          type='button'
+          onClick={(): void => setIsTopArtistsCollapsed(!isTopArtistsCollapsed)}
+          className='flex w-full items-center justify-between px-4 py-3 text-left transition-colors hover:bg-gray-50'
+        >
+          <h2 className='text-2xl font-bold'>Top 5 Artists</h2>
+          <svg
+            className={`h-5 w-5 text-gray-500 transition-transform ${
+              isTopArtistsCollapsed ? 'rotate-180' : ''
+            }`}
+            fill='none'
+            stroke='currentColor'
+            viewBox='0 0 24 24'
+          >
+            <path
+              strokeLinecap='round'
+              strokeLinejoin='round'
+              strokeWidth={2}
+              d='M19 9l-7 7-7-7'
+            />
+          </svg>
+        </button>
+        {!isTopArtistsCollapsed && (
+          <div className='px-4 pb-4'>
+            {topArtists.length === 0 ? (
+              <p>No artist data available yet.</p>
+            ) : (
+              <table className='min-w-full'>
+                <thead>
+                  <tr>
+                    <th className='border-b px-4 py-2 text-left'>Rank</th>
+                    <th className='border-b px-4 py-2 text-left'>Artist</th>
+                    <th className='border-b px-4 py-2 text-left'>
+                      Total Count
+                    </th>
+                    <th className='border-b px-4 py-2 text-left'>
+                      Unique Tracks
+                    </th>
+                    <th className='border-b px-4 py-2 text-left'>
+                      Most Popular Track
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {topArtists.map((artist, index) => (
+                    <tr key={index}>
+                      <td className='border-b px-4 py-2 text-center'>
+                        {index + 1}
+                      </td>
+                      <td className='border-b px-4 py-2'>{artist.artist}</td>
+                      <td className='border-b px-4 py-2 text-center'>
+                        {artist.total_count}
+                      </td>
+                      <td className='border-b px-4 py-2 text-center'>
+                        {artist.unique_tracks}
+                      </td>
+                      <td className='border-b px-4 py-2'>
+                        &quot;{artist.most_popular_track}&quot; (
+                        {artist.most_popular_track_count})
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Top 5 Genres Section - Collapsible */}
+      <div className='mt-8 rounded-lg border'>
+        <button
+          type='button'
+          onClick={(): void => setIsTopGenresCollapsed(!isTopGenresCollapsed)}
+          className='flex w-full items-center justify-between px-4 py-3 text-left transition-colors hover:bg-gray-50'
+        >
+          <h2 className='text-2xl font-bold'>Top 5 Genres</h2>
+          <svg
+            className={`h-5 w-5 text-gray-500 transition-transform ${
+              isTopGenresCollapsed ? 'rotate-180' : ''
+            }`}
+            fill='none'
+            stroke='currentColor'
+            viewBox='0 0 24 24'
+          >
+            <path
+              strokeLinecap='round'
+              strokeLinejoin='round'
+              strokeWidth={2}
+              d='M19 9l-7 7-7-7'
+            />
+          </svg>
+        </button>
+        {!isTopGenresCollapsed && (
+          <div className='px-4 pb-4'>
+            {topGenres.length === 0 ? (
+              <p>No genre data available yet.</p>
+            ) : (
+              <table className='min-w-full'>
+                <thead>
+                  <tr>
+                    <th className='border-b px-4 py-2 text-left'>Rank</th>
+                    <th className='border-b px-4 py-2 text-left'>Genre</th>
+                    <th className='border-b px-4 py-2 text-left'>
+                      Total Count
+                    </th>
+                    <th className='border-b px-4 py-2 text-left'>
+                      Unique Tracks
+                    </th>
+                    <th className='border-b px-4 py-2 text-left'>
+                      Most Popular Track
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {topGenres.map((genre, index) => (
+                    <tr key={index}>
+                      <td className='border-b px-4 py-2 text-center'>
+                        {index + 1}
+                      </td>
+                      <td className='border-b px-4 py-2'>{genre.genre}</td>
+                      <td className='border-b px-4 py-2 text-center'>
+                        {genre.total_count}
+                      </td>
+                      <td className='border-b px-4 py-2 text-center'>
+                        {genre.unique_tracks}
+                      </td>
+                      <td className='border-b px-4 py-2'>
+                        &quot;{genre.most_popular_track}&quot; (
+                        {genre.most_popular_track_count})
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Track Release Year Distribution Section - Collapsible */}
+      <div className='mt-8 rounded-lg border'>
+        <button
+          type='button'
+          onClick={(): void =>
+            setIsReleaseYearCollapsed(!isReleaseYearCollapsed)
+          }
+          className='flex w-full items-center justify-between px-4 py-3 text-left transition-colors hover:bg-gray-50'
+        >
+          <h2 className='text-2xl font-bold'>Release Year</h2>
+          <svg
+            className={`h-5 w-5 text-gray-500 transition-transform ${
+              isReleaseYearCollapsed ? 'rotate-180' : ''
+            }`}
+            fill='none'
+            stroke='currentColor'
+            viewBox='0 0 24 24'
+          >
+            <path
+              strokeLinecap='round'
+              strokeLinejoin='round'
+              strokeWidth={2}
+              d='M19 9l-7 7-7-7'
+            />
+          </svg>
+        </button>
+        {!isReleaseYearCollapsed && (
+          <div className='px-4 pb-4'>
+            <ReleaseYearHistogram />
+          </div>
+        )}
+      </div>
+
+      {/* Track Popularity Distribution Section - Collapsible */}
+      <div className='mt-8 rounded-lg border'>
+        <button
+          type='button'
+          onClick={(): void => setIsPopularityCollapsed(!isPopularityCollapsed)}
+          className='flex w-full items-center justify-between px-4 py-3 text-left transition-colors hover:bg-gray-50'
+        >
+          <h2 className='text-2xl font-bold'>Song Popularity</h2>
+          <svg
+            className={`h-5 w-5 text-gray-500 transition-transform ${
+              isPopularityCollapsed ? 'rotate-180' : ''
+            }`}
+            fill='none'
+            stroke='currentColor'
+            viewBox='0 0 24 24'
+          >
+            <path
+              strokeLinecap='round'
+              strokeLinejoin='round'
+              strokeWidth={2}
+              d='M19 9l-7 7-7-7'
+            />
+          </svg>
+        </button>
+        {!isPopularityCollapsed && (
+          <div className='px-4 pb-4'>
+            <PopularityHistogram />
+          </div>
+        )}
       </div>
     </div>
   )

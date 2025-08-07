@@ -19,6 +19,7 @@ const getInitialState = (
     maxSongLength: 10,
     songsBetweenRepeats: 50,
     maxOffset: DEFAULT_MAX_OFFSET,
+    autoFillTargetSize: 10,
     ...initialState
   }
 
@@ -54,6 +55,7 @@ interface UseTrackSuggestionsReturn {
   setMaxSongLength: (maxSongLength: number) => void
   setSongsBetweenRepeats: (songsBetweenRepeats: number) => void
   setMaxOffset: (maxOffset: number) => void
+  setAutoFillTargetSize: (autoFillTargetSize: number) => void
 }
 
 export function useTrackSuggestions(
@@ -140,6 +142,13 @@ export function useTrackSuggestions(
     [updateState]
   )
 
+  const setAutoFillTargetSize = useCallback(
+    (autoFillTargetSize: number): void => {
+      updateState({ autoFillTargetSize })
+    },
+    [updateState]
+  )
+
   return {
     state,
     updateState,
@@ -149,6 +158,7 @@ export function useTrackSuggestions(
     setAllowExplicit,
     setMaxSongLength,
     setSongsBetweenRepeats,
-    setMaxOffset
+    setMaxOffset,
+    setAutoFillTargetSize
   }
 }

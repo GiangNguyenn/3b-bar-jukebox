@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef, useCallback } from 'react'
+import { useEffect, useRef, useCallback, useState } from 'react'
 import { useConsoleLogsContext } from '@/hooks/ConsoleLogsProvider'
 import { GenresSelector } from './components/genres-selector'
 import { YearRangeSelector } from './components/year-range-selector'
@@ -9,6 +9,7 @@ import { ExplicitContentToggle } from './components/explicit-content-toggle'
 import { MaxSongLengthSelector } from './components/max-song-length-selector'
 import { SongsBetweenRepeatsSelector } from './components/songs-between-repeats-selector'
 import { MaxOffsetSelector } from './components/max-offset-selector'
+import { AutoFillTargetSelector } from './components/auto-fill-target-selector'
 import { LastSuggestedTrack } from './components/last-suggested-track'
 import {
   type TrackSuggestionsState,
@@ -33,6 +34,7 @@ export function TrackSuggestionsTab({
   initialState
 }: TrackSuggestionsTabProps): JSX.Element {
   const { addLog } = useConsoleLogsContext()
+  const [isAdvancedOpen, setIsAdvancedOpen] = useState(false)
   const {
     state,
     setGenres,
@@ -42,6 +44,7 @@ export function TrackSuggestionsTab({
     setMaxSongLength,
     setSongsBetweenRepeats,
     setMaxOffset,
+    setAutoFillTargetSize,
     updateState
   } = useTrackSuggestions(initialState)
 
@@ -118,8 +121,6 @@ export function TrackSuggestionsTab({
         <h2 className='text-2xl font-bold'>Suggestions</h2>
       </div>
 
-      <LastSuggestedTrack trackInfo={state.lastSuggestedTrack} />
-
       <div className='grid gap-6 md:grid-cols-2'>
         <div className='space-y-6'>
           <GenresSelector
@@ -144,15 +145,70 @@ export function TrackSuggestionsTab({
             length={state.maxSongLength}
             onLengthChange={setMaxSongLength}
           />
-          <SongsBetweenRepeatsSelector
-            count={state.songsBetweenRepeats}
-            onCountChange={setSongsBetweenRepeats}
-          />
-          <MaxOffsetSelector
-            offset={state.maxOffset}
-            onOffsetChange={setMaxOffset}
+          <AutoFillTargetSelector
+            targetSize={state.autoFillTargetSize}
+            onTargetSizeChange={setAutoFillTargetSize}
           />
         </div>
+      </div>
+
+      {/* Advanced Section */}
+      <div className='rounded-lg border'>
+        <button
+          type='button'
+          onClick={(): void => setIsAdvancedOpen(!isAdvancedOpen)}
+          className='flex w-full items-center justify-between px-4 py-3 text-left transition-colors hover:bg-gray-50'
+        >
+          <span className='text-lg font-medium'>Advanced</span>
+          <svg
+            className={`h-5 w-5 text-gray-500 transition-transform ${
+              isAdvancedOpen ? 'rotate-180' : ''
+            }`}
+            fill='none'
+            stroke='currentColor'
+            viewBox='0 0 24 24'
+          >
+            <path
+              strokeLinecap='round'
+              strokeLinejoin='round'
+              strokeWidth={2}
+              d='M19 9l-7 7-7-7'
+            />
+          </svg>
+        </button>
+        {isAdvancedOpen && (
+          <div className='space-y-6 px-4 pb-4'>
+            <div className='grid gap-6 md:grid-cols-2'>
+              <SongsBetweenRepeatsSelector
+                count={state.songsBetweenRepeats}
+                onCountChange={setSongsBetweenRepeats}
+              />
+              <MaxOffsetSelector
+                offset={state.maxOffset}
+                onOffsetChange={setMaxOffset}
+              />
+            </div>
+          </div>
+        )}
+      </div>
+
+      <LastSuggestedTrack trackInfo={state.lastSuggestedTrack} />
+
+      {/* Description Section */}
+      <div className='rounded-lg border bg-muted p-4'>
+        <h3 className='mb-2 text-lg font-medium'>How Suggestions Work</h3>
+        <p className='text-sm text-muted-foreground'>
+          When the playlist queue has fewer than {state.autoFillTargetSize}{' '}
+          tracks, the system will automatically add tracks based on your
+          suggestion preferences above to maintain a minimum of{' '}
+          {state.autoFillTargetSize} tracks. If it fails to find a song that
+          matches your criteria, it will automatically add a random track to
+          keep the music playing.
+          <br />
+          <br />
+          Songs added by users to the jukebox will always take priority over
+          suggested songs.
+        </p>
       </div>
     </div>
   )
