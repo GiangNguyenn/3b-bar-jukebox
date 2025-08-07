@@ -113,7 +113,7 @@ export async function POST(): Promise<NextResponse> {
       },
       body: JSON.stringify({
         name: `${user.user_metadata.name}'s Playlist`,
-        description: 'Created by 3B Saigon Jukebox',
+        description: 'Created by 3B Jukebox',
         public: false
       })
     })

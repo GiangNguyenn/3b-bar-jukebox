@@ -133,7 +133,7 @@ CREATE TABLE public.branding_settings (
     favicon_url text NULL,
 
     -- Text Elements
-    venue_name text NULL DEFAULT '3B SAIGON JUKEBOX',
+    venue_name text NULL DEFAULT '3B Jukebox',
     subtitle text NULL,
     welcome_message text NULL,
     footer_text text NULL,
@@ -158,9 +158,9 @@ CREATE TABLE public.branding_settings (
     gradient_stops text NULL, -- JSON array of color stops
 
     -- SEO & Metadata
-    page_title text NULL DEFAULT '3B SAIGON JUKEBOX',
-    meta_description text NULL DEFAULT 'A boutique beer & music experience',
-    open_graph_title text NULL DEFAULT '3B SAIGON JUKEBOX',
+    page_title text NULL DEFAULT '3B Jukebox',
+    meta_description text NULL DEFAULT 'The Ultimate Shared Music Experience',
+    open_graph_title text NULL DEFAULT '3B Jukebox',
 
     -- Timestamps
     created_at timestamp with time zone NOT NULL DEFAULT timezone('utc'::text, now()),

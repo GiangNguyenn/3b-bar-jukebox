@@ -81,7 +81,7 @@ export class BrandingService {
 
       // Define default values (matching database defaults)
       const defaultValues = {
-        venue_name: '3B SAIGON JUKEBOX',
+        venue_name: '3B Jukebox',
         font_family: 'Belgrano',
         font_size: 'text-4xl',
         font_weight: 'normal',
@@ -90,9 +90,9 @@ export class BrandingService {
         secondary_color: '#191414',
         background_color: '#000000',
         gradient_type: 'none',
-        page_title: '3B SAIGON JUKEBOX',
-        meta_description: 'A boutique beer & music experience',
-        open_graph_title: '3B SAIGON JUKEBOX'
+        page_title: '3B Jukebox',
+        meta_description: 'The Ultimate Shared Music Experience',
+        open_graph_title: '3B Jukebox'
       }
 
       // If updating an existing record, apply defaults to missing fields

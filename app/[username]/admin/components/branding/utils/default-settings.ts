@@ -9,7 +9,7 @@ export function getDefaultBrandingSettings(
     profile_id: profileId,
     logo_url: null,
     favicon_url: null,
-    venue_name: '3B SAIGON JUKEBOX',
+    venue_name: '3B Jukebox',
     subtitle: null,
     welcome_message: null,
     footer_text: null,
@@ -26,8 +26,8 @@ export function getDefaultBrandingSettings(
     gradient_type: 'none',
     gradient_direction: null,
     gradient_stops: null,
-    page_title: '3B SAIGON JUKEBOX',
-    meta_description: 'A boutique beer & music experience',
-    open_graph_title: '3B SAIGON JUKEBOX'
+    page_title: '3B Jukebox',
+    meta_description: 'The Ultimate Shared Music Experience',
+    open_graph_title: '3B Jukebox'
   }
 }

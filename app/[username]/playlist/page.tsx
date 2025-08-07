@@ -111,12 +111,13 @@ export default function PlaylistPage(): JSX.Element {
     if (settings?.page_title && settings.page_title.trim() !== '') {
       document.title = settings.page_title
     } else {
-      document.title = '3B SAIGON JUKEBOX'
+      document.title = '3B Jukebox'
     }
 
     // Update meta description
     const metaDescriptionContent =
-      settings?.meta_description?.trim() ?? 'A boutique beer & music experience'
+      settings?.meta_description?.trim() ??
+      'The Ultimate Shared Music Experience'
     let metaDescription = document.querySelector('meta[name="description"]')
     if (!metaDescription) {
       metaDescription = document.createElement('meta')
@@ -126,8 +127,7 @@ export default function PlaylistPage(): JSX.Element {
     metaDescription.setAttribute('content', metaDescriptionContent)
 
     // Update Open Graph title
-    const ogTitleContent =
-      settings?.open_graph_title?.trim() ?? '3B SAIGON JUKEBOX'
+    const ogTitleContent = settings?.open_graph_title?.trim() ?? '3B Jukebox'
     let ogTitle = document.querySelector('meta[property="og:title"]')
     if (!ogTitle) {
       ogTitle = document.createElement('meta')
@@ -511,7 +511,7 @@ export default function PlaylistPage(): JSX.Element {
               color: settings?.text_color ?? '#ffffff'
             }}
           >
-            {settings?.venue_name ?? '3B SAIGON JUKEBOX'}
+            {settings?.venue_name ?? '3B Jukebox'}
           </h1>
           {settings?.subtitle && (
             <p

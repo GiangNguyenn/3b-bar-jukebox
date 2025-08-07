@@ -26,8 +26,8 @@ const belgrano = Belgrano({
 
 export const metadata: Metadata = {
   metadataBase: new URL('https://3bsaigonjukebox.com'),
-  title: '3B SAIGON JUKEBOX',
-  description: 'A boutique beer & music experience',
+  title: '3B Jukebox',
+  description: 'The Ultimate Shared Music Experience',
   icons: {
     icon: '/icon.ico',
     shortcut: '/icon.ico',
@@ -47,22 +47,22 @@ export const metadata: Metadata = {
     type: 'website',
     locale: 'en_US',
     url: 'https://3bsaigonjukebox.com',
-    siteName: '3B SAIGON JUKEBOX',
-    title: '3B SAIGON JUKEBOX',
-    description: 'A boutique beer & music experience',
+    siteName: '3B Jukebox',
+    title: '3B Jukebox',
+    description: 'The Ultimate Shared Music Experience',
     images: [
       {
         url: '/images/og-image.jpg', // You'll need to add this image
         width: 1200,
         height: 630,
-        alt: '3B SAIGON JUKEBOX - A boutique beer & music experience'
+        alt: '3B Jukebox - The Ultimate Shared Music Experience'
       }
     ]
   },
   twitter: {
     card: 'summary_large_image',
-    title: '3B SAIGON JUKEBOX',
-    description: 'A boutique beer & music experience',
+    title: '3B Jukebox',
+    description: 'The Ultimate Shared Music Experience',
     images: ['/images/og-image.jpg'], // Same image as OpenGraph
     creator: '@3bsaigon' // Add your Twitter handle if you have one
   },
