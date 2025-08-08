@@ -18,3 +18,4 @@ export {
   CardHeader,
   CardTitle
 } from './card'
+export { QRCodeComponent } from './qr-code'

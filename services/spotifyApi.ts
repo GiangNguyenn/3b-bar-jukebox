@@ -145,7 +145,7 @@ export class SpotifyApiService implements SpotifyApiClient {
     )
   }
 
-  async resumePlayback(): Promise<{
+  async resumePlayback(position_ms?: number): Promise<{
     success: boolean
     resumedFrom?: {
       trackUri: string
@@ -169,7 +169,8 @@ export class SpotifyApiService implements SpotifyApiClient {
               path: `me/player/play?device_id=${deviceId}`,
               method: 'PUT',
               body: {
-                uris: [trackUri]
+                uris: [trackUri],
+                position_ms: position_ms
               },
               retryConfig: this.retryConfig
             })
@@ -179,7 +180,7 @@ export class SpotifyApiService implements SpotifyApiClient {
               success: true,
               resumedFrom: {
                 trackUri: trackUri,
-                position: 0
+                position: position_ms || 0
               }
             }
           } catch (error) {

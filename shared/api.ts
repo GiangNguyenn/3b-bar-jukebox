@@ -228,10 +228,35 @@ export const sendApiRequest = async <T>({
           return makeRequest(retryCount + 1)
         }
 
-        throw new ApiError(
-          errorData.error.message || `API error: ${response.status}`,
-          { status: response.status, headers: response.headers }
-        )
+        const errorMessage =
+          errorData.error.message || `API error: ${response.status}`
+
+        // Check if this is a premium-related error and redirect accordingly
+        if (typeof window !== 'undefined') {
+          const isPremiumError =
+            errorMessage.toLowerCase().includes('premium') ||
+            errorMessage.toLowerCase().includes('subscription') ||
+            errorMessage.toLowerCase().includes('upgrade') ||
+            errorMessage.toLowerCase().includes('account type') ||
+            errorMessage
+              .toLowerCase()
+              .includes('not available for your account')
+
+          if (
+            isPremiumError &&
+            !window.location.pathname.includes('premium-required')
+          ) {
+            window.location.href = '/premium-required'
+            throw new ApiError('Premium subscription required', {
+              status: response.status
+            })
+          }
+        }
+
+        throw new ApiError(errorMessage, {
+          status: response.status,
+          headers: response.headers
+        })
       }
 
       const contentType = response.headers.get('content-type')

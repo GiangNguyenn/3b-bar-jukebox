@@ -49,7 +49,9 @@ export function usePlaybackControls(): {
           throw new Error('Failed to pause playback')
         }
       } else {
-        const result = await spotifyApi.resumePlayback()
+        // Get the current track's position if available
+        const currentPosition = playbackState.progress_ms || 0
+        const result = await spotifyApi.resumePlayback(currentPosition)
         if (!result.success) {
           throw new Error('Failed to resume playback')
         }

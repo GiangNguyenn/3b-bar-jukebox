@@ -12,16 +12,17 @@ export async function GET(request: Request): Promise<NextResponse> {
   const errorDescription = requestUrl.searchParams.get('error_description')
 
   if (error) {
+    const premiumMessage = 'Spotify Premium account required for this jukebox'
     return NextResponse.redirect(
       `${getBaseUrl(request)}/auth/error?error=${encodeURIComponent(
-        errorDescription ?? error
+        `${premiumMessage}. ${errorDescription ?? error}`
       )}`
     )
   }
 
   if (!code) {
     return NextResponse.redirect(
-      `${getBaseUrl(request)}/auth/error?error=Authorization%20code%20not%20found.`
+      `${getBaseUrl(request)}/auth/error?error=Spotify%20Premium%20account%20required.%20Authorization%20code%20not%20found.`
     )
   }
 
@@ -34,7 +35,7 @@ export async function GET(request: Request): Promise<NextResponse> {
       typeof session.provider_token === 'string' ? session.provider_token : null
     if (!accessToken) {
       return NextResponse.redirect(
-        `${getBaseUrl(request)}/auth/error?error=Spotify%20access%20token%20not%20found.`
+        `${getBaseUrl(request)}/auth/error?error=Spotify%20Premium%20account%20required.%20Access%20token%20not%20found.`
       )
     }
 
