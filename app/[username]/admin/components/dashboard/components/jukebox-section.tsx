@@ -9,7 +9,8 @@ import { useSpotifyPlayerStore } from '@/hooks/useSpotifyPlayer'
 import { sendApiRequest } from '@/shared/api'
 import { useConsoleLogsContext } from '@/hooks/ConsoleLogsProvider'
 import { useState } from 'react'
-import { Copy, Check } from 'lucide-react'
+import { Copy, Check, QrCode } from 'lucide-react'
+import { QRCodeComponent } from '@/components/ui'
 
 interface JukeboxSectionProps {
   className?: string
@@ -24,6 +25,7 @@ export function JukeboxSection({
   const { addLog } = useConsoleLogsContext()
   const [volume, setVolume] = useState(50)
   const [copied, setCopied] = useState(false)
+  const [showQRCode, setShowQRCode] = useState(false)
 
   const { data: currentlyPlaying, isLoading } = useNowPlayingTrack({
     token: null, // Use admin credentials
@@ -91,7 +93,7 @@ export function JukeboxSection({
     >
       <div className='space-y-4'>
         <div>
-          <h3 className='text-white text-lg font-semibold'>Jukebox</h3>
+          <h3 className='text-white text-lg font-semibold'>Jukebox Controls</h3>
         </div>
 
         {/* Currently Playing Track */}
@@ -254,25 +256,53 @@ export function JukeboxSection({
               <span className='flex-1 truncate text-sm text-gray-300'>
                 {`${window.location.origin}/${username}/playlist`}
               </span>
-              <button
-                onClick={(): void => {
-                  void handleCopyLink()
-                }}
-                className='hover:text-white ml-2 flex-shrink-0 rounded p-1 text-gray-400 transition-colors hover:bg-gray-700'
-                title='Copy link to clipboard'
-              >
-                {copied ? (
-                  <Check className='h-4 w-4 text-green-500' />
-                ) : (
-                  <Copy className='h-4 w-4' />
-                )}
-              </button>
+              <div className='flex items-center gap-1'>
+                <button
+                  onClick={(): void => {
+                    setShowQRCode(!showQRCode)
+                  }}
+                  className='hover:text-white flex-shrink-0 rounded p-1 text-gray-400 transition-colors hover:bg-gray-700'
+                  title='Show/hide QR code'
+                >
+                  <QrCode className='h-4 w-4' />
+                </button>
+                <button
+                  onClick={(): void => {
+                    void handleCopyLink()
+                  }}
+                  className='hover:text-white flex-shrink-0 rounded p-1 text-gray-400 transition-colors hover:bg-gray-700'
+                  title='Copy link to clipboard'
+                >
+                  {copied ? (
+                    <Check className='h-4 w-4 text-green-500' />
+                  ) : (
+                    <Copy className='h-4 w-4' />
+                  )}
+                </button>
+              </div>
             </div>
             <p className='text-center text-xs text-gray-400'>
               {copied
                 ? 'Link copied!'
                 : 'Public jukebox page - share with guests (no Spotify account required)'}
             </p>
+
+            {/* QR Code Section */}
+            {showQRCode && (
+              <div className='mt-4 rounded-lg border border-gray-700 bg-gray-800/50 p-4'>
+                <div className='mb-3 text-center'>
+                  <h4 className='text-white text-sm font-medium'>QR Code</h4>
+                  <p className='text-xs text-gray-400'>
+                    Scan to open the jukebox page
+                  </p>
+                </div>
+                <QRCodeComponent
+                  url={`${window.location.origin}/${username}/playlist`}
+                  size={180}
+                  className='mx-auto'
+                />
+              </div>
+            )}
           </div>
         )}
       </div>

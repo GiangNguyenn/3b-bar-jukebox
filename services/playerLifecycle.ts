@@ -381,7 +381,20 @@ class PlayerLifecycleService {
 
         player.addListener('account_error', ({ message }) => {
           this.log('ERROR', `Account error: ${message}`)
-          onStatusChange('error', `Account error: ${message}`)
+
+          // Check if this is a premium-related error
+          const isPremiumError =
+            message.toLowerCase().includes('premium') ||
+            message.toLowerCase().includes('subscription') ||
+            message.toLowerCase().includes('not available') ||
+            message.toLowerCase().includes('upgrade')
+
+          if (isPremiumError) {
+            // Redirect to premium-required page for premium-related account errors
+            window.location.href = '/premium-required'
+          } else {
+            onStatusChange('error', `Account error: ${message}`)
+          }
         })
 
         player.addListener('playback_error', ({ message }) => {

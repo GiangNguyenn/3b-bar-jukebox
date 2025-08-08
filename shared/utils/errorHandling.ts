@@ -92,3 +92,17 @@ export function determineErrorType(error: unknown): ErrorType {
   }
   return ErrorType.PLAYBACK
 }
+
+export function isPremiumRequiredError(error: unknown): boolean {
+  if (error instanceof Error) {
+    const message = error.message.toLowerCase()
+    return (
+      message.includes('premium') ||
+      message.includes('subscription') ||
+      message.includes('upgrade') ||
+      message.includes('account type') ||
+      message.includes('not available for your account')
+    )
+  }
+  return false
+}

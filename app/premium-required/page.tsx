@@ -8,6 +8,7 @@ import { FaSpotify, FaCrown, FaMusic, FaPlay, FaSync } from 'react-icons/fa'
 import { usePremiumStatus } from '@/hooks/usePremiumStatus'
 import { useConsoleLogsContext } from '@/hooks/ConsoleLogsProvider'
 import { Loading } from '@/components/ui/loading'
+import { startFreshAuthentication } from '@/shared/utils/authCleanup'
 
 export default function PremiumRequiredPage(): JSX.Element {
   const { addLog } = useConsoleLogsContext()
@@ -118,38 +119,16 @@ export default function PremiumRequiredPage(): JSX.Element {
   const handleSignInAgain = async (): Promise<void> => {
     setIsSigningInAgain(true)
     try {
-      // Clear the user's profile data to ensure fresh start
-      const {
-        data: { user }
-      } = await supabase.auth.getUser()
-      if (user) {
-        try {
-          await supabase.from('profiles').delete().eq('id', user.id)
-        } catch (error) {
-          addLog(
-            'ERROR',
-            'Error clearing profile:',
-            'PremiumRequired',
-            error instanceof Error ? error : undefined
-          )
-        }
-      }
-
-      await supabase.auth.signOut()
-      // Redirect to sign in page
-      router.push('/auth/signin')
-
-      // Add a timeout to reset the loading state if redirect doesn't happen immediately
-      setTimeout(() => {
-        setIsSigningInAgain(false)
-      }, 3000)
+      await startFreshAuthentication()
     } catch (error) {
       addLog(
         'ERROR',
-        'Error signing out:',
+        'Error during fresh authentication:',
         'PremiumRequired',
         error instanceof Error ? error : undefined
       )
+      // Fallback to manual navigation
+      router.push('/auth/signin')
       setIsSigningInAgain(false)
     }
   }

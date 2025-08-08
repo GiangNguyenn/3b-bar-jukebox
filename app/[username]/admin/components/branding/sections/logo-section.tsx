@@ -3,6 +3,7 @@
 import { Card } from '@/components/ui/card'
 import { useImageToBase64 } from '../hooks/useImageToBase64'
 import type { BrandingSettings } from '../types'
+import Image from 'next/image'
 
 interface LogoSectionProps {
   settings: BrandingSettings
@@ -80,10 +81,12 @@ export function LogoSection({
 
           {settings.logo_url && (
             <div className='flex items-center space-x-4'>
-              <img
+              <Image
                 src={settings.logo_url}
                 alt='Current logo'
-                className='h-16 w-16 rounded border object-contain'
+                width={64}
+                height={64}
+                className='rounded border object-contain'
               />
               <div className='text-sm text-gray-600'>
                 Logo converted successfully
@@ -126,10 +129,12 @@ export function LogoSection({
 
           {settings.favicon_url && (
             <div className='flex items-center space-x-4'>
-              <img
+              <Image
                 src={settings.favicon_url}
                 alt='Current favicon'
-                className='h-8 w-8 rounded border object-contain'
+                width={32}
+                height={32}
+                className='rounded border object-contain'
               />
               <div className='text-sm text-gray-600'>
                 Favicon converted successfully
