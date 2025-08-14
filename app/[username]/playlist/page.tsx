@@ -418,11 +418,6 @@ export default function PlaylistPage(): JSX.Element {
     return <Loading fullScreen message={loadingMessage} />
   }
 
-  if (!settings) {
-    const loadingMessage = 'Loading...'
-    return <Loading fullScreen message={loadingMessage} />
-  }
-
   // Show welcome message immediately after branding loads, regardless of other loading states
   const hasWelcomeMessage =
     settings?.welcome_message && settings.welcome_message.trim() !== ''

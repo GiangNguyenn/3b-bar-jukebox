@@ -1,4 +1,4 @@
-import { createClient } from '@supabase/supabase-js'
+import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 import type { Database } from '@/types/supabase'
 import { stripeService } from './stripeService'
 import { subscriptionCache } from './subscriptionCache'
@@ -722,9 +722,11 @@ export class SubscriptionService {
    */
   async updateSubscriptionFromStripeSession(
     sessionId: string,
-    profileId: string
+    profileId: string,
+    supabaseClient?: SupabaseClient<Database>
   ): Promise<boolean> {
     try {
+      const db = supabaseClient ?? this.supabase
       // Get the checkout session from Stripe
       const session = await stripeService.getCheckoutSession(sessionId)
 
@@ -749,8 +751,20 @@ export class SubscriptionService {
       }
 
       // Get or create subscription record
-      let subscription: Subscription | null =
-        await this.getActiveSubscription(profileId)
+      // Try to read active subscription using the provided client (respects RLS with auth)
+      let subscription: Subscription | null = null
+      try {
+        const { data } = await db
+          .from('subscriptions')
+          .select('*')
+          .eq('profile_id', profileId)
+          .in('status', ['active', 'canceling'])
+          .order('created_at', { ascending: false })
+          .maybeSingle()
+        subscription = (data as Subscription) ?? null
+      } catch {
+        subscription = null
+      }
 
       if (!subscription) {
         // Create new subscription
@@ -774,16 +788,21 @@ export class SubscriptionService {
             : null
         }
 
-        const newSubscription = await this.createSubscription(subscriptionData)
-        if (!newSubscription) {
+        const { data: newSubscription, error: insertError } = await db
+          .from('subscriptions')
+          .insert(subscriptionData)
+          .select()
+          .single()
+
+        if (insertError || !newSubscription) {
           logger(
             'ERROR',
-            'Failed to create subscription',
+            `Failed to create subscription: ${insertError ? JSON.stringify(insertError) : 'no data returned'}`,
             'SubscriptionService'
           )
           return false
         }
-        subscription = newSubscription
+        subscription = newSubscription as Subscription
       } else {
         // Update existing subscription
         const updates = {
@@ -806,28 +825,37 @@ export class SubscriptionService {
               ).toISOString()
             : subscription.current_period_end
         }
-
-        const updatedSubscription = await this.updateSubscription(
-          subscription.id,
-          updates
-        )
-        if (!updatedSubscription) {
+        const { data: updatedSubscription, error: updateError } = await db
+          .from('subscriptions')
+          .update(updates)
+          .eq('id', subscription.id)
+          .select()
+          .single()
+        if (updateError || !updatedSubscription) {
           logger(
             'ERROR',
-            'Failed to update subscription',
+            `Failed to update subscription ${subscription.id}: ${updateError ? JSON.stringify(updateError) : 'no data returned'}`,
             'SubscriptionService'
           )
           return false
         }
-        subscription = updatedSubscription
+        subscription = updatedSubscription as Subscription
       }
 
       // Update profile with subscription link
-      await this.supabase
+      const { error: linkError } = await db
         .from('profiles')
         .update({ subscription_id: subscription.id })
         .eq('id', profileId)
 
+      if (linkError) {
+        logger(
+          'ERROR',
+          `Failed to link subscription to profile ${profileId}: ${JSON.stringify(linkError)}`,
+          'SubscriptionService'
+        )
+        return false
+      }
       // Clear cache for this user
       subscriptionCache.invalidateUserCache(profileId)
 

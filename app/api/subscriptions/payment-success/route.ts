@@ -78,7 +78,8 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     const success =
       await subscriptionService.updateSubscriptionFromStripeSession(
         sessionId,
-        profile.id
+        profile.id,
+        supabase
       )
 
     if (!success) {
