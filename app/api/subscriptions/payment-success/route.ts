@@ -75,11 +75,12 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     }
 
     // Update subscription status immediately
-    const success = await subscriptionService.updateSubscriptionFromStripeSession(
-      sessionId,
-      profile.id,
-      supabase
-    )
+    const success =
+      await subscriptionService.updateSubscriptionFromStripeSession(
+        sessionId,
+        profile.id,
+        supabase
+      )
 
     if (!success) {
       logger('ERROR', 'Failed to update subscription status', 'PaymentSuccess')
