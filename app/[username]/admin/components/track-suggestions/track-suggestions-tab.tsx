@@ -74,8 +74,8 @@ export function TrackSuggestionsTab({
       ]
       updateState({
         genres,
-        popularity: 60,
-        yearRange: [currentYear - 9, currentYear]
+        popularity: 10,
+        yearRange: [1960, currentYear]
       })
       return
     }
@@ -92,7 +92,7 @@ export function TrackSuggestionsTab({
       updateState({
         genres,
         popularity: 60,
-        yearRange: [currentYear - 19, currentYear]
+        yearRange: [1970, currentYear]
       })
       return
     }
@@ -225,7 +225,7 @@ export function TrackSuggestionsTab({
               Let&apos;s Rock
             </div>
             <div className='group-hover:text-primary/80 text-xs text-muted-foreground'>
-              Latest Rock and Metal
+              Rock and Metal
             </div>
           </button>
           <button
