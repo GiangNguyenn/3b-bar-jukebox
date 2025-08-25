@@ -16,6 +16,7 @@ import {
   type LastSuggestedTrackInfo
 } from '@/shared/types/trackSuggestions'
 import { useTrackSuggestions } from './hooks/useTrackSuggestions'
+import { type Genre } from '@/shared/constants/trackSuggestion'
 
 interface TrackSuggestionsTabProps {
   onStateChange: (state: TrackSuggestionsState) => void
@@ -47,6 +48,70 @@ export function TrackSuggestionsTab({
     setAutoFillTargetSize,
     updateState
   } = useTrackSuggestions(initialState)
+
+  const currentYear = new Date().getFullYear()
+
+  function applyPreset(preset: 'party' | 'chill' | 'rock' | 'classics'): void {
+    if (preset === 'party') {
+      const genres: Genre[] = ['Pop', 'Dance Pop', 'Viral Pop']
+      updateState({
+        genres,
+        popularity: 80,
+        yearRange: [currentYear - 1, currentYear]
+      })
+      return
+    }
+
+    if (preset === 'chill') {
+      const genres: Genre[] = [
+        'Chill-out',
+        'Chill Lounge',
+        'Chill Groove',
+        'Ambient',
+        'Lounge',
+        'Smooth Jazz',
+        'Soft Rock'
+      ]
+      updateState({
+        genres,
+        popularity: 60,
+        yearRange: [currentYear - 9, currentYear]
+      })
+      return
+    }
+
+    if (preset === 'rock') {
+      const genres: Genre[] = [
+        'Rock',
+        'Metal',
+        'Alternative Rock',
+        'Alternative Metal',
+        'Hard Rock',
+        'Indie Rock'
+      ]
+      updateState({
+        genres,
+        popularity: 60,
+        yearRange: [currentYear - 19, currentYear]
+      })
+      return
+    }
+
+    // classics
+    const genres: Genre[] = [
+      'Classic Rock',
+      'Pop',
+      'Disco',
+      'Funk',
+      'Soul',
+      'R&b'
+    ]
+    updateState({
+      genres,
+      popularity: 75,
+      yearRange: [1960, 2009]
+    })
+  }
 
   const lastTrackUriRef = useRef<string | null>(null)
   const isInitialMount = useRef(true)
@@ -119,6 +184,64 @@ export function TrackSuggestionsTab({
     <div className='space-y-6'>
       <div className='flex items-center justify-between'>
         <h2 className='text-2xl font-bold'>Suggestions</h2>
+      </div>
+
+      <div className='space-y-3'>
+        <div className='text-sm text-muted-foreground'>Quick presets</div>
+        <div className='grid gap-3 md:grid-cols-2'>
+          <button
+            type='button'
+            onClick={() => applyPreset('party')}
+            className='border-primary/20 bg-primary/5 hover:border-primary/40 hover:bg-primary/10 group w-full cursor-pointer rounded-lg border-2 px-4 py-3 text-left text-sm transition-all duration-200 hover:shadow-md'
+            aria-label='Apply Party Mode preset'
+          >
+            <div className='text-primary group-hover:text-primary/80 font-semibold'>
+              Party Mode
+            </div>
+            <div className='text-xs text-muted-foreground group-hover:text-muted-foreground/80'>
+              Latest Pop Hits
+            </div>
+          </button>
+          <button
+            type='button'
+            onClick={() => applyPreset('chill')}
+            className='border-primary/20 bg-primary/5 hover:border-primary/40 hover:bg-primary/10 group w-full cursor-pointer rounded-lg border-2 px-4 py-3 text-left text-sm transition-all duration-200 hover:shadow-md'
+            aria-label='Apply Chill Mode preset'
+          >
+            <div className='text-primary group-hover:text-primary/80 font-semibold'>
+              Chill Mode
+            </div>
+            <div className='group-hover:text-primary/80 text-xs text-muted-foreground'>
+              Easy Listening
+            </div>
+          </button>
+          <button
+            type='button'
+            onClick={() => applyPreset('rock')}
+            className='border-primary/20 bg-primary/5 hover:border-primary/40 hover:bg-primary/10 group w-full cursor-pointer rounded-lg border-2 px-4 py-3 text-left text-sm transition-all duration-200 hover:shadow-md'
+            aria-label="Apply Let's Rock preset"
+          >
+            <div className='text-primary group-hover:text-primary/80 font-semibold'>
+              Let&apos;s Rock
+            </div>
+            <div className='group-hover:text-primary/80 text-xs text-muted-foreground'>
+              Latest Rock and Metal
+            </div>
+          </button>
+          <button
+            type='button'
+            onClick={() => applyPreset('classics')}
+            className='border-primary/20 bg-primary/5 hover:border-primary/40 hover:bg-primary/10 group w-full cursor-pointer rounded-lg border-2 px-4 py-3 text-left text-sm transition-all duration-200 hover:shadow-md'
+            aria-label='Apply Classics preset'
+          >
+            <div className='text-primary group-hover:text-primary/80 font-semibold'>
+              Classics
+            </div>
+            <div className='group-hover:text-primary/80 text-xs text-muted-foreground'>
+              Classic Hits from the Ages
+            </div>
+          </button>
+        </div>
       </div>
 
       <div className='grid gap-6 md:grid-cols-2'>

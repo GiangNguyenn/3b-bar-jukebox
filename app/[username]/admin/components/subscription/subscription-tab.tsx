@@ -377,7 +377,7 @@ export function SubscriptionTab(): JSX.Element {
           {/* Monthly Plan */}
           <div className='rounded-lg border border-blue-500 bg-blue-500/10 p-4'>
             <h4 className='mb-2 text-lg font-semibold'>Monthly Plan</h4>
-            <p className='mb-4 text-2xl font-bold'>$5 USD/month</p>
+            <p className='mb-4 text-2xl font-bold'>$1 USD/month</p>
             <ul className='space-y-2 text-sm'>
               <li className='flex items-center'>
                 <span className='mr-2 text-green-500'>✓</span>
@@ -463,7 +463,7 @@ export function SubscriptionTab(): JSX.Element {
                     <span>Processing...</span>
                   </div>
                 ) : (
-                  'Upgrade to Monthly ($5 USD/month)'
+                  'Upgrade to Monthly ($1 USD/month)'
                 )}
               </button>
               <button
@@ -549,75 +549,17 @@ export function SubscriptionTab(): JSX.Element {
               </div>
             )}
 
-            {/* Delete all subscription data */}
-            <div className='mt-6 border-t border-red-500/30 pt-6'>
-              <div className='rounded-lg border border-red-500/50 bg-red-900/20 p-4'>
-                <h4 className='mb-2 font-semibold text-red-400'>
-                  🗑️ Delete Subscription Data
-                </h4>
-                <p className='mb-3 text-sm text-red-300'>
-                  This will permanently delete all subscription data for the
-                  current user. This action cannot be undone.
-                </p>
-                <button
-                  onClick={(): void => {
-                    const handleDelete = async (): Promise<void> => {
-                      if (
-                        confirm(
-                          '⚠️ WARNING: This will permanently delete ALL subscription data for the current user. This action cannot be undone. Are you sure?'
-                        )
-                      ) {
-                        try {
-                          const controller = new AbortController()
-                          const timeoutId = setTimeout(
-                            () => controller.abort(),
-                            10000
-                          ) // 10 second timeout
-
-                          const response = await fetch(
-                            '/api/subscriptions/test-delete-all',
-                            {
-                              method: 'DELETE',
-                              headers: {
-                                'Content-Type': 'application/json'
-                              },
-                              signal: controller.signal
-                            }
-                          )
-
-                          clearTimeout(timeoutId)
-
-                          if (response.ok) {
-                            await response.json()
-                            alert(
-                              '✅ All subscription data deleted successfully'
-                            )
-                            // Refresh the page to show updated state
-                            window.location.reload()
-                          } else {
-                            const error = await response.text()
-                            alert(
-                              `❌ Error deleting subscription data: ${error}`
-                            )
-                          }
-                        } catch (error) {
-                          if (
-                            error instanceof Error &&
-                            error.name === 'AbortError'
-                          ) {
-                            alert('❌ Request timed out after 10 seconds')
-                          } else {
-                            alert(`❌ Error: ${String(error)}`)
-                          }
-                        }
-                      }
-                    }
-                    void handleDelete()
-                  }}
-                  className='text-white w-full rounded-lg bg-red-600 px-6 py-3 font-medium transition-colors hover:bg-red-700'
+            {/* Contact Support Section */}
+            <div className='mt-8 border-t border-gray-600 pt-6'>
+              <div className='text-center'>
+                <a
+                  href='https://docs.google.com/forms/d/e/1FAIpQLSfOymxOZlSC9cwTktENDx2XoafoanZDankoGhKiqO0jIcfHng/viewform'
+                  target='_blank'
+                  rel='noopener noreferrer'
+                  className='text-white inline-flex items-center justify-center rounded-lg bg-blue-600 px-6 py-3 font-medium transition-colors hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2'
                 >
-                  🗑️ Delete All Subscription Data
-                </button>
+                  📧 Contact Support
+                </a>
               </div>
             </div>
           </div>
