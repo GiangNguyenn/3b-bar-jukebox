@@ -214,69 +214,96 @@ export async function searchTracksByGenre(
 ): Promise<TrackDetails[]> {
   try {
     const [startYear, endYear] = yearRange
-    const randomOffset = Math.floor(Math.random() * maxOffset)
 
-    logger(
-      'INFO',
-      `[searchTracksByGenre] Searching for genre "${genre}" with params: ${JSON.stringify(
-        {
-          yearRange: [startYear, endYear],
-          market,
-          minPopularity,
-          maxOffset,
-          randomOffset,
-          useAppToken
-        }
-      )}`
-    )
+    // Retry configuration: progressively reduce the offset cap and force last attempt to offset=0
+    const maxRetries = 3
+    let offsetCap = Math.max(1, Math.floor(maxOffset))
 
-    // Construct the full request URL for logging
-    const baseUrl =
-      process.env.NEXT_PUBLIC_SPOTIFY_BASE_URL || 'https://api.spotify.com/v1'
-    const fullUrl = `${baseUrl}/${SPOTIFY_SEARCH_ENDPOINT}?q=genre:${encodeURIComponent(genre)} year:${startYear}-${endYear}&type=track&limit=${TRACK_SEARCH_LIMIT}&market=${market}&offset=${randomOffset}`
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      // Force the last attempt to use offset 0
+      const randomOffset =
+        attempt === maxRetries ? 0 : Math.floor(Math.random() * offsetCap)
 
-    logger('INFO', `[searchTracksByGenre] Full Spotify API URL: ${fullUrl}`)
-
-    const response = await sendApiRequest<{
-      tracks: { items: TrackDetails[] }
-    }>({
-      path: `${SPOTIFY_SEARCH_ENDPOINT}?q=genre:${encodeURIComponent(genre)} year:${startYear}-${endYear}&type=track&limit=${TRACK_SEARCH_LIMIT}&market=${market}&offset=${randomOffset}`,
-      method: 'GET',
-      useAppToken,
-      debounceTime: 0 // Disable caching for search requests to ensure fresh results
-    })
-
-    const tracks = response.tracks?.items
-    if (!Array.isArray(tracks)) {
-      logger(
-        'ERROR',
-        `[searchTracksByGenre] Unexpected API response format: ${JSON.stringify(response)}`
-      )
-      throw new Error('Unexpected API response format')
-    }
-
-    logger(
-      'INFO',
-      `[searchTracksByGenre] Successfully retrieved ${tracks.length} tracks for genre "${genre}"`
-    )
-
-    // Log some sample tracks for debugging
-    if (tracks.length > 0) {
-      const sampleTracks = tracks.slice(0, 3).map((t) => ({
-        name: t.name,
-        artist: t.artists.map((a) => a.name).join(', '),
-        popularity: t.popularity,
-        duration_ms: t.duration_ms,
-        is_playable: t.is_playable,
-        explicit: t.explicit
-      }))
       logger(
         'INFO',
-        `[searchTracksByGenre] Sample tracks: ${JSON.stringify(sampleTracks)}`
+        `[searchTracksByGenre] Attempt ${attempt}/${maxRetries} for genre "${genre}" with params: ${JSON.stringify(
+          {
+            yearRange: [startYear, endYear],
+            market,
+            minPopularity,
+            offsetCap,
+            offset: randomOffset,
+            useAppToken
+          }
+        )}`
       )
+
+      // Construct the full request URL for logging
+      const baseUrl =
+        process.env.NEXT_PUBLIC_SPOTIFY_BASE_URL || 'https://api.spotify.com/v1'
+      const fullUrl = `${baseUrl}/${SPOTIFY_SEARCH_ENDPOINT}?q=genre:${encodeURIComponent(genre)} year:${startYear}-${endYear}&type=track&limit=${TRACK_SEARCH_LIMIT}&market=${market}&offset=${randomOffset}`
+
+      logger('INFO', `[searchTracksByGenre] Full Spotify API URL: ${fullUrl}`)
+
+      const response = await sendApiRequest<{
+        tracks: { items: TrackDetails[] }
+      }>({
+        path: `${SPOTIFY_SEARCH_ENDPOINT}?q=genre:${encodeURIComponent(genre)} year:${startYear}-${endYear}&type=track&limit=${TRACK_SEARCH_LIMIT}&market=${market}&offset=${randomOffset}`,
+        method: 'GET',
+        useAppToken,
+        debounceTime: 0 // Disable caching for search requests to ensure fresh results
+      })
+
+      const tracks = response.tracks?.items
+      if (!Array.isArray(tracks)) {
+        logger(
+          'ERROR',
+          `[searchTracksByGenre] Unexpected API response format: ${JSON.stringify(response)}`
+        )
+        throw new Error('Unexpected API response format')
+      }
+
+      if (tracks.length > 0) {
+        logger(
+          'INFO',
+          `[searchTracksByGenre] Retrieved ${tracks.length} tracks for genre "${genre}" on attempt ${attempt}`
+        )
+        // Log some sample tracks for debugging
+        const sampleTracks = tracks.slice(0, 3).map((t) => ({
+          name: t.name,
+          artist: t.artists.map((a) => a.name).join(', '),
+          popularity: t.popularity,
+          duration_ms: t.duration_ms,
+          is_playable: t.is_playable,
+          explicit: t.explicit
+        }))
+        logger(
+          'INFO',
+          `[searchTracksByGenre] Sample tracks: ${JSON.stringify(sampleTracks)}`
+        )
+        return tracks
+      }
+
+      // No results; if not last attempt, reduce offset cap and retry
+      if (attempt < maxRetries) {
+        const nextCap = Math.max(1, Math.floor(offsetCap / 2))
+        logger(
+          'WARN',
+          `[searchTracksByGenre] No results (attempt=${attempt}, offsetCap=${offsetCap}, offset=${randomOffset}). Retrying with offsetCap=${nextCap}`
+        )
+        offsetCap = nextCap
+        continue
+      }
+
+      logger(
+        'WARN',
+        `[searchTracksByGenre] No results after ${attempt} attempt(s). Returning empty list.`
+      )
+      return []
     }
 
-    return tracks
+    // Fallback (should not be reached)
+    return []
   } catch (error) {
     logger(
       'ERROR',

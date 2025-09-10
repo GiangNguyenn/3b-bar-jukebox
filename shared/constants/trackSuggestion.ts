@@ -1422,6 +1422,41 @@ export const ALL_SPOTIFY_GENRES = [
 // Genre type represents any valid Spotify genre
 export type Genre = (typeof ALL_SPOTIFY_GENRES)[number]
 
+// Curated, popular genre set used by admin Suggestions UI (Option A)
+// Keep this list small and broadly representative. Review quarterly.
+export const POPULAR_GENRES = [
+  'Pop',
+  'Hip Hop',
+  'R&b',
+  'Soul',
+  'Dance Pop',
+  'Electronic',
+  'House',
+  'Techno',
+  'Trance',
+  'Drum And Bass',
+  'Dubstep',
+  'Rock',
+  'Alternative Rock',
+  'Classic Rock',
+  'Metal',
+  'Punk',
+  'Country',
+  'Folk',
+  'Singer-songwriter',
+  'Latin',
+  'Reggaeton',
+  'Regional Mexican',
+  'Afrobeat',
+  'K-pop',
+  'J-pop',
+  'Reggae',
+  'Jazz',
+  'Blues',
+  'Classical',
+  'Soundtrack'
+] as const satisfies readonly Genre[]
+
 // Configuration
 export const MAX_PLAYLIST_LENGTH = 3
 export const TRACK_SEARCH_LIMIT = 50
