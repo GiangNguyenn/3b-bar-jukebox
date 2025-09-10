@@ -7,10 +7,7 @@ import {
   ChevronUpDownIcon,
   XMarkIcon
 } from '@heroicons/react/20/solid'
-import {
-  ALL_SPOTIFY_GENRES,
-  type Genre
-} from '@/shared/constants/trackSuggestion'
+import { POPULAR_GENRES, type Genre } from '@/shared/constants/trackSuggestion'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 
 interface GenresSelectorProps {
@@ -25,30 +22,25 @@ export function GenresSelector({
   const [query, setQuery] = useState('')
 
   const filteredGenres =
-    query.length < 3
-      ? []
-      : ALL_SPOTIFY_GENRES.filter((genre) => {
+    query.length === 0
+      ? [...POPULAR_GENRES]
+      : POPULAR_GENRES.filter((genre) => {
           return genre.toLowerCase().includes(query.toLowerCase())
         }).sort((a, b) => {
           const queryLower = query.toLowerCase()
           const aLower = a.toLowerCase()
           const bLower = b.toLowerCase()
 
-          // Exact match gets highest priority
           const aExact = aLower === queryLower
           const bExact = bLower === queryLower
-
           if (aExact && !bExact) return -1
           if (!aExact && bExact) return 1
 
-          // Starts with query gets second priority
           const aStartsWith = aLower.startsWith(queryLower)
           const bStartsWith = bLower.startsWith(queryLower)
-
           if (aStartsWith && !bStartsWith) return -1
           if (!aStartsWith && bStartsWith) return 1
 
-          // If both have same priority, sort alphabetically
           return aLower.localeCompare(bLower)
         })
 
