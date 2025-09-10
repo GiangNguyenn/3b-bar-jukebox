@@ -221,20 +221,21 @@ export async function searchTracksByGenre(
 
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
       // Force the last attempt to use offset 0
-      const randomOffset = attempt === maxRetries
-        ? 0
-        : Math.floor(Math.random() * offsetCap)
+      const randomOffset =
+        attempt === maxRetries ? 0 : Math.floor(Math.random() * offsetCap)
 
       logger(
         'INFO',
-        `[searchTracksByGenre] Attempt ${attempt}/${maxRetries} for genre "${genre}" with params: ${JSON.stringify({
-          yearRange: [startYear, endYear],
-          market,
-          minPopularity,
-          offsetCap,
-          offset: randomOffset,
-          useAppToken
-        })}`
+        `[searchTracksByGenre] Attempt ${attempt}/${maxRetries} for genre "${genre}" with params: ${JSON.stringify(
+          {
+            yearRange: [startYear, endYear],
+            market,
+            minPopularity,
+            offsetCap,
+            offset: randomOffset,
+            useAppToken
+          }
+        )}`
       )
 
       // Construct the full request URL for logging
@@ -276,7 +277,10 @@ export async function searchTracksByGenre(
           is_playable: t.is_playable,
           explicit: t.explicit
         }))
-        logger('INFO', `[searchTracksByGenre] Sample tracks: ${JSON.stringify(sampleTracks)}`)
+        logger(
+          'INFO',
+          `[searchTracksByGenre] Sample tracks: ${JSON.stringify(sampleTracks)}`
+        )
         return tracks
       }
 
@@ -291,7 +295,10 @@ export async function searchTracksByGenre(
         continue
       }
 
-      logger('WARN', `[searchTracksByGenre] No results after ${attempt} attempt(s). Returning empty list.`)
+      logger(
+        'WARN',
+        `[searchTracksByGenre] No results after ${attempt} attempt(s). Returning empty list.`
+      )
       return []
     }
 
