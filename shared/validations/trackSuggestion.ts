@@ -115,8 +115,8 @@ export function validateTrackSuggestionParams(
   if (params.maxOffset !== undefined) {
     if (typeof params.maxOffset !== 'number') {
       errors.push('Max offset must be a number')
-    } else if (params.maxOffset < 0) {
-      errors.push('Max offset cannot be negative')
+    } else if (params.maxOffset < 1) {
+      errors.push('Max offset must be at least 1')
     }
   }
 

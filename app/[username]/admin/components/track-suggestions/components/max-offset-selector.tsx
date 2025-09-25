@@ -53,14 +53,14 @@ export function MaxOffsetSelector({
               <input
                 id='max-offset'
                 type='range'
-                min={0}
+                min={1}
                 max={100}
                 value={offset}
                 onChange={handleChange}
                 className='accent-primary mt-1 block w-full'
               />
               <div className='flex justify-between text-xs text-muted-foreground'>
-                <span>0</span>
+                <span>1</span>
                 <span>50</span>
                 <span>100</span>
               </div>
@@ -71,7 +71,7 @@ export function MaxOffsetSelector({
         <div className='rounded-lg border bg-muted p-3 text-sm'>
           <p className='text-muted-foreground'>
             Spotify search results are paginated. This setting controls the
-            maximum page offset (0 to {offset}) from which to randomly select
+            maximum page offset (1 to {offset}) from which to randomly select
             results. Increasing this value may increase song diversity but could
             result in no songs being found if the offset exceeds available
             results.

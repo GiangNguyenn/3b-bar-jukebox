@@ -28,8 +28,7 @@ export function SongsBetweenRepeatsSelector({
           <CardTitle className='text-lg'>Songs Between Repeats</CardTitle>
           <button
             onClick={handleReset}
-            disabled
-            className='flex cursor-not-allowed items-center gap-2 rounded-md px-2 py-1 text-xs text-muted-foreground opacity-50'
+            className='flex items-center gap-2 rounded-md px-2 py-1 text-xs text-muted-foreground hover:text-foreground'
           >
             <RefreshCw className='h-3 w-3' />
             Reset
@@ -53,8 +52,7 @@ export function SongsBetweenRepeatsSelector({
                 max={100}
                 value={count}
                 onChange={handleChange}
-                disabled
-                className='accent-primary mt-1 block w-full cursor-not-allowed opacity-50'
+                className='accent-primary mt-1 block w-full'
               />
               <div className='flex justify-between text-xs text-muted-foreground'>
                 <span>2</span>
@@ -66,7 +64,11 @@ export function SongsBetweenRepeatsSelector({
         </div>
 
         <div className='rounded-lg border bg-muted p-3 text-sm'>
-          <p className='text-muted-foreground'>This feature coming soon</p>
+          <p className='text-muted-foreground'>
+            Prevents re-suggesting the same song until at least {count} other
+            unique songs have been suggested. Increase to reduce repeats; lower
+            values allow repeats sooner.
+          </p>
         </div>
       </CardContent>
     </Card>

@@ -601,9 +601,31 @@ class AutoPlayService {
 
         // Get current queue to exclude existing tracks
         const currentQueue = this.queueManager.getQueue()
-        const excludedTrackIds = currentQueue.map(
+        let excludedTrackIds = currentQueue.map(
           (item) => item.tracks.spotify_track_id
         )
+
+        // Also exclude tracks from recent cooldown history (client-only, per-username context)
+        try {
+          const { loadCooldownState } = await import(
+            '@/shared/utils/suggestionsCooldown'
+          )
+          const contextId = this.username ?? 'default'
+          const cooldown = loadCooldownState(contextId)
+          if (cooldown.recentTrackIds.length > 0) {
+            logger(
+              'WARN',
+              `[AutoFill] Including ${cooldown.recentTrackIds.length} cooldown trackIds into exclusions for context=${contextId}`
+            )
+            excludedTrackIds = Array.from(
+              new Set([...excludedTrackIds, ...cooldown.recentTrackIds])
+            )
+            logger(
+              'WARN',
+              `[AutoFill] Exclusions total after cooldown merge: ${excludedTrackIds.length}`
+            )
+          }
+        } catch {}
 
         logger(
           'INFO',
@@ -840,6 +862,29 @@ class AutoPlayService {
                 'INFO',
                 `[AutoFill] Attempt ${attempts} - Successfully added track to queue: ${trackDetails.name} (Total added: ${tracksAdded})`
               )
+
+              // Append to cooldown ring (client-only persistence)
+              try {
+                const {
+                  loadCooldownState,
+                  appendSuggestedTrackId,
+                  saveCooldownState
+                } = await import('@/shared/utils/suggestionsCooldown')
+                const contextId = this.username ?? 'default'
+                const cooldown = loadCooldownState(contextId)
+                const minBetween =
+                  this.trackSuggestionsState?.songsBetweenRepeats ?? 0
+                const next = appendSuggestedTrackId(
+                  cooldown,
+                  trackDetails.id,
+                  minBetween
+                )
+                saveCooldownState(contextId, next)
+                logger(
+                  'WARN',
+                  `[AutoFill] Appended track to cooldown ring (context=${contextId}, minBetween=${minBetween}, size=${next.recentTrackIds.length})`
+                )
+              } catch {}
             }
 
             // Update the last suggested track cache
