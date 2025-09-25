@@ -471,9 +471,33 @@ export default function AdminPage(): JSX.Element {
           ).then((res) => res.json())) as Array<{
             tracks: { spotify_track_id: string }
           }>
-          const excludedTrackIds = currentQueueForExclusion.map(
+          let excludedTrackIds = currentQueueForExclusion.map(
             (item) => item.tracks.spotify_track_id
           )
+
+          // Also exclude locally stored recent suggestions (per-username context)
+          try {
+            const { loadCooldownState } = await import(
+              '@/shared/utils/suggestionsCooldown'
+            )
+            const contextId = username ?? 'default'
+            const cooldown = loadCooldownState(contextId)
+            if (cooldown.recentTrackIds.length > 0) {
+              addLog(
+                'WARN',
+                `[AdminPage] Including ${cooldown.recentTrackIds.length} cooldown trackIds into exclusions for context=${contextId}`,
+                'AdminPage'
+              )
+              excludedTrackIds = Array.from(
+                new Set([...excludedTrackIds, ...cooldown.recentTrackIds])
+              )
+              addLog(
+                'WARN',
+                `[AdminPage] Exclusions total after cooldown merge: ${excludedTrackIds.length}`,
+                'AdminPage'
+              )
+            }
+          } catch {}
 
           addLog(
             'INFO',
@@ -551,6 +575,30 @@ export default function AdminPage(): JSX.Element {
                       `[AdminPage] Manual refresh - Attempt ${attempts} - Successfully added track: ${trackDetails.name} (Total added: ${tracksAdded})`,
                       'AdminPage'
                     )
+
+                    // Append to cooldown ring
+                    try {
+                      const {
+                        loadCooldownState,
+                        appendSuggestedTrackId,
+                        saveCooldownState
+                      } = await import('@/shared/utils/suggestionsCooldown')
+                      const contextId = username ?? 'default'
+                      const cooldown = loadCooldownState(contextId)
+                      const minBetween =
+                        trackSuggestionsState?.songsBetweenRepeats ?? 0
+                      const next = appendSuggestedTrackId(
+                        cooldown,
+                        trackDetails.id,
+                        minBetween
+                      )
+                      saveCooldownState(contextId, next)
+                      addLog(
+                        'WARN',
+                        `[AdminPage] Appended track to cooldown ring (context=${contextId}, minBetween=${minBetween}, size=${next.recentTrackIds.length})`,
+                        'AdminPage'
+                      )
+                    } catch {}
                   } else if (playlistResponse.status === 409) {
                     addLog(
                       'INFO',

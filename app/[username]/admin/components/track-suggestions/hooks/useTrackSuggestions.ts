@@ -18,7 +18,7 @@ const getInitialState = (
     allowExplicit: false,
     maxSongLength: 10,
     songsBetweenRepeats: 50,
-    maxOffset: DEFAULT_MAX_OFFSET,
+    maxOffset: Math.max(1, DEFAULT_MAX_OFFSET),
     autoFillTargetSize: 10,
     ...initialState
   }
@@ -35,7 +35,7 @@ const getInitialState = (
       return {
         ...defaultState,
         ...parsed,
-        maxOffset: parsed.maxOffset ?? defaultState.maxOffset
+        maxOffset: Math.max(1, parsed.maxOffset ?? defaultState.maxOffset)
       }
     } catch (error) {
       console.error('[TrackSuggestions] Failed to parse localStorage:', error)
@@ -137,7 +137,7 @@ export function useTrackSuggestions(
 
   const setMaxOffset = useCallback(
     (maxOffset: number): void => {
-      updateState({ maxOffset })
+      updateState({ maxOffset: Math.max(1, maxOffset) })
     },
     [updateState]
   )
