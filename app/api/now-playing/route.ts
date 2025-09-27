@@ -146,6 +146,8 @@ export async function GET(): Promise<
         .from('profiles')
         .update({
           spotify_access_token: tokenData.access_token,
+          spotify_refresh_token:
+            (tokenData.refresh_token ?? typedProfile.spotify_refresh_token),
           spotify_token_expires_at:
             Math.floor(Date.now() / 1000) + tokenData.expires_in
         })
