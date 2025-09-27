@@ -158,7 +158,9 @@ class TokenManager {
         }
       }
 
-      throw new Error('Failed to get token from user, admin, or public endpoints.')
+      throw new Error(
+        'Failed to get token from user, admin, or public endpoints.'
+      )
     } catch (error) {
       console.error('[TokenManager] Error refreshing token:', error)
       throw error
