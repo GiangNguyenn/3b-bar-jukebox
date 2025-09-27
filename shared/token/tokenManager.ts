@@ -102,27 +102,65 @@ class TokenManager {
 
   private async refreshToken(): Promise<string> {
     try {
-      // First, try to get a user-specific token
-      const response = await fetch(`${this.config.baseUrl}/api/token`, {
+      // Try user-specific token first
+      const tryUser = await fetch(`${this.config.baseUrl}/api/token`, {
         cache: 'no-store',
-        headers: {
-          'Content-Type': 'application/json'
-        }
+        headers: { 'Content-Type': 'application/json' }
       })
-
-      if (response.ok) {
-        const data = (await response.json()) as TokenResponse
-        if (data.access_token) {
+      if (tryUser.ok) {
+        const data = (await tryUser.json()) as TokenResponse
+        if (data?.access_token) {
           this.tokenCache = {
             token: data.access_token,
-            expiry: Date.now() + data.expires_in * 1000
+            expiry: Date.now() + (data.expires_in ?? 0) * 1000
           }
           return data.access_token
         }
       }
 
-      // If user token fails, throw an error
-      throw new Error('Failed to get user token and no fallback is available.')
+      // Fallback 1: admin token endpoint
+      const tryAdmin = await fetch(`${this.config.baseUrl}/api/auth/token`, {
+        cache: 'no-store'
+      })
+      if (tryAdmin.ok) {
+        const adminData = (await tryAdmin.json()) as {
+          access_token: string
+          refresh_token?: string
+          expires_at?: number
+          expires_in?: number
+        }
+        const accessToken = adminData?.access_token
+        const expiresAtMs = adminData?.expires_at
+          ? adminData.expires_at * 1000
+          : Date.now() + (adminData?.expires_in ?? 0) * 1000
+        if (accessToken) {
+          this.tokenCache = { token: accessToken, expiry: expiresAtMs }
+          return accessToken
+        }
+      }
+
+      // Fallback 2: public username token (default admin display_name '3B')
+      const tryPublic = await fetch(
+        `${this.config.baseUrl}/api/token/${encodeURIComponent('3B')}`,
+        { cache: 'no-store' }
+      )
+      if (tryPublic.ok) {
+        const publicData = (await tryPublic.json()) as {
+          access_token: string
+          refresh_token?: string
+          expires_at: number
+        }
+        const accessToken = publicData?.access_token
+        const expiresAtMs = publicData?.expires_at * 1000
+        if (accessToken && expiresAtMs) {
+          this.tokenCache = { token: accessToken, expiry: expiresAtMs }
+          return accessToken
+        }
+      }
+
+      throw new Error(
+        'Failed to get token from user, admin, or public endpoints.'
+      )
     } catch (error) {
       console.error('[TokenManager] Error refreshing token:', error)
       throw error
