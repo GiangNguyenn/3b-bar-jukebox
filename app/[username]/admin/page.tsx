@@ -312,7 +312,6 @@ export default function AdminPage(): JSX.Element {
     }
   }, [recover, addLog])
 
-
   // Add missing functions
   const handleTabChange = useCallback((value: string): void => {
     setActiveTab(

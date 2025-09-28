@@ -49,8 +49,6 @@ type RawTrackData = {
   } | null
 }
 
-
-
 const useTopTracks = (
   shouldFetchData: boolean = true
 ): {
