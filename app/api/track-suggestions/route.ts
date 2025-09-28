@@ -241,8 +241,6 @@ export async function POST(
           method: 'GET'
         })
         artistGenres = artistResponse.genres || []
-        // eslint-disable-next-line @typescript-eslint/no-unused-vars
-        const _primaryGenre: string | null = artistGenres[0] || null
       }
     } catch (error) {
       logger(
@@ -258,29 +256,6 @@ export async function POST(
       const { cookies } = await import('next/headers')
 
       const cookieStore = cookies()
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
-      const _supabase = createServerClient(
-        process.env.NEXT_PUBLIC_SUPABASE_URL!,
-        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-        {
-          cookies: {
-            getAll() {
-              return cookieStore.getAll()
-            },
-            setAll(cookiesToSet) {
-              try {
-                cookiesToSet.forEach(({ name, value, options }) =>
-                  cookieStore.set(name, value, options)
-                )
-              } catch {
-                // The `setAll` method was called from a Server Component.
-                // This can be ignored if you have middleware refreshing
-                // user sessions.
-              }
-            }
-          }
-        }
-      )
 
       // Note: We no longer log track suggestions to the database from this API
       // The suggested_tracks table should only be updated when users directly add tracks to their playlist
