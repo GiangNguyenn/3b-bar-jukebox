@@ -40,30 +40,51 @@ function TrackMetadata({
         )}
       </div>
 
-      {/* Track Info */}
-      <div className='flex flex-col items-start gap-1 text-left sm:gap-2'>
-        {/* Track Name */}
-        <div
-          className='max-w-md text-4xl font-bold transition-colors duration-500 sm:text-6xl md:text-8xl lg:text-9xl xl:text-[144px]'
-          style={{ color: colors.foreground }}
-        >
-          {trackName}
-        </div>
+      {/* Track Info - Same size as album art */}
+      <div className='relative h-80 w-80 flex-shrink-0 overflow-hidden px-4 py-6 sm:h-96 sm:w-96 sm:px-6 sm:py-8 md:h-[448px] md:w-[448px] md:px-8 md:py-10 lg:h-[512px] lg:w-[512px] lg:px-10 lg:py-12'>
+        <div className='flex h-full flex-col justify-center gap-1 text-left sm:gap-2'>
+          {/* Track Name */}
+          <div
+            className='line-clamp-3 font-bold leading-tight transition-colors duration-500'
+            style={{
+              color: colors.foreground,
+              fontSize: 'clamp(1.5rem, 8vw, 4rem)'
+            }}
+          >
+            {trackName}
+          </div>
 
-        {/* Artist */}
-        <div
-          className='text-4xl opacity-80 transition-colors duration-500 sm:text-6xl md:text-7xl lg:text-8xl'
-          style={{ color: colors.accent1 }}
-        >
-          {artistName}
-        </div>
+          {/* Artist */}
+          <div
+            className='line-clamp-2 leading-tight transition-colors duration-500'
+            style={{
+              color: colors.accent1,
+              fontSize: 'clamp(1.25rem, 6vw, 3rem)',
+              textShadow: `2px 2px 4px rgba(0, 0, 0, 0.8), 
+                          -1px -1px 2px rgba(0, 0, 0, 0.8), 
+                          1px -1px 2px rgba(0, 0, 0, 0.8), 
+                          -1px 1px 2px rgba(0, 0, 0, 0.8),
+                          1px 1px 2px rgba(0, 0, 0, 0.8)`
+            }}
+          >
+            {artistName}
+          </div>
 
-        {/* Album */}
-        <div
-          className='text-2xl opacity-60 transition-colors duration-500 sm:text-3xl md:text-4xl'
-          style={{ color: colors.accent2 }}
-        >
-          {albumName}
+          {/* Album */}
+          <div
+            className='line-clamp-2 leading-tight transition-colors duration-500'
+            style={{
+              color: colors.accent2,
+              fontSize: 'clamp(1rem, 4vw, 2rem)',
+              textShadow: `2px 2px 4px rgba(0, 0, 0, 0.8), 
+                          -1px -1px 2px rgba(0, 0, 0, 0.8), 
+                          1px -1px 2px rgba(0, 0, 0, 0.8), 
+                          -1px 1px 2px rgba(0, 0, 0, 0.8),
+                          1px 1px 2px rgba(0, 0, 0, 0.8)`
+            }}
+          >
+            {albumName}
+          </div>
         </div>
       </div>
     </div>
