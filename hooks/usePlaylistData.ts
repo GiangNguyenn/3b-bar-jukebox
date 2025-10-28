@@ -123,7 +123,7 @@ export function usePlaylistData(username?: string) {
       const { data: profile, error: profileError } = await supabase
         .from('profiles')
         .select('id')
-        .eq('display_name', username)
+        .ilike('display_name', username)
         .single<{ id: string }>()
 
       if (profileError || !profile) {

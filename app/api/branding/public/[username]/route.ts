@@ -41,7 +41,7 @@ export async function GET(
     const { data: profile, error: profileError } = await supabase
       .from('profiles')
       .select('id')
-      .eq('display_name', username)
+      .ilike('display_name', username)
       .single()
 
     if (profileError || !profile) {
