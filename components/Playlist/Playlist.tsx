@@ -20,6 +20,7 @@ interface PlaylistProps {
   accentColor2?: string
   accentColor1?: string
   accentColor3?: string
+  username?: string
 }
 
 export default function Playlist({
@@ -35,7 +36,8 @@ export default function Playlist({
   secondaryColor,
   accentColor2,
   accentColor1,
-  accentColor3
+  accentColor3,
+  username
 }: PlaylistProps): JSX.Element {
   const containerRef = useRef<HTMLDivElement>(null)
 
@@ -58,6 +60,7 @@ export default function Playlist({
             extractError={extractError}
             textColor={textColor}
             secondaryColor={secondaryColor}
+            username={username}
           />
           <div className='flex flex-col p-5'>
             <div

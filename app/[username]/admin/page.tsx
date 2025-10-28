@@ -31,19 +31,10 @@ import { useTokenHealth } from '@/hooks/health/useTokenHealth'
 import { tokenManager } from '@/shared/token/tokenManager'
 import { queueManager } from '@/services/queueManager'
 import { getAutoPlayService } from '@/services/autoPlayService'
-import { sendApiRequest } from '@/shared/api'
 import { AutoFillNotification } from '@/components/ui/auto-fill-notification'
 
 import { useSubscription } from '@/hooks/useSubscription'
 import { useGetProfile } from '@/hooks/useGetProfile'
-import {
-  FALLBACK_GENRES,
-  DEFAULT_YEAR_RANGE,
-  MIN_TRACK_POPULARITY,
-  DEFAULT_MAX_SONG_LENGTH_MINUTES,
-  DEFAULT_SONGS_BETWEEN_REPEATS,
-  DEFAULT_MAX_OFFSET
-} from '@/shared/constants/trackSuggestion'
 
 export default function AdminPage(): JSX.Element {
   // State
@@ -289,28 +280,6 @@ export default function AdminPage(): JSX.Element {
 
     void initializePlayer()
   }, [playerStatus, addLog, createPlayer, recoveryState.isRecovering])
-
-  // Manual recovery trigger for user-initiated recovery (e.g., device mismatch, connection issues)
-  const handleForceRecovery = useCallback(async (): Promise<void> => {
-    try {
-      setIsLoading(true)
-
-      // Trigger the recovery system
-      await recover()
-    } catch (error) {
-      addLog(
-        'ERROR',
-        `Manual recovery failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
-        'AdminPage',
-        error instanceof Error ? error : undefined
-      )
-      setError(
-        error instanceof Error ? error.message : 'Manual recovery failed'
-      )
-    } finally {
-      setIsLoading(false)
-    }
-  }, [recover, addLog])
 
   // Add missing functions
   const handleTabChange = useCallback((value: string): void => {

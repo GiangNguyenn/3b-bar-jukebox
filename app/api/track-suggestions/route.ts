@@ -250,22 +250,8 @@ export async function POST(
       // Continue with empty genres array if fetch fails
     }
 
-    // Log the track suggestion to the database with proper genre information
-    try {
-      const { createServerClient } = await import('@supabase/ssr')
-      const { cookies } = await import('next/headers')
-
-      const cookieStore = cookies()
-
-      // Note: We no longer log track suggestions to the database from this API
-      // The suggested_tracks table should only be updated when users directly add tracks to their playlist
-    } catch (error) {
-      logger(
-        'WARN',
-        `[Track Suggestions API] Failed to initialize Supabase client: ${error instanceof Error ? error.message : 'Unknown error'}`
-      )
-      // Continue without database logging if Supabase initialization fails
-    }
+    // Note: We no longer log track suggestions to the database from this API
+    // The suggested_tracks table should only be updated when users directly add tracks to their playlist
 
     const track = result.track as {
       id: string

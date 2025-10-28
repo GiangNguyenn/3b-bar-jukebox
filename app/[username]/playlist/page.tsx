@@ -566,6 +566,7 @@ export default function PlaylistPage(): JSX.Element {
               accentColor2={settings?.accent_color_2 ?? '#6b7280'}
               accentColor1={settings?.accent_color_1 ?? '#d1d5db'}
               accentColor3={settings?.accent_color_3 ?? '#f3f4f6'}
+              username={username}
             />
           </div>
         </Suspense>
