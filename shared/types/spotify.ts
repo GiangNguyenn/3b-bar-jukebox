@@ -110,7 +110,7 @@ export interface SpotifyPlaybackState {
     uri: string
     duration_ms: number
     name: string
-    artists: { name: string }[]
+    artists: Array<{ name: string; id?: string }>
     album: {
       name: string
       images: { url: string }[]
@@ -190,4 +190,25 @@ export interface SpotifyErrorResponse {
     message: string
   }
   details?: string
+}
+
+export interface SpotifyAudioFeatures {
+  danceability: number // 0-1
+  energy: number // 0-1
+  key: number // 0-11
+  loudness: number // dB
+  mode: number // 0 or 1
+  speechiness: number // 0-1
+  acousticness: number // 0-1
+  instrumentalness: number // 0-1
+  liveness: number // 0-1
+  valence: number // 0-1 (positivity)
+  tempo: number // BPM
+  type: string
+  id: string
+  uri: string
+  track_href: string
+  analysis_url: string
+  duration_ms: number
+  time_signature: number
 }

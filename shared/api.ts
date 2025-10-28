@@ -1,5 +1,6 @@
 import { SpotifyErrorResponse } from './types/spotify'
 import { getLogger } from './utils/logger'
+import { cache } from './utils/cache'
 
 export interface ApiErrorOptions {
   status?: number
@@ -176,12 +177,7 @@ export const sendApiRequest = async <T>({
         }
 
         // Handle 401 Unauthorized - attempt token refresh and retry once
-        if (
-          response.status === 401 &&
-          !isLocalApi &&
-          !useAppToken &&
-          retryCount === 0
-        ) {
+        if (response.status === 401 && !isLocalApi && retryCount === 0) {
           const log = await getLogger()
           log(
             'WARN',
@@ -190,13 +186,22 @@ export const sendApiRequest = async <T>({
           )
 
           try {
-            // Clear the token cache to force a refresh
-            tokenManager.clearCache()
+            if (useAppToken) {
+              // For app tokens, clear the cache and get a new token
+              cache.delete('spotify-app-token')
+              const newToken = await getAppAccessToken()
+              if (!newToken) {
+                throw new ApiError('Failed to refresh app token')
+              }
+            } else {
+              // Clear the token cache to force a refresh
+              tokenManager.clearCache()
 
-            // Get a fresh token
-            const newToken = await tokenManager.getToken()
-            if (!newToken) {
-              throw new ApiError('Failed to refresh token')
+              // Get a fresh token
+              const newToken = await tokenManager.getToken()
+              if (!newToken) {
+                throw new ApiError('Failed to refresh token')
+              }
             }
 
             // Retry the request with the new token
