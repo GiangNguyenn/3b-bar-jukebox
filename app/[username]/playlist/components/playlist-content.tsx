@@ -278,6 +278,7 @@ export default function PlaylistContent({
               onVote={(queueId, voteDirection) => {
                 void handleVote(queueId, voteDirection)
               }}
+              username={username}
             />
           </div>
         </Suspense>

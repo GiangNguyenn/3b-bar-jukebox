@@ -49,25 +49,6 @@ type RawTrackData = {
   } | null
 }
 
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-type _RawArtistData = {
-  artist: string
-  total_count: number
-  unique_tracks: number
-  most_popular_track: string
-  most_popular_track_count: number
-}
-
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-type _RawGenreData = {
-  genre: string
-  total_count: number
-  unique_tracks: number
-  most_popular_track: string
-  most_popular_track_count: number
-}
-
 const useTopTracks = (
   shouldFetchData: boolean = true
 ): {

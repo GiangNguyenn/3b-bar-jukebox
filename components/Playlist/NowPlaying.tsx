@@ -9,6 +9,7 @@ interface INowPlayingProps {
   extractError: Error | null
   textColor?: string
   secondaryColor?: string
+  username?: string
 }
 
 const NowPlaying: React.FC<INowPlayingProps> = memo(
@@ -18,7 +19,8 @@ const NowPlaying: React.FC<INowPlayingProps> = memo(
     isExtractLoading,
     extractError,
     textColor = '#000000',
-    secondaryColor = '#6b7280'
+    secondaryColor = '#6b7280',
+    username
   }) => {
     if (!nowPlaying?.item) {
       return (
@@ -37,6 +39,7 @@ const NowPlaying: React.FC<INowPlayingProps> = memo(
 
     const { item: nowPlayingTrack, is_playing } = nowPlaying
     const { name, artists, album } = nowPlayingTrack
+    const is3B = username?.toLowerCase() === '3b'
 
     return (
       <div className='bg-white flex flex-col items-center justify-start rounded-lg p-2 shadow-lg sm:flex-row'>
@@ -48,15 +51,30 @@ const NowPlaying: React.FC<INowPlayingProps> = memo(
           <span className='text-xs font-bold uppercase tracking-wide text-gray-600'>
             Now Playing
           </span>
-          <div
-            className='truncate text-base font-semibold'
-            style={{ color: textColor }}
-          >
-            {name}
-          </div>
-          <div className='truncate text-sm' style={{ color: secondaryColor }}>
-            - {artists.map((artist) => artist.name).join(', ')}
-          </div>
+          {is3B ? (
+            <iframe
+              src='https://beta.nowplaying.site/ZfOzFugudTE2H7DO'
+              width='100%'
+              height='150'
+              style={{ border: 'none', pointerEvents: 'none' }}
+              title='Now Playing'
+            />
+          ) : (
+            <>
+              <div
+                className='truncate text-base font-semibold'
+                style={{ color: textColor }}
+              >
+                {name}
+              </div>
+              <div
+                className='truncate text-sm'
+                style={{ color: secondaryColor }}
+              >
+                - {artists.map((artist) => artist.name).join(', ')}
+              </div>
+            </>
+          )}
           {isExtractLoading && (
             <span className='text-xs italic text-gray-500'>
               Loading artist info...
