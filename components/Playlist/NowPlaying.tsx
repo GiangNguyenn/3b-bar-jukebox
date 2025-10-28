@@ -39,7 +39,7 @@ const NowPlaying: React.FC<INowPlayingProps> = memo(
 
     const { item: nowPlayingTrack, is_playing } = nowPlaying
     const { name, artists, album } = nowPlayingTrack
-    const is3B = username === '3B'
+    const is3B = username?.toLowerCase() === '3b'
 
     return (
       <div className='bg-white flex flex-col items-center justify-start rounded-lg p-2 shadow-lg sm:flex-row'>
