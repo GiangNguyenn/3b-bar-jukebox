@@ -52,8 +52,8 @@ export default function DisplayPage(): ReactElement {
     }
   }, [isPlaybackLoading])
 
-  // Combine error states
-  const hasError = Boolean(playbackError ?? colorsError ?? audioFeaturesError)
+  // Combine error states (audio features are optional, so don't treat their errors as critical)
+  const hasError = Boolean(playbackError ?? colorsError)
 
   // Only show loading on initial load (before first response completes)
   // After initial load completes, never show loading screen even during background polling
