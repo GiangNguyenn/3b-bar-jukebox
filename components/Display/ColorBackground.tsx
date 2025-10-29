@@ -1,8 +1,18 @@
 'use client'
 
-import { memo, useEffect, useState } from 'react'
+import { memo, useEffect, useState, useRef } from 'react'
 import type { ReactElement } from 'react'
 import type { ColorPalette } from '@/shared/utils/colorExtraction'
+
+interface Particle {
+  id: string
+  x: number
+  y: number
+  vx: number
+  vy: number
+  size: number
+  color: string
+}
 
 interface ColorBackgroundProps {
   colors: ColorPalette
@@ -13,44 +23,33 @@ function ColorBackground({
   colors,
   isPlaying
 }: ColorBackgroundProps): ReactElement {
-  const [particles, setParticles] = useState<
-    Array<{
-      x: number
-      y: number
-      vx: number
-      vy: number
-      size: number
-      color: string
-    }>
-  >([])
+  const [particles, setParticles] = useState<Particle[]>([])
+  const animationFrameRef = useRef<number | undefined>()
 
   useEffect(() => {
-    // Generate floating particles
-    const newParticles = Array.from(
-      { length: 20 },
-      (): {
-        x: number
-        y: number
-        vx: number
-        vy: number
-        size: number
-        color: string
-      } => ({
-        x: Math.random() * 100,
-        y: Math.random() * 100,
-        vx: (Math.random() - 0.5) * 0.5,
-        vy: (Math.random() - 0.5) * 0.5,
-        size: Math.random() * 50 + 20,
-        color: Math.random() > 0.5 ? colors.dominant : colors.accent1
-      })
-    )
+    // Generate floating particles with unique IDs
+    const newParticles: Particle[] = Array.from({ length: 20 }, (_, i) => ({
+      id: `particle-${i}-${Date.now()}-${Math.random()}`,
+      x: Math.random() * 100,
+      y: Math.random() * 100,
+      vx: (Math.random() - 0.5) * 0.5,
+      vy: (Math.random() - 0.5) * 0.5,
+      size: Math.random() * 50 + 20,
+      color: Math.random() > 0.5 ? colors.dominant : colors.accent1
+    }))
     setParticles(newParticles)
   }, [colors])
 
   useEffect(() => {
-    if (!isPlaying) return
+    if (!isPlaying) {
+      if (animationFrameRef.current) {
+        cancelAnimationFrame(animationFrameRef.current)
+        animationFrameRef.current = undefined
+      }
+      return
+    }
 
-    const interval = setInterval((): void => {
+    const animate = (): void => {
       setParticles((prev) =>
         prev.map((p) => ({
           ...p,
@@ -58,9 +57,17 @@ function ColorBackground({
           y: (p.y + p.vy + 100) % 100
         }))
       )
-    }, 50)
+      animationFrameRef.current = requestAnimationFrame(animate)
+    }
 
-    return (): void => clearInterval(interval)
+    animationFrameRef.current = requestAnimationFrame(animate)
+
+    return (): void => {
+      if (animationFrameRef.current) {
+        cancelAnimationFrame(animationFrameRef.current)
+        animationFrameRef.current = undefined
+      }
+    }
   }, [isPlaying])
 
   return (
@@ -81,7 +88,7 @@ function ColorBackground({
       >
         {particles.map((particle, i) => (
           <div
-            key={i}
+            key={particle.id}
             className='absolute rounded-full opacity-30 blur-md'
             style={{
               left: `${particle.x}%`,

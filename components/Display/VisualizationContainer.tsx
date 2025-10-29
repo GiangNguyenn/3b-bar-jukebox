@@ -5,9 +5,7 @@ import type { ReactElement } from 'react'
 import type { ColorPalette } from '@/shared/utils/colorExtraction'
 import type { SpotifyAudioFeatures } from '@/shared/types/spotify'
 import GradientWaves from './GradientWaves'
-import PulsingRings from './PulsingRings'
 import LinearSpectrum from './LinearSpectrum'
-import ParticleSystem from './ParticleSystem'
 
 interface VisualizationContainerProps {
   audioFeatures?: SpotifyAudioFeatures | null
@@ -34,35 +32,9 @@ function VisualizationContainer({
         />
       </div>
 
-      {/* Pulsing Rings layer */}
-      <div className='z-15 absolute inset-0' style={{ opacity: 0.7 }}>
-        <PulsingRings
-          audioFeatures={audioFeatures}
-          colors={colors}
-          isPlaying={isPlaying}
-        />
-      </div>
-
       {/* Linear Spectrum layer - bottom */}
-      <div className='z-25 absolute inset-0' style={{ opacity: 0.8 }}>
+      <div className='absolute inset-0 z-[25]' style={{ opacity: 0.8 }}>
         <LinearSpectrum
-          audioFeatures={audioFeatures}
-          colors={colors}
-          isPlaying={isPlaying}
-        />
-      </div>
-
-      {/* Foreground layer - Particle System */}
-      <div
-        className='absolute inset-0 z-30'
-        style={{
-          transform: audioFeatures?.loudness
-            ? `translateZ(${(audioFeatures.loudness + 60) * 2}px) scale(1.1)`
-            : 'translateZ(0) scale(1.1)',
-          filter: 'contrast(1.2) saturate(1.3)'
-        }}
-      >
-        <ParticleSystem
           audioFeatures={audioFeatures}
           colors={colors}
           isPlaying={isPlaying}
@@ -72,4 +44,30 @@ function VisualizationContainer({
   )
 }
 
-export default memo(VisualizationContainer)
+function arePropsEqual(
+  prev: VisualizationContainerProps,
+  next: VisualizationContainerProps
+): boolean {
+  // Compare primitive values
+  if (prev.isPlaying !== next.isPlaying) return false
+
+  // Compare audioFeatures - check if both are null/undefined or have same id
+  const prevAudioFeaturesId = prev.audioFeatures?.id ?? null
+  const nextAudioFeaturesId = next.audioFeatures?.id ?? null
+  if (prevAudioFeaturesId !== nextAudioFeaturesId) return false
+
+  // Compare colors object by checking all properties
+  if (
+    prev.colors.dominant !== next.colors.dominant ||
+    prev.colors.accent1 !== next.colors.accent1 ||
+    prev.colors.accent2 !== next.colors.accent2 ||
+    prev.colors.background !== next.colors.background ||
+    prev.colors.foreground !== next.colors.foreground
+  ) {
+    return false
+  }
+
+  return true
+}
+
+export default memo(VisualizationContainer, arePropsEqual)

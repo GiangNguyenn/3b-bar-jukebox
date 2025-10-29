@@ -1,6 +1,6 @@
 'use client'
 
-import { memo, useEffect, useState, useRef } from 'react'
+import { memo, useEffect, useRef, useMemo } from 'react'
 import type { ReactElement } from 'react'
 import type { ColorPalette } from '@/shared/utils/colorExtraction'
 import type { SpotifyAudioFeatures } from '@/shared/types/spotify'
@@ -11,27 +11,27 @@ interface LinearSpectrumProps {
   isPlaying: boolean
 }
 
+const BAR_COUNT = 50
+const BAR_GAP = 2
+
 function LinearSpectrum({
   audioFeatures,
   colors,
   isPlaying
 }: LinearSpectrumProps): ReactElement {
   const canvasRef = useRef<HTMLCanvasElement>(null)
-  const [animationFrame, setAnimationFrame] = useState(0)
-  const [barHeights, setBarHeights] = useState<number[]>([])
+  const animationFrameRef = useRef<number | undefined>()
+  const timeRef = useRef(0)
 
   const energy = audioFeatures?.energy ?? 0.5
   const loudness = audioFeatures?.loudness ?? -20
 
-  const barCount = 50
-  const barGap = 2
-
-  useEffect(() => {
-    // Generate base bar heights based on frequency bands
+  // Generate base bar heights based on frequency bands - memoized calculation
+  const barHeights = useMemo(() => {
     const heights: number[] = []
 
-    for (let i = 0; i < barCount; i++) {
-      const frequencyBand = i / barCount
+    for (let i = 0; i < BAR_COUNT; i++) {
+      const frequencyBand = i / BAR_COUNT
       let height: number
 
       if (frequencyBand < 0.2) {
@@ -54,26 +54,11 @@ function LinearSpectrum({
       heights.push(height)
     }
 
-    setBarHeights(heights)
-  }, [barCount])
+    return heights
+  }, [])
 
   useEffect(() => {
-    if (!isPlaying) return
-
-    const animate = (): void => {
-      setAnimationFrame((prev) => prev + 1)
-    }
-
-    const animationId = requestAnimationFrame(function loop(): void {
-      animate()
-      requestAnimationFrame(loop)
-    })
-
-    return (): void => cancelAnimationFrame(animationId)
-  }, [isPlaying])
-
-  useEffect(() => {
-    if (!canvasRef.current || barHeights.length === 0) return
+    if (!canvasRef.current) return
 
     const canvas = canvasRef.current
     const ctx = canvas.getContext('2d')
@@ -88,19 +73,22 @@ function LinearSpectrum({
     window.addEventListener('resize', resizeCanvas)
 
     const draw = (): void => {
+      if (!isPlaying) return
+
       ctx.clearRect(0, 0, canvas.width, canvas.height)
 
-      const barWidth = canvas.width / barCount
+      const barWidth = canvas.width / BAR_COUNT
       const loudnessScale = Math.max((loudness + 60) / 60, 0.3)
       const maxBarHeight = canvas.height * 0.8
 
+      timeRef.current += 0.05
+
       barHeights.forEach((height, i) => {
         // Add animation variation
-        const timeVariation = isPlaying
-          ? Math.sin((i / barCount) * Math.PI * 6 + animationFrame * 0.05) * 20
-          : 0
+        const timeVariation =
+          Math.sin((i / BAR_COUNT) * Math.PI * 6 + timeRef.current) * 20
 
-        const randomVariation = isPlaying ? (Math.random() - 0.5) * 15 : 0
+        const randomVariation = (Math.random() - 0.5) * 15
         const heightVariation = timeVariation + randomVariation
 
         const barHeight =
@@ -123,9 +111,9 @@ function LinearSpectrum({
         ctx.shadowColor = colors.accent1
 
         ctx.fillRect(
-          x + barGap,
+          x + BAR_GAP,
           canvas.height - scaledHeight,
-          barWidth - barGap * 2,
+          barWidth - BAR_GAP * 2,
           scaledHeight
         )
 
@@ -134,16 +122,20 @@ function LinearSpectrum({
       })
 
       if (isPlaying) {
-        requestAnimationFrame(draw)
+        animationFrameRef.current = requestAnimationFrame(draw)
       }
     }
 
-    draw()
+    if (isPlaying) {
+      animationFrameRef.current = requestAnimationFrame(draw)
+    }
 
     return (): void => {
       window.removeEventListener('resize', resizeCanvas)
+      if (animationFrameRef.current)
+        cancelAnimationFrame(animationFrameRef.current)
     }
-  }, [isPlaying, barHeights, energy, loudness, colors, animationFrame])
+  }, [isPlaying, energy, loudness, colors, barHeights])
 
   return (
     <canvas

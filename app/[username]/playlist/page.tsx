@@ -17,6 +17,8 @@ import { useParams } from 'next/navigation'
 import { Loading, PlaylistSkeleton, ErrorMessage, Toast } from '@/components/ui'
 import { AutoFillNotification } from '@/components/ui/auto-fill-notification'
 import { usePublicBranding } from '@/hooks/usePublicBranding'
+import { sendApiRequest } from '@/shared/api'
+import { ApiError } from '@/shared/api'
 
 type VoteFeedback = {
   message: string
@@ -107,16 +109,15 @@ export default function PlaylistPage(): JSX.Element {
 
   // Update page title, meta description, and Open Graph title when branding settings change
   useEffect(() => {
+    if (!settings) return
+
     // Update page title
-    if (settings?.page_title && settings.page_title.trim() !== '') {
-      document.title = settings.page_title
-    } else {
-      document.title = '3B Jukebox'
-    }
+    const title = settings.page_title?.trim() ?? '3B Jukebox'
+    document.title = title
 
     // Update meta description
     const metaDescriptionContent =
-      settings?.meta_description?.trim() ??
+      settings.meta_description?.trim() ??
       'The Ultimate Shared Music Experience'
     let metaDescription = document.querySelector('meta[name="description"]')
     if (!metaDescription) {
@@ -127,7 +128,7 @@ export default function PlaylistPage(): JSX.Element {
     metaDescription.setAttribute('content', metaDescriptionContent)
 
     // Update Open Graph title
-    const ogTitleContent = settings?.open_graph_title?.trim() ?? '3B Jukebox'
+    const ogTitleContent = settings.open_graph_title?.trim() ?? '3B Jukebox'
     let ogTitle = document.querySelector('meta[property="og:title"]')
     if (!ogTitle) {
       ogTitle = document.createElement('meta')
@@ -138,7 +139,8 @@ export default function PlaylistPage(): JSX.Element {
   }, [
     settings?.page_title,
     settings?.meta_description,
-    settings?.open_graph_title
+    settings?.open_graph_title,
+    settings
   ])
 
   // Force refresh queue when currently playing track changes
@@ -147,7 +149,7 @@ export default function PlaylistPage(): JSX.Element {
       // Refresh queue to update the currently playing indicator
       void refreshQueue()
     }
-  }, [currentlyPlaying?.item?.id, currentlyPlaying?.item?.name, refreshQueue])
+  }, [currentlyPlaying?.item?.id, refreshQueue])
 
   const artistName = currentlyPlaying?.item?.artists[0]?.name
   const {
@@ -192,24 +194,16 @@ export default function PlaylistPage(): JSX.Element {
       }
 
       try {
-        const response = await fetch(`/api/playlist/${username}`, {
+        await sendApiRequest<void>({
+          path: `/playlist/${username}`,
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
+          isLocalApi: true,
+          body: {
             tracks: track,
             initialVotes: 5,
             source: 'user' // Mark as user-initiated
-          })
+          }
         })
-
-        if (!response.ok) {
-          // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-unsafe-member-access
-          throw new AppError(
-            ERROR_MESSAGES.FAILED_TO_ADD,
-            response.status,
-            'PlaylistPage'
-          )
-        }
 
         setLastAddedTrack(track)
         // The real-time subscription will update the queue with the actual data
@@ -222,10 +216,14 @@ export default function PlaylistPage(): JSX.Element {
           )
         }
 
-        const appError = handleApiError(error, 'PlaylistPage')
-        if (appError instanceof AppError) {
-          setVoteFeedback({ message: appError.message, variant: 'warning' })
-        }
+        const errorMessage =
+          error instanceof ApiError
+            ? error.message
+            : error instanceof AppError
+              ? error.message
+              : ERROR_MESSAGES.FAILED_TO_ADD
+
+        setVoteFeedback({ message: errorMessage, variant: 'warning' })
       }
     },
     [username, optimisticUpdate, queue]
@@ -257,17 +255,12 @@ export default function PlaylistPage(): JSX.Element {
       }
 
       try {
-        const response = await fetch('/api/queue/vote', {
+        await sendApiRequest<void>({
+          path: '/queue/vote',
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ queueId, voteDirection })
+          isLocalApi: true,
+          body: { queueId, voteDirection }
         })
-
-        if (!response.ok) {
-          // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-unsafe-member-access
-          const errorData: { error?: string } = await response.json()
-          throw new Error(errorData.error ?? 'Failed to cast vote.')
-        }
 
         localStorage.setItem(VOTE_STORAGE_KEY, 'true')
         setVoteFeedback({ message: 'Vote recorded!', variant: 'success' })
@@ -277,12 +270,15 @@ export default function PlaylistPage(): JSX.Element {
         void refreshQueue()
       } catch (error: unknown) {
         // If optimistic update was used, the real-time subscription will correct the state
-        if (error instanceof Error) {
-          setVoteFeedback({
-            message: error.message,
-            variant: 'warning'
-          })
-        }
+        const errorMessage =
+          error instanceof ApiError || error instanceof Error
+            ? error.message
+            : 'Failed to cast vote.'
+
+        setVoteFeedback({
+          message: errorMessage,
+          variant: 'warning'
+        })
         handleApiError(error, 'VoteError')
       }
     },
@@ -291,15 +287,21 @@ export default function PlaylistPage(): JSX.Element {
 
   const [isTokenInvalid, setIsTokenInvalid] = useState<boolean>(false)
 
+  // Type guard for error with message
+  function hasErrorMessage(error: unknown): error is { message: string } {
+    return (
+      typeof error === 'object' &&
+      error !== null &&
+      'message' in error &&
+      typeof (error as { message: unknown }).message === 'string'
+    )
+  }
+
   useEffect(() => {
     if (
       playlistError &&
-      typeof playlistError === 'object' &&
-      'message' in playlistError &&
-      typeof (playlistError as { message: unknown }).message === 'string' &&
-      (playlistError as { message: string }).message.includes(
-        'Token invalid'
-      ) &&
+      hasErrorMessage(playlistError) &&
+      playlistError.message.includes('Token invalid') &&
       !isRecovering
     ) {
       setIsTokenInvalid(true)
@@ -329,7 +331,7 @@ export default function PlaylistPage(): JSX.Element {
       }, 1000)
       return (): void => clearTimeout(reloadTimer)
     }
-    return (): void => {}
+    return undefined
   }, [isJukeboxOffline])
 
   if (isJukeboxOffline) {
@@ -358,12 +360,9 @@ export default function PlaylistPage(): JSX.Element {
   }
 
   if (playlistError) {
-    const errorMessage =
-      playlistError &&
-      typeof playlistError === 'object' &&
-      'message' in playlistError
-        ? (playlistError as { message: string }).message
-        : 'An unknown error occurred while fetching the playlist.'
+    const errorMessage = hasErrorMessage(playlistError)
+      ? playlistError.message
+      : 'An unknown error occurred while fetching the playlist.'
     return (
       <div className='w-full'>
         <div className='mx-auto flex w-full flex-col space-y-6 sm:w-10/12 md:w-8/12 lg:w-9/12'>

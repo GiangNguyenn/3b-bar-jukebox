@@ -30,6 +30,22 @@ if (typeof window === 'undefined') {
  * @returns {Promise<string>} The Spotify access token.
  */
 export const getAppAccessToken = async (): Promise<string> => {
+  // Ensure authHeader is initialized
+  if (!authHeader) {
+    const SPOTIFY_CLIENT_ID = process.env.SPOTIFY_CLIENT_ID
+    const SPOTIFY_CLIENT_SECRET = process.env.SPOTIFY_CLIENT_SECRET
+
+    if (!SPOTIFY_CLIENT_ID || !SPOTIFY_CLIENT_SECRET) {
+      throw new Error(
+        'Missing required environment variables: SPOTIFY_CLIENT_ID and/or SPOTIFY_CLIENT_SECRET'
+      )
+    }
+
+    authHeader = Buffer.from(
+      `${SPOTIFY_CLIENT_ID}:${SPOTIFY_CLIENT_SECRET}`
+    ).toString('base64')
+  }
+
   // Check cache first
   const cachedToken = cache.get<string>(CACHE_KEY)
   if (cachedToken) {
@@ -62,7 +78,27 @@ export const getAppAccessToken = async (): Promise<string> => {
 
     return access_token
   } catch (error) {
-    console.error('Error fetching app access token:', error)
-    throw new Error('Could not retrieve app access token from Spotify.')
+    const errorMessage =
+      error instanceof Error ? error.message : 'Unknown error'
+    const errorDetails =
+      error instanceof Error && error.cause ? String(error.cause) : undefined
+
+    console.error('Error fetching app access token:', {
+      message: errorMessage,
+      details: errorDetails,
+      error
+    })
+
+    // Preserve the original error message if it's informative
+    if (
+      errorMessage.includes('Failed to get app access token') ||
+      errorMessage.includes('token')
+    ) {
+      throw new Error(`Could not retrieve app access token: ${errorMessage}`)
+    }
+
+    throw new Error(
+      `Could not retrieve app access token from Spotify: ${errorMessage}`
+    )
   }
 }

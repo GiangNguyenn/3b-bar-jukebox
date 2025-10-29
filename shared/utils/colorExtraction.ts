@@ -218,8 +218,8 @@ export async function extractColorsFromImageUrl(
     colorCache.set(imageUrl, palette)
 
     return palette
-  } catch (error) {
-    console.error('[ColorExtraction] Error extracting colors:', error)
+  } catch {
+    // Return default palette on error (no logging needed for color extraction failures)
     return DEFAULT_PALETTE
   }
 }

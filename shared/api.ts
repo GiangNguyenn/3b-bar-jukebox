@@ -162,20 +162,6 @@ export const sendApiRequest = async <T>({
           )
         }
 
-        if (apiLogger) {
-          apiLogger(
-            'ERROR',
-            `[API Error] ${method}: ${url} - Status: ${response.status}`,
-            'API',
-            errorData
-          )
-        } else {
-          console.error(
-            `[API Error] ${method}: ${url} - Status: ${response.status}`,
-            errorData
-          )
-        }
-
         // Handle 401 Unauthorized - attempt token refresh and retry once
         if (response.status === 401 && !isLocalApi && retryCount === 0) {
           const log = await getLogger()
@@ -218,6 +204,21 @@ export const sendApiRequest = async <T>({
               status: 401
             })
           }
+        }
+
+        // Log errors that won't be retried (or if retry failed)
+        if (apiLogger) {
+          apiLogger(
+            'ERROR',
+            `[API Error] ${method}: ${url} - Status: ${response.status}`,
+            'API',
+            errorData
+          )
+        } else {
+          console.error(
+            `[API Error] ${method}: ${url} - Status: ${response.status}`,
+            errorData
+          )
         }
 
         if (response.status === 429) {

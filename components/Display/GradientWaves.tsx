@@ -1,6 +1,6 @@
 'use client'
 
-import { memo, useEffect, useState, useRef } from 'react'
+import { memo, useEffect, useRef } from 'react'
 import type { ReactElement } from 'react'
 import type { ColorPalette } from '@/shared/utils/colorExtraction'
 import type { SpotifyAudioFeatures } from '@/shared/types/spotify'
@@ -16,9 +16,9 @@ function GradientWaves({
   colors,
   isPlaying
 }: GradientWavesProps): ReactElement {
-  const [phase, setPhase] = useState(0)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const animationFrameRef = useRef<number | undefined>()
+  const phaseRef = useRef(0)
 
   const energy = audioFeatures?.energy ?? 0.5
   const danceability = audioFeatures?.danceability ?? 0.5
@@ -41,11 +41,9 @@ function GradientWaves({
       const deltaTime = (now - lastTime) / 1000
       lastTime = now
 
-      setPhase((prev): number => {
-        const baseSpeed = tempo / 60
-        const energySpeed = energy
-        return prev + deltaTime * baseSpeed * energySpeed
-      })
+      const baseSpeed = tempo / 60
+      const energySpeed = energy
+      phaseRef.current += deltaTime * baseSpeed * energySpeed
 
       // Clear canvas
       ctx.clearRect(0, 0, width, height)
@@ -53,7 +51,7 @@ function GradientWaves({
       // Draw 5 gradient waves for stronger effect
       const waveCount = 5
       for (let i = 0; i < waveCount; i++) {
-        const wavePhase = phase + i * 0.5
+        const wavePhase = phaseRef.current + i * 0.5
         const waveAmplitude = (40 + energy * 120) * (1 - i * 0.15)
         const waveFrequency = (0.03 + danceability * 0.05) * (1 + i * 0.25)
         const opacity = 0.2 + (i / waveCount) * 0.2
@@ -120,7 +118,7 @@ function GradientWaves({
       if (animationFrameRef.current)
         cancelAnimationFrame(animationFrameRef.current)
     }
-  }, [isPlaying, energy, danceability, tempo, phase, colors])
+  }, [isPlaying, energy, danceability, tempo, colors])
 
   return (
     <canvas

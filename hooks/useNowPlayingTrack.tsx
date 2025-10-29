@@ -1,7 +1,5 @@
-import { useEffect, useState, useRef } from 'react'
+import { useEffect, useState, useRef, useCallback } from 'react'
 import { SpotifyPlaybackState } from '@/shared/types/spotify'
-import { sendApiRequest } from '@/shared/api'
-import { handleOperationError } from '@/shared/utils/errorHandling'
 
 interface UseNowPlayingTrackOptions {
   token?: string | null
@@ -19,12 +17,22 @@ export function useNowPlayingTrack({
   const [isLoading, setIsLoading] = useState(false)
   const intervalRef = useRef<NodeJS.Timeout | null>(null)
   const lastTrackId = useRef<string | null>(null)
+  const abortControllerRef = useRef<AbortController | null>(null)
 
-  const fetchCurrentlyPlaying = async () => {
+  const fetchCurrentlyPlaying = useCallback(async () => {
     if (!enabled) {
       setData(null)
       return
     }
+
+    // Cancel any in-flight requests
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort()
+    }
+
+    // Create new AbortController for this request
+    const abortController = new AbortController()
+    abortControllerRef.current = abortController
 
     try {
       setIsLoading(true)
@@ -46,9 +54,16 @@ export function useNowPlayingTrack({
             headers: {
               Authorization: `Bearer ${token}`,
               'Content-Type': 'application/json'
-            }
+            },
+            signal: abortController.signal
           }
         )
+
+        // Handle 204 No Content (no currently playing track)
+        if (fetchResponse.status === 204) {
+          setData(null)
+          return
+        }
 
         if (!fetchResponse.ok) {
           if (fetchResponse.status === 401) {
@@ -62,12 +77,6 @@ export function useNowPlayingTrack({
           )
         }
 
-        // Handle 204 No Content (no currently playing track)
-        if (fetchResponse.status === 204) {
-          setData(null)
-          return
-        }
-
         // Check if response has content before parsing JSON
         const responseText = await fetchResponse.text()
         if (!responseText.trim()) {
@@ -78,23 +87,20 @@ export function useNowPlayingTrack({
         response = JSON.parse(responseText)
       } else {
         // Use our server-side API endpoint that handles admin credentials
-        const apiResponse = await fetch('/api/now-playing')
-
-        if (!apiResponse.ok) {
-          if (apiResponse.status === 204) {
-            // No currently playing track
-            setData(null)
-            return
-          }
-          throw new Error(
-            `HTTP ${apiResponse.status}: ${apiResponse.statusText}`
-          )
-        }
+        const apiResponse = await fetch('/api/now-playing', {
+          signal: abortController.signal
+        })
 
         // Handle 204 No Content (no currently playing track)
         if (apiResponse.status === 204) {
           setData(null)
           return
+        }
+
+        if (!apiResponse.ok) {
+          throw new Error(
+            `HTTP ${apiResponse.status}: ${apiResponse.statusText}`
+          )
         }
 
         // Check if response has content before parsing JSON
@@ -113,7 +119,10 @@ export function useNowPlayingTrack({
 
       setData(response)
     } catch (err) {
-      console.error('[useNowPlayingTrack] Error:', err)
+      // Ignore abort errors
+      if (err instanceof Error && err.name === 'AbortError') {
+        return
+      }
 
       // Handle authentication errors gracefully
       if (err instanceof Error && err.message.includes('401')) {
@@ -128,13 +137,19 @@ export function useNowPlayingTrack({
     } finally {
       setIsLoading(false)
     }
-  }
+  }, [token, enabled])
 
   useEffect(() => {
     // Clear any existing interval
     if (intervalRef.current) {
       clearInterval(intervalRef.current)
       intervalRef.current = null
+    }
+
+    // Cleanup any in-flight requests
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort()
+      abortControllerRef.current = null
     }
 
     if (!enabled) {
@@ -156,8 +171,13 @@ export function useNowPlayingTrack({
         clearInterval(intervalRef.current)
         intervalRef.current = null
       }
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort()
+        abortControllerRef.current = null
+      }
     }
-  }, [token, enabled, refetchInterval])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fetchCurrentlyPlaying, refetchInterval])
 
   return {
     data,
