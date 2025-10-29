@@ -38,8 +38,11 @@ export default function DisplayPage(): ReactElement {
   const albumName = trackItem?.album?.name ?? ''
   const isPlaying = playbackState?.is_playing ?? false
 
-  const { colors, isLoading: isColorsLoading, error: colorsError } =
-    useAlbumColors(albumArtUrl)
+  const {
+    colors,
+    isLoading: isColorsLoading,
+    error: colorsError
+  } = useAlbumColors(albumArtUrl)
 
   // Get audio features for the current track (hook already handles trackId changes)
   const { features: audioFeatures, error: audioFeaturesError } =
@@ -54,9 +57,7 @@ export default function DisplayPage(): ReactElement {
   }, [isPlaybackLoading])
 
   // Combine error states
-  const hasError = Boolean(
-    playbackError || colorsError || audioFeaturesError
-  )
+  const hasError = Boolean(playbackError || colorsError || audioFeaturesError)
 
   // Only show loading on initial load (before first response completes)
   // After initial load completes, never show loading screen even during background polling

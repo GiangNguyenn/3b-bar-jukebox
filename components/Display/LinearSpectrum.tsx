@@ -85,9 +85,8 @@ function LinearSpectrum({
 
       barHeights.forEach((height, i) => {
         // Add animation variation
-        const timeVariation = Math.sin(
-          (i / BAR_COUNT) * Math.PI * 6 + timeRef.current
-        ) * 20
+        const timeVariation =
+          Math.sin((i / BAR_COUNT) * Math.PI * 6 + timeRef.current) * 20
 
         const randomVariation = (Math.random() - 0.5) * 15
         const heightVariation = timeVariation + randomVariation
