@@ -38,11 +38,7 @@ export default function DisplayPage(): ReactElement {
   const albumName = trackItem?.album?.name ?? ''
   const isPlaying = playbackState?.is_playing ?? false
 
-  const {
-    colors,
-    isLoading: isColorsLoading,
-    error: colorsError
-  } = useAlbumColors(albumArtUrl)
+  const { colors, error: colorsError } = useAlbumColors(albumArtUrl)
 
   // Get audio features for the current track (hook already handles trackId changes)
   const { features: audioFeatures, error: audioFeaturesError } =
@@ -57,7 +53,7 @@ export default function DisplayPage(): ReactElement {
   }, [isPlaybackLoading])
 
   // Combine error states
-  const hasError = Boolean(playbackError || colorsError || audioFeaturesError)
+  const hasError = Boolean(playbackError ?? colorsError ?? audioFeaturesError)
 
   // Only show loading on initial load (before first response completes)
   // After initial load completes, never show loading screen even during background polling
@@ -79,15 +75,7 @@ export default function DisplayPage(): ReactElement {
       <>
         <div className='relative min-h-screen overflow-hidden bg-black'>
           <div className='relative z-10 flex min-h-screen items-center justify-center'>
-            <ErrorMessage
-              message='Unable to load display data'
-              error={
-                playbackError ||
-                colorsError ||
-                audioFeaturesError ||
-                new Error('Unknown error')
-              }
-            />
+            <ErrorMessage message='Unable to load display data' />
           </div>
         </div>
         {username && <QRCodeComponent username={username} />}

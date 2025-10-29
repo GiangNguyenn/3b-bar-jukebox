@@ -1,6 +1,5 @@
 'use client'
 
-import { useRef } from 'react'
 import { SpotifyPlaybackState } from '@/shared/types/spotify'
 import { JukeboxQueueItem } from '@/shared/types/queue'
 import QueueItem from './QueueItem'
@@ -39,8 +38,6 @@ export default function Playlist({
   accentColor3,
   username
 }: PlaylistProps): JSX.Element {
-  const containerRef = useRef<HTMLDivElement>(null)
-
   const tracksToShow = tracks.filter((item) => {
     if (!currentlyPlaying) return true
     return item.tracks.spotify_track_id !== currentlyPlaying?.item?.id
@@ -77,10 +74,7 @@ export default function Playlist({
                 </div>
               )}
             </div>
-            <div
-              ref={containerRef}
-              className='flex max-h-[calc(100vh-16rem)] flex-col space-y-2 overflow-y-auto'
-            >
+            <div className='flex max-h-[calc(100vh-16rem)] flex-col space-y-2 overflow-y-auto'>
               {tracksToShow.map((item) => (
                 <QueueItem
                   key={item.id}
