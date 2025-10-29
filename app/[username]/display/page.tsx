@@ -1,116 +1,101 @@
 'use client'
 
 import { useParams } from 'next/navigation'
-import { useEffect, useRef } from 'react'
+import { useRef, useEffect } from 'react'
 import type { ReactElement } from 'react'
-import QRCode from 'qrcode'
 import { useNowPlayingTrack } from '@/hooks/useNowPlayingTrack'
 import { useAlbumColors } from '@/hooks/useAlbumColors'
 import { useAudioFeatures } from '@/hooks/useAudioFeatures'
-import { useConsoleLogsContext } from '@/hooks/ConsoleLogsProvider'
 import VisualizationContainer from '@/components/Display/VisualizationContainer'
 import TrackMetadata from '@/components/Display/TrackMetadata'
 import ColorBackground from '@/components/Display/ColorBackground'
+import QRCodeComponent from '@/components/Display/QRCode'
 import { Loading } from '@/components/ui'
+import { ErrorMessage } from '@/components/ui'
 
 export default function DisplayPage(): ReactElement {
   const params = useParams()
-  const username = params?.username as string | undefined
-  const canvasRef = useRef<HTMLCanvasElement>(null)
-  const { addLog } = useConsoleLogsContext()
+  const username = typeof params?.username === 'string' ? params.username : ''
+  const hasInitialLoadRef = useRef(false)
 
-  // Generate QR code for playlist page
-  useEffect(() => {
-    if (!username) return
-
-    const playlistUrl = `${window.location.origin}/${username}/playlist`
-
-    const generateQRCode = async (): Promise<void> => {
-      if (!canvasRef.current) {
-        addLog('LOG', 'Waiting for canvas ref...', 'DisplayPage')
-        setTimeout(() => {
-          void generateQRCode()
-        }, 100)
-        return
-      }
-
-      try {
-        addLog('LOG', `Generating QR code for: ${playlistUrl}`, 'DisplayPage')
-        const canvas = canvasRef.current
-        await QRCode.toCanvas(canvas, playlistUrl, {
-          width: 120,
-          margin: 2,
-          color: {
-            dark: '#000000',
-            light: '#FFFFFF'
-          }
-        })
-        addLog('LOG', 'QR code generated successfully', 'DisplayPage')
-      } catch (err) {
-        addLog(
-          'ERROR',
-          'Failed to generate QR code',
-          'DisplayPage',
-          err as Error
-        )
-      }
-    }
-
-    // Retry generation with delay to ensure canvas is mounted
-    const timer = setTimeout(() => {
-      void generateQRCode()
-    }, 500)
-
-    return (): void => clearTimeout(timer)
-  }, [username, addLog])
-
-  // Fetch currently playing track with high-frequency polling
-  const { data: playbackState } = useNowPlayingTrack({
+  // Fetch currently playing track with optimized polling
+  const {
+    data: playbackState,
+    error: playbackError,
+    isLoading: isPlaybackLoading
+  } = useNowPlayingTrack({
     token: null, // Use admin credentials for public display
     enabled: true,
-    refetchInterval: 1000 // Poll every second for smooth animations
+    refetchInterval: 2000 // Poll every 2 seconds - still smooth but reduces API calls by 50%
   })
 
-  // Extract album artwork URL
-  const albumArtUrl = playbackState?.item?.album?.images?.[0]?.url
-  const { colors, isLoading: isColorsLoading } = useAlbumColors(albumArtUrl)
-
-  // Get audio features for the current track
-  const trackId = playbackState?.item?.id
-  const { features: audioFeatures } = useAudioFeatures(trackId ?? null)
-
-  // Track change detection for animations
-  const trackName = playbackState?.item?.name ?? ''
-  const artistName = playbackState?.item?.artists?.[0]?.name ?? ''
-  const albumName = playbackState?.item?.album?.name ?? ''
+  // Extract track values with proper dependency management
+  const trackItem = playbackState?.item
+  const albumArtUrl = trackItem?.album?.images?.[0]?.url
+  const trackId = trackItem?.id ?? null
+  const trackName = trackItem?.name ?? ''
+  const artistName = trackItem?.artists?.[0]?.name ?? ''
+  const albumName = trackItem?.album?.name ?? ''
   const isPlaying = playbackState?.is_playing ?? false
 
-  // Render QR code in all states
-  const qrCodeElement = (
-    <div className='fixed right-4 top-4 z-[100]'>
-      <div className='bg-white rounded-lg p-3 shadow-2xl'>
-        <canvas
-          ref={canvasRef}
-          width={120}
-          height={120}
-          className='bg-white block'
-        />
-      </div>
-    </div>
+  const { colors, isLoading: isColorsLoading, error: colorsError } =
+    useAlbumColors(albumArtUrl)
+
+  // Get audio features for the current track (hook already handles trackId changes)
+  const { features: audioFeatures, error: audioFeaturesError } =
+    useAudioFeatures(trackId)
+
+  // Track when initial load completes - when isLoading transitions from true to false
+  // This means we've received at least one response (data, null from 204, or error)
+  useEffect(() => {
+    if (!isPlaybackLoading && !hasInitialLoadRef.current) {
+      hasInitialLoadRef.current = true
+    }
+  }, [isPlaybackLoading])
+
+  // Combine error states
+  const hasError = Boolean(
+    playbackError || colorsError || audioFeaturesError
   )
 
-  // Loading state
-  if (isColorsLoading || !playbackState) {
+  // Only show loading on initial load (before first response completes)
+  // After initial load completes, never show loading screen even during background polling
+  const isInitialLoading = !hasInitialLoadRef.current && isPlaybackLoading
+
+  // Loading state - only show on initial load
+  if (isInitialLoading) {
     return (
       <>
         <Loading fullScreen message='Loading display...' />
-        {qrCodeElement}
+        {username && <QRCodeComponent username={username} />}
+      </>
+    )
+  }
+
+  // Error state
+  if (hasError) {
+    return (
+      <>
+        <div className='relative min-h-screen overflow-hidden bg-black'>
+          <div className='relative z-10 flex min-h-screen items-center justify-center'>
+            <ErrorMessage
+              message='Unable to load display data'
+              error={
+                playbackError ||
+                colorsError ||
+                audioFeaturesError ||
+                new Error('Unknown error')
+              }
+            />
+          </div>
+        </div>
+        {username && <QRCodeComponent username={username} />}
       </>
     )
   }
 
   // No track playing
-  if (!playbackState.item) {
+  if (!trackItem) {
     return (
       <>
         <div className='relative min-h-screen overflow-hidden'>
@@ -135,7 +120,22 @@ export default function DisplayPage(): ReactElement {
             </div>
           </div>
         </div>
-        {qrCodeElement}
+        {username && <QRCodeComponent username={username} />}
+      </>
+    )
+  }
+
+  // Track is playing - show full display
+  if (!albumArtUrl) {
+    return (
+      <>
+        <div className='relative min-h-screen overflow-hidden'>
+          <ColorBackground colors={colors} isPlaying={isPlaying} />
+          <div className='relative z-10 flex min-h-screen items-center justify-center'>
+            <ErrorMessage message='Unable to load track artwork' />
+          </div>
+        </div>
+        {username && <QRCodeComponent username={username} />}
       </>
     )
   }
@@ -154,7 +154,7 @@ export default function DisplayPage(): ReactElement {
               trackName={trackName}
               artistName={artistName}
               albumName={albumName}
-              albumArtUrl={albumArtUrl!}
+              albumArtUrl={albumArtUrl}
               explicit={false}
               colors={colors}
             />
@@ -170,7 +170,7 @@ export default function DisplayPage(): ReactElement {
           </div>
         </div>
       </div>
-      {qrCodeElement}
+      {username && <QRCodeComponent username={username} />}
     </>
   )
 }
