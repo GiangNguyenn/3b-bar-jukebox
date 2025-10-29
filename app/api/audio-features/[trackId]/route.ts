@@ -41,8 +41,9 @@ export async function GET(
     logger('INFO', 'Audio features fetched successfully')
     return NextResponse.json(audioFeatures)
   } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error'
-    
+    const errorMessage =
+      error instanceof Error ? error.message : 'Unknown error'
+
     // Check if it's an ApiError with status
     let statusCode = 500
     if (error instanceof Error && error.name === 'ApiError') {

@@ -81,9 +81,7 @@ export const getAppAccessToken = async (): Promise<string> => {
     const errorMessage =
       error instanceof Error ? error.message : 'Unknown error'
     const errorDetails =
-      error instanceof Error && error.cause
-        ? String(error.cause)
-        : undefined
+      error instanceof Error && error.cause ? String(error.cause) : undefined
 
     console.error('Error fetching app access token:', {
       message: errorMessage,
