@@ -41,8 +41,7 @@ export default function DisplayPage(): ReactElement {
   const { colors, error: colorsError } = useAlbumColors(albumArtUrl)
 
   // Get audio features for the current track (hook already handles trackId changes)
-  const { features: audioFeatures, error: audioFeaturesError } =
-    useAudioFeatures(trackId)
+  const { features: audioFeatures } = useAudioFeatures(trackId)
 
   // Track when initial load completes - when isLoading transitions from true to false
   // This means we've received at least one response (data, null from 204, or error)

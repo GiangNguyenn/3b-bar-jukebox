@@ -15,21 +15,21 @@ export async function GET(
   request: Request,
   { params }: { params: Promise<{ trackId: string }> }
 ): Promise<NextResponse<SpotifyAudioFeatures | ErrorResponse>> {
+  const { trackId } = await params
+
+  if (!trackId) {
+    logger('ERROR', 'Missing track ID in audio features request')
+    return NextResponse.json(
+      {
+        error: 'Track ID is required',
+        code: 'MISSING_TRACK_ID',
+        status: 400
+      },
+      { status: 400 }
+    )
+  }
+
   try {
-    const { trackId } = await params
-
-    if (!trackId) {
-      logger('ERROR', 'Missing track ID in audio features request')
-      return NextResponse.json(
-        {
-          error: 'Track ID is required',
-          code: 'MISSING_TRACK_ID',
-          status: 400
-        },
-        { status: 400 }
-      )
-    }
-
     logger('INFO', `Fetching audio features for track: ${trackId}`)
 
     const audioFeatures = await sendApiRequest<SpotifyAudioFeatures>({
