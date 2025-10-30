@@ -23,7 +23,7 @@ import { PremiumNotice } from './components/PremiumNotice'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { SpotifyApiService } from '@/services/spotifyApi'
 import { sendApiRequest } from '@/shared/api'
-import { SpotifyPlaybackState } from '@/shared/types/spotify'
+import { SpotifyPlaybackState, SpotifyDevice } from '@/shared/types/spotify'
 
 import { type TrackSuggestionsState } from '@/shared/types/trackSuggestions'
 import { useRecoverySystem } from '@/hooks/recovery'
@@ -331,6 +331,15 @@ export default function AdminPage(): JSX.Element {
   // Add token health monitoring
   const tokenHealth = useTokenHealth()
 
+  // Cancellation guard for autoplay async sequence
+  const autoResumeCancelRef = useRef(false)
+  useEffect(() => {
+    autoResumeCancelRef.current = false
+    return () => {
+      autoResumeCancelRef.current = true
+    }
+  }, [])
+
   useAdminAutoPlay({
     deviceId: deviceId ?? null,
     username: username ?? null,
@@ -338,7 +347,9 @@ export default function AdminPage(): JSX.Element {
     trackSuggestionsState,
     addLog,
     setUserIntent,
-    refreshQueue: async () => refreshQueue()
+    refreshQueue: useCallback(async () => {
+      await refreshQueue()
+    }, [refreshQueue])
   })
 
   // Update QueueManager with queue data
@@ -450,10 +461,11 @@ export default function AdminPage(): JSX.Element {
   })
 
   // Auto-resume playback once after device connects on initial load, if not already playing and queue has tracks
-  // Placed after queueManager update effect to avoid race where queue isn't registered yet
+  // Harden for slow devices: gate on token valid, ensure active device, retry with backoff, verify via API, server fallback, and cancellation guard
   useEffect(() => {
     if (autoResumeTriggeredRef.current) return
     if (!isReady || !deviceId) return
+    if (tokenHealth.status !== 'valid') return
     if (healthStatus.playback === 'playing') return
     if (!queue || queue.length === 0) return
 
@@ -464,11 +476,7 @@ export default function AdminPage(): JSX.Element {
         try {
           const spotifyApi = SpotifyApiService.getInstance()
           const currentPosition = playbackState?.progress_ms ?? 0
-          const attemptResume = async (): Promise<boolean> => {
-            const result = await spotifyApi.resumePlayback(currentPosition)
-            if (!result?.success) return false
-            // small wait then verify state
-            await new Promise((r) => setTimeout(r, 400))
+          const verifyPlaying = async (): Promise<boolean> => {
             try {
               const state = await sendApiRequest<SpotifyPlaybackState>({
                 path: 'me/player',
@@ -480,25 +488,45 @@ export default function AdminPage(): JSX.Element {
             }
           }
 
-          let ok = await attemptResume()
-          if (!ok && deviceId) {
-            // Fallback: ask server to force transfer+play
+          const ensureActiveDevice = async (): Promise<void> => {
             try {
-              await fetch('/api/playback', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ action: 'play', deviceId })
-              })
-              await new Promise((r) => setTimeout(r, 600))
-              const state = await sendApiRequest<SpotifyPlaybackState>({
-                path: 'me/player',
-                method: 'GET'
-              })
-              ok = Boolean(state?.is_playing)
-            } catch {}
+              const devices = await sendApiRequest<{
+                devices: SpotifyDevice[]
+              }>({ path: 'me/player/devices', method: 'GET' })
+              const active = devices?.devices?.some(
+                (d) => d.id === deviceId && d.is_active
+              )
+              if (!active && deviceId) {
+                await fetch('/api/playback', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ action: 'play', deviceId })
+                })
+              }
+            } catch {
+              // ignore
+            }
           }
 
-          if (!ok) throw new Error('Playback verification failed after resume')
+          await ensureActiveDevice()
+
+          const backoffs = [200, 600, 1200]
+          let ok = false
+          for (const wait of backoffs) {
+            if (autoResumeCancelRef.current) return
+            await spotifyApi.resumePlayback(currentPosition)
+            await new Promise((r) => setTimeout(r, wait))
+            ok = await verifyPlaying()
+            if (ok) break
+          }
+
+          if (!ok && deviceId) {
+            await ensureActiveDevice()
+            await new Promise((r) => setTimeout(r, 600))
+            ok = await verifyPlaying()
+          }
+
+          if (!ok) throw new Error('Autoplay verification failed')
 
           setUserIntent('playing')
         } catch (error: unknown) {
@@ -517,6 +545,7 @@ export default function AdminPage(): JSX.Element {
   }, [
     isReady,
     deviceId,
+    tokenHealth.status,
     healthStatus.playback,
     queue,
     playbackState?.progress_ms,
