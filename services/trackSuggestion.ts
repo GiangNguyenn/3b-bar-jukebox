@@ -221,8 +221,13 @@ export async function searchTracksByGenre(
 
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
       // Force the last attempt to use offset 0
-      const randomOffset =
-        attempt === maxRetries ? 0 : Math.floor(Math.random() * offsetCap)
+      // For earlier attempts, ensure we don't get stuck at 0-only when cap shrinks to 1
+      const isLastAttempt = attempt === maxRetries
+      const randomOffset = isLastAttempt
+        ? 0
+        : offsetCap > 1
+          ? 1 + Math.floor(Math.random() * (offsetCap - 1))
+          : 1
 
       logger(
         'INFO',
@@ -286,7 +291,11 @@ export async function searchTracksByGenre(
 
       // No results; if not last attempt, reduce offset cap and retry
       if (attempt < maxRetries) {
-        const nextCap = Math.max(1, Math.floor(offsetCap / 2))
+        // Keep at least 2 while we still have retries left, so offsets can vary (1..cap-1)
+        const nextCap =
+          attempt + 1 < maxRetries
+            ? Math.max(2, Math.floor(offsetCap / 2))
+            : Math.max(1, Math.floor(offsetCap / 2))
         logger(
           'WARN',
           `[searchTracksByGenre] No results (attempt=${attempt}, offsetCap=${offsetCap}, offset=${randomOffset}). Retrying with offsetCap=${nextCap}`
