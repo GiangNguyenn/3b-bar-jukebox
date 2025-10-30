@@ -27,7 +27,10 @@ export interface SpotifyApiClient {
   getCurrentlyPlaying(): Promise<SpotifyPlaybackState>
   addTrackToPlaylist(playlistId: string, trackUri: string): Promise<void>
   getPlaybackState(): Promise<SpotifyPlaybackState>
-  resumePlayback(position_ms?: number, deviceId?: string): Promise<{
+  resumePlayback(
+    position_ms?: number,
+    deviceId?: string
+  ): Promise<{
     success: boolean
     resumedFrom?: {
       trackUri: string
@@ -145,7 +148,10 @@ export class SpotifyApiService implements SpotifyApiClient {
     )
   }
 
-  async resumePlayback(position_ms?: number, targetDeviceId?: string): Promise<{
+  async resumePlayback(
+    position_ms?: number,
+    targetDeviceId?: string
+  ): Promise<{
     success: boolean
     resumedFrom?: {
       trackUri: string
