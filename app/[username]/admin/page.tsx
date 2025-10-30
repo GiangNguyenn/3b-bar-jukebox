@@ -468,7 +468,10 @@ export default function AdminPage(): JSX.Element {
             // small wait then verify state
             await new Promise((r) => setTimeout(r, 400))
             try {
-              const state = await sendApiRequest<any>({ path: 'me/player', method: 'GET' })
+              const state = await sendApiRequest<any>({
+                path: 'me/player',
+                method: 'GET'
+              })
               return Boolean(state?.is_playing)
             } catch {
               return false
@@ -485,7 +488,10 @@ export default function AdminPage(): JSX.Element {
                 body: JSON.stringify({ action: 'play', deviceId })
               })
               await new Promise((r) => setTimeout(r, 600))
-              const state = await sendApiRequest<any>({ path: 'me/player', method: 'GET' })
+              const state = await sendApiRequest<any>({
+                path: 'me/player',
+                method: 'GET'
+              })
               ok = Boolean(state?.is_playing)
             } catch {}
           }
