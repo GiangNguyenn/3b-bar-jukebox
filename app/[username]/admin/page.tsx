@@ -514,7 +514,7 @@ export default function AdminPage(): JSX.Element {
           let ok = false
           for (const wait of backoffs) {
             if (autoResumeCancelRef.current) return
-            await spotifyApi.resumePlayback(currentPosition)
+            await spotifyApi.resumePlayback(currentPosition, deviceId ?? undefined)
             await new Promise((r) => setTimeout(r, wait))
             ok = await verifyPlaying()
             if (ok) break
