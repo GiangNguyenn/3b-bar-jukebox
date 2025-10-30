@@ -67,82 +67,6 @@ const useTopTracks = (
   )
   const subscriptionRef = useRef<RealtimeChannel | null>(null)
 
-  // Track if we've already fetched data for this shouldFetchData state
-  const hasFetchedRef = useRef(false)
-
-  // Direct fetch when shouldFetchData becomes true
-  useEffect(() => {
-    if (shouldFetchData && !hasFetchedRef.current) {
-      hasFetchedRef.current = true
-      setIsLoading(true)
-      // Call fetchTopTracks directly
-      void (async (): Promise<void> => {
-        try {
-          const { data: rawData, error } = await supabase
-            .from('suggested_tracks')
-            .select(
-              `
-              count,
-              track_id,
-              tracks(name, artist, spotify_track_id, id)
-            `
-            )
-            .order('count', { ascending: false })
-            .limit(50)
-
-          if (error) {
-            addLog(
-              'ERROR',
-              `Failed to fetch suggested tracks: ${error.message}`,
-              'useTopTracks',
-              error
-            )
-            setError(error.message)
-          } else {
-            const formattedTracks = (rawData as unknown as RawTrackData[])
-              .map((item): TopTrack | null => {
-                const trackData = item.tracks
-                if (!trackData) {
-                  addLog(
-                    'WARN',
-                    `No track data for item: ${item.track_id}`,
-                    'useTopTracks'
-                  )
-                  return null
-                }
-                return {
-                  count: item.count,
-                  name: trackData.name,
-                  artist: trackData.artist,
-                  spotify_track_id: trackData.spotify_track_id,
-                  track_id: item.track_id
-                }
-              })
-              .filter((track): track is TopTrack => track !== null)
-
-            setTracks(formattedTracks)
-          }
-        } catch (err) {
-          /* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-argument */
-          const errorMessage =
-            err instanceof Error ? err.message : 'An unknown error occurred'
-          setError(errorMessage)
-          addLog(
-            'ERROR',
-            `Failed to fetch top tracks: ${errorMessage}`,
-            'useTopTracks',
-            err instanceof Error ? err : undefined
-          )
-          /* eslint-enable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-argument */
-        } finally {
-          setIsLoading(false)
-        }
-      })()
-    } else if (!shouldFetchData) {
-      hasFetchedRef.current = false
-    }
-  }, [shouldFetchData, supabase, addLog])
-
   // Optimistic update function
   const optimisticUpdate = useCallback(
     (updater: (currentTracks: TopTrack[]) => TopTrack[]) => {
@@ -155,22 +79,13 @@ const useTopTracks = (
   const fetchTopTracks = useCallback(async (): Promise<void> => {
     // If data fetching is disabled, return early
     if (!shouldFetchData) {
-      addLog(
-        'INFO',
-        `[useTopTracks] Data fetching disabled - shouldFetchData: ${shouldFetchData}`,
-        'useTopTracks'
-      )
       setIsLoading(false)
       setError(null)
       setTracks([])
       return
     }
 
-    addLog(
-      'INFO',
-      `[useTopTracks] Starting to fetch top tracks - shouldFetchData: ${shouldFetchData}`,
-      'useTopTracks'
-    )
+    // INFO logs suppressed per logging policy
 
     try {
       setIsLoading(true)
@@ -220,7 +135,6 @@ const useTopTracks = (
           })
           .filter((track): track is TopTrack => track !== null)
 
-        setTracks(formattedTracks)
         setTracks(formattedTracks)
       } else {
         setTracks([])
@@ -305,11 +219,7 @@ const useTopTracks = (
   // Initial setup
   useEffect(() => {
     const initialize = async (): Promise<void> => {
-      addLog(
-        'INFO',
-        `[useTopTracks] Initializing - shouldFetchData: ${shouldFetchData}`,
-        'useTopTracks'
-      )
+      // INFO logs suppressed per logging policy
 
       // Fetch initial data
       await fetchTopTracks()
@@ -361,22 +271,13 @@ const useTopArtists = (
   const fetchTopArtists = useCallback(async (): Promise<void> => {
     // If data fetching is disabled, return early
     if (!shouldFetchData) {
-      addLog(
-        'INFO',
-        `[useTopArtists] Data fetching disabled - shouldFetchData: ${shouldFetchData}`,
-        'useTopArtists'
-      )
       setIsLoading(false)
       setError(null)
       setArtists([])
       return
     }
 
-    addLog(
-      'INFO',
-      `[useTopArtists] Starting to fetch top artists - shouldFetchData: ${shouldFetchData}`,
-      'useTopArtists'
-    )
+    // INFO logs suppressed per logging policy
 
     try {
       setIsLoading(true)
@@ -518,22 +419,13 @@ const useTopGenres = (
   const fetchTopGenres = useCallback(async (): Promise<void> => {
     // If data fetching is disabled, return early
     if (!shouldFetchData) {
-      addLog(
-        'INFO',
-        `[useTopGenres] Data fetching disabled - shouldFetchData: ${shouldFetchData}`,
-        'useTopGenres'
-      )
       setIsLoading(false)
       setError(null)
       setGenres([])
       return
     }
 
-    addLog(
-      'INFO',
-      `[useTopGenres] Starting to fetch top genres - shouldFetchData: ${shouldFetchData}`,
-      'useTopGenres'
-    )
+    // INFO logs suppressed per logging policy
 
     try {
       setIsLoading(true)
@@ -712,12 +604,6 @@ export const AnalyticsTab = ({ username }: AnalyticsTabProps): JSX.Element => {
 
       setDeletingTrackId(track.track_id)
       try {
-        addLog(
-          'INFO',
-          `Deleting suggested track: ${track.name}`,
-          'AnalyticsTab'
-        )
-
         // Optimistic update - remove track from list immediately
         optimisticUpdate((currentTracks) =>
           currentTracks.filter((t) => t.track_id !== track.track_id)
@@ -733,11 +619,6 @@ export const AnalyticsTab = ({ username }: AnalyticsTabProps): JSX.Element => {
           showToast(
             `Successfully deleted "${track.name}" from suggested tracks.`,
             'success'
-          )
-          addLog(
-            'INFO',
-            `Successfully deleted suggested track: ${track.name}`,
-            'AnalyticsTab'
           )
         } else {
           const errorData = (await response.json()) as { error?: string }
@@ -792,12 +673,6 @@ export const AnalyticsTab = ({ username }: AnalyticsTabProps): JSX.Element => {
 
       setAddingTrackId(track.spotify_track_id)
       try {
-        addLog(
-          'INFO',
-          `Adding single track to playlist: ${track.name}`,
-          'AnalyticsTab'
-        )
-
         // Optimistic update - add track to queue immediately
         if (queueOptimisticUpdate && queue) {
           const newQueueItem = {
@@ -825,11 +700,6 @@ export const AnalyticsTab = ({ username }: AnalyticsTabProps): JSX.Element => {
             ...currentQueue,
             newQueueItem
           ])
-          addLog(
-            'INFO',
-            'Optimistic update: Added single track to queue UI',
-            'AnalyticsTab'
-          )
         }
 
         const response = await fetch(`/api/playlist/${username}`, {
@@ -852,11 +722,6 @@ export const AnalyticsTab = ({ username }: AnalyticsTabProps): JSX.Element => {
 
         if (response.ok) {
           showToast(`Added "${track.name}" to the playlist.`, 'success')
-          addLog(
-            'INFO',
-            `Successfully added single track to queue: ${track.name}`,
-            'AnalyticsTab'
-          )
         } else {
           const errorData = (await response.json()) as { error?: string }
           showToast(
@@ -908,12 +773,6 @@ export const AnalyticsTab = ({ username }: AnalyticsTabProps): JSX.Element => {
         return
       }
 
-      addLog(
-        'INFO',
-        `Adding ${newTracks.length} tracks to playlist from analytics`,
-        'AnalyticsTab'
-      )
-
       // Optimistic update - add tracks to queue immediately
       if (queueOptimisticUpdate && queue) {
         const newQueueItems = newTracks.map((track) => ({
@@ -941,11 +800,6 @@ export const AnalyticsTab = ({ username }: AnalyticsTabProps): JSX.Element => {
           ...currentQueue,
           ...newQueueItems
         ])
-        addLog(
-          'INFO',
-          'Optimistic update: Added tracks to queue UI',
-          'AnalyticsTab'
-        )
       }
 
       let addedCount = 0
@@ -970,11 +824,6 @@ export const AnalyticsTab = ({ username }: AnalyticsTabProps): JSX.Element => {
           })
           if (response.ok) {
             addedCount++
-            addLog(
-              'INFO',
-              `Successfully added track to queue: ${track.name}`,
-              'AnalyticsTab'
-            )
           } else {
             const errorData = (await response.json()) as { error?: string }
             addLog(
@@ -999,11 +848,6 @@ export const AnalyticsTab = ({ username }: AnalyticsTabProps): JSX.Element => {
             addedCount === 1 ? 'track' : 'tracks'
           } to the queue.`,
           'success'
-        )
-        addLog(
-          'INFO',
-          `Successfully added ${addedCount} tracks to queue from analytics`,
-          'AnalyticsTab'
         )
       } else {
         showToast('Failed to add any new tracks to the queue.', 'warning')
@@ -1075,6 +919,7 @@ export const AnalyticsTab = ({ username }: AnalyticsTabProps): JSX.Element => {
           type='button'
           onClick={(): void => setIsTopTracksCollapsed(!isTopTracksCollapsed)}
           className='flex w-full items-center justify-between px-4 py-3 text-left transition-colors hover:bg-gray-50'
+          aria-expanded={!isTopTracksCollapsed}
         >
           <div className='flex items-center gap-4'>
             <h2 className='text-2xl font-bold'>Top 50 Suggested Tracks</h2>
@@ -1192,6 +1037,7 @@ export const AnalyticsTab = ({ username }: AnalyticsTabProps): JSX.Element => {
           type='button'
           onClick={(): void => setIsTopArtistsCollapsed(!isTopArtistsCollapsed)}
           className='flex w-full items-center justify-between px-4 py-3 text-left transition-colors hover:bg-gray-50'
+          aria-expanded={!isTopArtistsCollapsed}
         >
           <h2 className='text-2xl font-bold'>Top 5 Artists</h2>
           <svg
@@ -1263,6 +1109,7 @@ export const AnalyticsTab = ({ username }: AnalyticsTabProps): JSX.Element => {
           type='button'
           onClick={(): void => setIsTopGenresCollapsed(!isTopGenresCollapsed)}
           className='flex w-full items-center justify-between px-4 py-3 text-left transition-colors hover:bg-gray-50'
+          aria-expanded={!isTopGenresCollapsed}
         >
           <h2 className='text-2xl font-bold'>Top 5 Genres</h2>
           <svg
@@ -1336,6 +1183,7 @@ export const AnalyticsTab = ({ username }: AnalyticsTabProps): JSX.Element => {
             setIsReleaseYearCollapsed(!isReleaseYearCollapsed)
           }
           className='flex w-full items-center justify-between px-4 py-3 text-left transition-colors hover:bg-gray-50'
+          aria-expanded={!isReleaseYearCollapsed}
         >
           <h2 className='text-2xl font-bold'>Release Year</h2>
           <svg
@@ -1367,6 +1215,7 @@ export const AnalyticsTab = ({ username }: AnalyticsTabProps): JSX.Element => {
           type='button'
           onClick={(): void => setIsPopularityCollapsed(!isPopularityCollapsed)}
           className='flex w-full items-center justify-between px-4 py-3 text-left transition-colors hover:bg-gray-50'
+          aria-expanded={!isPopularityCollapsed}
         >
           <h2 className='text-2xl font-bold'>Song Popularity</h2>
           <svg

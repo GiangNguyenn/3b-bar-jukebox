@@ -3,10 +3,10 @@
 import { useState, useEffect } from 'react'
 import { useSubscription } from '@/hooks/useSubscription'
 import { useGetProfile } from '@/hooks/useGetProfile'
-import { createModuleLogger } from '@/shared/utils/logger'
+import { useConsoleLogsContext } from '@/hooks/ConsoleLogsProvider'
 import { Loading } from '@/components/ui'
 
-const logger = createModuleLogger('SubscriptionTab')
+// Use centralized logging provider
 
 interface SubscriptionStatus {
   planType: 'free' | 'premium'
@@ -29,6 +29,7 @@ interface SubscriptionStatus {
 }
 
 export function SubscriptionTab(): JSX.Element {
+  const { addLog } = useConsoleLogsContext()
   const [subscriptionStatus, setSubscriptionStatus] =
     useState<SubscriptionStatus | null>(null)
   const [isLoading, setIsLoading] = useState(true)
@@ -110,7 +111,7 @@ export function SubscriptionTab(): JSX.Element {
       const errorMessage =
         err instanceof Error ? err.message : 'Unknown error occurred'
       setError(errorMessage)
-      logger(
+      addLog(
         'ERROR',
         'Failed to create checkout session',
         'SubscriptionTab',
@@ -149,7 +150,7 @@ export function SubscriptionTab(): JSX.Element {
       const errorMessage =
         err instanceof Error ? err.message : 'Unknown error occurred'
       setError(errorMessage)
-      logger(
+      addLog(
         'ERROR',
         'Failed to create checkout session',
         'SubscriptionTab',
@@ -186,7 +187,7 @@ export function SubscriptionTab(): JSX.Element {
       const errorMessage =
         err instanceof Error ? err.message : 'Unknown error occurred'
       setError(errorMessage)
-      logger(
+      addLog(
         'ERROR',
         'Failed to cancel subscription',
         'SubscriptionTab',
@@ -223,7 +224,7 @@ export function SubscriptionTab(): JSX.Element {
       const errorMessage =
         err instanceof Error ? err.message : 'Unknown error occurred'
       setError(errorMessage)
-      logger(
+      addLog(
         'ERROR',
         'Failed to reactivate subscription',
         'SubscriptionTab',

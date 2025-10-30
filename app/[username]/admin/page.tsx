@@ -360,7 +360,8 @@ export default function AdminPage(): JSX.Element {
     healthStatus.playback,
     queue,
     setUserIntent,
-    addLog
+    addLog,
+    playbackState?.progress_ms
   ])
 
   if (playlistError) {
@@ -393,7 +394,7 @@ export default function AdminPage(): JSX.Element {
 
         <Tabs
           value={activeTab}
-          onValueChange={(value) => {
+          onValueChange={(value: string): void => {
             handleTabChange(value)
           }}
           className='space-y-4'
@@ -479,7 +480,7 @@ export default function AdminPage(): JSX.Element {
           <TabsContent value='playlist'>
             <PlaylistDisplay
               queue={queue ?? []}
-              onQueueChanged={async () => {
+              onQueueChanged={async (): Promise<void> => {
                 await refreshQueue()
               }}
               optimisticUpdate={optimisticUpdate}
