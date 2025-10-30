@@ -607,18 +607,20 @@ class AutoPlayService {
 
         // Also exclude tracks from recent cooldown history (client-only, per-username context)
         try {
-          const { loadCooldownState } = await import(
+          const { loadCooldownState, getRecentForMinBetween } = await import(
             '@/shared/utils/suggestionsCooldown'
           )
           const contextId = this.username ?? 'default'
           const cooldown = loadCooldownState(contextId)
-          if (cooldown.recentTrackIds.length > 0) {
+          const minBetween = mergedTrackSuggestions.songsBetweenRepeats
+          const recentForWindow = getRecentForMinBetween(cooldown, minBetween)
+          if (recentForWindow.length > 0) {
             logger(
               'WARN',
-              `[AutoFill] Including ${cooldown.recentTrackIds.length} cooldown trackIds into exclusions for context=${contextId}`
+              `[AutoFill] Including ${recentForWindow.length} cooldown trackIds into exclusions for context=${contextId} (minBetween=${minBetween})`
             )
             excludedTrackIds = Array.from(
-              new Set([...excludedTrackIds, ...cooldown.recentTrackIds])
+              new Set([...excludedTrackIds, ...recentForWindow])
             )
             logger(
               'WARN',

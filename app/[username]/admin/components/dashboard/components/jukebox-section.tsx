@@ -43,6 +43,13 @@ export function JukeboxSection({
     }
   }
 
+  const handleOpenDisplay = (): void => {
+    if (username) {
+      const displayUrl = `/${username}/display`
+      window.open(displayUrl, '_blank')
+    }
+  }
+
   const handleCopyLink = async (): Promise<void> => {
     if (username) {
       const jukeboxUrl = `${window.location.origin}/${username}/playlist`
@@ -240,6 +247,14 @@ export function JukeboxSection({
             </div>
           </div>
         </div>
+
+        <button
+          onClick={handleOpenDisplay}
+          disabled={!username}
+          className='text-white w-full rounded-lg bg-blue-600 px-4 py-3 font-medium transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50'
+        >
+          Open Display
+        </button>
 
         <button
           onClick={handleOpenJukebox}

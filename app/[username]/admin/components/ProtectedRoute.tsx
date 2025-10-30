@@ -21,27 +21,29 @@ export function ProtectedRoute({
   )
 
   useEffect(() => {
+    const redirectTo = (path: string): void => {
+      router.push(path)
+    }
+
     const checkSessionAndPremium = async (): Promise<void> => {
       try {
         const {
           data: { session }
         } = await supabase.auth.getSession()
         if (!session) {
-          router.push('/auth/signin')
+          redirectTo('/auth/signin')
           return
         }
 
-        // Step 1: Check if user has valid Spotify authentication
         const tokenResponse = await fetch('/api/token', {
           credentials: 'include'
         })
 
         if (!tokenResponse.ok) {
-          router.push('/auth/signin')
+          redirectTo('/auth/signin')
           return
         }
 
-        // Step 2: Now that we have valid Spotify authentication, check premium status
         const premiumResponse = await fetch('/api/auth/verify-premium', {
           credentials: 'include'
         })
@@ -51,35 +53,30 @@ export function ProtectedRoute({
             isPremium: boolean
           }
           if (!premiumData.isPremium) {
-            // Non-premium user, redirect to premium required page
-            router.push('/premium-required')
+            redirectTo('/premium-required')
             return
           }
           setIsPremium(true)
         } else {
-          // Premium verification failed, check if it's a token issue
           const errorData = (await premiumResponse
             .json()
             .catch(() => ({}))) as { code?: string }
 
-          // For authentication errors (token issues), redirect to signin page
           if (
             errorData.code === 'NO_SPOTIFY_TOKEN' ||
             errorData.code === 'INVALID_SPOTIFY_TOKEN'
           ) {
-            router.push('/auth/signin')
+            redirectTo('/auth/signin')
             return
           }
 
-          // For other errors, redirect to root page to allow the app to handle it
-          router.push('/')
+          redirectTo('/')
           return
         }
 
         setIsLoading(false)
       } catch {
-        // For any errors, redirect to root page to allow re-authentication
-        router.push('/')
+        redirectTo('/')
       }
     }
 
