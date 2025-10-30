@@ -27,7 +27,10 @@ export interface SpotifyApiClient {
   getCurrentlyPlaying(): Promise<SpotifyPlaybackState>
   addTrackToPlaylist(playlistId: string, trackUri: string): Promise<void>
   getPlaybackState(): Promise<SpotifyPlaybackState>
-  resumePlayback(): Promise<{
+  resumePlayback(
+    position_ms?: number,
+    deviceId?: string
+  ): Promise<{
     success: boolean
     resumedFrom?: {
       trackUri: string
@@ -145,7 +148,10 @@ export class SpotifyApiService implements SpotifyApiClient {
     )
   }
 
-  async resumePlayback(position_ms?: number): Promise<{
+  async resumePlayback(
+    position_ms?: number,
+    targetDeviceId?: string
+  ): Promise<{
     success: boolean
     resumedFrom?: {
       trackUri: string
@@ -154,8 +160,20 @@ export class SpotifyApiService implements SpotifyApiClient {
   }> {
     return handleOperationError(async () => {
       try {
-        // First ensure we have an active device
-        const deviceId = await this.ensureActiveDevice()
+        // Ensure we are on the intended device if provided; otherwise pick an active device
+        let deviceId = targetDeviceId
+        if (!deviceId) {
+          deviceId = await this.ensureActiveDevice()
+        } else {
+          // Transfer playback to the specific device without auto-play
+          await this.apiClient({
+            path: 'me/player',
+            method: 'PUT',
+            body: { device_ids: [deviceId], play: false },
+            retryConfig: this.retryConfig
+          })
+          await new Promise((resolve) => setTimeout(resolve, 800))
+        }
 
         // Get the next track from our database queue
         const nextTrack = queueManager.getNextTrack()
