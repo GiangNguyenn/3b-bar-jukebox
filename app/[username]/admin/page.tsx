@@ -21,6 +21,7 @@ import { BrandingTab } from './components/branding/branding-tab'
 import { SubscriptionTab } from './components/subscription/subscription-tab'
 import { PremiumNotice } from './components/PremiumNotice'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { SpotifyApiService } from '@/services/spotifyApi'
 
 import { type TrackSuggestionsState } from '@/shared/types/trackSuggestions'
 import { useRecoverySystem } from '@/hooks/recovery'
@@ -213,13 +214,31 @@ function usePlaybackRecovery(params: {
   isRecovering: boolean
   recover: () => Promise<void>
 }): void {
-  const { playbackStatus, isRecovering, recover } = params
+  const { playbackStatus } = params
+  const { addLog } = useConsoleLogsContext()
+  const { userIntent } = usePlaybackIntentStore()
 
   useEffect(() => {
-    if (playbackStatus === 'stalled' && !isRecovering) {
-      void recover()
+    const lastReloadTs = Number(
+      sessionStorage.getItem('admin_last_reload_ts') || '0'
+    )
+    const reloadedTooRecently = Date.now() - lastReloadTs < 10000
+
+    const shouldReload =
+      playbackStatus === 'stalled' ||
+      (userIntent === 'playing' &&
+        (playbackStatus === 'stopped' || playbackStatus === 'paused'))
+
+    if (shouldReload && !reloadedTooRecently) {
+      addLog(
+        'ERROR',
+        'Playback halted unexpectedly — reloading page',
+        'AdminPage'
+      )
+      sessionStorage.setItem('admin_last_reload_ts', String(Date.now()))
+      window.location.reload()
     }
-  }, [playbackStatus, isRecovering, recover])
+  }, [playbackStatus, userIntent, addLog])
 }
 
 export default function AdminPage(): JSX.Element {
@@ -237,11 +256,17 @@ export default function AdminPage(): JSX.Element {
   >('dashboard')
 
   const initializationAttemptedRef = useRef(false)
+  const autoResumeTriggeredRef = useRef(false)
 
   // Hooks
   const params = useParams()
   const username = params?.username as string | undefined
-  const { deviceId, isReady, status: playerStatus } = useSpotifyPlayerStore()
+  const {
+    deviceId,
+    isReady,
+    status: playerStatus,
+    playbackState
+  } = useSpotifyPlayerStore()
   const { createPlayer } = useAdminSpotifyPlayerHook()
   const { addLog } = useConsoleLogsContext()
   const { setUserIntent } = usePlaybackIntentStore()
@@ -405,6 +430,47 @@ export default function AdminPage(): JSX.Element {
     isRecovering: recoveryState.isRecovering,
     recover
   })
+
+  // Auto-resume playback once after device connects on initial load, if not already playing and queue has tracks
+  // Placed after queueManager update effect to avoid race where queue isn't registered yet
+  useEffect(() => {
+    if (autoResumeTriggeredRef.current) return
+    if (!isReady || !deviceId) return
+    if (healthStatus.playback === 'playing') return
+    if (!queue || queue.length === 0) return
+
+    autoResumeTriggeredRef.current = true
+    // Slight delay to let device transfer/queue registration settle
+    const timeout = setTimeout(() => {
+      void (async () => {
+        try {
+          const spotifyApi = SpotifyApiService.getInstance()
+          const currentPosition = playbackState?.progress_ms || 0
+          const result = await spotifyApi.resumePlayback(currentPosition)
+          if (!result?.success) throw new Error('Failed to resume playback')
+          setUserIntent('playing')
+        } catch (error) {
+          addLog(
+            'ERROR',
+            'Auto-resume on admin load failed',
+            'AdminPage',
+            error instanceof Error ? error : undefined
+          )
+          autoResumeTriggeredRef.current = false
+        }
+      })()
+    }, 150)
+
+    return () => clearTimeout(timeout)
+  }, [
+    isReady,
+    deviceId,
+    healthStatus.playback,
+    queue,
+    playbackState?.progress_ms,
+    setUserIntent,
+    addLog
+  ])
 
   if (playlistError) {
     return (
