@@ -490,9 +490,9 @@ export default function AdminPage(): JSX.Element {
 
           const ensureActiveDevice = async (): Promise<void> => {
             try {
-              const devices = await sendApiRequest<{ devices: SpotifyDevice[]}>(
-                { path: 'me/player/devices', method: 'GET' }
-              )
+              const devices = await sendApiRequest<{
+                devices: SpotifyDevice[]
+              }>({ path: 'me/player/devices', method: 'GET' })
               const active = devices?.devices?.some(
                 (d) => d.id === deviceId && d.is_active
               )
