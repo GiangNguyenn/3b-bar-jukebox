@@ -217,6 +217,11 @@ function usePlaybackRecovery(params: {
   const { playbackStatus } = params
   const { addLog } = useConsoleLogsContext()
   const { userIntent } = usePlaybackIntentStore()
+  const { status: playerStatus, isReady } = useSpotifyPlayerStore()
+
+  // Grace period on first load and require consecutive detections to reduce false positives
+  const graceUntilRef = useRef<number>(Date.now() + 8000)
+  const consecutiveProblemCountRef = useRef<number>(0)
 
   useEffect(() => {
     const lastReloadTs = Number(
@@ -224,10 +229,21 @@ function usePlaybackRecovery(params: {
     )
     const reloadedTooRecently = Date.now() - lastReloadTs < 10000
 
-    const shouldReload =
+    const isProblem =
       playbackStatus === 'stalled' ||
       (userIntent === 'playing' &&
         (playbackStatus === 'stopped' || playbackStatus === 'paused'))
+
+    // Require 2 consecutive problematic observations
+    if (isProblem) consecutiveProblemCountRef.current += 1
+    else consecutiveProblemCountRef.current = 0
+
+    const pastGraceWindow = Date.now() >= graceUntilRef.current
+    const consecutiveEnough = consecutiveProblemCountRef.current >= 2
+    const playerStable = isReady && playerStatus === 'ready'
+
+    const shouldReload =
+      isProblem && pastGraceWindow && consecutiveEnough && playerStable
 
     if (shouldReload && !reloadedTooRecently) {
       addLog(
@@ -238,7 +254,7 @@ function usePlaybackRecovery(params: {
       sessionStorage.setItem('admin_last_reload_ts', String(Date.now()))
       window.location.reload()
     }
-  }, [playbackStatus, userIntent, addLog])
+  }, [playbackStatus, userIntent, addLog, isReady, playerStatus])
 }
 
 export default function AdminPage(): JSX.Element {
