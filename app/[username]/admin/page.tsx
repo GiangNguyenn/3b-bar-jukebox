@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-unsafe-assignment */
 'use client'
 
 import { useCallback, useEffect, useState, useRef } from 'react'
@@ -32,9 +31,196 @@ import { tokenManager } from '@/shared/token/tokenManager'
 import { queueManager } from '@/services/queueManager'
 import { getAutoPlayService } from '@/services/autoPlayService'
 import { AutoFillNotification } from '@/components/ui/auto-fill-notification'
+import type { JukeboxQueueItem } from '@/shared/types/queue'
 
 import { useSubscription } from '@/hooks/useSubscription'
 import { useGetProfile } from '@/hooks/useGetProfile'
+
+// Local helper hooks to keep the component lean and declarative
+function useAdminAutoPlay(params: {
+  deviceId: string | null
+  username: string | null
+  queue: JukeboxQueueItem[] | null | undefined
+  trackSuggestionsState: TrackSuggestionsState | null | undefined
+  addLog: (
+    level: 'WARN' | 'ERROR' | 'INFO' | 'LOG',
+    message: string,
+    context?: string,
+    error?: Error
+  ) => void
+  setUserIntent: (intent: 'playing' | 'paused') => void
+  refreshQueue: () => Promise<void>
+}): void {
+  const {
+    deviceId,
+    username,
+    queue,
+    trackSuggestionsState,
+    addLog,
+    setUserIntent,
+    refreshQueue
+  } = params
+
+  useEffect(() => {
+    const autoPlayService = getAutoPlayService({
+      checkInterval: 2000,
+      deviceId,
+      username,
+      onTrackFinished: () => {
+        void refreshQueue()
+      },
+      onNextTrackStarted: () => {
+        setUserIntent('playing')
+        void refreshQueue()
+      },
+      onQueueEmpty: () => {
+        setUserIntent('paused')
+      },
+      onQueueLow: () => {}
+    })
+
+    autoPlayService.start()
+
+    if (deviceId) autoPlayService.setDeviceId(deviceId)
+    if (username) autoPlayService.setUsername(username)
+    if (queue) autoPlayService.updateQueue(queue)
+
+    if (trackSuggestionsState) {
+      const requiredFields = [
+        'genres',
+        'yearRange',
+        'popularity',
+        'allowExplicit',
+        'maxSongLength',
+        'songsBetweenRepeats',
+        'maxOffset',
+        'autoFillTargetSize'
+      ] as const
+      const hasAllFields = requiredFields.every(
+        (field) => field in trackSuggestionsState
+      )
+
+      if (hasAllFields) {
+        autoPlayService.setTrackSuggestionsState(trackSuggestionsState)
+      } else {
+        addLog(
+          'WARN',
+          `[AdminPage] Track suggestions state incomplete, not updating auto-play service. Missing: ${requiredFields
+            .filter((field) => !(field in trackSuggestionsState))
+            .join(', ')}`,
+          'AdminPage'
+        )
+      }
+    }
+
+    if (username && deviceId) {
+      if (trackSuggestionsState) {
+        const requiredFields = [
+          'genres',
+          'yearRange',
+          'popularity',
+          'allowExplicit',
+          'maxSongLength',
+          'songsBetweenRepeats',
+          'maxOffset',
+          'autoFillTargetSize'
+        ] as const
+        const hasAllFields = requiredFields.every(
+          (field) => field in trackSuggestionsState
+        )
+
+        if (hasAllFields) {
+          autoPlayService.markAsInitialized()
+        } else {
+          addLog(
+            'WARN',
+            `[AdminPage] Auto-play service not initialized - track suggestions state missing fields: ${requiredFields
+              .filter((field) => !(field in trackSuggestionsState))
+              .join(', ')}`,
+            'AdminPage'
+          )
+        }
+      } else {
+        autoPlayService.markAsInitialized()
+      }
+    } else {
+      addLog(
+        'WARN',
+        `[AdminPage] Auto-play service not initialized - missing: username=${!!username}, deviceId=${!!deviceId}`,
+        'AdminPage'
+      )
+    }
+
+    return (): void => {
+      autoPlayService.stop()
+    }
+  }, [
+    deviceId,
+    username,
+    queue,
+    trackSuggestionsState,
+    addLog,
+    setUserIntent,
+    refreshQueue
+  ])
+}
+
+function useAdminTokenManagement(params: {
+  tokenHealthStatus: 'valid' | 'error' | 'unknown' | 'expired'
+  isLoading: boolean
+  isReady: boolean
+  handleTokenError: () => Promise<void>
+  addLog: (
+    level: 'WARN' | 'ERROR' | 'INFO' | 'LOG',
+    message: string,
+    context?: string,
+    error?: Error
+  ) => void
+}): void {
+  const { tokenHealthStatus, isLoading, isReady, handleTokenError, addLog } =
+    params
+
+  useEffect(() => {
+    if (tokenHealthStatus === 'error' && !isLoading && isReady) {
+      void handleTokenError()
+    }
+  }, [tokenHealthStatus, isLoading, isReady, handleTokenError])
+
+  useEffect(() => {
+    if (!isReady) return
+
+    const interval = setInterval(() => {
+      void (async (): Promise<void> => {
+        try {
+          await tokenManager.refreshIfNeeded()
+        } catch (error) {
+          addLog(
+            'ERROR',
+            'Proactive token refresh failed',
+            'AdminPage',
+            error instanceof Error ? error : undefined
+          )
+        }
+      })()
+    }, 60000)
+
+    return (): void => clearInterval(interval)
+  }, [isReady, addLog])
+}
+
+function usePlaybackRecovery(params: {
+  playbackStatus: string
+  isRecovering: boolean
+  recover: () => Promise<void>
+}): void {
+  const { playbackStatus, isRecovering, recover } = params
+
+  useEffect(() => {
+    if (playbackStatus === 'stalled' && !isRecovering) {
+      void recover()
+    }
+  }, [playbackStatus, isRecovering, recover])
+}
 
 export default function AdminPage(): JSX.Element {
   // State
@@ -68,19 +254,14 @@ export default function AdminPage(): JSX.Element {
     optimisticUpdate
   } = usePlaylistData(username)
 
-  // Use the track suggestions hook
-  // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+  // Use the track suggestions hook (properly typed)
   const trackSuggestions = useTrackSuggestions()
   const trackSuggestionsState = trackSuggestions.state
   const updateTrackSuggestionsState = trackSuggestions.updateState
 
   // Debug track suggestions state
   useEffect(() => {
-    addLog(
-      'INFO',
-      `[AdminPage] Track suggestions state updated: ${JSON.stringify(trackSuggestionsState)}`,
-      'AdminPage'
-    )
+    // Removed INFO-level log per logging policy
   }, [trackSuggestionsState, addLog])
 
   // First, use the health monitor hook
@@ -107,141 +288,15 @@ export default function AdminPage(): JSX.Element {
   // Add token health monitoring
   const tokenHealth = useTokenHealth()
 
-  // Initialize auto-play service
-  useEffect(() => {
-    const autoPlayService = getAutoPlayService({
-      checkInterval: 2000, // Check every 2 seconds
-      deviceId: deviceId ?? null,
-      username: username ?? null,
-      onTrackFinished: () => {
-        // Refresh queue when track finishes to update the UI
-        void refreshQueue()
-      },
-      onNextTrackStarted: () => {
-        setUserIntent('playing')
-        // Refresh queue when next track starts to update the UI
-        void refreshQueue()
-      },
-      onQueueEmpty: () => {
-        setUserIntent('paused')
-      },
-      onQueueLow: () => {
-        // Auto-fill will be handled by the service
-      }
-    })
-
-    // Start the auto-play service
-    autoPlayService.start()
-
-    // Update the service when device ID changes
-    if (deviceId) {
-      autoPlayService.setDeviceId(deviceId)
-    }
-
-    // Update the service when username changes
-    if (username) {
-      autoPlayService.setUsername(username)
-    }
-
-    // Update the service when queue changes
-    if (queue) {
-      autoPlayService.updateQueue(queue)
-    }
-
-    // Update the service when track suggestions state changes
-    if (trackSuggestionsState) {
-      // Check if track suggestions state has all required fields
-      const requiredFields = [
-        'genres',
-        'yearRange',
-        'popularity',
-        'allowExplicit',
-        'maxSongLength',
-        'songsBetweenRepeats',
-        'maxOffset',
-        'autoFillTargetSize'
-      ]
-      const hasAllFields = requiredFields.every(
-        (field) => field in trackSuggestionsState
-      )
-
-      if (hasAllFields) {
-        autoPlayService.setTrackSuggestionsState(trackSuggestionsState)
-        addLog(
-          'INFO',
-          `[AdminPage] Updated auto-play service with complete track suggestions state: ${JSON.stringify(trackSuggestionsState)}`,
-          'AdminPage'
-        )
-      } else {
-        addLog(
-          'WARN',
-          `[AdminPage] Track suggestions state incomplete, not updating auto-play service. Missing: ${requiredFields.filter((field) => !(field in trackSuggestionsState)).join(', ')}`,
-          'AdminPage'
-        )
-      }
-    }
-
-    // Mark the service as initialized after all initial setup is complete
-    if (username && deviceId) {
-      // Check if track suggestions state is available and complete
-      if (trackSuggestionsState) {
-        const requiredFields = [
-          'genres',
-          'yearRange',
-          'popularity',
-          'allowExplicit',
-          'maxSongLength',
-          'songsBetweenRepeats',
-          'maxOffset',
-          'autoFillTargetSize'
-        ]
-        const hasAllFields = requiredFields.every(
-          (field) => field in trackSuggestionsState
-        )
-
-        if (hasAllFields) {
-          autoPlayService.markAsInitialized()
-          addLog(
-            'INFO',
-            `[AdminPage] Auto-play service initialized with complete track suggestions state`,
-            'AdminPage'
-          )
-        } else {
-          addLog(
-            'WARN',
-            `[AdminPage] Auto-play service not initialized - track suggestions state missing fields: ${requiredFields.filter((field) => !(field in trackSuggestionsState)).join(', ')}`,
-            'AdminPage'
-          )
-        }
-      } else {
-        // Initialize without track suggestions state (will use fallbacks)
-        autoPlayService.markAsInitialized()
-        addLog(
-          'INFO',
-          `[AdminPage] Auto-play service initialized without track suggestions state (will use fallbacks)`,
-          'AdminPage'
-        )
-      }
-    } else {
-      addLog(
-        'WARN',
-        `[AdminPage] Auto-play service not initialized - missing: username=${!!username}, deviceId=${!!deviceId}`,
-        'AdminPage'
-      )
-    }
-
-    return (): void => {
-      autoPlayService.stop()
-    }
-  }, [
-    deviceId,
-    username,
+  useAdminAutoPlay({
+    deviceId: deviceId ?? null,
+    username: username ?? null,
     queue,
     trackSuggestionsState,
     addLog,
     setUserIntent,
-    refreshQueue
-  ])
+    refreshQueue: async () => refreshQueue()
+  })
 
   // Update QueueManager with queue data
   useEffect(() => {
@@ -337,51 +392,24 @@ export default function AdminPage(): JSX.Element {
     }
   }, [addLog, createPlayer])
 
-  // Automatic token recovery when token health is in error state
-  useEffect(() => {
-    if (tokenHealth.status === 'error' && !isLoading && isReady) {
-      void handleTokenError()
-    }
-  }, [tokenHealth.status, isLoading, isReady, handleTokenError])
+  useAdminTokenManagement({
+    tokenHealthStatus: tokenHealth.status,
+    isLoading,
+    isReady,
+    handleTokenError,
+    addLog
+  })
 
-  // Proactive token refresh interval - check every minute
-  useEffect(() => {
-    if (!isReady) return
-
-    const interval = setInterval(() => {
-      void (async (): Promise<void> => {
-        try {
-          await tokenManager.refreshIfNeeded()
-        } catch (error) {
-          addLog(
-            'ERROR',
-            'Proactive token refresh failed',
-            'AdminPage',
-            error instanceof Error ? error : undefined
-          )
-        }
-      })()
-    }, 60000) // Check every minute
-
-    return (): void => clearInterval(interval)
-  }, [isReady, addLog])
-
-  // Automatically trigger recovery if playback stalls
-  useEffect(() => {
-    if (healthStatus.playback === 'stalled' && !recoveryState.isRecovering) {
-      void recover()
-    }
-  }, [healthStatus.playback, recoveryState.isRecovering, recover])
+  usePlaybackRecovery({
+    playbackStatus: healthStatus.playback,
+    isRecovering: recoveryState.isRecovering,
+    recover
+  })
 
   if (playlistError) {
     return (
       <div className='p-4 text-red-500'>
-        <p>
-          Error loading queue:{' '}
-          {typeof playlistError === 'string'
-            ? playlistError
-            : String(playlistError)}
-        </p>
+        <p>Error loading queue: {playlistError ?? 'Unknown error'}</p>
       </div>
     )
   }
@@ -472,6 +500,7 @@ export default function AdminPage(): JSX.Element {
               playbackInfo={null}
               formatTime={formatTime}
               isReady={isReady}
+              playerStatus={playerStatus}
             />
 
             <JukeboxSection className='mt-8' />

@@ -13,7 +13,13 @@ interface HealthStatusSectionProps {
   } | null
   formatTime: (ms: number) => string
   isReady: boolean
-  playerStatus?: string
+  playerStatus?:
+    | 'ready'
+    | 'initializing'
+    | 'reconnecting'
+    | 'error'
+    | 'disconnected'
+    | 'verifying'
 }
 
 const playerColorMap: Record<string, string> = {

@@ -141,27 +141,23 @@ export function TrackSuggestionsTab({
     lastFetchTimeRef.current = now
 
     try {
-      addLog(
-        'LOG',
-        'Fetching last suggested track with updated URL...',
-        'TrackSuggestionsTab'
-      )
       const response = await fetch('/api/track-suggestions?latest=true')
       if (!response.ok) {
         throw new Error('Failed to fetch last suggested track')
       }
-      const data = (await response.json()) as LastSuggestedTrackResponse
+      const data: LastSuggestedTrackResponse =
+        (await response.json()) as LastSuggestedTrackResponse
 
       if (data.track?.uri !== lastTrackUriRef.current) {
         updateState({ lastSuggestedTrack: data.track ?? undefined })
         lastTrackUriRef.current = data.track?.uri ?? null
       }
-    } catch (error) {
+    } catch (error: unknown) {
       addLog(
         'ERROR',
         'Error fetching last suggested track',
         'TrackSuggestionsTab',
-        error as Error
+        error instanceof Error ? error : new Error('Unknown error')
       )
     }
   }, [updateState, addLog])

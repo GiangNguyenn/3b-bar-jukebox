@@ -7,6 +7,8 @@ export interface SuggestionsCooldownState {
 }
 
 const VERSION: SuggestionsCooldownState['version'] = 1
+// Keep a larger rolling history so changes to the UI setting take effect immediately
+const MAX_HISTORY = 200
 
 function getKey(contextId: string): string {
   return `suggestions:cooldown:${contextId}`
@@ -61,8 +63,16 @@ export function appendSuggestedTrackId(
   minBetween: number
 ): SuggestionsCooldownState {
   if (!trackId) return state
-  const max = Math.max(0, minBetween)
   const nextIds = [...state.recentTrackIds, trackId]
-  const trimmed = max > 0 ? nextIds.slice(-max) : nextIds
+  const trimmed = nextIds.slice(-MAX_HISTORY)
   return { recentTrackIds: trimmed, updatedAt: Date.now(), version: VERSION }
+}
+
+export function getRecentForMinBetween(
+  state: SuggestionsCooldownState,
+  minBetween: number
+): string[] {
+  if (minBetween <= 0) return []
+  const count = Math.max(0, Math.floor(minBetween))
+  return state.recentTrackIds.slice(-count)
 }
