@@ -456,14 +456,42 @@ export default function AdminPage(): JSX.Element {
     if (!queue || queue.length === 0) return
 
     autoResumeTriggeredRef.current = true
-    // Slight delay to let device transfer/queue registration settle
+    // Slight delay to let device transfer/queue registration settle (slower devices need more time)
     const timeout = setTimeout(() => {
       void (async () => {
         try {
           const spotifyApi = SpotifyApiService.getInstance()
           const currentPosition = playbackState?.progress_ms || 0
-          const result = await spotifyApi.resumePlayback(currentPosition)
-          if (!result?.success) throw new Error('Failed to resume playback')
+          const attemptResume = async (): Promise<boolean> => {
+            const result = await spotifyApi.resumePlayback(currentPosition)
+            if (!result?.success) return false
+            // small wait then verify state
+            await new Promise((r) => setTimeout(r, 400))
+            try {
+              const state = await sendApiRequest<any>({ path: 'me/player', method: 'GET' })
+              return Boolean(state?.is_playing)
+            } catch {
+              return false
+            }
+          }
+
+          let ok = await attemptResume()
+          if (!ok && deviceId) {
+            // Fallback: ask server to force transfer+play
+            try {
+              await fetch('/api/playback', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ action: 'play', deviceId })
+              })
+              await new Promise((r) => setTimeout(r, 600))
+              const state = await sendApiRequest<any>({ path: 'me/player', method: 'GET' })
+              ok = Boolean(state?.is_playing)
+            } catch {}
+          }
+
+          if (!ok) throw new Error('Playback verification failed after resume')
+
           setUserIntent('playing')
         } catch (error) {
           addLog(
@@ -475,7 +503,7 @@ export default function AdminPage(): JSX.Element {
           autoResumeTriggeredRef.current = false
         }
       })()
-    }, 150)
+    }, 600)
 
     return () => clearTimeout(timeout)
   }, [
