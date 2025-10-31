@@ -7,10 +7,11 @@ import { usePathname } from 'next/navigation'
 const Header = (): JSX.Element | null => {
   const pathname = usePathname()
 
-  // Don't show header on public playlist pages (they have their own branding)
+  // Don't show header on public playlist pages or display pages (they have their own branding)
   const isPublicPlaylistPage = pathname.includes('/playlist')
+  const isDisplayPage = pathname.includes('/display')
 
-  if (isPublicPlaylistPage) {
+  if (isPublicPlaylistPage || isDisplayPage) {
     return null
   }
 
