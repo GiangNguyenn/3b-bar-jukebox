@@ -2,7 +2,6 @@
 
 import { Suspense, useEffect, useState, useCallback } from 'react'
 import Image from 'next/image'
-import { useUserToken } from '@/hooks/useUserToken'
 import { useNowPlayingTrack } from '@/hooks/useNowPlayingTrack'
 import { useArtistExtract } from '@/hooks/useArtistExtract'
 import { usePlaylistData } from '@/hooks/usePlaylistData'
@@ -60,12 +59,6 @@ export default function PlaylistPage(): JSX.Element {
   }
 
   const {
-    loading: isTokenLoading,
-    error: tokenError,
-    isJukeboxOffline
-  } = useUserToken()
-
-  const {
     data: queue,
     error: playlistError,
     isLoading: isPlaylistLoading,
@@ -85,7 +78,7 @@ export default function PlaylistPage(): JSX.Element {
     const hasWelcomeMessage =
       settings?.welcome_message && settings.welcome_message.trim() !== ''
     const allLoadingComplete =
-      !brandingLoading && !isTokenLoading && !isPlaylistLoading
+      !brandingLoading && !isPlaylistLoading
 
     if (hasWelcomeMessage && allLoadingComplete) {
       setShowWelcomeMessage(true)
@@ -96,8 +89,8 @@ export default function PlaylistPage(): JSX.Element {
       return (): void => clearTimeout(timer)
     }
 
-    return undefined
-  }, [brandingLoading, isTokenLoading, isPlaylistLoading, settings])
+      return undefined
+  }, [brandingLoading, isPlaylistLoading, settings])
 
   // Update page title, meta description, and Open Graph title when branding settings change
   useEffect(() => {
@@ -287,41 +280,6 @@ export default function PlaylistPage(): JSX.Element {
     )
   }
 
-  useEffect(() => {
-    if (isJukeboxOffline) {
-      const reloadTimer = setTimeout(() => {
-        window.location.reload()
-      }, 1000)
-      return (): void => clearTimeout(reloadTimer)
-    }
-    return undefined
-  }, [isJukeboxOffline])
-
-  if (isJukeboxOffline) {
-    return (
-      <div className='w-full'>
-        <div className='mx-auto flex w-full flex-col space-y-6 sm:w-10/12 md:w-8/12 lg:w-9/12'>
-          <Loading fullScreen message='Reconnecting to jukebox...' />
-        </div>
-      </div>
-    )
-  }
-
-  if (tokenError) {
-    return (
-      <div className='w-full'>
-        <div className='mx-auto flex w-full flex-col space-y-6 sm:w-10/12 md:w-8/12 lg:w-9/12'>
-          <ErrorMessage
-            message={tokenError}
-            variant='error'
-            autoDismissMs={0}
-            className='text-center'
-          />
-        </div>
-      </div>
-    )
-  }
-
   if (playlistError) {
     const errorMessage = hasErrorMessage(playlistError)
       ? playlistError.message
@@ -383,14 +341,14 @@ export default function PlaylistPage(): JSX.Element {
   // Show welcome message immediately after branding loads, regardless of other loading states
   const hasWelcomeMessage =
     settings?.welcome_message && settings.welcome_message.trim() !== ''
-  if (hasWelcomeMessage && (isTokenLoading || isPlaylistLoading)) {
+  if (hasWelcomeMessage && isPlaylistLoading) {
     const loadingMessage = settings.welcome_message ?? 'Loading...'
 
     return <Loading fullScreen message={loadingMessage} />
   }
 
   // If we have a welcome message but no other loading, show it briefly
-  if (hasWelcomeMessage && !isTokenLoading && !isPlaylistLoading) {
+  if (hasWelcomeMessage && !isPlaylistLoading) {
     if (showWelcomeMessage) {
       return (
         <Loading
