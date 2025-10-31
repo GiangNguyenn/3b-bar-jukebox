@@ -77,8 +77,7 @@ export default function PlaylistPage(): JSX.Element {
   useEffect(() => {
     const hasWelcomeMessage =
       settings?.welcome_message && settings.welcome_message.trim() !== ''
-    const allLoadingComplete =
-      !brandingLoading && !isPlaylistLoading
+    const allLoadingComplete = !brandingLoading && !isPlaylistLoading
 
     if (hasWelcomeMessage && allLoadingComplete) {
       setShowWelcomeMessage(true)
@@ -89,7 +88,7 @@ export default function PlaylistPage(): JSX.Element {
       return (): void => clearTimeout(timer)
     }
 
-      return undefined
+    return undefined
   }, [brandingLoading, isPlaylistLoading, settings])
 
   // Update page title, meta description, and Open Graph title when branding settings change
