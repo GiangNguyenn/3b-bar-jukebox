@@ -61,7 +61,6 @@ export async function POST(
       )
     }
 
-    logger('INFO', `Subscription ${subscriptionId} reactivated successfully`)
     return NextResponse.json({ success: true })
   } catch (error) {
     logger(

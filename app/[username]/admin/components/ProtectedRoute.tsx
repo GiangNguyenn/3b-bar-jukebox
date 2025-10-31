@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import { createBrowserClient } from '@supabase/ssr'
 import type { Database } from '@/types/supabase'
@@ -18,9 +18,12 @@ export function ProtectedRoute({
   const [isPremium, setIsPremium] = useState<boolean | null>(null)
   const [isLoading, setIsLoading] = useState(true)
 
-  const supabase = missingEnv
-    ? null
-    : createBrowserClient<Database>(supabaseUrl, supabaseAnon)
+  const supabase = useMemo(() => {
+    if (missingEnv || !supabaseUrl || !supabaseAnon) {
+      return null
+    }
+    return createBrowserClient<Database>(supabaseUrl, supabaseAnon)
+  }, [missingEnv, supabaseUrl, supabaseAnon])
 
   useEffect(() => {
     if (missingEnv || !supabase) return

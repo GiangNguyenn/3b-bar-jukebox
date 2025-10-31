@@ -39,7 +39,6 @@ export async function DELETE(): Promise<NextResponse> {
     )
 
     // Get current user
-    logger('INFO', '🗑️ Getting current user...', 'TestDeleteAllSubscriptions')
     const result = (await supabase.auth.getUser()) as {
       data: { user: { id: string } | null }
       error: unknown

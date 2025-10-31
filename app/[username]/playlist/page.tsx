@@ -62,9 +62,7 @@ export default function PlaylistPage(): JSX.Element {
   const {
     loading: isTokenLoading,
     error: tokenError,
-    isRecovering,
-    isJukeboxOffline,
-    fetchToken
+    isJukeboxOffline
   } = useUserToken()
 
   const {
@@ -87,7 +85,7 @@ export default function PlaylistPage(): JSX.Element {
     const hasWelcomeMessage =
       settings?.welcome_message && settings.welcome_message.trim() !== ''
     const allLoadingComplete =
-      !brandingLoading && !isTokenLoading && !isPlaylistLoading && !isRecovering
+      !brandingLoading && !isTokenLoading && !isPlaylistLoading
 
     if (hasWelcomeMessage && allLoadingComplete) {
       setShowWelcomeMessage(true)
@@ -99,13 +97,7 @@ export default function PlaylistPage(): JSX.Element {
     }
 
     return undefined
-  }, [
-    brandingLoading,
-    isTokenLoading,
-    isPlaylistLoading,
-    isRecovering,
-    settings
-  ])
+  }, [brandingLoading, isTokenLoading, isPlaylistLoading, settings])
 
   // Update page title, meta description, and Open Graph title when branding settings change
   useEffect(() => {
@@ -285,8 +277,6 @@ export default function PlaylistPage(): JSX.Element {
     [refreshQueue, optimisticUpdate, queue]
   )
 
-  const [isTokenInvalid, setIsTokenInvalid] = useState<boolean>(false)
-
   // Type guard for error with message
   function hasErrorMessage(error: unknown): error is { message: string } {
     return (
@@ -296,33 +286,6 @@ export default function PlaylistPage(): JSX.Element {
       typeof (error as { message: unknown }).message === 'string'
     )
   }
-
-  useEffect(() => {
-    if (
-      playlistError &&
-      hasErrorMessage(playlistError) &&
-      playlistError.message.includes('Token invalid') &&
-      !isRecovering
-    ) {
-      setIsTokenInvalid(true)
-    }
-  }, [playlistError, isRecovering])
-
-  const handleTokenRecovery = useCallback(async (): Promise<void> => {
-    if (fetchToken) {
-      const newToken = await fetchToken()
-      if (newToken) {
-        setIsTokenInvalid(false)
-        void refreshQueue()
-      }
-    }
-  }, [fetchToken, refreshQueue])
-
-  useEffect(() => {
-    if (isTokenInvalid) {
-      void handleTokenRecovery()
-    }
-  }, [isTokenInvalid, handleTokenRecovery])
 
   useEffect(() => {
     if (isJukeboxOffline) {
@@ -420,24 +383,14 @@ export default function PlaylistPage(): JSX.Element {
   // Show welcome message immediately after branding loads, regardless of other loading states
   const hasWelcomeMessage =
     settings?.welcome_message && settings.welcome_message.trim() !== ''
-  if (
-    hasWelcomeMessage &&
-    (isTokenLoading || isPlaylistLoading || isRecovering)
-  ) {
-    const loadingMessage = isRecovering
-      ? ERROR_MESSAGES.RECONNECTING
-      : (settings.welcome_message ?? 'Loading...')
+  if (hasWelcomeMessage && (isTokenLoading || isPlaylistLoading)) {
+    const loadingMessage = settings.welcome_message ?? 'Loading...'
 
     return <Loading fullScreen message={loadingMessage} />
   }
 
   // If we have a welcome message but no other loading, show it briefly
-  if (
-    hasWelcomeMessage &&
-    !isTokenLoading &&
-    !isPlaylistLoading &&
-    !isRecovering
-  ) {
+  if (hasWelcomeMessage && !isTokenLoading && !isPlaylistLoading) {
     if (showWelcomeMessage) {
       return (
         <Loading

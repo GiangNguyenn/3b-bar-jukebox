@@ -95,6 +95,11 @@ export function ConsoleLogsProvider({
 
   const addLog = useCallback(
     (level: LogLevel, message: string, context?: string, error?: Error) => {
+      // Filter out LOG and INFO levels - only process WARN and ERROR
+      if (level === 'LOG' || level === 'INFO') {
+        return
+      }
+
       const now = Date.now()
       if (now - lastLogTime.current < rateLimit) {
         return
@@ -116,30 +121,18 @@ export function ConsoleLogsProvider({
         return updatedLogs.slice(0, maxLogs)
       })
 
-      const consoleMethod = level.toLowerCase() as
-        | 'log'
-        | 'info'
-        | 'warn'
-        | 'error'
+      const consoleMethod = level.toLowerCase() as 'warn' | 'error'
       const consoleArgs = context
         ? [`[${context}]`, sanitizedMessage, error].filter(Boolean)
         : [sanitizedMessage, error].filter(Boolean)
 
       switch (consoleMethod) {
-        case 'log':
-          console.log(...consoleArgs)
-          break
-        case 'info':
-          console.info(...consoleArgs)
-          break
         case 'warn':
           console.warn(...consoleArgs)
           break
         case 'error':
           console.error(...consoleArgs)
           break
-        default:
-          console.log(...consoleArgs)
       }
 
       logToSentry(level, sanitizedMessage, context, error)
@@ -158,13 +151,10 @@ export function ConsoleLogsProvider({
       if (!enableConsoleOverride || isConsoleOverridden.current) return
       isConsoleOverridden.current = true
 
-      const originalConsoleLog = console.log
-      const originalConsoleInfo = console.info
       const originalConsoleWarn = console.warn
       const originalConsoleError = console.error
 
       function addLogFromConsole(level: LogLevel, ...args: unknown[]): void {
-        const timestamp = new Date().toISOString()
         const [firstArg, ...restArgs] = args
 
         let context: string | undefined
@@ -206,16 +196,6 @@ export function ConsoleLogsProvider({
         addLog(level, message, context, error)
       }
 
-      console.log = (...args: unknown[]): void => {
-        originalConsoleLog.apply(console, args)
-        addLogFromConsole('LOG', ...args)
-      }
-
-      console.info = (...args: unknown[]): void => {
-        originalConsoleInfo.apply(console, args)
-        addLogFromConsole('INFO', ...args)
-      }
-
       console.warn = (...args: unknown[]): void => {
         originalConsoleWarn.apply(console, args)
         addLogFromConsole('WARN', ...args)
@@ -228,8 +208,6 @@ export function ConsoleLogsProvider({
 
       didRun = true
       return () => {
-        console.log = originalConsoleLog
-        console.info = originalConsoleInfo
         console.warn = originalConsoleWarn
         console.error = originalConsoleError
         isConsoleOverridden.current = false

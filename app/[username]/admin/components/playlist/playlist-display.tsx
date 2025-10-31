@@ -30,7 +30,7 @@ export function PlaylistDisplay({
   const { deviceId } = useSpotifyPlayerStore()
   const { addLog } = useConsoleLogsContext()
 
-  // Use the simpler useNowPlayingTrack hook
+  // Use the simpler useNowPlayingTrack hook (matches mainline)
   const { data: currentlyPlaying } = useNowPlayingTrack()
 
   // Debounced refresh to prevent excessive API calls

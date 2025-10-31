@@ -17,7 +17,6 @@ export const ERROR_MESSAGES = {
   FAILED_TO_FETCH_PROFILE: 'Failed to fetch user profile',
   JUKEBOX_OFFLINE: 'Jukebox is currently offline',
   RECONNECTING: 'Reconnecting to jukebox...',
-  TOKEN_RECOVERY_FAILED: 'Unable to connect to jukebox',
   PREMIUM_REQUIRED:
     'This feature requires a Spotify Premium account. Please upgrade your Spotify account to premium to use this jukebox.',
   PREMIUM_ACCOUNT_ERROR:

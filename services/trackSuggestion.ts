@@ -86,19 +86,6 @@ function filterTracksByCriteria(
     yearRange
   } = criteria
 
-  logger(
-    'INFO',
-    `[filterTracksByCriteria] Starting filter with ${tracks.length} tracks and criteria: ${JSON.stringify(
-      {
-        excludedIdsCount: excludedIds.length,
-        minPopularity,
-        maxSongLengthMs,
-        allowExplicit,
-        yearRange
-      }
-    )}`
-  )
-
   const candidates: TrackDetails[] = []
   const filteredOut = {
     excluded: 0,
@@ -115,14 +102,12 @@ function filterTracksByCriteria(
     // Check exclusion first (most restrictive)
     if (excludedIds.includes(track.id)) {
       filteredOut.excluded++
-      logger('INFO', `[filterTracksByCriteria] Track excluded: ${trackInfo}`)
       continue
     }
 
     // Check playability
     if (track.is_playable !== true) {
       filteredOut.unplayable++
-      logger('INFO', `[filterTracksByCriteria] Track unplayable: ${trackInfo}`)
       continue
     }
 
@@ -143,63 +128,57 @@ function filterTracksByCriteria(
     // Check popularity
     if (trackPopularity < minPopularity) {
       filteredOut.lowPopularity++
-      logger(
-        'INFO',
-        `[filterTracksByCriteria] Track low popularity (${trackPopularity} < ${minPopularity}): ${trackInfo}`
-      )
       continue
     }
 
     // Check length
-    const trackLengthMinutes =
-      Math.round((track.duration_ms / 1000 / 60) * 10) / 10
-    const maxLengthMinutes = Math.round((maxSongLengthMs / 1000 / 60) * 10) / 10
     if (track.duration_ms > maxSongLengthMs) {
       filteredOut.tooLong++
-      logger(
-        'INFO',
-        `[filterTracksByCriteria] Track too long (${trackLengthMinutes}min > ${maxLengthMinutes}min): ${trackInfo}`
-      )
       continue
     }
 
     // Check explicit content
     if (!allowExplicit && track.explicit) {
       filteredOut.explicit++
-      logger(
-        'INFO',
-        `[filterTracksByCriteria] Track explicit (not allowed): ${trackInfo}`
-      )
       continue
     }
 
     // Check year range if provided (secondary validation)
     if (yearRange) {
       const [startYear, endYear] = yearRange
-      const releaseYear = parseInt(track.album.release_date.split('-')[0])
+      // Handle different release_date formats: "YYYY", "YYYY-MM", or "YYYY-MM-DD"
+      let releaseYear: number
+      if (!track.album.release_date) {
+        // If no release date, skip year validation
+        releaseYear = startYear // Use startYear so it passes validation
+      } else {
+        try {
+          // Try parsing the year from various date formats
+          const dateStr = track.album.release_date
+          if (dateStr.includes('-')) {
+            releaseYear = parseInt(dateStr.split('-')[0], 10)
+          } else {
+            releaseYear = parseInt(dateStr, 10)
+          }
+          // Validate parsed year is a valid number
+          if (isNaN(releaseYear)) {
+            releaseYear = startYear // Use startYear so it passes validation
+          }
+        } catch {
+          // If parsing fails, skip year validation for this track
+          releaseYear = startYear
+        }
+      }
 
       if (releaseYear < startYear || releaseYear > endYear) {
         filteredOut.wrongYear++
-        logger(
-          'INFO',
-          `[filterTracksByCriteria] Track wrong year (${releaseYear} not in ${startYear}-${endYear}): ${trackInfo}`
-        )
         continue
       }
     }
 
     // Track passes all criteria
     candidates.push(track)
-    logger(
-      'INFO',
-      `[filterTracksByCriteria] Track passed all criteria: ${trackInfo}`
-    )
   }
-
-  logger(
-    'INFO',
-    `[filterTracksByCriteria] Filter complete: ${candidates.length} candidates out of ${tracks.length} tracks. Filtered out: ${JSON.stringify(filteredOut)}`
-  )
 
   return { candidates, filteredOut }
 }
@@ -229,27 +208,6 @@ export async function searchTracksByGenre(
           ? 1 + Math.floor(Math.random() * (offsetCap - 1))
           : 1
 
-      logger(
-        'INFO',
-        `[searchTracksByGenre] Attempt ${attempt}/${maxRetries} for genre "${genre}" with params: ${JSON.stringify(
-          {
-            yearRange: [startYear, endYear],
-            market,
-            minPopularity,
-            offsetCap,
-            offset: randomOffset,
-            useAppToken
-          }
-        )}`
-      )
-
-      // Construct the full request URL for logging
-      const baseUrl =
-        process.env.NEXT_PUBLIC_SPOTIFY_BASE_URL || 'https://api.spotify.com/v1'
-      const fullUrl = `${baseUrl}/${SPOTIFY_SEARCH_ENDPOINT}?q=genre:${encodeURIComponent(genre)} year:${startYear}-${endYear}&type=track&limit=${TRACK_SEARCH_LIMIT}&market=${market}&offset=${randomOffset}`
-
-      logger('INFO', `[searchTracksByGenre] Full Spotify API URL: ${fullUrl}`)
-
       const response = await sendApiRequest<{
         tracks: { items: TrackDetails[] }
       }>({
@@ -269,23 +227,6 @@ export async function searchTracksByGenre(
       }
 
       if (tracks.length > 0) {
-        logger(
-          'INFO',
-          `[searchTracksByGenre] Retrieved ${tracks.length} tracks for genre "${genre}" on attempt ${attempt}`
-        )
-        // Log some sample tracks for debugging
-        const sampleTracks = tracks.slice(0, 3).map((t) => ({
-          name: t.name,
-          artist: t.artists.map((a) => a.name).join(', '),
-          popularity: t.popularity,
-          duration_ms: t.duration_ms,
-          is_playable: t.is_playable,
-          explicit: t.explicit
-        }))
-        logger(
-          'INFO',
-          `[searchTracksByGenre] Sample tracks: ${JSON.stringify(sampleTracks)}`
-        )
         return tracks
       }
 
@@ -374,27 +315,6 @@ export async function findSuggestedTrack(
   },
   useAppToken: boolean = false
 ): Promise<TrackSearchResult> {
-  logger(
-    'INFO',
-    `[findSuggestedTrack] Starting with params: ${JSON.stringify({
-      excludedTrackIds,
-      currentTrackId,
-      market,
-      useAppToken,
-      params: params
-        ? {
-            genres: params.genres,
-            yearRange: params.yearRange,
-            popularity: params.popularity,
-            allowExplicit: params.allowExplicit,
-            maxSongLength: params.maxSongLength,
-            songsBetweenRepeats: params.songsBetweenRepeats,
-            maxOffset: params.maxOffset
-          }
-        : null
-    })}`
-  )
-
   // Validate inputs
   const excludedValidation = validateExcludedTrackIds(excludedTrackIds)
   if (!excludedValidation.isValid) {
@@ -450,28 +370,10 @@ export async function findSuggestedTrack(
     genres.length === 1 && genres[0] !== 'Pop' && genres[0] !== 'Rock'
   let popularityReduced = false
 
-  logger(
-    'INFO',
-    `[findSuggestedTrack] Using parameters: ${JSON.stringify({
-      allExcludedIds,
-      genres,
-      yearRange,
-      minPopularity,
-      allowExplicit,
-      maxSongLength,
-      maxOffset
-    })}`
-  )
-
   while (attempts < DEFAULT_MAX_GENRE_ATTEMPTS) {
     // Try to get an untried genre first, fallback to random if all tried
     const genre = getUntriedGenre(genres, genresTried) ?? getRandomGenre(genres)
     genresTried.push(genre)
-
-    logger(
-      'INFO',
-      `[findSuggestedTrack] Attempt ${attempts + 1}/${DEFAULT_MAX_GENRE_ATTEMPTS} - Trying genre: ${genre}`
-    )
 
     try {
       const tracks = await searchTracksByGenre(
@@ -481,11 +383,6 @@ export async function findSuggestedTrack(
         minPopularity,
         maxOffset,
         useAppToken
-      )
-
-      logger(
-        'INFO',
-        `[findSuggestedTrack] Found ${tracks.length} tracks for genre "${genre}"`
       )
 
       // Log details about the tracks we found
@@ -519,22 +416,7 @@ export async function findSuggestedTrack(
         yearRange
       })
 
-      logger(
-        'INFO',
-        `[findSuggestedTrack] Filter results for genre "${genre}": ${JSON.stringify(
-          {
-            totalTracks: tracks.length,
-            candidates: filterResult.candidates.length,
-            filteredOut: filterResult.filteredOut
-          }
-        )}`
-      )
-
       if (selectedTrack) {
-        logger(
-          'INFO',
-          `[findSuggestedTrack] Successfully selected track: ${selectedTrack.name} by ${selectedTrack.artists.map((a) => a.name).join(', ')}`
-        )
         return {
           track: selectedTrack,
           searchDetails: {
@@ -565,10 +447,6 @@ export async function findSuggestedTrack(
 
       attempts++
       if (attempts < DEFAULT_MAX_GENRE_ATTEMPTS) {
-        logger(
-          'INFO',
-          `[findSuggestedTrack] Waiting 1 second before next attempt...`
-        )
         await new Promise((resolve) => setTimeout(resolve, 1000))
       }
     } catch (error) {
@@ -580,10 +458,6 @@ export async function findSuggestedTrack(
       )
       attempts++
       if (attempts < DEFAULT_MAX_GENRE_ATTEMPTS) {
-        logger(
-          'INFO',
-          `[findSuggestedTrack] Waiting 1 second before next attempt...`
-        )
         await new Promise((resolve) => setTimeout(resolve, 1000))
       }
     }

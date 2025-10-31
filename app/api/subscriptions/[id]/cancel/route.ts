@@ -56,7 +56,6 @@ export async function POST(
       )
     }
 
-    logger('INFO', `Subscription ${subscriptionId} cancelled successfully`)
     return NextResponse.json({ success: true })
   } catch (error) {
     logger(

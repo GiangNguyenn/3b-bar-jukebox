@@ -11,11 +11,6 @@ export interface HealthStatus {
     | 'poor'
     | 'unstable'
     | 'unknown'
-  // Optional recovery fields for components that need them
-  recovery?: 'idle' | 'recovering' | 'completed' | 'failed'
-  recoveryMessage?: string
-  recoveryProgress?: number
-  recoveryCurrentStep?: string
 }
 
 // Additional health-related types

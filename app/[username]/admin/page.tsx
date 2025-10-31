@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useState, useRef } from 'react'
 import { useParams } from 'next/navigation'
-import { usePlaybackIntentStore } from '@/hooks/usePlaybackIntent'
 import {
   useSpotifyPlayerStore,
   useAdminSpotifyPlayerHook
@@ -20,17 +19,14 @@ import { BrandingTab } from './components/branding/branding-tab'
 import { SubscriptionTab } from './components/subscription/subscription-tab'
 import { PremiumNotice } from './components/PremiumNotice'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { SpotifyApiService } from '@/services/spotifyApi'
-import { sendApiRequest } from '@/shared/api'
-import { SpotifyPlaybackState, SpotifyDevice } from '@/shared/types/spotify'
 
 import { type TrackSuggestionsState } from '@/shared/types/trackSuggestions'
 import { ErrorMessage } from '@/components/ui/error-message'
 import { Loading } from '@/components/ui'
-import { useTokenHealth } from '@/hooks/health/useTokenHealth'
 import { tokenManager } from '@/shared/token/tokenManager'
 import { queueManager } from '@/services/queueManager'
 import { AutoFillNotification } from '@/components/ui/auto-fill-notification'
+import { getAutoPlayService } from '@/services/autoPlayService'
 
 import { useSubscription } from '@/hooks/useSubscription'
 import { useGetProfile } from '@/hooks/useGetProfile'
@@ -98,20 +94,13 @@ export default function AdminPage(): JSX.Element {
   >('dashboard')
 
   const initializationAttemptedRef = useRef(false)
-  const autoResumeTriggeredRef = useRef(false)
 
   // Hooks
   const params = useParams()
   const username = params?.username as string | undefined
-  const {
-    deviceId,
-    isReady,
-    status: playerStatus,
-    playbackState
-  } = useSpotifyPlayerStore()
+  const { isReady, status: playerStatus, deviceId } = useSpotifyPlayerStore()
   const { createPlayer } = useAdminSpotifyPlayerHook()
   const { addLog } = useConsoleLogsContext()
-  const { setUserIntent } = usePlaybackIntentStore()
   // Use the enhanced playlist hook with real-time subscriptions
   const {
     data: queue,
@@ -123,13 +112,7 @@ export default function AdminPage(): JSX.Element {
 
   // Use the track suggestions hook (properly typed)
   const trackSuggestions = useTrackSuggestions()
-  const trackSuggestionsState = trackSuggestions.state
   const updateTrackSuggestionsState = trackSuggestions.updateState
-
-  // Debug track suggestions state
-  useEffect(() => {
-    // Removed INFO-level log per logging policy
-  }, [trackSuggestionsState, addLog])
 
   // First, use the health monitor hook
   const healthStatus = useSpotifyHealthMonitor()
@@ -148,19 +131,11 @@ export default function AdminPage(): JSX.Element {
   const isPremiumDisabled =
     !subscriptionLoading && !profileLoading && !hasPremiumAccess
 
-  // Add token health monitoring
-  const tokenHealth = useTokenHealth()
-
-  // Cancellation guard for autoplay async sequence
-  const autoResumeCancelRef = useRef(false)
-  useEffect(() => {
-    autoResumeCancelRef.current = false
-    return () => {
-      autoResumeCancelRef.current = true
-    }
-  }, [])
-
-  // Autoplay on start disabled
+  // Extract token health from healthStatus to avoid duplicate API calls
+  const tokenHealth = {
+    status: healthStatus.token,
+    expiringSoon: healthStatus.tokenExpiringSoon
+  }
 
   // Update QueueManager with queue data
   useEffect(() => {
@@ -169,11 +144,49 @@ export default function AdminPage(): JSX.Element {
     }
   }, [queue])
 
+  // Initialize AutoPlayService when username and deviceId are available
+  useEffect(() => {
+    if (!username || !deviceId || !isReady) {
+      return
+    }
+
+    const autoPlayService = getAutoPlayService({
+      username,
+      deviceId,
+      checkInterval: 1000
+    })
+
+    // Set username and deviceId (in case service was already created)
+    autoPlayService.setUsername(username)
+    autoPlayService.setDeviceId(deviceId)
+
+    // Start the service if not already running
+    if (!autoPlayService.isActive()) {
+      autoPlayService.start()
+      autoPlayService.markAsInitialized()
+    }
+
+    // Update queue in AutoPlayService
+    if (queue) {
+      autoPlayService.updateQueue(queue)
+    }
+
+    // Set initial track suggestions state
+    const trackSuggestionsState = trackSuggestions.state
+    if (trackSuggestionsState) {
+      autoPlayService.setTrackSuggestionsState(trackSuggestionsState)
+    }
+
+    return (): void => {
+      // Don't stop the service on unmount - it should keep running
+      // The service is a singleton and should persist across re-renders
+    }
+  }, [username, deviceId, isReady, queue, trackSuggestions.state, addLog])
+
   // Initialize the player when the component mounts
   useEffect(() => {
     const initializePlayer = async (): Promise<void> => {
-      // Only initialize if not ready, SDK is available, we haven't attempted initialization yet,
-      // and recovery is not in progress
+      // Only initialize if not ready, SDK is available, we haven't attempted initialization yet
       if (
         playerStatus === 'initializing' &&
         typeof window !== 'undefined' &&
@@ -216,8 +229,13 @@ export default function AdminPage(): JSX.Element {
   const handleTrackSuggestionsStateChange = useCallback(
     (state: TrackSuggestionsState): void => {
       updateTrackSuggestionsState(state)
+      // Pass state to AutoPlayService
+      if (username) {
+        const autoPlayService = getAutoPlayService()
+        autoPlayService.setTrackSuggestionsState(state)
+      }
     },
-    [updateTrackSuggestionsState]
+    [updateTrackSuggestionsState, username]
   )
 
   const formatTime = useCallback((ms: number): string => {
@@ -227,7 +245,7 @@ export default function AdminPage(): JSX.Element {
     return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`
   }, [])
 
-  // Add graceful token error recovery
+  // Add graceful token error handling
   const handleTokenError = useCallback(async (): Promise<void> => {
     try {
       setIsLoading(true)
@@ -245,11 +263,11 @@ export default function AdminPage(): JSX.Element {
     } catch (error: unknown) {
       addLog(
         'ERROR',
-        'Automatic token recovery failed',
+        'Automatic token refresh failed',
         'AdminPage',
         error instanceof Error ? error : undefined
       )
-      setError('Token recovery failed. Please check your Spotify credentials.')
+      setError('Token refresh failed. Please check your Spotify credentials.')
     } finally {
       setIsLoading(false)
     }
@@ -264,105 +282,6 @@ export default function AdminPage(): JSX.Element {
   })
 
   // Recovery removed
-
-  // Auto-resume playback once after device connects on initial load, if not already playing and queue has tracks
-  // Harden for slow devices: gate on token valid, ensure active device, retry with backoff, verify via API, server fallback, and cancellation guard
-  useEffect(() => {
-    if (autoResumeTriggeredRef.current) return
-    if (!isReady || !deviceId) return
-    if (tokenHealth.status !== 'valid') return
-    if (healthStatus.playback === 'playing') return
-    if (!queue || queue.length === 0) return
-
-    // Slight delay to let device transfer/queue registration settle (slower devices need more time)
-    const timeout = setTimeout(() => {
-      // Mark as triggered only when we actually start the attempt
-      autoResumeTriggeredRef.current = true
-      void (async (): Promise<void> => {
-        try {
-          const spotifyApi = SpotifyApiService.getInstance()
-          const currentPosition = playbackState?.progress_ms ?? 0
-          const verifyPlaying = async (): Promise<boolean> => {
-            try {
-              const state = await sendApiRequest<SpotifyPlaybackState>({
-                path: 'me/player',
-                method: 'GET'
-              })
-              return Boolean(state?.is_playing)
-            } catch {
-              return false
-            }
-          }
-
-          const ensureActiveDevice = async (): Promise<void> => {
-            try {
-              const devices = await sendApiRequest<{
-                devices: SpotifyDevice[]
-              }>({ path: 'me/player/devices', method: 'GET' })
-              const active = devices?.devices?.some(
-                (d) => d.id === deviceId && d.is_active
-              )
-              if (!active && deviceId) {
-                await fetch('/api/playback', {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ action: 'play', deviceId })
-                })
-              }
-            } catch {
-              // ignore
-            }
-          }
-
-          await ensureActiveDevice()
-
-          const backoffs = [200, 600, 1200]
-          let ok = false
-          for (const wait of backoffs) {
-            if (autoResumeCancelRef.current) return
-            await spotifyApi.resumePlayback(
-              currentPosition,
-              deviceId ?? undefined
-            )
-            if (autoResumeCancelRef.current) return
-            await new Promise((r) => setTimeout(r, wait))
-            if (autoResumeCancelRef.current) return
-            ok = await verifyPlaying()
-            if (ok) break
-          }
-
-          if (!ok && deviceId) {
-            await ensureActiveDevice()
-            await new Promise((r) => setTimeout(r, 600))
-            ok = await verifyPlaying()
-          }
-
-          if (!ok) throw new Error('Autoplay verification failed')
-
-          setUserIntent('playing')
-        } catch (error: unknown) {
-          addLog(
-            'ERROR',
-            'Auto-resume on admin load failed',
-            'AdminPage',
-            error instanceof Error ? error : undefined
-          )
-          autoResumeTriggeredRef.current = false
-        }
-      })()
-    }, 600)
-
-    return (): void => clearTimeout(timeout)
-  }, [
-    isReady,
-    deviceId,
-    tokenHealth.status,
-    healthStatus.playback,
-    queue,
-    setUserIntent,
-    addLog,
-    playbackState?.progress_ms
-  ])
 
   if (playlistError) {
     return (
