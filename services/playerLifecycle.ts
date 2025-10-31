@@ -254,8 +254,8 @@ class PlayerLifecycleService {
         this.log('ERROR', 'Failed to find alternative device', error)
       }
 
-      // If recovery failed, transition to error
-      onStatusChange('error', 'Device recovery failed')
+      // If device transfer failed, transition to error
+      onStatusChange('error', 'Device transfer failed')
     }, this.STATE_MACHINE_CONFIG.GRACE_PERIODS.notReadyToReconnecting)
   }
 
@@ -279,7 +279,23 @@ class PlayerLifecycleService {
 
       try {
         // Set up device management logger
-        setDeviceManagementLogger(this.addLog || console.log)
+        setDeviceManagementLogger(
+          this.addLog ||
+            ((level, message, context, error) => {
+              // Fallback: only log WARN and ERROR
+              if (level === 'WARN') {
+                console.warn(
+                  `[${context || 'DeviceManagement'}] ${message}`,
+                  error
+                )
+              } else if (level === 'ERROR') {
+                console.error(
+                  `[${context || 'DeviceManagement'}] ${message}`,
+                  error
+                )
+              }
+            })
+        )
 
         // Clear any existing cleanup timeout
         if (this.cleanupTimeoutRef) {
@@ -408,10 +424,10 @@ class PlayerLifecycleService {
             )
             this.handleRestrictionViolatedError()
           } else {
-            // Don't change status for other playback errors, let health monitor handle recovery
+            // Don't change status for other playback errors, let health monitor handle it
             this.log(
               'WARN',
-              'Playback error occurred, but recovery is handled by health monitor'
+              'Playback error occurred, but error handling is managed by health monitor'
             )
           }
         })
@@ -420,7 +436,7 @@ class PlayerLifecycleService {
           if (!state) {
             this.log(
               'WARN',
-              'Received null state in player_state_changed event. Device is likely inactive. Triggering recovery.'
+              'Received null state in player_state_changed event. Device is likely inactive.'
             )
             onStatusChange('reconnecting', 'Device became inactive')
             return
@@ -453,83 +469,93 @@ class PlayerLifecycleService {
             const trackFinished = trackJustFinished || (isNearEnd && hasStalled)
 
             if (trackFinished) {
-              const currentSpotifyTrackId =
-                state.track_window?.current_track?.id
-              this.log(
-                'INFO',
-                `Track finished detected for Spotify track ID: ${currentSpotifyTrackId}`
-              )
-
-              // Find the queue item that matches the finished Spotify track
-              const queue = queueManager.getQueue()
-              const finishedQueueItem = queue.find(
-                (item) => item.tracks.spotify_track_id === currentSpotifyTrackId
-              )
-
-              if (finishedQueueItem) {
+              try {
+                const currentSpotifyTrackId =
+                  state.track_window?.current_track?.id
                 this.log(
                   'INFO',
-                  `Found queue item for finished track: ${finishedQueueItem.id}`
+                  `Track finished detected for Spotify track ID: ${currentSpotifyTrackId}`
                 )
 
-                try {
-                  // Mark the track as played in the queue
-                  await queueManager.markAsPlayed(finishedQueueItem.id)
+                // Find the queue item that matches the finished Spotify track
+                const queue = queueManager.getQueue()
+                const finishedQueueItem = queue.find(
+                  (item) =>
+                    item.tracks.spotify_track_id === currentSpotifyTrackId
+                )
+
+                if (finishedQueueItem) {
                   this.log(
                     'INFO',
-                    `Marked queue item ${finishedQueueItem.id} as played`
+                    `Found queue item for finished track: ${finishedQueueItem.id}`
                   )
 
-                  // Check if queue is getting low and trigger auto-fill if needed
-                  await this.checkAndAutoFillQueue()
-
-                  // Get the next track from the queue
-                  const nextTrack = queueManager.getNextTrack()
-
-                  if (nextTrack) {
+                  try {
+                    // Mark the track as played in the queue
+                    await queueManager.markAsPlayed(finishedQueueItem.id)
                     this.log(
                       'INFO',
-                      `Playing next track from queue: ${nextTrack.tracks.name}`
+                      `Marked queue item ${finishedQueueItem.id} as played`
                     )
-                    this.currentQueueTrack = nextTrack
+                  } catch (error) {
+                    this.log(
+                      'WARN',
+                      `Failed to mark queue item ${finishedQueueItem.id} as played`,
+                      error
+                    )
+                    // Continue with next track even if marking as played fails
+                  }
+                } else {
+                  this.log(
+                    'WARN',
+                    `No queue item found for finished track: ${currentSpotifyTrackId}. Track may have been manually started or already removed from queue.`
+                  )
+                }
 
-                    if (this.deviceId) {
-                      try {
-                        await sendApiRequest({
-                          path: 'me/player/play',
-                          method: 'PUT',
-                          body: {
-                            device_id: this.deviceId,
-                            uris: [
-                              `spotify:track:${nextTrack.tracks.spotify_track_id}`
-                            ]
-                          }
-                        })
-                        this.log(
-                          'INFO',
-                          `Successfully started playing next track: ${nextTrack.tracks.name}`
-                        )
-                      } catch (error) {
-                        this.log('ERROR', 'Failed to play next track', error)
-                      }
-                    } else {
+                // Check if queue is getting low and trigger auto-fill if needed
+                await this.checkAndAutoFillQueue()
+
+                // Get the next track from the queue
+                const nextTrack = queueManager.getNextTrack()
+
+                if (nextTrack) {
+                  this.log(
+                    'INFO',
+                    `Playing next track from queue: ${nextTrack.tracks.name}`
+                  )
+                  this.currentQueueTrack = nextTrack
+
+                  if (this.deviceId) {
+                    try {
+                      await sendApiRequest({
+                        path: 'me/player/play',
+                        method: 'PUT',
+                        body: {
+                          device_id: this.deviceId,
+                          uris: [
+                            `spotify:track:${nextTrack.tracks.spotify_track_id}`
+                          ]
+                        }
+                      })
                       this.log(
-                        'ERROR',
-                        'No device ID available to play next track.'
+                        'INFO',
+                        `Successfully started playing next track: ${nextTrack.tracks.name}`
                       )
+                    } catch (error) {
+                      this.log('ERROR', 'Failed to play next track', error)
                     }
                   } else {
-                    this.log('INFO', 'Queue is empty. Playback stopped.')
-                    this.currentQueueTrack = null
+                    this.log(
+                      'ERROR',
+                      'No device ID available to play next track.'
+                    )
                   }
-                } catch (error) {
-                  this.log('ERROR', 'Error handling track finished', error)
+                } else {
+                  this.log('INFO', 'Queue is empty. Playback stopped.')
+                  this.currentQueueTrack = null
                 }
-              } else {
-                this.log(
-                  'WARN',
-                  `No queue item found for finished Spotify track ID: ${currentSpotifyTrackId}`
-                )
+              } catch (error) {
+                this.log('ERROR', 'Error handling track finished', error)
               }
             }
 
@@ -605,7 +631,7 @@ class PlayerLifecycleService {
             if (this.playerRef === player) {
               this.log(
                 'INFO',
-                'Cleanup timeout reached, player may need recovery'
+                'Cleanup timeout reached, player may need reinitialization'
               )
             }
           },

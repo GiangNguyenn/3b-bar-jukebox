@@ -1,5 +1,12 @@
 import { ERROR_MESSAGES, ErrorMessage } from '@/shared/constants/errors'
-import { ErrorType } from '@/shared/types/recovery'
+
+export const ErrorType = {
+  AUTH: 'auth',
+  DEVICE: 'device',
+  CONNECTION: 'connection',
+  PLAYBACK: 'playback'
+} as const
+export type ErrorType = (typeof ErrorType)[keyof typeof ErrorType]
 
 interface ApiError {
   message?: string

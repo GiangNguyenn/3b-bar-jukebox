@@ -30,9 +30,7 @@ export default function PlaylistContent({
     token,
     loading: isTokenLoading,
     error: tokenError,
-    isRecovering,
-    isJukeboxOffline,
-    fetchToken
+    isJukeboxOffline
   } = useUserToken()
 
   const {
@@ -131,39 +129,6 @@ export default function PlaylistContent({
     [refreshQueue]
   )
 
-  const [isTokenInvalid, setIsTokenInvalid] = useState<boolean>(false)
-
-  useEffect(() => {
-    if (
-      playlistError &&
-      typeof playlistError === 'object' &&
-      'message' in playlistError &&
-      typeof (playlistError as { message: unknown }).message === 'string' &&
-      (playlistError as { message: string }).message.includes(
-        'Token invalid'
-      ) &&
-      !isRecovering
-    ) {
-      setIsTokenInvalid(true)
-    }
-  }, [playlistError, isRecovering])
-
-  const handleTokenRecovery = useCallback(async (): Promise<void> => {
-    if (fetchToken) {
-      const newToken = await fetchToken()
-      if (newToken) {
-        setIsTokenInvalid(false)
-        void refreshQueue()
-      }
-    }
-  }, [fetchToken, refreshQueue])
-
-  useEffect(() => {
-    if (isTokenInvalid) {
-      void handleTokenRecovery()
-    }
-  }, [isTokenInvalid, handleTokenRecovery])
-
   useEffect(() => {
     if (isJukeboxOffline) {
       const reloadTimer = setTimeout(() => {
@@ -219,13 +184,8 @@ export default function PlaylistContent({
     )
   }
 
-  if (isTokenLoading || isPlaylistLoading || isRecovering || isTokenInvalid) {
-    return (
-      <Loading
-        fullScreen
-        message={isRecovering ? ERROR_MESSAGES.RECONNECTING : 'Loading...'}
-      />
-    )
+  if (isTokenLoading || isPlaylistLoading) {
+    return <Loading fullScreen message='Loading...' />
   }
 
   if (!queue) {

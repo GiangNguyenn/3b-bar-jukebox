@@ -30,15 +30,12 @@ export async function GET(
   }
 
   try {
-    logger('INFO', `Fetching audio features for track: ${trackId}`)
-
     const audioFeatures = await sendApiRequest<SpotifyAudioFeatures>({
       path: `audio-features/${trackId}`,
       method: 'GET',
       useAppToken: true // Use app token for public features
     })
 
-    logger('INFO', 'Audio features fetched successfully')
     return NextResponse.json(audioFeatures)
   } catch (error) {
     const errorMessage =

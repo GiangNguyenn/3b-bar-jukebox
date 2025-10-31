@@ -77,7 +77,6 @@ export async function GET(
     )
 
     // Get the user's profile from database by display_name
-    logger('INFO', `Fetching profile for username: ${params.username}`)
     const { data: userProfile, error: profileError } = await supabase
       .from('profiles')
       .select(
@@ -101,7 +100,6 @@ export async function GET(
         { status: 500 }
       )
     }
-    logger('INFO', `Successfully fetched profile for ${params.username}`)
 
     // Type guard to ensure userProfile has required fields
     const typedProfile = userProfile as UserProfile

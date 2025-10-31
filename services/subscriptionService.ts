@@ -45,7 +45,6 @@ export class SubscriptionService {
         return null
       }
 
-      logger('INFO', `Created subscription: ${data.id}`)
       return data
     } catch (error) {
       logger(
@@ -151,7 +150,6 @@ export class SubscriptionService {
         return null
       }
 
-      logger('INFO', `Updated subscription: ${id}`)
       return data
     } catch (error) {
       logger(
@@ -184,7 +182,6 @@ export class SubscriptionService {
         return false
       }
 
-      logger('INFO', `Deleted subscription: ${id}`)
       return true
     } catch (error) {
       logger(
@@ -286,7 +283,6 @@ export class SubscriptionService {
           return false
         }
 
-        logger('INFO', `Canceled non-Stripe subscription: ${subscriptionId}`)
         return true
       }
     } catch (error) {
@@ -322,7 +318,6 @@ export class SubscriptionService {
         )
       }
 
-      logger('INFO', `Reactivated subscription: ${subscriptionId}`)
       return true
     } catch (error) {
       logger(
@@ -444,7 +439,6 @@ export class SubscriptionService {
           await this.handlePaymentFailed(event.data.object)
           break
         default:
-          logger('INFO', `Unhandled event type: ${event.type}`)
       }
     } catch (error) {
       logger(
@@ -474,8 +468,6 @@ export class SubscriptionService {
 
       // Update subscription status immediately
       await this.updateSubscriptionFromStripeSession(session.id, profileId)
-
-      logger('INFO', `Checkout session completed for profile ${profileId}`)
     } catch (error) {
       logger(
         'ERROR',
@@ -516,8 +508,6 @@ export class SubscriptionService {
           ).toISOString()
         })
       }
-
-      logger('INFO', `Subscription created for profile ${profileId}`)
     } catch (error) {
       logger(
         'ERROR',
@@ -592,8 +582,6 @@ export class SubscriptionService {
           })
         }
       }
-
-      logger('INFO', `Subscription updated: ${subscription.id}`)
     } catch (error) {
       logger(
         'ERROR',
@@ -617,8 +605,6 @@ export class SubscriptionService {
           status: 'canceled'
         })
       }
-
-      logger('INFO', `Subscription deleted: ${subscription.id}`)
     } catch (error) {
       logger(
         'ERROR',
@@ -644,8 +630,6 @@ export class SubscriptionService {
           })
         }
       }
-
-      logger('INFO', `Payment succeeded for invoice: ${invoice.id}`)
     } catch (error) {
       logger(
         'ERROR',
@@ -671,8 +655,6 @@ export class SubscriptionService {
           })
         }
       }
-
-      logger('INFO', `Payment failed for invoice: ${invoice.id}`)
     } catch (error) {
       logger(
         'ERROR',

@@ -67,17 +67,10 @@ class AutoPlayService {
     }
 
     this.isRunning = true
-    logger('INFO', 'Starting auto-play service')
-    logger(
-      'INFO',
-      `Configuration - checkInterval: ${this.checkInterval}, username: ${this.username}, deviceId: ${this.deviceId}`
-    )
 
     this.intervalRef = setInterval(() => {
       void this.checkPlaybackState()
     }, this.checkInterval)
-
-    logger('INFO', 'Auto-play service started successfully')
   }
 
   public stop(): void {
@@ -86,7 +79,6 @@ class AutoPlayService {
     }
 
     this.isRunning = false
-    logger('INFO', 'Stopping auto-play service')
 
     if (this.intervalRef) {
       clearInterval(this.intervalRef)
@@ -96,19 +88,35 @@ class AutoPlayService {
 
   public setDeviceId(deviceId: string | null): void {
     this.deviceId = deviceId
-    logger('INFO', `Updated device ID: ${deviceId}`)
   }
 
   public setUsername(username: string | null): void {
-    logger('INFO', `Setting username: ${username}`)
     this.username = username
-    logger('INFO', `Updated username: ${this.username}`)
   }
 
   public updateQueue(queue: JukeboxQueueItem[]): void {
-    logger('INFO', `Updating queue with ${queue.length} tracks`)
+    const previousQueueLength = this.queueManager.getQueue().length
     this.queueManager.updateQueue(queue)
-    logger('INFO', `Updated queue with ${queue.length} tracks`)
+    const currentQueueLength = queue.length
+
+    // Trigger auto-fill check if queue is below target size
+    // Only check if service is running, initialized, and we have username
+    if (
+      this.isRunning &&
+      this.isInitialized &&
+      this.username &&
+      currentQueueLength < this.autoFillTargetSize &&
+      !this.isAutoFilling
+    ) {
+      logger(
+        'INFO',
+        `Queue updated: ${currentQueueLength}/${this.autoFillTargetSize} tracks, triggering auto-fill check`
+      )
+      // Use setTimeout to avoid blocking queue update
+      setTimeout(() => {
+        void this.checkAndAutoFillQueue()
+      }, 500)
+    }
   }
 
   public setTrackSuggestionsState(state: any): void {
@@ -150,22 +158,25 @@ class AutoPlayService {
 
   public disableAutoPlay(): void {
     this.isAutoPlayDisabled = true
-    logger('INFO', 'Auto-play temporarily disabled')
   }
 
   public enableAutoPlay(): void {
     this.isAutoPlayDisabled = false
-    logger('INFO', 'Auto-play re-enabled')
   }
 
   public markAsInitialized(): void {
     this.isInitialized = true
-    logger('INFO', 'Service marked as initialized')
   }
 
   private async checkPlaybackState(): Promise<void> {
     try {
       const currentState = await this.getCurrentPlaybackState()
+
+      // Periodically check if queue needs auto-fill (even when no playback state)
+      // This ensures auto-fill happens even if playback is stopped or no device is active
+      if (this.isInitialized && this.username) {
+        void this.checkAndAutoFillQueue()
+      }
 
       if (!currentState) {
         logger(
@@ -186,25 +197,12 @@ class AutoPlayService {
       // Reset lastProcessedTrackId if we're playing a different track
       if (currentTrackId && currentTrackId !== this.lastTrackId) {
         this.lastProcessedTrackId = null
-        logger(
-          'INFO',
-          `New track detected: ${currentTrackId}, resetting processed track ID`
-        )
       }
 
       // Check if track has finished
       if (this.hasTrackFinished(currentState)) {
-        logger('INFO', `Track finished detected for: ${currentTrackId}`)
         try {
-          logger(
-            'INFO',
-            '[checkPlaybackState] About to call handleTrackFinished'
-          )
           await this.handleTrackFinished(currentTrackId)
-          logger(
-            'INFO',
-            '[checkPlaybackState] handleTrackFinished completed successfully'
-          )
         } catch (error) {
           logger(
             'ERROR',
@@ -284,11 +282,8 @@ class AutoPlayService {
 
     // Prevent processing the same track multiple times
     if (this.lastProcessedTrackId === trackId) {
-      logger('INFO', `Track ${trackId} already processed, skipping`)
       return
     }
-
-    logger('INFO', `Track finished: ${trackId}`)
     this.lastProcessedTrackId = trackId
     this.onTrackFinished?.(trackId)
 
@@ -308,19 +303,28 @@ class AutoPlayService {
         (item) => item.tracks.spotify_track_id === trackId
       )
 
-      if (!queueItem) {
-        logger('ERROR', `No queue item found for finished trackId: ${trackId}`)
-        return
+      if (queueItem) {
+        // Track is in queue - mark it as played
+        try {
+          await this.queueManager.markAsPlayed(queueItem.id)
+        } catch (error) {
+          logger(
+            'WARN',
+            `Failed to mark queue item ${queueItem.id} as played`,
+            undefined,
+            error as Error
+          )
+          // Continue with next track even if marking as played fails
+        }
+      } else {
+        logger(
+          'WARN',
+          `No queue item found for finished trackId: ${trackId}. Track may have been manually started or already removed from queue.`
+        )
       }
 
-      // Mark the track as played in the queue using the queue item's UUID
-      await this.queueManager.markAsPlayed(queueItem.id)
-      logger('INFO', `Marked queue item ${queueItem.id} as played`)
-
       // Check if queue is getting low and trigger auto-fill if needed
-      logger('INFO', '[handleTrackFinished] Calling checkAndAutoFillQueue...')
       await this.checkAndAutoFillQueue()
-      logger('INFO', '[handleTrackFinished] checkAndAutoFillQueue completed')
 
       // Get the next track from the queue
       const nextTrack = this.queueManager.getNextTrack()
@@ -337,7 +341,6 @@ class AutoPlayService {
 
         await this.playNextTrack(nextTrack)
       } else {
-        logger('INFO', 'Queue is empty, stopping playback')
         this.onQueueEmpty?.()
       }
     } catch (error) {
@@ -350,12 +353,71 @@ class AutoPlayService {
     }
   }
 
-  private async checkAndAutoFillQueue(): Promise<void> {
-    const queue = this.queueManager.getQueue()
+  private async refreshQueueFromAPI(): Promise<number | null> {
+    if (!this.username) {
+      logger('WARN', '[refreshQueueFromAPI] No username available')
+      return null
+    }
 
-    // Check if queue is low (10 or fewer tracks remaining)
+    try {
+      const response = await fetch(`/api/playlist/${this.username}`)
+
+      if (!response.ok) {
+        logger(
+          'WARN',
+          `[refreshQueueFromAPI] API response not ok: ${response.status} ${response.statusText}`
+        )
+        return null
+      }
+
+      const queue = (await response.json()) as JukeboxQueueItem[]
+      const cachedQueueLength = this.queueManager.getQueue().length
+
+      this.queueManager.updateQueue(queue)
+
+      logger(
+        'INFO',
+        `[refreshQueueFromAPI] Queue refreshed - cached: ${cachedQueueLength}, fresh: ${queue.length}`
+      )
+
+      return queue.length
+    } catch (error) {
+      logger(
+        'WARN',
+        '[refreshQueueFromAPI] Failed to refresh queue from API',
+        undefined,
+        error as Error
+      )
+      return null
+    }
+  }
+
+  private async checkAndAutoFillQueue(): Promise<void> {
+    // Refresh queue from API to get accurate current size
+    const cachedQueue = this.queueManager.getQueue()
+    const cachedQueueLength = cachedQueue.length
+
+    const freshQueueLength = await this.refreshQueueFromAPI()
+    const currentQueueLength = freshQueueLength ?? cachedQueueLength
+
+    if (freshQueueLength === null && cachedQueueLength > 0) {
+      logger(
+        'WARN',
+        `[checkAndAutoFillQueue] Using cached queue data (${cachedQueueLength} tracks) - API refresh failed`
+      )
+    } else if (
+      freshQueueLength !== null &&
+      freshQueueLength !== cachedQueueLength
+    ) {
+      logger(
+        'INFO',
+        `[checkAndAutoFillQueue] Queue size mismatch detected - cached: ${cachedQueueLength}, fresh: ${freshQueueLength}`
+      )
+    }
+
+    // Check if queue is low (below target size)
     if (
-      queue.length < this.autoFillTargetSize &&
+      currentQueueLength < this.autoFillTargetSize &&
       !this.isAutoFilling &&
       this.username &&
       this.isInitialized
@@ -364,20 +426,15 @@ class AutoPlayService {
       const hasValidState = this.trackSuggestionsState || true // Always allow auto-fill with fallbacks
       logger(
         'INFO',
-        `[checkAndAutoFillQueue] Triggering auto-fill - queue: ${queue.length}/${this.autoFillTargetSize} tracks`
+        `[checkAndAutoFillQueue] Triggering auto-fill - queue: ${currentQueueLength}/${this.autoFillTargetSize} tracks`
       )
       this.onQueueLow?.()
 
       try {
         this.isAutoFilling = true
-        logger('INFO', '[checkAndAutoFillQueue] Starting auto-fill process')
 
         // Small delay to ensure track suggestions state is properly loaded
         if (!this.trackSuggestionsState) {
-          logger(
-            'INFO',
-            '[checkAndAutoFillQueue] No track suggestions state, waiting 1 second for initialization'
-          )
           await new Promise((resolve) => setTimeout(resolve, 1000))
         } else {
           // Validate that track suggestions state has required fields
@@ -404,16 +461,10 @@ class AutoPlayService {
               'WARN',
               `[checkAndAutoFillQueue] Track suggestions state: ${JSON.stringify(this.trackSuggestionsState)}`
             )
-          } else {
-            logger(
-              'INFO',
-              `[checkAndAutoFillQueue] Track suggestions state has all required fields`
-            )
           }
         }
 
         await this.autoFillQueue()
-        logger('INFO', '[checkAndAutoFillQueue] Auto-fill process completed')
       } catch (error) {
         logger(
           'ERROR',
@@ -423,11 +474,29 @@ class AutoPlayService {
         )
       } finally {
         this.isAutoFilling = false
-        logger(
-          'INFO',
-          '[checkAndAutoFillQueue] Auto-fill process finished, resetting isAutoFilling flag'
+      }
+    } else {
+      // Log why auto-fill was not triggered
+      const reasons: string[] = []
+      if (currentQueueLength >= this.autoFillTargetSize) {
+        reasons.push(
+          `queue size (${currentQueueLength}) >= target (${this.autoFillTargetSize})`
         )
       }
+      if (this.isAutoFilling) {
+        reasons.push('auto-fill already in progress')
+      }
+      if (!this.username) {
+        reasons.push('no username available')
+      }
+      if (!this.isInitialized) {
+        reasons.push('service not initialized')
+      }
+
+      logger(
+        'INFO',
+        `[checkAndAutoFillQueue] Auto-fill not triggered - queue: ${currentQueueLength}/${this.autoFillTargetSize} tracks. Reasons: ${reasons.join(', ') || 'none (should not happen)'}`
+      )
     }
   }
 
@@ -447,22 +516,7 @@ class AutoPlayService {
         'WARN',
         '[AutoFill] Track suggestions state is null/undefined - this indicates the state was not properly set'
       )
-    } else {
-      logger(
-        'INFO',
-        `[AutoFill] Track suggestions state available: ${JSON.stringify(this.trackSuggestionsState)}`
-      )
-      logger(
-        'INFO',
-        `[AutoFill] Track suggestions state type: ${typeof this.trackSuggestionsState}`
-      )
-      logger(
-        'INFO',
-        `[AutoFill] Track suggestions state keys: ${Object.keys(this.trackSuggestionsState).join(', ')}`
-      )
     }
-
-    logger('INFO', '[AutoFill] Starting auto-fill process')
 
     const targetQueueSize = this.autoFillTargetSize // Target number of tracks in queue
     const maxAttempts = this.autoFillMaxAttempts // Maximum attempts to prevent infinite loops
@@ -476,17 +530,8 @@ class AutoPlayService {
       const currentQueue = this.queueManager.getQueue()
       const currentQueueSize = currentQueue.length
 
-      logger(
-        'INFO',
-        `[AutoFill] Attempt ${attempts}/${maxAttempts} - Current queue size: ${currentQueueSize}, Target: ${targetQueueSize}, Tracks added this session: ${tracksAdded}`
-      )
-
       // If we've reached the target, stop
       if (currentQueueSize >= targetQueueSize) {
-        logger(
-          'INFO',
-          `[AutoFill] Target queue size reached (${currentQueueSize}/${targetQueueSize}), stopping auto-fill`
-        )
         break
       }
 
@@ -796,6 +841,18 @@ class AutoPlayService {
 
         // Add suggested tracks to the queue
         for (const track of suggestions.tracks) {
+          // Check queue size before processing each track
+          const queueBeforeTrack = this.queueManager.getQueue()
+          const queueSizeBeforeTrack = queueBeforeTrack.length
+
+          if (queueSizeBeforeTrack >= targetQueueSize) {
+            logger(
+              'INFO',
+              `[AutoFill] Target queue size already reached (${queueSizeBeforeTrack}/${targetQueueSize}), stopping track processing`
+            )
+            return
+          }
+
           try {
             logger(
               'INFO',
@@ -807,10 +864,15 @@ class AutoPlayService {
               id: string
               name: string
               artists: Array<{ id: string; name: string }>
-              album: { name: string }
+              album: {
+                name: string
+                images: Array<{ url: string }>
+                release_date?: string
+              }
               duration_ms: number
               popularity: number
               uri: string
+              explicit: boolean
             }>({
               path: `tracks/${track.id}`,
               method: 'GET'
@@ -864,6 +926,19 @@ class AutoPlayService {
                 'INFO',
                 `[AutoFill] Attempt ${attempts} - Successfully added track to queue: ${trackDetails.name} (Total added: ${tracksAdded})`
               )
+
+              // Check if we've reached the target queue size after adding this track
+              const currentQueueAfterAdd = this.queueManager.getQueue()
+              const currentQueueSizeAfterAdd = currentQueueAfterAdd.length
+
+              if (currentQueueSizeAfterAdd >= targetQueueSize) {
+                logger(
+                  'INFO',
+                  `[AutoFill] Target queue size reached after adding track (${currentQueueSizeAfterAdd}/${targetQueueSize}), stopping auto-fill`
+                )
+                // Break out of both the track loop and the attempt loop
+                return
+              }
 
               // Append to cooldown ring (client-only persistence)
               try {
@@ -943,11 +1018,39 @@ class AutoPlayService {
               )
             }
 
-            // Show popup notification for auto-added track
-            this.showAutoFillNotification(
-              trackDetails.name,
-              trackDetails.artists[0]?.name || 'Unknown Artist'
+            // Extract metadata for notification
+            const albumArtUrl =
+              trackDetails.album.images && trackDetails.album.images.length > 0
+                ? (trackDetails.album.images[0]?.url ?? null)
+                : null
+
+            const notificationMetadata = {
+              trackName: trackDetails.name,
+              artistName: trackDetails.artists[0]?.name || 'Unknown Artist',
+              albumName: trackDetails.album.name,
+              albumArtUrl,
+              allArtists: trackDetails.artists.map((artist) => artist.name),
+              durationMs: trackDetails.duration_ms,
+              popularity: trackDetails.popularity,
+              explicit: trackDetails.explicit,
+              isFallback: false
+            }
+
+            logger(
+              'INFO',
+              `[AutoFill] Notification metadata: ${JSON.stringify({
+                trackName: notificationMetadata.trackName,
+                albumName: notificationMetadata.albumName,
+                hasAlbumArt: !!notificationMetadata.albumArtUrl,
+                durationMs: notificationMetadata.durationMs,
+                popularity: notificationMetadata.popularity,
+                explicit: notificationMetadata.explicit,
+                allArtists: notificationMetadata.allArtists
+              })}`
             )
+
+            // Show popup notification for auto-added track
+            this.showAutoFillNotification(notificationMetadata)
           } catch (error) {
             logger(
               'ERROR',
@@ -985,6 +1088,18 @@ class AutoPlayService {
 
         if (fallbackSuccess) {
           tracksAdded++
+
+          // Check if we've reached the target queue size after fallback
+          const currentQueueAfterFallback = this.queueManager.getQueue()
+          const currentQueueSizeAfterFallback = currentQueueAfterFallback.length
+
+          if (currentQueueSizeAfterFallback >= targetQueueSize) {
+            logger(
+              'INFO',
+              `[AutoFill] Target queue size reached after fallback (${currentQueueSizeAfterFallback}/${targetQueueSize}), stopping auto-fill`
+            )
+            return
+          }
         }
 
         // Small delay between fallback attempts
@@ -1123,11 +1238,17 @@ class AutoPlayService {
           }
 
           // Show popup notification for fallback track
-          this.showAutoFillNotification(
-            result.track.name,
-            result.track.artist,
-            true
-          )
+          this.showAutoFillNotification({
+            trackName: result.track.name,
+            artistName: result.track.artist,
+            albumName: result.track.album,
+            albumArtUrl: null, // Fallback tracks from database don't have album art
+            allArtists: [result.track.artist],
+            durationMs: result.track.duration_ms,
+            popularity: result.track.popularity,
+            explicit: null, // Database doesn't store explicit flag
+            isFallback: true
+          })
           return true
         } else {
           logger('ERROR', '[Fallback] No random track available for fallback')
@@ -1149,19 +1270,31 @@ class AutoPlayService {
     return false
   }
 
-  private showAutoFillNotification(
-    trackName: string,
-    artistName: string,
-    isFallback = false
-  ): void {
+  private showAutoFillNotification(trackMetadata: {
+    trackName: string
+    artistName: string
+    albumName?: string
+    albumArtUrl?: string | null
+    allArtists?: string[]
+    durationMs?: number
+    popularity?: number
+    explicit?: boolean | null
+    isFallback?: boolean
+  }): void {
     // Only dispatch events on the client side
     if (typeof window !== 'undefined') {
       // Create a custom event to trigger the notification
       const event = new CustomEvent('autoFillNotification', {
         detail: {
-          trackName,
-          artistName,
-          isFallback,
+          trackName: trackMetadata.trackName,
+          artistName: trackMetadata.artistName,
+          albumName: trackMetadata.albumName,
+          albumArtUrl: trackMetadata.albumArtUrl ?? null,
+          allArtists: trackMetadata.allArtists ?? [trackMetadata.artistName],
+          durationMs: trackMetadata.durationMs,
+          popularity: trackMetadata.popularity,
+          explicit: trackMetadata.explicit ?? null,
+          isFallback: trackMetadata.isFallback ?? false,
           timestamp: Date.now()
         }
       })
@@ -1180,8 +1313,6 @@ class AutoPlayService {
     try {
       const trackUri = `spotify:track:${track.tracks.spotify_track_id}`
 
-      logger('INFO', `Playing next track: ${track.tracks.name} (${trackUri})`)
-
       await sendApiRequest({
         path: 'me/player/play',
         method: 'PUT',
@@ -1192,7 +1323,6 @@ class AutoPlayService {
       })
 
       this.onNextTrackStarted?.(track)
-      logger('INFO', `Successfully started playing: ${track.tracks.name}`)
     } catch (error) {
       logger('ERROR', 'Failed to play next track', undefined, error as Error)
     }

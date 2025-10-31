@@ -18,6 +18,7 @@ class QueueManager {
   }
 
   public getNextTrack(): JukeboxQueueItem | undefined {
+    // queue[0] is the highest priority next track to play (ordered by votes DESC, queued_at ASC)
     return this.queue.length > 0 ? this.queue[0] : undefined
   }
 

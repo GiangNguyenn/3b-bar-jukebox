@@ -37,8 +37,6 @@ export function QRCodeComponent({
             light: '#FFFFFF'
           }
         })
-
-        addLog('INFO', 'QR code generated successfully', 'QRCodeComponent')
       } catch (err) {
         const errorMessage =
           err instanceof Error ? err.message : 'Failed to generate QR code'
@@ -68,8 +66,6 @@ export function QRCodeComponent({
       document.body.appendChild(link)
       link.click()
       document.body.removeChild(link)
-
-      addLog('INFO', 'QR code downloaded successfully', 'QRCodeComponent')
     } catch (err) {
       addLog(
         'ERROR',

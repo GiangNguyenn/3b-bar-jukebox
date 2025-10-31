@@ -1,13 +1,24 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { createModuleLogger } from '@/shared/utils/logger'
+import Image from 'next/image'
 
-const logger = createModuleLogger('AutoFillNotification')
+function formatDuration(ms: number | undefined): string {
+  if (!ms) return '--:--'
+  const minutes = Math.floor(ms / 60000)
+  const seconds = Math.floor((ms % 60000) / 1000)
+  return `${minutes}:${seconds.toString().padStart(2, '0')}`
+}
 
 interface AutoFillNotificationData {
   trackName: string
   artistName: string
+  albumName?: string
+  albumArtUrl?: string | null
+  allArtists?: string[]
+  durationMs?: number
+  popularity?: number
+  explicit?: boolean | null
   isFallback: boolean
   timestamp: number
 }
@@ -21,10 +32,6 @@ export function AutoFillNotification(): JSX.Element | null {
     const handleAutoFillNotification = (
       event: CustomEvent<AutoFillNotificationData>
     ): void => {
-      logger(
-        'INFO',
-        `Auto-fill notification received: ${event.detail.trackName} by ${event.detail.artistName}`
-      )
       setNotification(event.detail)
       setIsVisible(true)
 
@@ -62,10 +69,15 @@ export function AutoFillNotification(): JSX.Element | null {
     return null
   }
 
+  const artistsDisplay =
+    notification.allArtists && notification.allArtists.length > 0
+      ? notification.allArtists.join(', ')
+      : notification.artistName
+
   return (
     <div className='fixed right-4 top-4 z-50 duration-300 animate-in slide-in-from-right-2'>
       <div
-        className={`bg-white max-w-sm rounded-lg border p-4 shadow-lg ${notification.isFallback ? 'border-orange-200 bg-orange-50' : 'border-green-200 bg-green-50'} `}
+        className={`bg-white max-w-md rounded-lg border p-4 shadow-lg ${notification.isFallback ? 'border-orange-200 bg-orange-50' : 'border-green-200 bg-green-50'} `}
       >
         <div className='flex items-start space-x-3'>
           <div
@@ -102,23 +114,83 @@ export function AutoFillNotification(): JSX.Element | null {
             )}
           </div>
           <div className='min-w-0 flex-1'>
-            <p className='text-sm font-medium text-gray-900'>
-              {notification.isFallback
-                ? 'Fallback Track Added'
-                : 'Track Auto-Added'}
-            </p>
-            <p className='mt-1 text-sm text-gray-600'>
-              <span className='font-medium'>{notification.trackName}</span>
-              <span className='text-gray-500'>
-                {' '}
-                by {notification.artistName}
-              </span>
-            </p>
-            {notification.isFallback && (
-              <p className='mt-1 text-xs text-orange-600'>
-                Added from database when suggestions failed
-              </p>
-            )}
+            <div className='flex items-start space-x-3'>
+              {notification.albumArtUrl && (
+                <div className='relative h-16 w-16 flex-shrink-0 overflow-hidden rounded'>
+                  <Image
+                    src={notification.albumArtUrl}
+                    alt={notification.albumName ?? 'Album cover'}
+                    fill
+                    className='object-cover'
+                    sizes='64px'
+                  />
+                </div>
+              )}
+              <div className='min-w-0 flex-1'>
+                <p className='text-sm font-medium text-gray-900'>
+                  {notification.isFallback
+                    ? 'Fallback Track Added'
+                    : 'Track Auto-Added'}
+                </p>
+                <p className='mt-1 text-sm font-medium text-gray-900'>
+                  {notification.trackName}
+                  {notification.explicit && (
+                    <span className='text-white ml-2 inline-flex items-center rounded bg-gray-800 px-1.5 py-0.5 text-xs font-bold'>
+                      E
+                    </span>
+                  )}
+                </p>
+                <p className='mt-0.5 text-sm text-gray-600'>
+                  {artistsDisplay || 'Unknown Artist'}
+                </p>
+                <p className='mt-0.5 text-xs text-gray-500'>
+                  {notification.albumName ?? 'Unknown Album'}
+                </p>
+                <div className='mt-2 flex items-center gap-3 text-xs text-gray-500'>
+                  {notification.durationMs ? (
+                    <span className='flex items-center gap-1'>
+                      <svg
+                        className='h-3 w-3'
+                        fill='none'
+                        stroke='currentColor'
+                        viewBox='0 0 24 24'
+                      >
+                        <path
+                          strokeLinecap='round'
+                          strokeLinejoin='round'
+                          strokeWidth={2}
+                          d='M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z'
+                        />
+                      </svg>
+                      {formatDuration(notification.durationMs)}
+                    </span>
+                  ) : null}
+                  {notification.popularity !== undefined ? (
+                    <span className='flex items-center gap-1'>
+                      <svg
+                        className='h-3 w-3'
+                        fill='none'
+                        stroke='currentColor'
+                        viewBox='0 0 24 24'
+                      >
+                        <path
+                          strokeLinecap='round'
+                          strokeLinejoin='round'
+                          strokeWidth={2}
+                          d='M13 7h8m0 0v8m0-8l-8 8-4-4-6 6'
+                        />
+                      </svg>
+                      {notification.popularity}/100
+                    </span>
+                  ) : null}
+                </div>
+                {notification.isFallback && (
+                  <p className='mt-1 text-xs text-orange-600'>
+                    Added from database when suggestions failed
+                  </p>
+                )}
+              </div>
+            </div>
           </div>
           <button
             onClick={(): void => {

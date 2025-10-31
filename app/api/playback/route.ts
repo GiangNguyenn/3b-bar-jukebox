@@ -1,11 +1,9 @@
 import { NextResponse } from 'next/server'
 import { sendApiRequest } from '@/shared/api'
-import { SpotifyPlaybackState } from '@/shared/types/spotify'
 import {
   transferPlaybackToDevice,
   validateDevice
 } from '@/services/deviceManagement'
-import { verifyPlaybackResume } from '@/shared/utils/recovery/playback-verification'
 import { createModuleLogger } from '@/shared/utils/logger'
 
 // Set up logger for this module
@@ -71,14 +69,7 @@ export async function POST(request: Request): Promise<NextResponse> {
       })
     }
 
-    // Get current state for verification
-    const state = await sendApiRequest<SpotifyPlaybackState>({
-      path: 'me/player',
-      method: 'GET'
-    })
-
-    // Verify device playback state
-    await verifyPlaybackResume(state.context?.uri ?? '', deviceId)
+    // Recovery verification removed; no additional state fetch needed
 
     return NextResponse.json({ success: true })
   } catch (error) {

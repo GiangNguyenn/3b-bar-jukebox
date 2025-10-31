@@ -56,7 +56,6 @@ export function JukeboxSection({
       try {
         await navigator.clipboard.writeText(jukeboxUrl)
         setCopied(true)
-        addLog('INFO', 'Jukebox link copied to clipboard', 'JukeboxSection')
         setTimeout(() => setCopied(false), 2000)
       } catch (error) {
         addLog(
@@ -176,6 +175,7 @@ export function JukeboxSection({
           {/* Play/Pause and Skip Buttons */}
           <div className='flex justify-center gap-4'>
             <button
+              type='button'
               onClick={(): void => {
                 void handlePlayPause()
               }}
@@ -185,6 +185,7 @@ export function JukeboxSection({
               {isActuallyPlaying ? 'Pause' : 'Play'}
             </button>
             <button
+              type='button'
               onClick={(): void => {
                 void handleSkip()
               }}
@@ -249,6 +250,7 @@ export function JukeboxSection({
         </div>
 
         <button
+          type='button'
           onClick={handleOpenDisplay}
           disabled={!username}
           className='text-white w-full rounded-lg bg-blue-600 px-4 py-3 font-medium transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50'
@@ -257,6 +259,7 @@ export function JukeboxSection({
         </button>
 
         <button
+          type='button'
           onClick={handleOpenJukebox}
           disabled={!username}
           className='text-white w-full rounded-lg bg-purple-600 px-4 py-3 font-medium transition-colors hover:bg-purple-700 disabled:cursor-not-allowed disabled:opacity-50'
@@ -273,6 +276,7 @@ export function JukeboxSection({
               </span>
               <div className='flex items-center gap-1'>
                 <button
+                  type='button'
                   onClick={(): void => {
                     setShowQRCode(!showQRCode)
                   }}
@@ -282,6 +286,7 @@ export function JukeboxSection({
                   <QrCode className='h-4 w-4' />
                 </button>
                 <button
+                  type='button'
                   onClick={(): void => {
                     void handleCopyLink()
                   }}

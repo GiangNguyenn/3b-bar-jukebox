@@ -191,12 +191,13 @@ export async function GET(): Promise<
       }
     )
 
-    if (!nowPlayingResponse.ok) {
-      if (nowPlayingResponse.status === 204) {
-        // No currently playing track
-        return NextResponse.json(null)
-      }
+    // Handle 204 No Content (no currently playing track)
+    // 204 is a success status (2xx), so nowPlayingResponse.ok is true
+    if (nowPlayingResponse.status === 204) {
+      return NextResponse.json(null)
+    }
 
+    if (!nowPlayingResponse.ok) {
       logger('ERROR', `Spotify API error: ${await nowPlayingResponse.text()}`)
       return NextResponse.json(
         {
@@ -208,8 +209,14 @@ export async function GET(): Promise<
       )
     }
 
-    const playbackData =
-      (await nowPlayingResponse.json()) as SpotifyPlaybackState
+    // Check if response has content before parsing JSON
+    const responseText = await nowPlayingResponse.text()
+    if (!responseText.trim()) {
+      // Empty body (shouldn't happen if status is 200, but handle it)
+      return NextResponse.json(null)
+    }
+
+    const playbackData = JSON.parse(responseText) as SpotifyPlaybackState
     return NextResponse.json(playbackData)
   } catch (error) {
     logger(

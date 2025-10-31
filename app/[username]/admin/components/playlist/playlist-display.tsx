@@ -7,7 +7,6 @@ import { useNowPlayingTrack } from '@/hooks/useNowPlayingTrack'
 import { PlayIcon, TrashIcon } from '@heroicons/react/24/outline'
 import { ErrorMessage } from '@/components/ui/error-message'
 import { Loading } from '@/components/ui/loading'
-import { TableSkeleton } from '@/components/ui/skeleton'
 import { JukeboxQueueItem } from '@/shared/types/queue'
 import { useConsoleLogsContext } from '@/hooks/ConsoleLogsProvider'
 import { useDebouncedCallback } from 'use-debounce'
@@ -25,25 +24,20 @@ export function PlaylistDisplay({
   onQueueChanged,
   optimisticUpdate
 }: PlaylistDisplayProps): JSX.Element {
-  const [isLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [loadingTrackId, setLoadingTrackId] = useState<string | null>(null)
   const [deletingTrackId, setDeletingTrackId] = useState<string | null>(null)
   const { deviceId } = useSpotifyPlayerStore()
   const { addLog } = useConsoleLogsContext()
 
-  // Use the simpler useNowPlayingTrack hook
+  // Use the simpler useNowPlayingTrack hook (matches mainline)
   const { data: currentlyPlaying } = useNowPlayingTrack()
 
   // Debounced refresh to prevent excessive API calls
   const debouncedRefresh = useDebouncedCallback(async () => {
     try {
       await onQueueChanged()
-      addLog(
-        'INFO',
-        'Queue refreshed after debounced update',
-        'PlaylistDisplay'
-      )
+      // INFO logs suppressed per logging policy
     } catch (err) {
       addLog(
         'ERROR',
@@ -124,10 +118,6 @@ export function PlaylistDisplay({
     } finally {
       setDeletingTrackId(null)
     }
-  }
-
-  if (isLoading && queue.length === 0) {
-    return <TableSkeleton rows={10} />
   }
 
   if (error) {

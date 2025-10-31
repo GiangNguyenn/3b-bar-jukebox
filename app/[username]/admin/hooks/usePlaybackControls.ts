@@ -86,9 +86,10 @@ export function usePlaybackControls(): {
 
     try {
       const currentTrackId = playbackState.item.id
+      const currentTrackName = playbackState.item.name
       addLog(
         'INFO',
-        `Attempting to skip track: ${playbackState.item.name}`,
+        `Attempting to skip track: ${currentTrackName}`,
         'Playback'
       )
 
@@ -98,46 +99,69 @@ export function usePlaybackControls(): {
         (item) => item.tracks.spotify_track_id === currentTrackId
       )
 
-      if (!currentQueueItem) {
+      if (currentQueueItem) {
+        // Track is in queue - remove it from the queue
+        try {
+          await queueManager.markAsPlayed(currentQueueItem.id)
+          addLog(
+            'INFO',
+            `Removed track from queue: ${currentQueueItem.tracks.name}`,
+            'Playback'
+          )
+        } catch (error) {
+          addLog(
+            'WARN',
+            `Failed to remove track from queue: ${currentQueueItem.tracks.name}`,
+            'Playback',
+            error instanceof Error ? error : undefined
+          )
+          // Continue with skip even if queue removal fails
+        }
+      } else {
         addLog(
           'WARN',
-          `No queue item found for currently playing track: ${currentTrackId}`,
+          `Track not found in queue: ${currentTrackName} (ID: ${currentTrackId}). Skipping playback anyway.`,
           'Playback'
         )
-        return
       }
 
-      // Remove the current track from the queue
-      await queueManager.markAsPlayed(currentQueueItem.id)
-      addLog(
-        'INFO',
-        `Removed track from queue: ${currentQueueItem.tracks.name}`,
-        'Playback'
-      )
-
-      // Get the next track from the queue
+      // Get the next track from the queue after removing the current track
+      // After markAsPlayed, the current track is removed from the queue
+      // The queue shifts and queue[0] becomes the next highest priority track
+      // getNextTrack() returns queue[0], which is the correct next track to play
       const nextTrack = queueManager.getNextTrack()
 
       if (nextTrack) {
-        // Play the next track
+        // Next track found - play it
         const trackUri = `spotify:track:${nextTrack.tracks.spotify_track_id}`
 
-        await sendApiRequest({
-          path: 'me/player/play',
-          method: 'PUT',
-          body: {
-            device_id: deviceId,
-            uris: [trackUri]
-          }
-        })
+        try {
+          await sendApiRequest({
+            path: 'me/player/play',
+            method: 'PUT',
+            body: {
+              device_id: deviceId,
+              uris: [trackUri]
+            }
+          })
 
-        addLog(
-          'INFO',
-          `Now playing next track: ${nextTrack.tracks.name}`,
-          'Playback'
-        )
+          addLog(
+            'INFO',
+            `Now playing next track: ${nextTrack.tracks.name}`,
+            'Playback'
+          )
+        } catch (error) {
+          addLog(
+            'ERROR',
+            `Failed to play next track: ${nextTrack.tracks.name}`,
+            'Playback',
+            error instanceof Error ? error : undefined
+          )
+          // If playing next track fails, pause playback
+          const spotifyApi = SpotifyApiService.getInstance()
+          await spotifyApi.pausePlayback(deviceId)
+        }
       } else {
-        addLog('INFO', 'No more tracks in queue after skip', 'Playback')
         // Pause playback since there are no more tracks
         const spotifyApi = SpotifyApiService.getInstance()
         await spotifyApi.pausePlayback(deviceId)
@@ -149,6 +173,18 @@ export function usePlaybackControls(): {
         'Playback',
         error instanceof Error ? error : undefined
       )
+      // On error, try to pause playback to stop current track
+      try {
+        const spotifyApi = SpotifyApiService.getInstance()
+        await spotifyApi.pausePlayback(deviceId)
+      } catch (pauseError) {
+        addLog(
+          'ERROR',
+          'Failed to pause playback after skip error',
+          'Playback',
+          pauseError instanceof Error ? pauseError : undefined
+        )
+      }
     } finally {
       setIsSkipLoading(false)
     }

@@ -22,8 +22,6 @@ export class StripeService {
       apiVersion: '2025-08-27.basil'
     })
 
-    logger('INFO', 'Stripe client initialized successfully', 'StripeService')
-
     // Use direct Supabase client for webhook operations (no cookies needed)
     this.supabase = createClient<Database>(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -252,12 +250,6 @@ export class StripeService {
     cancelUrl: string
   ): Promise<Stripe.Checkout.Session> {
     try {
-      logger(
-        'INFO',
-        `Creating monthly checkout session with price ID: ${process.env.STRIPE_MONTHLY_PRICE_ID}`,
-        'StripeService'
-      )
-
       const session = await this.stripe.checkout.sessions.create({
         payment_method_types: ['card'],
         line_items: [
@@ -276,12 +268,6 @@ export class StripeService {
         // Note: customer_creation is not supported in subscription mode
         // Stripe will automatically create customers for subscriptions
       })
-
-      logger(
-        'INFO',
-        `Successfully created monthly checkout session: ${session.id}`,
-        'StripeService'
-      )
 
       return session
     } catch (error) {
@@ -304,12 +290,6 @@ export class StripeService {
     cancelUrl: string
   ): Promise<Stripe.Checkout.Session> {
     try {
-      logger(
-        'INFO',
-        `Creating lifetime checkout session with product ID: ${process.env.STRIPE_LIFETIME_PRODUCT_ID}`,
-        'StripeService'
-      )
-
       const session = await this.stripe.checkout.sessions.create({
         payment_method_types: ['card'],
         line_items: [
@@ -332,12 +312,6 @@ export class StripeService {
         // Let Stripe collect customer email automatically (supported in payment mode)
         customer_creation: 'always'
       })
-
-      logger(
-        'INFO',
-        `Successfully created lifetime checkout session: ${session.id}`,
-        'StripeService'
-      )
 
       return session
     } catch (error) {

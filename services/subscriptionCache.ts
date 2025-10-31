@@ -42,7 +42,6 @@ export class SubscriptionCacheService {
 
     // Check if cache entry exists and is still valid
     if (cached && now - cached.timestamp < cached.ttl) {
-      logger('INFO', `Cache hit for key: ${key}`)
       return cached.data
     }
 
@@ -57,7 +56,6 @@ export class SubscriptionCacheService {
         ttl
       }
 
-      logger('INFO', `Cache miss for key: ${key}, cached new data`)
       return data
     } catch (error) {
       logger(
@@ -69,7 +67,6 @@ export class SubscriptionCacheService {
 
       // Return cached data if available, even if expired
       if (cached) {
-        logger('INFO', `Returning expired cache for key: ${key}`)
         return cached.data
       }
 
@@ -82,7 +79,6 @@ export class SubscriptionCacheService {
    */
   invalidateCache(key: string): void {
     delete this.cache[key]
-    logger('INFO', `Invalidated cache for key: ${key}`)
   }
 
   /**
@@ -96,11 +92,6 @@ export class SubscriptionCacheService {
     keysToDelete.forEach((key) => {
       delete this.cache[key]
     })
-
-    logger(
-      'INFO',
-      `Invalidated ${keysToDelete.length} cache entries for user: ${profileId}`
-    )
   }
 
   /**
@@ -108,7 +99,6 @@ export class SubscriptionCacheService {
    */
   clearCache(): void {
     this.cache = {}
-    logger('INFO', 'Cleared all cache entries')
   }
 
   /**

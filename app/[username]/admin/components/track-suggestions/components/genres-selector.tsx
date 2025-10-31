@@ -7,7 +7,11 @@ import {
   ChevronUpDownIcon,
   XMarkIcon
 } from '@heroicons/react/20/solid'
-import { POPULAR_GENRES, type Genre } from '@/shared/constants/trackSuggestion'
+import {
+  POPULAR_GENRES,
+  ALL_SPOTIFY_GENRES,
+  type Genre
+} from '@/shared/constants/trackSuggestion'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 
 interface GenresSelectorProps {
@@ -24,25 +28,27 @@ export function GenresSelector({
   const filteredGenres =
     query.length === 0
       ? [...POPULAR_GENRES]
-      : POPULAR_GENRES.filter((genre) => {
+      : ALL_SPOTIFY_GENRES.filter((genre) => {
           return genre.toLowerCase().includes(query.toLowerCase())
-        }).sort((a, b) => {
-          const queryLower = query.toLowerCase()
-          const aLower = a.toLowerCase()
-          const bLower = b.toLowerCase()
-
-          const aExact = aLower === queryLower
-          const bExact = bLower === queryLower
-          if (aExact && !bExact) return -1
-          if (!aExact && bExact) return 1
-
-          const aStartsWith = aLower.startsWith(queryLower)
-          const bStartsWith = bLower.startsWith(queryLower)
-          if (aStartsWith && !bStartsWith) return -1
-          if (!aStartsWith && bStartsWith) return 1
-
-          return aLower.localeCompare(bLower)
         })
+          .sort((a, b) => {
+            const queryLower = query.toLowerCase()
+            const aLower = a.toLowerCase()
+            const bLower = b.toLowerCase()
+
+            const aExact = aLower === queryLower
+            const bExact = bLower === queryLower
+            if (aExact && !bExact) return -1
+            if (!aExact && bExact) return 1
+
+            const aStartsWith = aLower.startsWith(queryLower)
+            const bStartsWith = bLower.startsWith(queryLower)
+            if (aStartsWith && !bStartsWith) return -1
+            if (!aStartsWith && bStartsWith) return 1
+
+            return aLower.localeCompare(bLower)
+          })
+          .slice(0, 50)
 
   const removeGenre = (genreToRemove: Genre): void => {
     onGenresChange(selectedGenres.filter((genre) => genre !== genreToRemove))

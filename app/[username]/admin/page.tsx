@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useState, useRef } from 'react'
 import { useParams } from 'next/navigation'
-import { usePlaybackIntentStore } from '@/hooks/usePlaybackIntent'
 import {
   useSpotifyPlayerStore,
   useAdminSpotifyPlayerHook
@@ -11,7 +10,6 @@ import { useConsoleLogsContext } from '@/hooks/ConsoleLogsProvider'
 import { usePlaylistData } from '@/hooks/usePlaylistData'
 import { useTrackSuggestions } from './components/track-suggestions/hooks/useTrackSuggestions'
 import { useSpotifyHealthMonitor } from '@/hooks/useSpotifyHealthMonitor'
-import { RecoveryStatus } from '@/components/ui/recovery-status'
 import { HealthStatusSection } from './components/dashboard/health-status-section'
 import { JukeboxSection } from './components/dashboard/components/jukebox-section'
 import { TrackSuggestionsTab } from './components/track-suggestions/track-suggestions-tab'
@@ -21,152 +19,19 @@ import { BrandingTab } from './components/branding/branding-tab'
 import { SubscriptionTab } from './components/subscription/subscription-tab'
 import { PremiumNotice } from './components/PremiumNotice'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { SpotifyApiService } from '@/services/spotifyApi'
-import { sendApiRequest } from '@/shared/api'
-import { SpotifyPlaybackState, SpotifyDevice } from '@/shared/types/spotify'
 
 import { type TrackSuggestionsState } from '@/shared/types/trackSuggestions'
-import { useRecoverySystem } from '@/hooks/recovery'
 import { ErrorMessage } from '@/components/ui/error-message'
 import { Loading } from '@/components/ui'
-import { useTokenHealth } from '@/hooks/health/useTokenHealth'
 import { tokenManager } from '@/shared/token/tokenManager'
 import { queueManager } from '@/services/queueManager'
-import { getAutoPlayService } from '@/services/autoPlayService'
 import { AutoFillNotification } from '@/components/ui/auto-fill-notification'
-import type { JukeboxQueueItem } from '@/shared/types/queue'
+import { getAutoPlayService } from '@/services/autoPlayService'
 
 import { useSubscription } from '@/hooks/useSubscription'
 import { useGetProfile } from '@/hooks/useGetProfile'
 
-// Local helper hooks to keep the component lean and declarative
-function useAdminAutoPlay(params: {
-  deviceId: string | null
-  username: string | null
-  queue: JukeboxQueueItem[] | null | undefined
-  trackSuggestionsState: TrackSuggestionsState | null | undefined
-  addLog: (
-    level: 'WARN' | 'ERROR' | 'INFO' | 'LOG',
-    message: string,
-    context?: string,
-    error?: Error
-  ) => void
-  setUserIntent: (intent: 'playing' | 'paused') => void
-  refreshQueue: () => Promise<void>
-}): void {
-  const {
-    deviceId,
-    username,
-    queue,
-    trackSuggestionsState,
-    addLog,
-    setUserIntent,
-    refreshQueue
-  } = params
-
-  useEffect(() => {
-    const autoPlayService = getAutoPlayService({
-      checkInterval: 2000,
-      deviceId,
-      username,
-      onTrackFinished: () => {
-        void refreshQueue()
-      },
-      onNextTrackStarted: () => {
-        setUserIntent('playing')
-        void refreshQueue()
-      },
-      onQueueEmpty: () => {
-        setUserIntent('paused')
-      },
-      onQueueLow: () => {}
-    })
-
-    autoPlayService.start()
-
-    if (deviceId) autoPlayService.setDeviceId(deviceId)
-    if (username) autoPlayService.setUsername(username)
-    if (queue) autoPlayService.updateQueue(queue)
-
-    if (trackSuggestionsState) {
-      const requiredFields = [
-        'genres',
-        'yearRange',
-        'popularity',
-        'allowExplicit',
-        'maxSongLength',
-        'songsBetweenRepeats',
-        'maxOffset',
-        'autoFillTargetSize'
-      ] as const
-      const hasAllFields = requiredFields.every(
-        (field) => field in trackSuggestionsState
-      )
-
-      if (hasAllFields) {
-        autoPlayService.setTrackSuggestionsState(trackSuggestionsState)
-      } else {
-        addLog(
-          'WARN',
-          `[AdminPage] Track suggestions state incomplete, not updating auto-play service. Missing: ${requiredFields
-            .filter((field) => !(field in trackSuggestionsState))
-            .join(', ')}`,
-          'AdminPage'
-        )
-      }
-    }
-
-    if (username && deviceId) {
-      if (trackSuggestionsState) {
-        const requiredFields = [
-          'genres',
-          'yearRange',
-          'popularity',
-          'allowExplicit',
-          'maxSongLength',
-          'songsBetweenRepeats',
-          'maxOffset',
-          'autoFillTargetSize'
-        ] as const
-        const hasAllFields = requiredFields.every(
-          (field) => field in trackSuggestionsState
-        )
-
-        if (hasAllFields) {
-          autoPlayService.markAsInitialized()
-        } else {
-          addLog(
-            'WARN',
-            `[AdminPage] Auto-play service not initialized - track suggestions state missing fields: ${requiredFields
-              .filter((field) => !(field in trackSuggestionsState))
-              .join(', ')}`,
-            'AdminPage'
-          )
-        }
-      } else {
-        autoPlayService.markAsInitialized()
-      }
-    } else {
-      addLog(
-        'WARN',
-        `[AdminPage] Auto-play service not initialized - missing: username=${!!username}, deviceId=${!!deviceId}`,
-        'AdminPage'
-      )
-    }
-
-    return (): void => {
-      autoPlayService.stop()
-    }
-  }, [
-    deviceId,
-    username,
-    queue,
-    trackSuggestionsState,
-    addLog,
-    setUserIntent,
-    refreshQueue
-  ])
-}
+// Autoplay helper removed
 
 function useAdminTokenManagement(params: {
   tokenHealthStatus: 'valid' | 'error' | 'unknown' | 'expired'
@@ -193,7 +58,7 @@ function useAdminTokenManagement(params: {
     if (!isReady) return
 
     const interval = setInterval(() => {
-      void (async (): Promise<void> => {
+      const runRefresh: () => Promise<void> = async (): Promise<void> => {
         try {
           await tokenManager.refreshIfNeeded()
         } catch (error: unknown) {
@@ -204,60 +69,15 @@ function useAdminTokenManagement(params: {
             error instanceof Error ? error : undefined
           )
         }
-      })()
+      }
+      void runRefresh()
     }, 60000)
 
     return (): void => clearInterval(interval)
   }, [isReady, addLog])
 }
 
-function usePlaybackRecovery(params: {
-  playbackStatus: string
-  isRecovering: boolean
-  recover: () => Promise<void>
-}): void {
-  const { playbackStatus } = params
-  const { addLog } = useConsoleLogsContext()
-  const { userIntent } = usePlaybackIntentStore()
-  const { status: playerStatus, isReady } = useSpotifyPlayerStore()
-
-  // Grace period on first load and require consecutive detections to reduce false positives
-  const graceUntilRef = useRef<number>(Date.now() + 8000)
-  const consecutiveProblemCountRef = useRef<number>(0)
-
-  useEffect(() => {
-    const lastReloadTs = Number(
-      sessionStorage.getItem('admin_last_reload_ts') ?? '0'
-    )
-    const reloadedTooRecently = Date.now() - lastReloadTs < 10000
-
-    const isProblem =
-      playbackStatus === 'stalled' ||
-      (userIntent === 'playing' &&
-        (playbackStatus === 'stopped' || playbackStatus === 'paused'))
-
-    // Require 2 consecutive problematic observations
-    if (isProblem) consecutiveProblemCountRef.current += 1
-    else consecutiveProblemCountRef.current = 0
-
-    const pastGraceWindow = Date.now() >= graceUntilRef.current
-    const consecutiveEnough = consecutiveProblemCountRef.current >= 2
-    const playerStable = isReady && playerStatus === 'ready'
-
-    const shouldReload =
-      isProblem && pastGraceWindow && consecutiveEnough && playerStable
-
-    if (shouldReload && !reloadedTooRecently) {
-      addLog(
-        'ERROR',
-        'Playback halted unexpectedly — reloading page',
-        'AdminPage'
-      )
-      sessionStorage.setItem('admin_last_reload_ts', String(Date.now()))
-      window.location.reload()
-    }
-  }, [playbackStatus, userIntent, addLog, isReady, playerStatus])
-}
+// Recovery removed
 
 export default function AdminPage(): JSX.Element {
   // State
@@ -274,20 +94,13 @@ export default function AdminPage(): JSX.Element {
   >('dashboard')
 
   const initializationAttemptedRef = useRef(false)
-  const autoResumeTriggeredRef = useRef(false)
 
   // Hooks
   const params = useParams()
   const username = params?.username as string | undefined
-  const {
-    deviceId,
-    isReady,
-    status: playerStatus,
-    playbackState
-  } = useSpotifyPlayerStore()
+  const { isReady, status: playerStatus, deviceId } = useSpotifyPlayerStore()
   const { createPlayer } = useAdminSpotifyPlayerHook()
   const { addLog } = useConsoleLogsContext()
-  const { setUserIntent } = usePlaybackIntentStore()
   // Use the enhanced playlist hook with real-time subscriptions
   const {
     data: queue,
@@ -299,22 +112,12 @@ export default function AdminPage(): JSX.Element {
 
   // Use the track suggestions hook (properly typed)
   const trackSuggestions = useTrackSuggestions()
-  const trackSuggestionsState = trackSuggestions.state
   const updateTrackSuggestionsState = trackSuggestions.updateState
-
-  // Debug track suggestions state
-  useEffect(() => {
-    // Removed INFO-level log per logging policy
-  }, [trackSuggestionsState, addLog])
 
   // First, use the health monitor hook
   const healthStatus = useSpotifyHealthMonitor()
 
-  // Get recovery system for manual recovery
-  const { state: recoveryState, recover } = useRecoverySystem(
-    deviceId,
-    null // No playlist ID needed for admin page
-  )
+  // Recovery removed
 
   // Get premium status
   const { profile, loading: profileLoading } = useGetProfile()
@@ -328,29 +131,11 @@ export default function AdminPage(): JSX.Element {
   const isPremiumDisabled =
     !subscriptionLoading && !profileLoading && !hasPremiumAccess
 
-  // Add token health monitoring
-  const tokenHealth = useTokenHealth()
-
-  // Cancellation guard for autoplay async sequence
-  const autoResumeCancelRef = useRef(false)
-  useEffect(() => {
-    autoResumeCancelRef.current = false
-    return () => {
-      autoResumeCancelRef.current = true
-    }
-  }, [])
-
-  useAdminAutoPlay({
-    deviceId: deviceId ?? null,
-    username: username ?? null,
-    queue,
-    trackSuggestionsState,
-    addLog,
-    setUserIntent,
-    refreshQueue: useCallback(async () => {
-      await refreshQueue()
-    }, [refreshQueue])
-  })
+  // Extract token health from healthStatus to avoid duplicate API calls
+  const tokenHealth = {
+    status: healthStatus.token,
+    expiringSoon: healthStatus.tokenExpiringSoon
+  }
 
   // Update QueueManager with queue data
   useEffect(() => {
@@ -359,17 +144,54 @@ export default function AdminPage(): JSX.Element {
     }
   }, [queue])
 
+  // Initialize AutoPlayService when username and deviceId are available
+  useEffect(() => {
+    if (!username || !deviceId || !isReady) {
+      return
+    }
+
+    const autoPlayService = getAutoPlayService({
+      username,
+      deviceId,
+      checkInterval: 1000
+    })
+
+    // Set username and deviceId (in case service was already created)
+    autoPlayService.setUsername(username)
+    autoPlayService.setDeviceId(deviceId)
+
+    // Start the service if not already running
+    if (!autoPlayService.isActive()) {
+      autoPlayService.start()
+      autoPlayService.markAsInitialized()
+    }
+
+    // Update queue in AutoPlayService
+    if (queue) {
+      autoPlayService.updateQueue(queue)
+    }
+
+    // Set initial track suggestions state
+    const trackSuggestionsState = trackSuggestions.state
+    if (trackSuggestionsState) {
+      autoPlayService.setTrackSuggestionsState(trackSuggestionsState)
+    }
+
+    return (): void => {
+      // Don't stop the service on unmount - it should keep running
+      // The service is a singleton and should persist across re-renders
+    }
+  }, [username, deviceId, isReady, queue, trackSuggestions.state, addLog])
+
   // Initialize the player when the component mounts
   useEffect(() => {
     const initializePlayer = async (): Promise<void> => {
-      // Only initialize if not ready, SDK is available, we haven't attempted initialization yet,
-      // and recovery is not in progress
+      // Only initialize if not ready, SDK is available, we haven't attempted initialization yet
       if (
         playerStatus === 'initializing' &&
         typeof window !== 'undefined' &&
         window.Spotify &&
-        !initializationAttemptedRef.current &&
-        !recoveryState.isRecovering
+        !initializationAttemptedRef.current
       ) {
         try {
           initializationAttemptedRef.current = true
@@ -388,7 +210,7 @@ export default function AdminPage(): JSX.Element {
     }
 
     void initializePlayer()
-  }, [playerStatus, addLog, createPlayer, recoveryState.isRecovering])
+  }, [playerStatus, addLog, createPlayer])
 
   // Add missing functions
   const handleTabChange = useCallback((value: string): void => {
@@ -407,8 +229,13 @@ export default function AdminPage(): JSX.Element {
   const handleTrackSuggestionsStateChange = useCallback(
     (state: TrackSuggestionsState): void => {
       updateTrackSuggestionsState(state)
+      // Pass state to AutoPlayService
+      if (username) {
+        const autoPlayService = getAutoPlayService()
+        autoPlayService.setTrackSuggestionsState(state)
+      }
     },
-    [updateTrackSuggestionsState]
+    [updateTrackSuggestionsState, username]
   )
 
   const formatTime = useCallback((ms: number): string => {
@@ -418,7 +245,7 @@ export default function AdminPage(): JSX.Element {
     return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`
   }, [])
 
-  // Add graceful token error recovery
+  // Add graceful token error handling
   const handleTokenError = useCallback(async (): Promise<void> => {
     try {
       setIsLoading(true)
@@ -436,11 +263,11 @@ export default function AdminPage(): JSX.Element {
     } catch (error: unknown) {
       addLog(
         'ERROR',
-        'Automatic token recovery failed',
+        'Automatic token refresh failed',
         'AdminPage',
         error instanceof Error ? error : undefined
       )
-      setError('Token recovery failed. Please check your Spotify credentials.')
+      setError('Token refresh failed. Please check your Spotify credentials.')
     } finally {
       setIsLoading(false)
     }
@@ -454,107 +281,7 @@ export default function AdminPage(): JSX.Element {
     addLog
   })
 
-  usePlaybackRecovery({
-    playbackStatus: healthStatus.playback,
-    isRecovering: recoveryState.isRecovering,
-    recover
-  })
-
-  // Auto-resume playback once after device connects on initial load, if not already playing and queue has tracks
-  // Harden for slow devices: gate on token valid, ensure active device, retry with backoff, verify via API, server fallback, and cancellation guard
-  useEffect(() => {
-    if (autoResumeTriggeredRef.current) return
-    if (!isReady || !deviceId) return
-    if (tokenHealth.status !== 'valid') return
-    if (healthStatus.playback === 'playing') return
-    if (!queue || queue.length === 0) return
-
-    autoResumeTriggeredRef.current = true
-    // Slight delay to let device transfer/queue registration settle (slower devices need more time)
-    const timeout = setTimeout(() => {
-      void (async (): Promise<void> => {
-        try {
-          const spotifyApi = SpotifyApiService.getInstance()
-          const currentPosition = playbackState?.progress_ms ?? 0
-          const verifyPlaying = async (): Promise<boolean> => {
-            try {
-              const state = await sendApiRequest<SpotifyPlaybackState>({
-                path: 'me/player',
-                method: 'GET'
-              })
-              return Boolean(state?.is_playing)
-            } catch {
-              return false
-            }
-          }
-
-          const ensureActiveDevice = async (): Promise<void> => {
-            try {
-              const devices = await sendApiRequest<{
-                devices: SpotifyDevice[]
-              }>({ path: 'me/player/devices', method: 'GET' })
-              const active = devices?.devices?.some(
-                (d) => d.id === deviceId && d.is_active
-              )
-              if (!active && deviceId) {
-                await fetch('/api/playback', {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ action: 'play', deviceId })
-                })
-              }
-            } catch {
-              // ignore
-            }
-          }
-
-          await ensureActiveDevice()
-
-          const backoffs = [200, 600, 1200]
-          let ok = false
-          for (const wait of backoffs) {
-            if (autoResumeCancelRef.current) return
-            await spotifyApi.resumePlayback(
-              currentPosition,
-              deviceId ?? undefined
-            )
-            await new Promise((r) => setTimeout(r, wait))
-            ok = await verifyPlaying()
-            if (ok) break
-          }
-
-          if (!ok && deviceId) {
-            await ensureActiveDevice()
-            await new Promise((r) => setTimeout(r, 600))
-            ok = await verifyPlaying()
-          }
-
-          if (!ok) throw new Error('Autoplay verification failed')
-
-          setUserIntent('playing')
-        } catch (error: unknown) {
-          addLog(
-            'ERROR',
-            'Auto-resume on admin load failed',
-            'AdminPage',
-            error instanceof Error ? error : undefined
-          )
-          autoResumeTriggeredRef.current = false
-        }
-      })()
-    }, 600)
-
-    return (): void => clearTimeout(timeout)
-  }, [
-    isReady,
-    deviceId,
-    tokenHealth.status,
-    healthStatus.playback,
-    queue,
-    playbackState?.progress_ms,
-    setUserIntent,
-    addLog
-  ])
+  // Recovery removed
 
   if (playlistError) {
     return (
@@ -580,19 +307,13 @@ export default function AdminPage(): JSX.Element {
   return (
     <div className='text-white min-h-screen bg-black p-4'>
       <AutoFillNotification />
-      <RecoveryStatus
-        isRecovering={recoveryState.isRecovering}
-        message={recoveryState.message}
-        progress={recoveryState.progress}
-        currentStep={recoveryState.currentStep}
-      />
 
       <div className='mx-auto max-w-xl space-y-4'>
         <h1 className='mb-8 text-2xl font-bold'>Admin Controls</h1>
 
         <Tabs
           value={activeTab}
-          onValueChange={(value) => {
+          onValueChange={(value: string): void => {
             handleTabChange(value)
           }}
           className='space-y-4'
@@ -678,7 +399,7 @@ export default function AdminPage(): JSX.Element {
           <TabsContent value='playlist'>
             <PlaylistDisplay
               queue={queue ?? []}
-              onQueueChanged={async () => {
+              onQueueChanged={async (): Promise<void> => {
                 await refreshQueue()
               }}
               optimisticUpdate={optimisticUpdate}

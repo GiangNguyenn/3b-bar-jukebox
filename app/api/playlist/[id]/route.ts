@@ -15,15 +15,12 @@ export async function GET(
   try {
     const username = params.id
 
-    logger('INFO', `Username: ${username}`)
-
     const { data: profile, error: profileError } = await supabase
       .from('profiles')
       .select('id')
       .ilike('display_name', username)
       .single<{ id: string }>()
 
-    logger('INFO', `Profile from Supabase: ${JSON.stringify(profile)}`)
     if (profileError || !profile) {
       logger(
         'ERROR',
@@ -37,7 +34,6 @@ export async function GET(
       )
     }
 
-    logger('INFO', `Using profile.id for queue query: ${profile.id}`)
     const { data, error } = await supabase
       .from('jukebox_queue')
       .select('id, profile_id, track_id, votes, queued_at, tracks:track_id(*)')
@@ -46,7 +42,6 @@ export async function GET(
       .order('queued_at', { ascending: true })
       .returns<JukeboxQueueItem[]>()
 
-    logger('INFO', `Raw queue data from Supabase: ${JSON.stringify(data)}`)
     if (error) {
       logger(
         'ERROR',
@@ -60,7 +55,6 @@ export async function GET(
       )
     }
 
-    logger('INFO', `Final queue object: ${JSON.stringify(data)}`)
     return NextResponse.json(data)
   } catch (error) {
     logger(
@@ -121,19 +115,10 @@ export async function POST(
     }
 
     const body = (await request.json()) as unknown
-    logger(
-      'INFO',
-      `Playlist API - Incoming request body: ${JSON.stringify(body)}`
-    )
     // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-argument
     const parsed = parseWithType(addTrackSchema, body)
     const { tracks, initialVotes, source } = parsed
     const requestSource = source ?? 'user'
-    logger(
-      'INFO',
-      `Playlist API - Parsed tracks data: ${JSON.stringify(tracks)}`
-    )
-    logger('INFO', `Playlist API - Request source: ${requestSource}`)
 
     // Fetch detailed track information from Spotify API to get release date and genre
     let detailedTrackInfo: {
@@ -225,25 +210,7 @@ export async function POST(
 
     const genre = artistGenres[0] ?? null
 
-    // Add detailed logging for debugging
-    logger('INFO', `Playlist API - Final genre value: ${genre}`)
-    logger(
-      'INFO',
-      `Playlist API - All artist genres: ${JSON.stringify(artistGenres)}`
-    )
-    logger('INFO', `Playlist API - Release year: ${releaseYear}`)
-
     // Safeguard: Validate that the Spotify track ID is not a UUID and is the correct format
-    logger('INFO', `Playlist API - Validating Spotify track ID: ${tracks.id}`)
-    logger('INFO', `Playlist API - Track ID length: ${tracks.id.length}`)
-    logger(
-      'INFO',
-      `Playlist API - Track ID contains hyphens: ${tracks.id.includes('-')}`
-    )
-    logger(
-      'INFO',
-      `Playlist API - Track ID alphanumeric test: ${!/^[0-9A-Za-z]+$/.test(tracks.id)}`
-    )
 
     if (
       tracks.id.includes('-') || // UUIDs have hyphens
@@ -261,7 +228,6 @@ export async function POST(
       )
     }
 
-    logger('INFO', `Playlist API - About to upsert track with genre: ${genre}`)
     const { data: upsertedTrack, error: upsertError } = await supabase
       .from('tracks')
       .upsert(
@@ -363,11 +329,6 @@ export async function POST(
 
     // Only log track suggestions for user-initiated requests
     if (requestSource === 'user') {
-      logger(
-        'INFO',
-        `Logging track suggestion for user-initiated request: ${tracks.name}`
-      )
-
       // Log the track suggestion for analytics
       const { error: logError } = await supabase.rpc('log_track_suggestion', {
         p_profile_id: profile.id,
@@ -390,11 +351,6 @@ export async function POST(
         logger('ERROR', 'Failed to log track suggestion', undefined, logError)
         // Don't fail the entire request if logging fails, just log the error
       }
-    } else {
-      logger(
-        'INFO',
-        `Skipping track suggestion logging for ${requestSource} request: ${tracks.name}`
-      )
     }
 
     return NextResponse.json({ message: 'Track added to queue successfully' })

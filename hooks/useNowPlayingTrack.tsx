@@ -65,26 +65,42 @@ export function useNowPlayingTrack({
           return
         }
 
+        // Read response body once (can only be read once)
+        const responseText = await fetchResponse.text()
+
         if (!fetchResponse.ok) {
-          if (fetchResponse.status === 401) {
+          // For authentication errors (401/403), clear data
+          if (fetchResponse.status === 401 || fetchResponse.status === 403) {
             // Token might be expired, but we can't refresh it here since we're using a direct token
             // Just set data to null and let the caller handle token refresh
             setData(null)
             return
           }
-          throw new Error(
-            `HTTP ${fetchResponse.status}: ${fetchResponse.statusText}`
-          )
+
+          // For other errors, preserve last known state (don't clear data)
+          // This prevents UI from showing "No track" when there's a temporary API issue
+          setError(`HTTP ${fetchResponse.status}: ${fetchResponse.statusText}`)
+          // Don't clear data - keep showing last known track
+          return
         }
 
         // Check if response has content before parsing JSON
-        const responseText = await fetchResponse.text()
         if (!responseText.trim()) {
           setData(null)
           return
         }
 
-        response = JSON.parse(responseText)
+        let parsedResponse
+        try {
+          parsedResponse = JSON.parse(responseText)
+        } catch (parseError) {
+          // Failed to parse JSON - preserve last known state
+          setError('Failed to parse response')
+          // Don't clear data - keep showing last known track
+          return
+        }
+
+        response = parsedResponse
       } else {
         // Use our server-side API endpoint that handles admin credentials
         const apiResponse = await fetch('/api/now-playing', {
@@ -97,20 +113,71 @@ export function useNowPlayingTrack({
           return
         }
 
+        // Read response body once (can only be read once)
+        const responseText = await apiResponse.text()
+
         if (!apiResponse.ok) {
-          throw new Error(
-            `HTTP ${apiResponse.status}: ${apiResponse.statusText}`
+          // For errors, try to parse the error response
+          let errorData
+          try {
+            errorData = responseText ? JSON.parse(responseText) : null
+          } catch {
+            // Not JSON, use text as error message
+          }
+
+          // For authentication errors (401/403), clear data
+          if (apiResponse.status === 401 || apiResponse.status === 403) {
+            setData(null)
+            return
+          }
+
+          // For other errors, preserve last known state (don't clear data)
+          // This prevents UI from showing "No track" when there's a temporary API issue
+          setError(
+            errorData?.error ||
+              `HTTP ${apiResponse.status}: ${apiResponse.statusText}`
           )
+          // Don't clear data - keep showing last known track
+          return
         }
 
         // Check if response has content before parsing JSON
-        const responseText = await apiResponse.text()
         if (!responseText.trim()) {
           setData(null)
           return
         }
 
-        response = JSON.parse(responseText)
+        let parsedResponse
+        try {
+          parsedResponse = JSON.parse(responseText)
+        } catch (parseError) {
+          // Failed to parse JSON - preserve last known state
+          setError('Failed to parse response')
+          // Don't clear data - keep showing last known track
+          return
+        }
+
+        // Check if response is null (explicit no track)
+        if (parsedResponse === null) {
+          setData(null)
+          return
+        }
+
+        // Check if response is an error object (from our API)
+        if (
+          parsedResponse &&
+          typeof parsedResponse === 'object' &&
+          'error' in parsedResponse
+        ) {
+          // This is an error response, preserve last known state
+          setError(
+            parsedResponse.error || 'Failed to get currently playing track'
+          )
+          // Don't clear data - keep showing last known track
+          return
+        }
+
+        response = parsedResponse
       }
 
       // Update last track ID
@@ -132,8 +199,10 @@ export function useNowPlayingTrack({
         return
       }
 
+      // For other errors (network issues, parsing errors, etc.), preserve last known state
+      // This prevents UI from showing "No track" when there's a temporary issue
       setError(err instanceof Error ? err.message : 'An error occurred')
-      setData(null)
+      // Don't clear data - keep showing last known track
     } finally {
       setIsLoading(false)
     }

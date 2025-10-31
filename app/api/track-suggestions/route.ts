@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { songsBetweenRepeatsSchema } from '@/app/[username]/admin/components/track-suggestions/validations/trackSuggestions'
 import { findSuggestedTrack } from '@/services/trackSuggestion'
-import { type Genre } from '@/shared/constants/trackSuggestion'
+import { type Genre, DEFAULT_MARKET } from '@/shared/constants/trackSuggestion'
 import { createModuleLogger } from '@/shared/utils/logger'
 import { sendApiRequest } from '@/shared/api'
 
@@ -118,27 +118,15 @@ export async function POST(
   request: Request
 ): Promise<NextResponse<RefreshResponse>> {
   try {
-    logger('INFO', '[Track Suggestions API] Starting POST request')
-
     const body = (await request.json()) as unknown
 
-    logger(
-      'INFO',
-      `[Track Suggestions API] Request body: ${JSON.stringify(body)}`
-    )
-
     const validatedData = refreshRequestSchema.parse(body)
-    logger(
-      'INFO',
-      `[Track Suggestions API] Validated data: ${JSON.stringify(validatedData)}`
-    )
 
     // Use findSuggestedTrack with app tokens for server-side operation
-    logger('INFO', '[Track Suggestions API] Calling findSuggestedTrack...')
     const result = await findSuggestedTrack(
       validatedData.excludedTrackIds ?? [], // Use validated excludedTrackIds
       null, // No current track ID
-      'US', // Default market
+      DEFAULT_MARKET, // Use default market from constants
       {
         genres: validatedData.genres,
         yearRange: validatedData.yearRange,
@@ -149,18 +137,6 @@ export async function POST(
         maxOffset: validatedData.maxOffset
       },
       true // Use app token for server-side operations
-    )
-
-    logger(
-      'INFO',
-      `[Track Suggestions API] findSuggestedTrack result: ${JSON.stringify({
-        trackFound: !!result.track,
-        trackId: result.track?.id,
-        trackName: result.track?.name,
-        attempts: result.searchDetails.attempts,
-        totalTracksFound: result.searchDetails.totalTracksFound,
-        genresTried: result.searchDetails.genresTried
-      })}`
     )
 
     if (!result.track) {
@@ -225,11 +201,6 @@ export async function POST(
       )
     }
 
-    logger(
-      'INFO',
-      `[Track Suggestions API] Successfully found track: ${result.track.name} by ${result.track.artists.map((a) => a.name).join(', ')}`
-    )
-
     // Store the successful track in server cache for the "Last Suggested Track" feature
     // Fetch artist genres for the track
     let artistGenres: string[] = []
@@ -274,11 +245,6 @@ export async function POST(
       preview_url: track.preview_url,
       genres: artistGenres
     } satisfies LastSuggestedTrack
-
-    logger(
-      'INFO',
-      `[Track Suggestions API] Updated server cache with track: ${serverCache.name}`
-    )
 
     return NextResponse.json({
       success: true,

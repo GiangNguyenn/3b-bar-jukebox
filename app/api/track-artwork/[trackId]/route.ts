@@ -49,8 +49,6 @@ export async function GET(
       )
     }
 
-    logger('INFO', `Track artwork API: Fetching artwork for track ${trackId}`)
-
     const cookieStore = cookies()
 
     const supabase = createServerClient<Database>(
@@ -108,8 +106,6 @@ export async function GET(
     let accessToken = typedProfile.spotify_access_token
 
     if (tokenExpiresAt && tokenExpiresAt <= now) {
-      logger('INFO', 'Track artwork API: Token expired, refreshing...')
-
       // Token is expired, refresh it
       if (!typedProfile.spotify_refresh_token) {
         logger('ERROR', 'Track artwork API: No refresh token available')
@@ -154,8 +150,6 @@ export async function GET(
 
       const tokenData = (await response.json()) as SpotifyTokenResponse
       accessToken = tokenData.access_token
-
-      logger('INFO', 'Track artwork API: Token refreshed successfully')
 
       // Update the token in the database
       const { error: updateError } = await supabase
@@ -247,8 +241,6 @@ export async function GET(
     )
 
     const artworkUrl = trackData.album?.images?.[0]?.url ?? null
-
-    logger('INFO', `Track artwork API: Returning artwork URL: ${artworkUrl}`)
 
     return NextResponse.json({ artworkUrl })
   } catch (error) {
