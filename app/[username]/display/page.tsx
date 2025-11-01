@@ -43,6 +43,22 @@ export default function DisplayPage(): ReactElement {
   // Get audio features for the current track (hook already handles trackId changes)
   const { features: audioFeatures } = useAudioFeatures(trackId)
 
+  // Preload album art image for faster loading
+  useEffect(() => {
+    if (!albumArtUrl) return
+
+    const link = document.createElement('link')
+    link.rel = 'preload'
+    link.as = 'image'
+    link.href = albumArtUrl
+    link.crossOrigin = 'anonymous'
+    document.head.appendChild(link)
+
+    return () => {
+      document.head.removeChild(link)
+    }
+  }, [albumArtUrl])
+
   // Track when initial load completes - when isLoading transitions from true to false
   // This means we've received at least one response (data, null from 204, or error)
   useEffect(() => {
