@@ -187,6 +187,7 @@ export async function extractColorsFromImageUrl(
     // Load image
     const img = new Image()
     img.crossOrigin = 'anonymous'
+    img.loading = 'eager'
 
     await new Promise<void>((resolve, reject) => {
       img.onload = () => resolve()

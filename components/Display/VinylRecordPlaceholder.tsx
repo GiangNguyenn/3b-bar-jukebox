@@ -61,18 +61,20 @@ export default function VinylRecordPlaceholder({
           strokeWidth='1'
         />
 
+        {/* 3B Logo in the label */}
+        <image
+          href='/logo.png'
+          x='196'
+          y='196'
+          width='120'
+          height='120'
+          opacity='0.8'
+          preserveAspectRatio='xMidYMid meet'
+        />
+
         {/* Center hole */}
         <circle cx='256' cy='256' r='20' fill='#000' />
         <circle cx='256' cy='256' r='18' fill='url(#holeGradient)' />
-
-        {/* Music note icon in the label */}
-        <g transform='translate(256, 256)'>
-          <path
-            d='M-15 -20 L-15 15 M-15 -20 L10 -25 L10 10 M-20 15 A5 5 0 1 0 -10 15 A5 5 0 1 0 -20 15 M5 10 A5 5 0 1 0 15 10 A5 5 0 1 0 5 10'
-            fill='#fff'
-            opacity='0.3'
-          />
-        </g>
 
         {/* Gradients */}
         <defs>

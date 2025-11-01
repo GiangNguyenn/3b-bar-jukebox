@@ -26,24 +26,36 @@ function TrackMetadata({
   const [imageError, setImageError] = useState(false)
   const [retryCount, setRetryCount] = useState(0)
   const [imageKey, setImageKey] = useState(0)
+  const [imageLoaded, setImageLoaded] = useState(false)
 
   const handleImageError = useCallback(() => {
     if (retryCount < 2) {
       // Retry up to 2 times
       setRetryCount((prev) => prev + 1)
       setImageKey((prev) => prev + 1)
+    } else if (retryCount === 2 && albumArtUrl) {
+      // Final attempt: try cache-busting by adding timestamp
+      setRetryCount((prev) => prev + 1)
+      setImageKey((prev) => prev + 1)
     } else {
-      // After 2 retries, show placeholder
+      // After all retries, show placeholder
       setImageError(true)
     }
-  }, [retryCount])
+  }, [retryCount, albumArtUrl])
 
   // Reset error state when albumArtUrl changes
   useEffect(() => {
     setImageError(false)
     setRetryCount(0)
     setImageKey(0)
+    setImageLoaded(false)
   }, [albumArtUrl])
+
+  // Use cache-busting URL on final retry attempt
+  const imageSrc: string | undefined =
+    retryCount === 3 && albumArtUrl
+      ? `${albumArtUrl}${albumArtUrl.includes('?') ? '&' : '?'}_cb=${Date.now()}`
+      : albumArtUrl
 
   const showPlaceholder = !albumArtUrl || imageError
 
@@ -54,15 +66,25 @@ function TrackMetadata({
         {showPlaceholder ? (
           <VinylRecordPlaceholder className='h-full w-full' size={512} />
         ) : (
-          <Image
-            key={imageKey}
-            src={albumArtUrl}
-            alt={albumName}
-            fill
-            className='animate-float object-cover transition-transform duration-500'
-            sizes='(max-width: 640px) 320px, (max-width: 768px) 384px, (max-width: 1024px) 448px, 512px'
-            onError={handleImageError}
-          />
+          <>
+            <Image
+              key={imageKey}
+              src={imageSrc!}
+              alt={albumName}
+              fill
+              priority
+              unoptimized
+              crossOrigin='anonymous'
+              fetchPriority='high'
+              className='animate-float object-cover transition-opacity duration-300'
+              sizes='(max-width: 640px) 320px, (max-width: 768px) 384px, (max-width: 1024px) 448px, 512px'
+              onError={handleImageError}
+              onLoadingComplete={() => setImageLoaded(true)}
+            />
+            {!imageLoaded && (
+              <div className='absolute inset-0 animate-pulse bg-gray-800' />
+            )}
+          </>
         )}
         {explicit && (
           <div className='text-white absolute right-2 top-2 rounded bg-black/80 px-2 py-1 text-xs font-bold'>

@@ -37,7 +37,12 @@ export function useAlbumColors(imageUrl: string | undefined): {
       }
     }
 
-    void fetchColors()
+    // Small delay to let image preload start first
+    const timeoutId = setTimeout(() => {
+      void fetchColors()
+    }, 50)
+
+    return () => clearTimeout(timeoutId)
   }, [imageUrl])
 
   return { colors, isLoading, error }
