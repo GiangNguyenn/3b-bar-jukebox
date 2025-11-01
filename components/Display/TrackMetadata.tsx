@@ -1,15 +1,16 @@
 'use client'
 
-import { memo } from 'react'
+import { memo, useState, useCallback, useEffect } from 'react'
 import type { ReactElement } from 'react'
 import Image from 'next/image'
 import type { ColorPalette } from '@/shared/utils/colorExtraction'
+import VinylRecordPlaceholder from './VinylRecordPlaceholder'
 
 interface TrackMetadataProps {
   trackName: string
   artistName: string
   albumName: string
-  albumArtUrl: string
+  albumArtUrl: string | undefined
   explicit: boolean
   colors: ColorPalette
 }
@@ -22,17 +23,47 @@ function TrackMetadata({
   explicit,
   colors
 }: TrackMetadataProps): ReactElement {
+  const [imageError, setImageError] = useState(false)
+  const [retryCount, setRetryCount] = useState(0)
+  const [imageKey, setImageKey] = useState(0)
+
+  const handleImageError = useCallback(() => {
+    if (retryCount < 2) {
+      // Retry up to 2 times
+      setRetryCount((prev) => prev + 1)
+      setImageKey((prev) => prev + 1)
+    } else {
+      // After 2 retries, show placeholder
+      setImageError(true)
+    }
+  }, [retryCount])
+
+  // Reset error state when albumArtUrl changes
+  useEffect(() => {
+    setImageError(false)
+    setRetryCount(0)
+    setImageKey(0)
+  }, [albumArtUrl])
+
+  const showPlaceholder = !albumArtUrl || imageError
+
   return (
     <div className='flex items-center justify-center gap-4 text-center sm:gap-6 md:gap-8'>
       {/* Album Artwork */}
       <div className='relative h-80 w-80 flex-shrink-0 overflow-hidden rounded-lg shadow-2xl sm:h-96 sm:w-96 md:h-[448px] md:w-[448px] lg:h-[512px] lg:w-[512px]'>
-        <Image
-          src={albumArtUrl}
-          alt={albumName}
-          fill
-          className='animate-float object-cover transition-transform duration-500'
-          sizes='(max-width: 640px) 320px, (max-width: 768px) 384px, (max-width: 1024px) 448px, 512px'
-        />
+        {showPlaceholder ? (
+          <VinylRecordPlaceholder className='h-full w-full' size={512} />
+        ) : (
+          <Image
+            key={imageKey}
+            src={albumArtUrl}
+            alt={albumName}
+            fill
+            className='animate-float object-cover transition-transform duration-500'
+            sizes='(max-width: 640px) 320px, (max-width: 768px) 384px, (max-width: 1024px) 448px, 512px'
+            onError={handleImageError}
+          />
+        )}
         {explicit && (
           <div className='text-white absolute right-2 top-2 rounded bg-black/80 px-2 py-1 text-xs font-bold'>
             E

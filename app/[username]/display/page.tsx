@@ -114,20 +114,6 @@ export default function DisplayPage(): ReactElement {
   }
 
   // Track is playing - show full display
-  if (!albumArtUrl) {
-    return (
-      <>
-        <div className='relative min-h-screen overflow-hidden'>
-          <ColorBackground colors={colors} isPlaying={isPlaying} />
-          <div className='relative z-10 flex min-h-screen items-center justify-center'>
-            <ErrorMessage message='Unable to load track artwork' />
-          </div>
-        </div>
-        {username && <QRCodeComponent username={username} />}
-      </>
-    )
-  }
-
   return (
     <>
       <div className='relative min-h-screen overflow-hidden'>
