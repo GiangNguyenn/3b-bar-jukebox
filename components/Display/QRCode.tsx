@@ -33,7 +33,7 @@ export default function QRCodeComponent({
       try {
         const canvas = canvasRef.current
         await QRCode.toCanvas(canvas, playlistUrl, {
-          width: 120,
+          width: 240,
           margin: 2,
           color: {
             dark: '#000000',
@@ -58,10 +58,13 @@ export default function QRCodeComponent({
       <div className='bg-white rounded-lg p-3 shadow-2xl'>
         <canvas
           ref={canvasRef}
-          width={120}
-          height={120}
+          width={240}
+          height={240}
           className='bg-white block'
         />
+        <p className='text-white mt-3 text-center text-xl font-bold'>
+          Scan to add songs
+        </p>
       </div>
     </div>
   )
