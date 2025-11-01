@@ -7,7 +7,6 @@ import { YearRangeSelector } from './components/year-range-selector'
 import { PopularitySelector } from './components/popularity-selector'
 import { ExplicitContentToggle } from './components/explicit-content-toggle'
 import { MaxSongLengthSelector } from './components/max-song-length-selector'
-import { SongsBetweenRepeatsSelector } from './components/songs-between-repeats-selector'
 import { MaxOffsetSelector } from './components/max-offset-selector'
 import { AutoFillTargetSelector } from './components/auto-fill-target-selector'
 import { LastSuggestedTrack } from './components/last-suggested-track'
@@ -43,7 +42,6 @@ export function TrackSuggestionsTab({
     setPopularity,
     setAllowExplicit,
     setMaxSongLength,
-    setSongsBetweenRepeats,
     setMaxOffset,
     setAutoFillTargetSize,
     updateState
@@ -297,16 +295,10 @@ export function TrackSuggestionsTab({
         </button>
         {isAdvancedOpen && (
           <div className='space-y-6 px-4 pb-4'>
-            <div className='grid gap-6 md:grid-cols-2'>
-              <SongsBetweenRepeatsSelector
-                count={state.songsBetweenRepeats}
-                onCountChange={setSongsBetweenRepeats}
-              />
-              <MaxOffsetSelector
-                offset={state.maxOffset}
-                onOffsetChange={setMaxOffset}
-              />
-            </div>
+            <MaxOffsetSelector
+              offset={state.maxOffset}
+              onOffsetChange={setMaxOffset}
+            />
           </div>
         )}
       </div>

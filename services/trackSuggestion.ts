@@ -310,7 +310,6 @@ export async function findSuggestedTrack(
     popularity: number
     allowExplicit: boolean
     maxSongLength: number // maxSongLength is in minutes
-    songsBetweenRepeats: number
     maxOffset: number
   },
   useAppToken: boolean = false

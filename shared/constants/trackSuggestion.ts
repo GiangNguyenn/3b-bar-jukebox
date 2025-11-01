@@ -1469,7 +1469,9 @@ export const DEFAULT_YEAR_RANGE: [number, number] = [
   1950,
   new Date().getFullYear()
 ]
-export const DEFAULT_SONGS_BETWEEN_REPEATS = 5
+
+// Track repeat cooldown (in hours)
+export const TRACK_REPEAT_COOLDOWN_HOURS = 24
 
 // Validation limits
 export const MIN_POPULARITY = 0
