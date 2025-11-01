@@ -139,7 +139,7 @@ export default function DisplayPage(): ReactElement {
         {/* Main content */}
         <div className='relative z-10 flex min-h-screen flex-col overflow-hidden'>
           {/* Top section with metadata */}
-          <div className='relative z-40 px-4 pt-4 sm:px-6 sm:pt-6 md:px-8 md:pt-8'>
+          <div className='relative z-40 px-4 pr-72 pt-4 sm:px-6 sm:pr-80 sm:pt-6 md:px-8 md:pr-96 md:pt-8'>
             <TrackMetadata
               trackName={trackName}
               artistName={artistName}

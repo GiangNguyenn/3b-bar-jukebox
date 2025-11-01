@@ -54,7 +54,7 @@ export default function QRCodeComponent({
   }, [playlistUrl, addLog])
 
   return (
-    <div className='fixed right-4 top-4 z-[100]'>
+    <div className='fixed right-4 top-4 z-[100] flex flex-col items-center gap-3'>
       <div className='bg-white rounded-lg p-3 shadow-2xl'>
         <canvas
           ref={canvasRef}
@@ -62,10 +62,13 @@ export default function QRCodeComponent({
           height={240}
           className='bg-white block'
         />
-        <p className='text-white mt-3 text-center text-xl font-bold'>
-          Scan to add songs
-        </p>
       </div>
+      <p
+        className='text-center text-xl font-bold drop-shadow-lg'
+        style={{ color: '#FFFFFF' }}
+      >
+        Scan to add songs
+      </p>
     </div>
   )
 }
