@@ -8,7 +8,6 @@ import {
   DEFAULT_YEAR_RANGE,
   MIN_TRACK_POPULARITY,
   DEFAULT_MAX_SONG_LENGTH_MINUTES,
-  DEFAULT_SONGS_BETWEEN_REPEATS,
   DEFAULT_MAX_OFFSET
 } from '@/shared/constants/trackSuggestion'
 
@@ -444,7 +443,6 @@ class AutoPlayService {
             'popularity',
             'allowExplicit',
             'maxSongLength',
-            'songsBetweenRepeats',
             'maxOffset',
             'autoFillTargetSize'
           ]
@@ -585,16 +583,6 @@ class AutoPlayService {
                 DEFAULT_MAX_SONG_LENGTH_MINUTES
             )
           ),
-          songsBetweenRepeats: Math.max(
-            2,
-            Math.min(
-              100,
-              Math.floor(
-                this.trackSuggestionsState?.songsBetweenRepeats ??
-                  DEFAULT_SONGS_BETWEEN_REPEATS
-              )
-            )
-          ),
           maxOffset: Math.max(
             1,
             Math.min(
@@ -615,7 +603,6 @@ class AutoPlayService {
           'popularity',
           'allowExplicit',
           'maxSongLength',
-          'songsBetweenRepeats',
           'maxOffset'
         ]
         const missingFields = requiredFields.filter(
@@ -650,25 +637,24 @@ class AutoPlayService {
           (item) => item.tracks.spotify_track_id
         )
 
-        // Also exclude tracks from recent cooldown history (client-only, per-username context)
+        // Also exclude tracks from recent cooldown history (24-hour filter)
         try {
-          const { loadCooldownState, getRecentForMinBetween } = await import(
+          const { loadCooldownState, getTracksInCooldown } = await import(
             '@/shared/utils/suggestionsCooldown'
           )
           const contextId = this.username ?? 'default'
           const cooldown = loadCooldownState(contextId)
-          const minBetween = mergedTrackSuggestions.songsBetweenRepeats
-          const recentForWindow = getRecentForMinBetween(cooldown, minBetween)
-          if (recentForWindow.length > 0) {
+          const tracksInCooldown = getTracksInCooldown(cooldown)
+          if (tracksInCooldown.length > 0) {
             logger(
-              'WARN',
-              `[AutoFill] Including ${recentForWindow.length} cooldown trackIds into exclusions for context=${contextId} (minBetween=${minBetween})`
+              'INFO',
+              `[AutoFill] Including ${tracksInCooldown.length} tracks in 24-hour cooldown into exclusions for context=${contextId}`
             )
             excludedTrackIds = Array.from(
-              new Set([...excludedTrackIds, ...recentForWindow])
+              new Set([...excludedTrackIds, ...tracksInCooldown])
             )
             logger(
-              'WARN',
+              'INFO',
               `[AutoFill] Exclusions total after cooldown merge: ${excludedTrackIds.length}`
             )
           }
@@ -700,7 +686,6 @@ class AutoPlayService {
               popularity: typeof requestBody.popularity,
               allowExplicit: typeof requestBody.allowExplicit,
               maxSongLength: typeof requestBody.maxSongLength,
-              songsBetweenRepeats: typeof requestBody.songsBetweenRepeats,
               maxOffset: typeof requestBody.maxOffset
             }
           )}`
@@ -940,26 +925,20 @@ class AutoPlayService {
                 return
               }
 
-              // Append to cooldown ring (client-only persistence)
+              // Record track addition with timestamp for 24-hour cooldown
               try {
                 const {
                   loadCooldownState,
-                  appendSuggestedTrackId,
+                  recordTrackAddition,
                   saveCooldownState
                 } = await import('@/shared/utils/suggestionsCooldown')
                 const contextId = this.username ?? 'default'
                 const cooldown = loadCooldownState(contextId)
-                const minBetween =
-                  this.trackSuggestionsState?.songsBetweenRepeats ?? 0
-                const next = appendSuggestedTrackId(
-                  cooldown,
-                  trackDetails.id,
-                  minBetween
-                )
-                saveCooldownState(contextId, next)
+                const updated = recordTrackAddition(cooldown, trackDetails.id)
+                saveCooldownState(contextId, updated)
                 logger(
-                  'WARN',
-                  `[AutoFill] Appended track to cooldown ring (context=${contextId}, minBetween=${minBetween}, size=${next.recentTrackIds.length})`
+                  'INFO',
+                  `[AutoFill] Recorded track addition to 24-hour cooldown (context=${contextId}, trackId=${trackDetails.id}, totalTracked=${Object.keys(updated.trackTimestamps).length})`
                 )
               } catch {}
             }

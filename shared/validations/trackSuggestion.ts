@@ -14,7 +14,6 @@ export interface TrackSuggestionParams {
   popularity: number
   allowExplicit: boolean
   maxSongLength: number
-  songsBetweenRepeats: number
   maxOffset: number
 }
 
@@ -99,15 +98,6 @@ export function validateTrackSuggestionParams(
       errors.push(
         `Max song length must be between ${MIN_SONG_LENGTH_MINUTES} and ${MAX_SONG_LENGTH_MINUTES} minutes`
       )
-    }
-  }
-
-  // Validate songsBetweenRepeats
-  if (params.songsBetweenRepeats !== undefined) {
-    if (typeof params.songsBetweenRepeats !== 'number') {
-      errors.push('Songs between repeats must be a number')
-    } else if (params.songsBetweenRepeats < 1) {
-      errors.push('Songs between repeats must be at least 1')
     }
   }
 

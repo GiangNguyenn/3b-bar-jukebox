@@ -17,7 +17,6 @@ const getInitialState = (
     popularity: 50,
     allowExplicit: false,
     maxSongLength: 10,
-    songsBetweenRepeats: 50,
     maxOffset: Math.max(1, DEFAULT_MAX_OFFSET),
     autoFillTargetSize: 10,
     ...initialState
@@ -53,7 +52,6 @@ interface UseTrackSuggestionsReturn {
   setPopularity: (popularity: number) => void
   setAllowExplicit: (allowExplicit: boolean) => void
   setMaxSongLength: (maxSongLength: number) => void
-  setSongsBetweenRepeats: (songsBetweenRepeats: number) => void
   setMaxOffset: (maxOffset: number) => void
   setAutoFillTargetSize: (autoFillTargetSize: number) => void
 }
@@ -128,13 +126,6 @@ export function useTrackSuggestions(
     [updateState]
   )
 
-  const setSongsBetweenRepeats = useCallback(
-    (songsBetweenRepeats: number): void => {
-      updateState({ songsBetweenRepeats })
-    },
-    [updateState]
-  )
-
   const setMaxOffset = useCallback(
     (maxOffset: number): void => {
       updateState({ maxOffset: Math.max(1, maxOffset) })
@@ -157,7 +148,6 @@ export function useTrackSuggestions(
     setPopularity,
     setAllowExplicit,
     setMaxSongLength,
-    setSongsBetweenRepeats,
     setMaxOffset,
     setAutoFillTargetSize
   }

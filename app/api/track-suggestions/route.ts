@@ -1,7 +1,6 @@
 /* eslint-disable @typescript-eslint/no-unsafe-assignment */
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
-import { songsBetweenRepeatsSchema } from '@/app/[username]/admin/components/track-suggestions/validations/trackSuggestions'
 import { findSuggestedTrack } from '@/services/trackSuggestion'
 import { type Genre, DEFAULT_MARKET } from '@/shared/constants/trackSuggestion'
 import { createModuleLogger } from '@/shared/utils/logger'
@@ -39,7 +38,6 @@ const refreshRequestSchema = z.object({
   popularity: z.number().min(0).max(100),
   allowExplicit: z.boolean(),
   maxSongLength: z.number().min(3).max(20), // In minutes
-  songsBetweenRepeats: songsBetweenRepeatsSchema,
   maxOffset: z.number().min(1).max(10000),
   excludedTrackIds: z.array(z.string()).optional() // Optional array of track IDs to exclude
 })
@@ -133,7 +131,6 @@ export async function POST(
         popularity: validatedData.popularity,
         allowExplicit: validatedData.allowExplicit,
         maxSongLength: validatedData.maxSongLength,
-        songsBetweenRepeats: validatedData.songsBetweenRepeats,
         maxOffset: validatedData.maxOffset
       },
       true // Use app token for server-side operations
