@@ -224,6 +224,8 @@ export default function SearchInput({
                     width={48}
                     height={48}
                     className='rounded'
+                    unoptimized
+                    crossOrigin='anonymous'
                   />
                 )}
                 <div className='flex-1'>
