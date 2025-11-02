@@ -123,6 +123,8 @@ export function AutoFillNotification(): JSX.Element | null {
                     fill
                     className='object-cover'
                     sizes='64px'
+                    unoptimized
+                    crossOrigin='anonymous'
                   />
                 </div>
               )}
