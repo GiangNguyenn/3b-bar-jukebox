@@ -29,6 +29,8 @@ const VinylSpinningAnimation: React.FC<IVinylSpinningAnimationProps> = ({
               width={80}
               height={80}
               className='rounded-full border-2 border-gray-800 object-cover'
+              unoptimized
+              crossOrigin='anonymous'
             />
           </div>
         )}
