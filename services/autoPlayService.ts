@@ -1109,9 +1109,28 @@ class AutoPlayService {
 
     // Get current queue to exclude existing tracks
     const currentQueue = this.queueManager.getQueue()
-    const excludedTrackIds = currentQueue.map(
+    let excludedTrackIds = currentQueue.map(
       (item) => item.tracks.spotify_track_id
     )
+
+    // Also exclude tracks from recent cooldown history (24-hour filter)
+    try {
+      const { loadCooldownState, getTracksInCooldown } = await import(
+        '@/shared/utils/suggestionsCooldown'
+      )
+      const contextId = this.username ?? 'default'
+      const cooldown = loadCooldownState(contextId)
+      const tracksInCooldown = getTracksInCooldown(cooldown)
+      if (tracksInCooldown.length > 0) {
+        logger(
+          'INFO',
+          `[Fallback] Including ${tracksInCooldown.length} tracks in 24-hour cooldown into exclusions`
+        )
+        excludedTrackIds = Array.from(
+          new Set([...excludedTrackIds, ...tracksInCooldown])
+        )
+      }
+    } catch {}
 
     let attempts = 0
     const maxAttempts = 5
@@ -1215,6 +1234,26 @@ class AutoPlayService {
             return false
           } else {
           }
+
+          // Record track addition with timestamp for 24-hour cooldown
+          try {
+            const {
+              loadCooldownState,
+              recordTrackAddition,
+              saveCooldownState
+            } = await import('@/shared/utils/suggestionsCooldown')
+            const contextId = this.username ?? 'default'
+            const cooldown = loadCooldownState(contextId)
+            const updated = recordTrackAddition(
+              cooldown,
+              result.track.spotify_track_id
+            )
+            saveCooldownState(contextId, updated)
+            logger(
+              'INFO',
+              `[Fallback] Recorded track addition to 24-hour cooldown (trackId=${result.track.spotify_track_id})`
+            )
+          } catch {}
 
           // Show popup notification for fallback track
           this.showAutoFillNotification({
