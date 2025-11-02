@@ -45,6 +45,8 @@ const QueueItem: React.FC<IQueueItemProps> = ({
             fill
             sizes='48px'
             className='rounded object-cover'
+            unoptimized
+            crossOrigin='anonymous'
           />
         ) : (
           <div className='flex h-12 w-12 items-center justify-center rounded bg-gray-200'>
