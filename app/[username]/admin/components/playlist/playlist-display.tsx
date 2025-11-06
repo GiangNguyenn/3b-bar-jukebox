@@ -3,7 +3,6 @@
 import { useState } from 'react'
 import { sendApiRequest } from '@/shared/api'
 import { useSpotifyPlayerStore } from '@/hooks/useSpotifyPlayer'
-import { useNowPlayingTrack } from '@/hooks/useNowPlayingTrack'
 import { PlayIcon, TrashIcon, HeartIcon } from '@heroicons/react/24/outline'
 import { ErrorMessage } from '@/components/ui/error-message'
 import { Loading } from '@/components/ui/loading'
@@ -31,11 +30,8 @@ export function PlaylistDisplay({
   const [deletingTrackId, setDeletingTrackId] = useState<string | null>(null)
   const [isImporting, setIsImporting] = useState(false)
   const [importMessage, setImportMessage] = useState<string | null>(null)
-  const { deviceId } = useSpotifyPlayerStore()
+  const { deviceId, playbackState } = useSpotifyPlayerStore()
   const { addLog } = useConsoleLogsContext()
-
-  // Use the simpler useNowPlayingTrack hook (matches mainline)
-  const { data: currentlyPlaying } = useNowPlayingTrack()
 
   // Debounced refresh to prevent excessive API calls
   const debouncedRefresh = useDebouncedCallback(async () => {
@@ -263,27 +259,24 @@ export function PlaylistDisplay({
           <tbody>
             {queue.map((item, index) => {
               const isCurrentlyPlaying =
-                currentlyPlaying?.item?.id === item.tracks.spotify_track_id
+                playbackState?.item?.id === item.tracks.spotify_track_id
               const isTrackLoading = loadingTrackId === item.tracks.spotify_url
               const isTrackDeleting = deletingTrackId === item.id
 
-              // Find the next track based on votes
+              // Determine if this is the next track to play
+              // Queue is already sorted by votes DESC, queued_at ASC from database
+              // (see api/playlist/[id]/route.ts lines 41-42)
+              // So the first non-playing track is the next track
               let isNextTrack = false
-              if (isCurrentlyPlaying) {
-                // If this is the currently playing track, no next track indicator
-                isNextTrack = false
-              } else {
-                // Find the track with highest votes (excluding currently playing track)
+              if (!isCurrentlyPlaying) {
                 const availableTracks = queue.filter(
                   (track) =>
-                    currentlyPlaying?.item?.id !== track.tracks.spotify_track_id
+                    playbackState?.item?.id !== track.tracks.spotify_track_id
                 )
-                if (availableTracks.length > 0) {
-                  const nextTrack = availableTracks.reduce((highest, track) =>
-                    track.votes > highest.votes ? track : highest
-                  )
-                  isNextTrack = item.id === nextTrack.id
-                }
+                // First available track is next (already properly sorted)
+                isNextTrack =
+                  availableTracks.length > 0 &&
+                  item.id === availableTracks[0].id
               }
 
               return (
