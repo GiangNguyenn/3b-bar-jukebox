@@ -274,7 +274,9 @@ export function PlaylistDisplay({
                     playbackState?.item?.id !== track.tracks.spotify_track_id
                 )
                 // First available track is next (already properly sorted)
-                isNextTrack = availableTracks.length > 0 && item.id === availableTracks[0].id
+                isNextTrack =
+                  availableTracks.length > 0 &&
+                  item.id === availableTracks[0].id
               }
 
               return (
