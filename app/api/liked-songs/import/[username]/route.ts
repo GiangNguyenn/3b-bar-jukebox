@@ -3,7 +3,7 @@ import { supabase } from '@/lib/supabase'
 import { createModuleLogger } from '@/shared/utils/logger'
 import { sendApiRequest } from '@/shared/api'
 
-export const maxDuration = 300 // 5 minutes for large imports
+export const maxDuration = 60 // Maximum for Vercel hobby plan
 export const dynamic = 'force-dynamic'
 
 const logger = createModuleLogger('API Liked Songs Import')
