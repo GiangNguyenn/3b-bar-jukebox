@@ -22,6 +22,12 @@ class QueueManager {
     return this.queue.length > 0 ? this.queue[0] : undefined
   }
 
+  public getTrackAfterNext(): JukeboxQueueItem | undefined {
+    // Returns the track after the next one (queue[1])
+    // Useful for skipping a problematic track without removing it first
+    return this.queue.length > 1 ? this.queue[1] : undefined
+  }
+
   public getQueue(): JukeboxQueueItem[] {
     return this.queue
   }

@@ -326,7 +326,36 @@ class AutoPlayService {
       await this.checkAndAutoFillQueue()
 
       // Get the next track from the queue
-      const nextTrack = this.queueManager.getNextTrack()
+      let nextTrack = this.queueManager.getNextTrack()
+
+      // Validate that the next track is not the same as the finished track
+      // This prevents repeating a song when markAsPlayed fails
+      if (nextTrack && nextTrack.tracks.spotify_track_id === trackId) {
+        logger(
+          'ERROR',
+          `[handleTrackFinished] Next track matches finished track (${trackId}) - queue sync issue detected. Attempting to remove duplicate.`
+        )
+
+        // Try to remove the duplicate track again
+        try {
+          await this.queueManager.markAsPlayed(nextTrack.id)
+          logger(
+            'INFO',
+            `[handleTrackFinished] Successfully removed duplicate track on retry: ${nextTrack.id}`
+          )
+          // Get the next track again after removal
+          nextTrack = this.queueManager.getNextTrack()
+        } catch (retryError) {
+          logger(
+            'ERROR',
+            '[handleTrackFinished] Failed to remove duplicate track on retry',
+            undefined,
+            retryError as Error
+          )
+          // Don't play the same track - set nextTrack to undefined
+          nextTrack = undefined
+        }
+      }
 
       if (nextTrack) {
         // Check if auto-play is disabled (e.g., during manual refresh)
