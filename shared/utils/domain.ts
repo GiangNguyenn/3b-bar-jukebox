@@ -7,9 +7,14 @@
  * Handles Vercel preview deployments, production, and local development
  */
 export function getBaseUrl(request?: Request): string {
-  // Client-side: use window.location.origin
+  // Client-side: use window.location.origin (always respects current URL)
   if (typeof window !== 'undefined') {
     return window.location.origin
+  }
+
+  // In development mode, always use localhost on server side
+  if (process.env.NODE_ENV === 'development') {
+    return 'http://localhost:3000'
   }
 
   // Server-side: use environment variables
@@ -29,18 +34,15 @@ export function getBaseUrl(request?: Request): string {
     const protocol = request.headers.get('x-forwarded-proto') || 'http'
 
     if (host) {
-      // Remove port if it's the default port
-      const cleanHost = host
-        .replace(':3000', '')
-        .replace(':80', '')
-        .replace(':443', '')
+      // If it's localhost, keep the port
+      if (host.includes('localhost')) {
+        return `${protocol}://${host}`
+      }
+
+      // Remove port if it's the default port for production
+      const cleanHost = host.replace(':80', '').replace(':443', '')
       return `${protocol}://${cleanHost}`
     }
-  }
-
-  // Fallback for local development
-  if (process.env.NODE_ENV === 'development') {
-    return 'http://localhost:3000'
   }
 
   // Production fallback - this should be overridden by environment variables

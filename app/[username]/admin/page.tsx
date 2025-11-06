@@ -30,6 +30,8 @@ import { getAutoPlayService } from '@/services/autoPlayService'
 
 import { useSubscription } from '@/hooks/useSubscription'
 import { useGetProfile } from '@/hooks/useGetProfile'
+import { startFreshAuthentication } from '@/shared/utils/authCleanup'
+import { ArrowRightOnRectangleIcon } from '@heroicons/react/24/outline'
 
 // Autoplay helper removed
 
@@ -83,6 +85,7 @@ export default function AdminPage(): JSX.Element {
   // State
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [isSigningOut, setIsSigningOut] = useState(false)
   const [activeTab, setActiveTab] = useState<
     | 'dashboard'
     | 'playlist'
@@ -118,6 +121,22 @@ export default function AdminPage(): JSX.Element {
   const healthStatus = useSpotifyHealthMonitor()
 
   // Recovery removed
+
+  // Handle sign out with re-authentication
+  const handleSignOut = async (): Promise<void> => {
+    setIsSigningOut(true)
+    try {
+      await startFreshAuthentication()
+    } catch (error) {
+      addLog(
+        'ERROR',
+        'Error signing out',
+        'AdminPage',
+        error instanceof Error ? error : undefined
+      )
+      setIsSigningOut(false)
+    }
+  }
 
   // Get premium status
   const { profile, loading: profileLoading } = useGetProfile()
@@ -366,6 +385,27 @@ export default function AdminPage(): JSX.Element {
               />
             )}
 
+            <div className='mb-6 flex items-center justify-between rounded-lg border border-gray-800 bg-gray-900/50 p-4'>
+              <div>
+                <h3 className='text-lg font-semibold'>Account</h3>
+                <p className='text-sm text-gray-400'>
+                  Signed in as {profile?.display_name ?? username}
+                </p>
+              </div>
+              <button
+                onClick={() => void handleSignOut()}
+                disabled={isSigningOut}
+                className='text-white flex items-center gap-2 rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold transition-colors hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 focus:ring-offset-black disabled:cursor-not-allowed disabled:opacity-50'
+              >
+                {isSigningOut ? (
+                  <Loading className='h-4 w-4' />
+                ) : (
+                  <ArrowRightOnRectangleIcon className='h-4 w-4' />
+                )}
+                {isSigningOut ? 'Signing Out...' : 'Sign Out & Re-authenticate'}
+              </button>
+            </div>
+
             <HealthStatusSection
               healthStatus={healthStatus}
               playbackInfo={null}
@@ -403,6 +443,7 @@ export default function AdminPage(): JSX.Element {
                 await refreshQueue()
               }}
               optimisticUpdate={optimisticUpdate}
+              username={username}
             />
           </TabsContent>
 
