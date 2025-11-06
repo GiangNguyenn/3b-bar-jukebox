@@ -49,7 +49,7 @@ export default function SignIn(): JSX.Element {
           options: {
             redirectTo: oauthRedirectUrl,
             scopes:
-              'user-read-email user-read-private user-read-currently-playing user-read-playback-state user-modify-playback-state streaming playlist-modify-public playlist-modify-private',
+              'user-read-email user-read-private user-read-currently-playing user-read-playback-state user-modify-playback-state streaming playlist-modify-public playlist-modify-private user-library-read',
             queryParams: forceFresh
               ? {
                   show_dialog: 'true',

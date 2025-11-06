@@ -54,7 +54,7 @@ export default function DisplayPage(): ReactElement {
     link.crossOrigin = 'anonymous'
     document.head.appendChild(link)
 
-    return () => {
+    return (): void => {
       document.head.removeChild(link)
     }
   }, [albumArtUrl])
