@@ -516,7 +516,38 @@ class PlayerLifecycleService {
                 await this.checkAndAutoFillQueue()
 
                 // Get the next track from the queue
-                const nextTrack = queueManager.getNextTrack()
+                let nextTrack = queueManager.getNextTrack()
+
+                // Validate that the next track is not the same as the finished track
+                // This prevents repeating a song when markAsPlayed fails
+                if (
+                  nextTrack &&
+                  nextTrack.tracks.spotify_track_id === currentSpotifyTrackId
+                ) {
+                  this.log(
+                    'ERROR',
+                    `Next track matches finished track (${currentSpotifyTrackId}) - queue sync issue detected. Attempting to remove duplicate.`
+                  )
+
+                  // Try to remove the duplicate track again
+                  try {
+                    await queueManager.markAsPlayed(nextTrack.id)
+                    this.log(
+                      'INFO',
+                      `Successfully removed duplicate track on retry: ${nextTrack.id}`
+                    )
+                    // Get the next track again after removal
+                    nextTrack = queueManager.getNextTrack()
+                  } catch (retryError) {
+                    this.log(
+                      'ERROR',
+                      'Failed to remove duplicate track on retry',
+                      retryError
+                    )
+                    // Don't play the same track - set nextTrack to undefined
+                    nextTrack = undefined
+                  }
+                }
 
                 if (nextTrack) {
                   this.log(
@@ -584,6 +615,19 @@ class PlayerLifecycleService {
                   `Currently playing track ${currentSpotifyTrack.id} not found in queue`
                 )
                 this.currentQueueTrack = null
+              } else if (
+                !matchingQueueItem &&
+                !this.currentQueueTrack &&
+                queue.length > 0
+              ) {
+                // Fallback: Music is playing but we can't match the track
+                // Assume queue[0] is what's currently playing
+                const firstInQueue = queue[0]
+                this.log(
+                  'INFO',
+                  `Music playing but track not matched. Assuming queue[0] is playing: ${firstInQueue.tracks.name} (${firstInQueue.tracks.spotify_track_id})`
+                )
+                this.currentQueueTrack = firstInQueue
               }
             }
 
