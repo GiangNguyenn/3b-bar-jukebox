@@ -190,7 +190,8 @@ export async function POST(
     const trackBatches = chunkArray(trackRecords, 50)
     let upsertedCount = 0
 
-    for (const [index, batch] of trackBatches.entries()) {
+    for (let index = 0; index < trackBatches.length; index++) {
+      const batch = trackBatches[index]
       try {
         const { error: upsertError } = await supabase
           .from('tracks')
@@ -207,9 +208,11 @@ export async function POST(
             `Failed to upsert tracks batch ${index + 1}: ${upsertError.message}`
           )
         } else {
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
           upsertedCount += batch.length
           logger(
             'INFO',
+            // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
             `Upserted batch ${index + 1}/${trackBatches.length} (${batch.length} tracks)`
           )
         }
@@ -245,6 +248,7 @@ export async function POST(
     // Create a map of spotify_track_id -> database id
     const trackIdMap = new Map<string, string>()
     dbTracks?.forEach((track) => {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
       trackIdMap.set(track.spotify_track_id, track.id)
     })
 
@@ -271,6 +275,7 @@ export async function POST(
     }
 
     const existingTrackIds = new Set(
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-return, @typescript-eslint/no-unsafe-member-access
       existingQueue?.map((item) => item.track_id) || []
     )
     logger('INFO', `Found ${existingTrackIds.size} tracks already in queue`)
@@ -289,6 +294,7 @@ export async function POST(
         summary.skipped++
       } else {
         queueItems.push({
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
           profile_id: profile.id,
           track_id: trackId,
           votes: 1
@@ -305,7 +311,8 @@ export async function POST(
     if (queueItems.length > 0) {
       const queueBatches = chunkArray(queueItems, 50)
 
-      for (const [index, batch] of queueBatches.entries()) {
+      for (let index = 0; index < queueBatches.length; index++) {
+        const batch = queueBatches[index]
         try {
           const { error: insertError } = await supabase
             .from('jukebox_queue')
@@ -321,11 +328,14 @@ export async function POST(
             summary.errors.push(
               `Failed to insert queue batch ${index + 1}: ${insertError.message}`
             )
+            // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
             summary.failed += batch.length
           } else {
+            // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
             summary.success += batch.length
             logger(
               'INFO',
+              // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
               `Inserted queue batch ${index + 1}/${queueBatches.length} (${batch.length} tracks)`
             )
           }
@@ -339,6 +349,7 @@ export async function POST(
           summary.errors.push(
             `Failed to insert queue batch ${index + 1}: ${error instanceof Error ? error.message : 'Unknown error'}`
           )
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
           summary.failed += batch.length
         }
       }

@@ -222,7 +222,7 @@ export class SpotifyApiService implements SpotifyApiClient {
               const nextNextTrack = queueManager.getNextTrack()
               if (nextNextTrack) {
                 // Recursively call resumePlayback to try the next track
-                return this.resumePlayback()
+                return this.resumePlayback(position_ms, targetDeviceId)
               } else {
                 if (addLog) {
                   addLog(
