@@ -3,6 +3,9 @@ import { supabase } from '@/lib/supabase'
 import { createModuleLogger } from '@/shared/utils/logger'
 import { sendApiRequest } from '@/shared/api'
 
+export const maxDuration = 300 // 5 minutes for large imports
+export const dynamic = 'force-dynamic'
+
 const logger = createModuleLogger('API Liked Songs Import')
 
 interface SpotifyTrack {
@@ -34,6 +37,16 @@ interface ImportSummary {
   skipped: number
   failed: number
   errors: string[]
+  total_fetched: number
+}
+
+// Helper function to chunk arrays
+function chunkArray<T>(array: T[], size: number): T[][] {
+  const chunks: T[][] = []
+  for (let i = 0; i < array.length; i += size) {
+    chunks.push(array.slice(i, i + size))
+  }
+  return chunks
 }
 
 export async function POST(
@@ -62,7 +75,8 @@ export async function POST(
           success: 0,
           skipped: 0,
           failed: 0,
-          errors: [`Profile not found for ${username}`]
+          errors: [`Profile not found for ${username}`],
+          total_fetched: 0
         },
         { status: 404 }
       )
@@ -75,7 +89,8 @@ export async function POST(
           success: 0,
           skipped: 0,
           failed: 0,
-          errors: ['No Spotify access token available']
+          errors: ['No Spotify access token available'],
+          total_fetched: 0
         },
         { status: 401 }
       )
@@ -85,18 +100,19 @@ export async function POST(
       success: 0,
       skipped: 0,
       failed: 0,
-      errors: []
+      errors: [],
+      total_fetched: 0
     }
 
-    // Fetch all liked songs with pagination
+    // Step 1: Fetch all liked songs from Spotify
+    logger('INFO', `Starting to fetch all liked songs for ${username}`)
+    const allLikedTracks: SpotifyTrack[] = []
     let nextUrl: string | null = 'me/tracks?limit=50'
-    let totalProcessed = 0
 
     while (nextUrl) {
       try {
         logger('INFO', `Fetching liked songs from: ${nextUrl}`)
 
-        // Fetch a page of liked songs
         // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
         const response: SpotifySavedTracksResponse =
           await sendApiRequest<SpotifySavedTracksResponse>({
@@ -109,106 +125,26 @@ export async function POST(
         logger(
           'INFO',
           // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
-          `Fetched ${response.items.length} liked songs for ${username} (page ${Math.floor(totalProcessed / 50) + 1}), total: ${response.total}`
+          `Fetched ${response.items.length} liked songs (total so far: ${allLikedTracks.length + response.items.length})`
         )
 
-        // If no items, break out of loop
         // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
         if (!response.items || response.items.length === 0) {
-          logger('INFO', 'No more liked songs to process')
           break
         }
 
-        // Process each track in this page
+        // Add tracks to our collection (filter out null tracks)
         // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
         for (const item of response.items) {
-          // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access
-          const track = item.track
-
-          // Skip if track is null (can happen with unavailable tracks)
-          if (!track) {
-            logger('WARN', 'Skipping null track')
-            continue
-          }
-
-          totalProcessed++
-
-          try {
-            // Call the existing playlist API to add the track
-            // Use full URL to ensure it resolves correctly in API routes
-            const baseUrl =
-              process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3000'
-            const addResponse = await fetch(
-              `${baseUrl}/api/playlist/${username}`,
-              {
-                method: 'POST',
-                headers: {
-                  'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                  tracks: {
-                    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access
-                    id: track.id,
-                    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access
-                    name: track.name,
-                    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access
-                    artists: track.artists,
-                    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access
-                    album: track.album,
-                    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access
-                    duration_ms: track.duration_ms,
-                    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access
-                    popularity: track.popularity,
-                    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access
-                    uri: track.uri
-                  },
-                  initialVotes: 1,
-                  source: 'admin'
-                })
-              }
-            )
-
-            if (addResponse.ok) {
-              summary.success++
-            } else if (addResponse.status === 409) {
-              // Track already in playlist - skip silently
-              summary.skipped++
-            } else {
-              summary.failed++
-              // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-              const errorData = await addResponse.json()
-              const errorMessage =
-                // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
-                typeof errorData === 'object' && 'error' in errorData
-                  ? // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
-                    String(errorData.error)
-                  : 'Unknown error'
-              // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
-              summary.errors.push(`${track.name}: ${errorMessage}`)
-              logger(
-                'WARN',
-                // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
-                `Failed to add track ${track.name}: ${errorMessage}`
-              )
-            }
-          } catch (error) {
-            summary.failed++
-            const errorMessage =
-              error instanceof Error ? error.message : 'Unknown error'
-            // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
-            summary.errors.push(`${track.name}: ${errorMessage}`)
-            logger(
-              'ERROR',
-              // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
-              `Error adding track ${track.name}`,
-              undefined,
-              error as Error
-            )
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+          if (item.track) {
+            // eslint-disable-next-line @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-unsafe-member-access
+            allLikedTracks.push(item.track)
           }
         }
 
-        // Move to next page or stop
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call
+        // Move to next page
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call
         nextUrl = response.next
           ? response.next.replace('https://api.spotify.com/v1/', '')
           : null
@@ -221,20 +157,196 @@ export async function POST(
         )
         const errorMsg =
           error instanceof Error ? error.message : 'Unknown error'
-        logger('ERROR', `Fetch error details: ${errorMsg}`)
         summary.errors.push(`Failed to fetch liked songs: ${errorMsg}`)
-        break // Stop pagination on error
+        break
+      }
+    }
+
+    summary.total_fetched = allLikedTracks.length
+    logger(
+      'INFO',
+      `Finished fetching. Total liked songs: ${allLikedTracks.length}`
+    )
+
+    if (allLikedTracks.length === 0) {
+      return NextResponse.json(summary)
+    }
+
+    // Step 2: Batch upsert tracks to tracks table
+    logger('INFO', 'Starting batch upsert of tracks')
+    const trackRecords = allLikedTracks.map((track) => ({
+      spotify_track_id: track.id,
+      name: track.name,
+      artist: track.artists[0]?.name || 'Unknown Artist',
+      album: track.album.name,
+      duration_ms: track.duration_ms,
+      popularity: track.popularity,
+      spotify_url: track.uri,
+      genre: null, // Skip for performance
+      release_year: null // Skip for performance
+    }))
+
+    // Upsert in batches of 50 (Supabase limit)
+    const trackBatches = chunkArray(trackRecords, 50)
+    let upsertedCount = 0
+
+    for (const [index, batch] of trackBatches.entries()) {
+      try {
+        const { error: upsertError } = await supabase
+          .from('tracks')
+          .upsert(batch, { onConflict: 'spotify_track_id' })
+
+        if (upsertError) {
+          logger(
+            'ERROR',
+            `Error upserting batch ${index + 1}/${trackBatches.length}`,
+            undefined,
+            upsertError as Error
+          )
+          summary.errors.push(
+            `Failed to upsert tracks batch ${index + 1}: ${upsertError.message}`
+          )
+        } else {
+          upsertedCount += batch.length
+          logger(
+            'INFO',
+            `Upserted batch ${index + 1}/${trackBatches.length} (${batch.length} tracks)`
+          )
+        }
+      } catch (error) {
+        logger(
+          'ERROR',
+          `Exception upserting batch ${index + 1}`,
+          undefined,
+          error as Error
+        )
+        summary.errors.push(
+          `Failed to upsert tracks batch ${index + 1}: ${error instanceof Error ? error.message : 'Unknown error'}`
+        )
+      }
+    }
+
+    logger('INFO', `Upserted ${upsertedCount} tracks to database`)
+
+    // Step 3: Get track IDs from database by Spotify IDs
+    logger('INFO', 'Fetching track IDs from database')
+    const spotifyTrackIds = allLikedTracks.map((track) => track.id)
+    const { data: dbTracks, error: fetchError } = await supabase
+      .from('tracks')
+      .select('id, spotify_track_id')
+      .in('spotify_track_id', spotifyTrackIds)
+
+    if (fetchError) {
+      logger('ERROR', 'Failed to fetch track IDs', undefined, fetchError)
+      summary.errors.push(`Failed to fetch track IDs: ${fetchError.message}`)
+      return NextResponse.json(summary, { status: 500 })
+    }
+
+    // Create a map of spotify_track_id -> database id
+    const trackIdMap = new Map<string, string>()
+    dbTracks?.forEach((track) => {
+      trackIdMap.set(track.spotify_track_id, track.id)
+    })
+
+    logger('INFO', `Mapped ${trackIdMap.size} tracks from database`)
+
+    // Step 4: Get existing queue track IDs for this user
+    logger('INFO', 'Fetching existing queue tracks')
+    const { data: existingQueue, error: queueFetchError } = await supabase
+      .from('jukebox_queue')
+      .select('track_id')
+      .eq('profile_id', profile.id)
+
+    if (queueFetchError) {
+      logger(
+        'ERROR',
+        'Failed to fetch existing queue',
+        undefined,
+        queueFetchError
+      )
+      summary.errors.push(
+        `Failed to fetch existing queue: ${queueFetchError.message}`
+      )
+      return NextResponse.json(summary, { status: 500 })
+    }
+
+    const existingTrackIds = new Set(
+      existingQueue?.map((item) => item.track_id) || []
+    )
+    logger('INFO', `Found ${existingTrackIds.size} tracks already in queue`)
+
+    // Step 5: Filter out tracks already in queue and prepare queue items
+    const queueItems = []
+    for (const track of allLikedTracks) {
+      const trackId = trackIdMap.get(track.id)
+      if (!trackId) {
+        logger('WARN', `Track ${track.name} not found in database, skipping`)
+        summary.failed++
+        continue
+      }
+
+      if (existingTrackIds.has(trackId)) {
+        summary.skipped++
+      } else {
+        queueItems.push({
+          profile_id: profile.id,
+          track_id: trackId,
+          votes: 1
+        })
       }
     }
 
     logger(
       'INFO',
-      `Import summary - Total processed: ${totalProcessed}, Success: ${summary.success}, Skipped: ${summary.skipped}, Failed: ${summary.failed}`
+      `Prepared ${queueItems.length} new tracks to add to queue (${summary.skipped} already in queue)`
     )
+
+    // Step 6: Batch insert to jukebox_queue
+    if (queueItems.length > 0) {
+      const queueBatches = chunkArray(queueItems, 50)
+
+      for (const [index, batch] of queueBatches.entries()) {
+        try {
+          const { error: insertError } = await supabase
+            .from('jukebox_queue')
+            .insert(batch)
+
+          if (insertError) {
+            logger(
+              'ERROR',
+              `Error inserting queue batch ${index + 1}/${queueBatches.length}`,
+              undefined,
+              insertError as Error
+            )
+            summary.errors.push(
+              `Failed to insert queue batch ${index + 1}: ${insertError.message}`
+            )
+            summary.failed += batch.length
+          } else {
+            summary.success += batch.length
+            logger(
+              'INFO',
+              `Inserted queue batch ${index + 1}/${queueBatches.length} (${batch.length} tracks)`
+            )
+          }
+        } catch (error) {
+          logger(
+            'ERROR',
+            `Exception inserting queue batch ${index + 1}`,
+            undefined,
+            error as Error
+          )
+          summary.errors.push(
+            `Failed to insert queue batch ${index + 1}: ${error instanceof Error ? error.message : 'Unknown error'}`
+          )
+          summary.failed += batch.length
+        }
+      }
+    }
 
     logger(
       'INFO',
-      `Import complete for ${username}: ${summary.success} added, ${summary.skipped} skipped, ${summary.failed} failed`
+      `Import complete for ${username}: ${summary.success} added, ${summary.skipped} skipped, ${summary.failed} failed (${summary.total_fetched} total fetched)`
     )
 
     return NextResponse.json(summary)
@@ -254,7 +366,8 @@ export async function POST(
           error instanceof Error
             ? error.message
             : 'An unexpected error occurred'
-        ]
+        ],
+        total_fetched: 0
       },
       { status: 500 }
     )
