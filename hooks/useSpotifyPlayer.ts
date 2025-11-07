@@ -1,49 +1,9 @@
-// @ts-nocheck - Spotify SDK type definitions are incomplete and incompatible with our types
 import { create } from 'zustand'
 import { useCallback, useEffect, useRef } from 'react'
 import { useConsoleLogsContext } from './ConsoleLogsProvider'
-import { showToast } from '@/lib/toast'
-import { sendApiRequest } from '@/shared/api'
-import {
-  SpotifyPlaybackState,
-  SpotifySDKPlaybackState,
-  SpotifyPlayerInstance,
-  SpotifySDK
-} from '@/shared/types/spotify'
-import {
-  validateDevice,
-  transferPlaybackToDevice,
-  cleanupOtherDevices,
-  setDeviceManagementLogger
-} from '@/services/deviceManagement'
+import { SpotifyPlaybackState } from '@/shared/types/spotify'
 import { playerLifecycleService } from '@/services/playerLifecycle'
-
-type SpotifySDKEventTypes =
-  | 'ready'
-  | 'not_ready'
-  | 'player_state_changed'
-  | 'initialization_error'
-  | 'authentication_error'
-  | 'account_error'
-  | 'playback_error'
-
-type SpotifySDKEventCallbacks = {
-  ready: (event: { device_id: string }) => void
-  not_ready: (event: { device_id: string }) => void
-  player_state_changed: (state: SpotifySDKPlaybackState) => void
-  initialization_error: (event: { message: string }) => void
-  authentication_error: (event: { message: string }) => void
-  account_error: (event: { message: string }) => void
-  playback_error: (event: { message: string }) => void
-}
-
-// @ts-ignore - Spotify SDK type definitions are incomplete
-declare global {
-  interface Window {
-    Spotify: typeof Spotify
-    spotifyPlayerInstance: any // Use any to avoid type conflicts
-  }
-}
+import { PLAYER_LIFECYCLE_CONFIG } from '@/services/playerLifecycleConfig'
 
 // Enhanced player status states
 export type PlayerStatus =
@@ -67,6 +27,26 @@ interface PlayerStatusState {
   setPlaybackState: (state: SpotifyPlaybackState | null) => void
   resetFailures: () => void
   incrementFailures: () => void
+}
+
+// State transition rules
+const ALLOWED_TRANSITIONS: Record<PlayerStatus, PlayerStatus[]> = {
+  initializing: ['ready', 'error', 'verifying', 'disconnected'],
+  ready: ['reconnecting', 'error', 'disconnected', 'initializing'],
+  reconnecting: ['ready', 'error', 'initializing'],
+  error: ['initializing', 'ready', 'disconnected'],
+  disconnected: ['initializing', 'ready'],
+  verifying: ['ready', 'error', 'initializing', 'disconnected']
+}
+
+// Helper function to check if a transition is allowed
+function isTransitionAllowed(from: PlayerStatus, to: PlayerStatus): boolean {
+  return ALLOWED_TRANSITIONS[from]?.includes(to) ?? false
+}
+
+// Helper function to get isReady from status (for backward compatibility)
+function getIsReadyFromStatus(status: PlayerStatus): boolean {
+  return status === 'ready'
 }
 
 // Create the store with robust state management
@@ -105,7 +85,7 @@ export const spotifyPlayerStore = create<PlayerStatusState>((set, get) => ({
       (currentStatus === 'initializing' && newStatus === 'verifying')
 
     if (
-      timeSinceLastChange < STATE_MACHINE_CONFIG.STATUS_DEBOUNCE &&
+      timeSinceLastChange < PLAYER_LIFECYCLE_CONFIG.STATUS_DEBOUNCE &&
       !isImportantTransition
     ) {
       return
@@ -131,7 +111,7 @@ export const spotifyPlayerStore = create<PlayerStatusState>((set, get) => ({
     set({ consecutiveFailures: newFailures })
 
     // If we've exceeded max failures, transition to error state
-    if (newFailures >= STATE_MACHINE_CONFIG.MAX_CONSECUTIVE_FAILURES) {
+    if (newFailures >= PLAYER_LIFECYCLE_CONFIG.MAX_CONSECUTIVE_FAILURES) {
       get().setStatus(
         'error',
         `Exceeded maximum consecutive failures (${newFailures})`
@@ -143,7 +123,7 @@ export const spotifyPlayerStore = create<PlayerStatusState>((set, get) => ({
 }))
 
 // Subscribe to the store to react to state changes
-spotifyPlayerStore.subscribe((state, prevState) => {
+spotifyPlayerStore.subscribe(() => {
   // Note: Removed duplicate "Playback resumed" toast notification
   // The SpotifyApiService.resumePlayback() method already handles this notification
 })
@@ -154,22 +134,29 @@ export function useSpotifyPlayerStore() {
 }
 
 // Separate hook for player actions with robust state management
-export function useSpotifyPlayerHook(shouldDestroyOnUnmount = true) {
+export function useSpotifyPlayerHook(
+  shouldDestroyOnUnmount = true,
+  onNavigate?: (path: string) => void
+) {
   const { addLog } = useConsoleLogsContext()
-  const isUnmountingRef = useRef(false)
 
   // Set up logger for player lifecycle service
   useEffect(() => {
     playerLifecycleService.setLogger(addLog)
   }, [addLog])
 
-  const destroyPlayer = useCallback(() => {
-    if (!isUnmountingRef.current) {
-      playerLifecycleService.destroyPlayer()
-      spotifyPlayerStore.getState().setStatus('disconnected')
-      spotifyPlayerStore.getState().setDeviceId(null)
-      spotifyPlayerStore.getState().setPlaybackState(null)
+  // Set up navigation callback if provided
+  useEffect(() => {
+    if (onNavigate) {
+      playerLifecycleService.setNavigationCallback(onNavigate)
     }
+  }, [onNavigate])
+
+  const destroyPlayer = useCallback(() => {
+    playerLifecycleService.destroyPlayer()
+    spotifyPlayerStore.getState().setStatus('disconnected')
+    spotifyPlayerStore.getState().setDeviceId(null)
+    spotifyPlayerStore.getState().setPlaybackState(null)
   }, [])
 
   const createPlayer = useCallback(async () => {
@@ -203,7 +190,6 @@ export function useSpotifyPlayerHook(shouldDestroyOnUnmount = true) {
     }
 
     try {
-      // Don't set status here - the player lifecycle service will handle it
       const deviceId = await playerLifecycleService.createPlayer(
         (status, error) => {
           spotifyPlayerStore.getState().setStatus(status as PlayerStatus, error)
@@ -218,17 +204,20 @@ export function useSpotifyPlayerHook(shouldDestroyOnUnmount = true) {
 
       return deviceId
     } catch (error) {
-      addLog('ERROR', 'Error creating player:', error)
+      addLog(
+        'ERROR',
+        'Error creating player',
+        'SpotifyPlayer',
+        error instanceof Error ? error : undefined
+      )
       return null
     }
   }, [addLog, destroyPlayer])
 
-  // Cleanup on unmount - only destroy when component is actually unmounting and shouldDestroyOnUnmount is true
+  // Cleanup on unmount
   useEffect(() => {
     return () => {
-      isUnmountingRef.current = true
-      // Only destroy player on actual unmount if shouldDestroyOnUnmount is true
-      if (typeof window !== 'undefined' && shouldDestroyOnUnmount) {
+      if (shouldDestroyOnUnmount) {
         destroyPlayer()
       }
     }
@@ -241,41 +230,6 @@ export function useSpotifyPlayerHook(shouldDestroyOnUnmount = true) {
 }
 
 // Admin-specific hook that never destroys the player
-export function useAdminSpotifyPlayerHook() {
-  return useSpotifyPlayerHook(false)
-}
-
-// State machine configuration
-const STATE_MACHINE_CONFIG = {
-  // Grace periods (how long to wait before considering a state change permanent)
-  GRACE_PERIODS: {
-    notReadyToReconnecting: 3000, // 3 seconds before considering device lost
-    reconnectingToError: 15000, // 15 seconds before giving up on reconnection
-    verificationTimeout: 5000 // 5 seconds for device verification (reduced from 10)
-  },
-  // Retry limits
-  MAX_CONSECUTIVE_FAILURES: 3,
-  MAX_RECONNECTION_ATTEMPTS: 5,
-  // Debounce intervals
-  STATUS_DEBOUNCE: 500 // Reduced from 1000ms to 500ms for faster transitions
-} as const
-
-// State transition rules
-const ALLOWED_TRANSITIONS: Record<PlayerStatus, PlayerStatus[]> = {
-  initializing: ['ready', 'error', 'verifying', 'disconnected'],
-  ready: ['reconnecting', 'error', 'disconnected', 'initializing'],
-  reconnecting: ['ready', 'error', 'initializing'],
-  error: ['initializing', 'ready', 'disconnected'],
-  disconnected: ['initializing', 'ready'],
-  verifying: ['ready', 'error', 'initializing', 'disconnected']
-}
-
-// Helper function to check if a transition is allowed
-function isTransitionAllowed(from: PlayerStatus, to: PlayerStatus): boolean {
-  return ALLOWED_TRANSITIONS[from]?.includes(to) ?? false
-}
-
-// Helper function to get isReady from status (for backward compatibility)
-function getIsReadyFromStatus(status: PlayerStatus): boolean {
-  return status === 'ready'
+export function useAdminSpotifyPlayerHook(onNavigate?: (path: string) => void) {
+  return useSpotifyPlayerHook(false, onNavigate)
 }

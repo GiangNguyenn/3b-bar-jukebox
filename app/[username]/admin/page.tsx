@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useState, useRef } from 'react'
-import { useParams } from 'next/navigation'
+import { useParams, useRouter } from 'next/navigation'
 import {
   useSpotifyPlayerStore,
   useAdminSpotifyPlayerHook
@@ -100,9 +100,19 @@ export default function AdminPage(): JSX.Element {
 
   // Hooks
   const params = useParams()
+  const router = useRouter()
   const username = params?.username as string | undefined
   const { isReady, status: playerStatus, deviceId } = useSpotifyPlayerStore()
-  const { createPlayer } = useAdminSpotifyPlayerHook()
+
+  // Set up navigation callback for player lifecycle
+  const handleNavigate = useCallback(
+    (path: string) => {
+      router.push(path)
+    },
+    [router]
+  )
+
+  const { createPlayer } = useAdminSpotifyPlayerHook(handleNavigate)
   const { addLog } = useConsoleLogsContext()
   // Use the enhanced playlist hook with real-time subscriptions
   const {
