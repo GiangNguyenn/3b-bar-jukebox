@@ -281,6 +281,10 @@ class AutoPlayService {
 
     // Prevent processing the same track multiple times
     if (this.lastProcessedTrackId === trackId) {
+      logger(
+        'INFO',
+        `[handleTrackFinished] Skipping duplicate processing for track: ${trackId}`
+      )
       return
     }
     this.lastProcessedTrackId = trackId
