@@ -3,12 +3,13 @@
 import { useState } from 'react'
 import { sendApiRequest } from '@/shared/api'
 import { useSpotifyPlayerStore } from '@/hooks/useSpotifyPlayer'
-import { PlayIcon, TrashIcon, HeartIcon } from '@heroicons/react/24/outline'
+import { PlayIcon, TrashIcon, MusicalNoteIcon } from '@heroicons/react/24/outline'
 import { ErrorMessage } from '@/components/ui/error-message'
 import { Loading } from '@/components/ui/loading'
 import { JukeboxQueueItem } from '@/shared/types/queue'
 import { useConsoleLogsContext } from '@/hooks/ConsoleLogsProvider'
 import { useDebouncedCallback } from 'use-debounce'
+import { PlaylistImportModal } from './playlist-import-modal'
 
 interface PlaylistDisplayProps {
   queue: JukeboxQueueItem[]
@@ -28,8 +29,7 @@ export function PlaylistDisplay({
   const [error, setError] = useState<string | null>(null)
   const [loadingTrackId, setLoadingTrackId] = useState<string | null>(null)
   const [deletingTrackId, setDeletingTrackId] = useState<string | null>(null)
-  const [isImporting, setIsImporting] = useState(false)
-  const [importMessage, setImportMessage] = useState<string | null>(null)
+  const [isImportModalOpen, setIsImportModalOpen] = useState(false)
   const { deviceId, playbackState } = useSpotifyPlayerStore()
   const { addLog } = useConsoleLogsContext()
 
@@ -120,82 +120,8 @@ export function PlaylistDisplay({
     }
   }
 
-  const handleImportLikedSongs = async (): Promise<void> => {
-    if (!username) {
-      setError('Username not available')
-      return
-    }
-
-    try {
-      setIsImporting(true)
-      setError(null)
-      setImportMessage(null)
-
-      const response = await fetch(`/api/liked-songs/import/${username}`, {
-        method: 'POST'
-      })
-
-      if (!response.ok) {
-        throw new Error('Failed to import liked songs')
-      }
-
-      const summary = (await response.json()) as {
-        success: number
-        skipped: number
-        failed: number
-        errors: string[]
-      }
-
-      // Create summary message
-      const parts = []
-      if (summary.success > 0) {
-        parts.push(`${summary.success} added`)
-      }
-      if (summary.skipped > 0) {
-        parts.push(`${summary.skipped} already in playlist`)
-      }
-      if (summary.failed > 0) {
-        parts.push(`${summary.failed} failed`)
-      }
-
-      const message =
-        parts.length > 0
-          ? `Import complete: ${parts.join(', ')}`
-          : 'No tracks to import'
-
-      setImportMessage(message)
-
-      // Log any errors
-      if (summary.errors.length > 0) {
-        addLog(
-          'ERROR',
-          `Import encountered ${summary.errors.length} errors`,
-          'PlaylistDisplay'
-        )
-        summary.errors.forEach((err) => {
-          addLog('ERROR', `Import error: ${err}`, 'PlaylistDisplay')
-        })
-        // Also show first error to user
-        if (summary.errors.length > 0 && parts.length === 0) {
-          setError(`Import failed: ${summary.errors[0]}`)
-        }
-      }
-
-      // Refresh the queue
-      await onQueueChanged()
-    } catch (err) {
-      const errorMessage =
-        err instanceof Error ? err.message : 'Failed to import liked songs'
-      setError(errorMessage)
-      addLog(
-        'ERROR',
-        `Failed to import liked songs: ${errorMessage}`,
-        'PlaylistDisplay',
-        err instanceof Error ? err : undefined
-      )
-    } finally {
-      setIsImporting(false)
-    }
+  const handleImportComplete = async (): Promise<void> => {
+    await onQueueChanged()
   }
 
   if (error) {
@@ -214,24 +140,22 @@ export function PlaylistDisplay({
 
   return (
     <div className='space-y-4'>
-      {importMessage && (
-        <div className='rounded-lg border border-green-800 bg-green-900/20 p-3 text-sm text-green-400'>
-          {importMessage}
-        </div>
-      )}
+      <PlaylistImportModal
+        isOpen={isImportModalOpen}
+        onClose={() => setIsImportModalOpen(false)}
+        username={username ?? ''}
+        onImportComplete={handleImportComplete}
+      />
+      
       <div className='flex items-center justify-between'>
         <h2 className='text-xl font-semibold'>Queue ({queue.length} tracks)</h2>
         <button
-          onClick={() => void handleImportLikedSongs()}
-          disabled={isImporting || !username}
+          onClick={() => setIsImportModalOpen(true)}
+          disabled={!username}
           className='text-white flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold transition-colors hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:ring-offset-black disabled:cursor-not-allowed disabled:opacity-50'
         >
-          {isImporting ? (
-            <Loading className='h-4 w-4' />
-          ) : (
-            <HeartIcon className='h-4 w-4' />
-          )}
-          {isImporting ? 'Importing...' : 'Import Liked Songs'}
+          <MusicalNoteIcon className='h-4 w-4' />
+          Import Tracks
         </button>
       </div>
 
