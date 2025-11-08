@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call */
 import { NextResponse } from 'next/server'
 import { AuthService } from '@/services/authService'
 import { getBaseUrl } from '@/shared/utils/domain'

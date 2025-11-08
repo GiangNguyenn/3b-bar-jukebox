@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-unsafe-assignment */
 import { NextResponse } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
@@ -86,7 +85,9 @@ export async function GET(
 
       if (hoursSinceVerification < 24) {
         return NextResponse.json({
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
           isPremium: profile.is_premium ?? false,
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
           productType:
             profile.spotify_product_type ??
             (profile.is_premium ? 'premium' : 'free'),
@@ -159,6 +160,7 @@ export async function GET(
 
       const responseText = await spotifyResponse.text()
 
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
       const userData: SpotifyUserProfile = JSON.parse(responseText)
 
       // Check if user has premium (including all premium variants)

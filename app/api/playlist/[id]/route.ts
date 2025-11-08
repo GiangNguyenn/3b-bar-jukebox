@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-unsafe-assignment */
 import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import { supabase } from '@/lib/supabase'
@@ -115,7 +114,6 @@ export async function POST(
     }
 
     const body = (await request.json()) as unknown
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-argument
     const parsed = parseWithType(addTrackSchema, body)
     const { tracks, initialVotes, source } = parsed
     const requestSource = source ?? 'user'
@@ -183,6 +181,7 @@ export async function POST(
               `Playlist API - Artist response status: ${artistResponse.status}`
             )
             if (artistResponse.ok) {
+              // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
               const artistData = await artistResponse.json()
               artistGenres = (artistData as { genres?: string[] }).genres ?? []
               logger(
@@ -306,6 +305,7 @@ export async function POST(
 
     const { error: insertError } = await supabase.from('jukebox_queue').insert({
       profile_id: profile.id,
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
       track_id: upsertedTrack.id,
       votes: initialVotes ?? 5
     })

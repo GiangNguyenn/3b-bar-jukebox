@@ -89,6 +89,28 @@ export interface SpotifyPlaylistItem {
   }
 }
 
+export interface SpotifyPlaylistSimplified {
+  id: string
+  name: string
+  tracks: {
+    total: number
+  }
+  images: Array<{ url: string }>
+  public: boolean
+  owner: {
+    display_name: string
+  }
+}
+
+export interface PlaylistListItem {
+  id: string
+  name: string
+  trackCount: number
+  imageUrl: string | null
+  isPublic: boolean
+  ownerName: string
+}
+
 export interface SpotifyPlaybackState {
   is_playing: boolean
   progress_ms: number

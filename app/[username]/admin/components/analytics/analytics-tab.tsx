@@ -140,7 +140,6 @@ const useTopTracks = (
         setTracks([])
       }
     } catch (err) {
-      /* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-argument */
       const errorMessage =
         err instanceof Error ? err.message : 'An unknown error occurred'
       setError(errorMessage)
@@ -150,7 +149,6 @@ const useTopTracks = (
         'useTopTracks',
         err instanceof Error ? err : undefined
       )
-      /* eslint-enable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-argument */
     } finally {
       setIsLoading(false)
     }
@@ -191,10 +189,7 @@ const useTopTracks = (
         )
         .subscribe((status) => {
           // eslint-disable-next-line @typescript-eslint/no-unsafe-enum-comparison
-          if (
-            // eslint-disable-next-line @typescript-eslint/no-unsafe-enum-comparison
-            status === 'CHANNEL_ERROR'
-          ) {
+          if (status === 'CHANNEL_ERROR') {
             addLog(
               'ERROR',
               'Real-time subscription for suggested tracks failed',
@@ -205,14 +200,12 @@ const useTopTracks = (
 
       subscriptionRef.current = subscription
     } catch (err) {
-      /* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-argument */
       addLog(
         'ERROR',
         `Failed to set up real-time subscription: ${err instanceof Error ? err.message : 'Unknown error'}`,
         'useTopTracks',
         err instanceof Error ? err : undefined
       )
-      /* eslint-enable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-argument */
     }
   }, [supabase, fetchTopTracks, addLog])
 
@@ -267,7 +260,6 @@ const useTopArtists = (
   )
 
   // Fetch top artists data
-  /* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-argument */
   const fetchTopArtists = useCallback(async (): Promise<void> => {
     // If data fetching is disabled, return early
     if (!shouldFetchData) {
@@ -326,11 +318,15 @@ const useTopArtists = (
             : item.tracks
           if (!trackData) return
 
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
           const artist = trackData.artist
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
           const trackName = trackData.name
           const count = item.count
 
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
           if (!artistMap.has(artist)) {
+            // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
             artistMap.set(artist, {
               total_count: 0,
               tracks: new Set(),
@@ -338,9 +334,12 @@ const useTopArtists = (
             })
           }
 
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
           const artistData = artistMap.get(artist)!
           artistData.total_count += count
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
           artistData.tracks.add(trackName)
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
           artistData.track_counts.set(trackName, count)
         })
 
@@ -373,7 +372,6 @@ const useTopArtists = (
         setArtists([])
       }
     } catch (err) {
-      /* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-argument */
       const errorMessage =
         err instanceof Error ? err.message : 'An unknown error occurred'
       setError(errorMessage)
@@ -383,7 +381,6 @@ const useTopArtists = (
         'useTopArtists',
         err instanceof Error ? err : undefined
       )
-      /* eslint-enable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-argument */
     } finally {
       setIsLoading(false)
     }
@@ -415,7 +412,6 @@ const useTopGenres = (
   )
 
   // Fetch top genres data
-  /* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-argument */
   const fetchTopGenres = useCallback(async (): Promise<void> => {
     // If data fetching is disabled, return early
     if (!shouldFetchData) {
@@ -474,7 +470,9 @@ const useTopGenres = (
             : item.tracks
           if (!trackData) return
 
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
           const genre = trackData.genre
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
           const trackName = trackData.name
           const count = item.count
 
@@ -483,7 +481,9 @@ const useTopGenres = (
             return
           }
 
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
           if (!genreMap.has(genre)) {
+            // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
             genreMap.set(genre, {
               total_count: 0,
               tracks: new Set(),
@@ -491,9 +491,12 @@ const useTopGenres = (
             })
           }
 
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
           const genreData = genreMap.get(genre)!
           genreData.total_count += count
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
           genreData.tracks.add(trackName)
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
           genreData.track_counts.set(trackName, count)
         })
 
@@ -526,7 +529,6 @@ const useTopGenres = (
         setGenres([])
       }
     } catch (err) {
-      /* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-argument */
       const errorMessage =
         err instanceof Error ? err.message : 'An unknown error occurred'
       setError(errorMessage)
@@ -536,7 +538,6 @@ const useTopGenres = (
         'useTopGenres',
         err instanceof Error ? err : undefined
       )
-      /* eslint-enable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-argument */
     } finally {
       setIsLoading(false)
     }

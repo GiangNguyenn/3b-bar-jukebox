@@ -21,8 +21,15 @@ interface HistogramData {
 }
 
 // Custom tooltip component for release year descriptions
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const CustomTooltip = ({ active, payload, label }: any): JSX.Element | null => {
+const CustomTooltip = ({
+  active,
+  payload,
+  label
+}: {
+  active?: boolean
+  payload?: Array<{ value: number }>
+  label?: string
+}): JSX.Element | null => {
   if (active && payload && Array.isArray(payload) && payload.length > 0) {
     const getDecadeDescription = (decade: string): string => {
       switch (decade) {
@@ -50,12 +57,11 @@ const CustomTooltip = ({ active, payload, label }: any): JSX.Element | null => {
         className='bg-white rounded border p-3 opacity-100 shadow-lg'
         style={{ backgroundColor: 'white' }}
       >
-        {/* eslint-disable-next-line @typescript-eslint/no-unsafe-argument */}
         <p className='font-semibold text-black'>{`Decade: ${label}`}</p>
-        {/* eslint-disable-next-line @typescript-eslint/no-unsafe-argument */}
-        <p className='text-sm text-gray-600'>{getDecadeDescription(label)}</p>
-        {/* eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-explicit-any */}
-        <p className='text-sm font-medium text-black'>{`Songs: ${(payload as any)[0]?.value}`}</p>
+        <p className='text-sm text-gray-600'>
+          {getDecadeDescription(label ?? '')}
+        </p>
+        <p className='text-sm font-medium text-black'>{`Songs: ${payload[0]?.value ?? 0}`}</p>
       </div>
     )
   }
@@ -94,13 +100,10 @@ export default function ReleaseYearHistogram(): JSX.Element {
           throw new Error(response.error.message)
         }
 
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
         setData(response.data as HistogramData[])
       } catch (err: unknown) {
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
         const errorMessage =
           err instanceof Error ? err.message : 'An unknown error occurred'
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
         setError(errorMessage)
       } finally {
         setIsLoading(false)

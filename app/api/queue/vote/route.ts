@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-unsafe-assignment */
 import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
 import { NextResponse } from 'next/server'
@@ -37,7 +36,6 @@ export async function POST(request: Request): Promise<NextResponse> {
 
   try {
     const body = (await request.json()) as unknown
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-argument
     const parsed: z.infer<typeof voteSchema> = parseWithType(voteSchema, body)
     const { queueId, voteDirection } = parsed
     const voteValue = voteDirection === 'up' ? 1 : -1
@@ -59,6 +57,7 @@ export async function POST(request: Request): Promise<NextResponse> {
     // Update the votes column with the new value
     const { error: updateError } = await supabase
       .from('jukebox_queue')
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access
       .update({ votes: currentQueue.votes + voteValue })
       .eq('id', queueId)
 

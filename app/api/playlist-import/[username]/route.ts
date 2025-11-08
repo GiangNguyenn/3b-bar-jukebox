@@ -6,7 +6,7 @@ import { sendApiRequest } from '@/shared/api'
 export const maxDuration = 60 // Maximum for Vercel hobby plan
 export const dynamic = 'force-dynamic'
 
-const logger = createModuleLogger('API Liked Songs Import')
+const logger = createModuleLogger('API Playlist Import')
 
 interface SpotifyTrack {
   id: string
@@ -26,8 +26,19 @@ interface SpotifySavedTrack {
   track: SpotifyTrack
 }
 
+interface SpotifyPlaylistTrack {
+  added_at: string
+  track: SpotifyTrack
+}
+
 interface SpotifySavedTracksResponse {
   items: SpotifySavedTrack[]
+  next: string | null
+  total: number
+}
+
+interface SpotifyPlaylistTracksResponse {
+  items: SpotifyPlaylistTrack[]
   next: string | null
   total: number
 }
@@ -38,6 +49,18 @@ interface ImportSummary {
   failed: number
   errors: string[]
   total_fetched: number
+}
+
+interface ImportRequest {
+  playlistId?: string | null
+}
+
+interface SpotifyTokenResponse {
+  access_token: string
+  token_type: string
+  expires_in: number
+  refresh_token?: string
+  scope: string
 }
 
 // Helper function to chunk arrays
@@ -56,10 +79,16 @@ export async function POST(
   try {
     const username = params.username
 
-    // Get the logged-in user's profile to verify authentication
+    // Parse request body to get playlist ID
+    const body = (await request.json()) as ImportRequest
+    const playlistId = body.playlistId
+
+    // Get the user's profile to verify authentication
     const { data: profile, error: profileError } = await supabase
       .from('profiles')
-      .select('id, spotify_access_token')
+      .select(
+        'id, spotify_access_token, spotify_refresh_token, spotify_token_expires_at'
+      )
       .ilike('display_name', username)
       .single()
 
@@ -96,6 +125,102 @@ export async function POST(
       )
     }
 
+    // Check if token needs refresh
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+    let accessToken: string = profile.spotify_access_token
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+    const tokenExpiresAt = profile.spotify_token_expires_at
+    const now = Math.floor(Date.now() / 1000)
+
+    if (tokenExpiresAt && tokenExpiresAt <= now) {
+      // Token is expired, refresh it
+      if (!profile.spotify_refresh_token) {
+        logger('ERROR', 'No refresh token available')
+        return NextResponse.json(
+          {
+            success: 0,
+            skipped: 0,
+            failed: 0,
+            errors: ['No refresh token available'],
+            total_fetched: 0
+          },
+          { status: 500 }
+        )
+      }
+
+      const SPOTIFY_CLIENT_ID = process.env.SPOTIFY_CLIENT_ID
+      const SPOTIFY_CLIENT_SECRET = process.env.SPOTIFY_CLIENT_SECRET
+
+      if (!SPOTIFY_CLIENT_ID || !SPOTIFY_CLIENT_SECRET) {
+        logger('ERROR', 'Missing Spotify credentials')
+        return NextResponse.json(
+          {
+            success: 0,
+            skipped: 0,
+            failed: 0,
+            errors: ['Server configuration error'],
+            total_fetched: 0
+          },
+          { status: 500 }
+        )
+      }
+
+      const response = await fetch('https://accounts.spotify.com/api/token', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          Authorization: `Basic ${Buffer.from(
+            `${SPOTIFY_CLIENT_ID}:${SPOTIFY_CLIENT_SECRET}`
+          ).toString('base64')}`
+        },
+        body: new URLSearchParams({
+          grant_type: 'refresh_token',
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+          refresh_token: profile.spotify_refresh_token
+        })
+      })
+
+      if (!response.ok) {
+        logger('ERROR', `Error refreshing token: ${await response.text()}`)
+        return NextResponse.json(
+          {
+            success: 0,
+            skipped: 0,
+            failed: 0,
+            errors: ['Failed to refresh token'],
+            total_fetched: 0
+          },
+          { status: 500 }
+        )
+      }
+
+      const tokenData = (await response.json()) as SpotifyTokenResponse
+      accessToken = tokenData.access_token
+
+      // Update the token in the database
+      const { error: updateError } = await supabase
+        .from('profiles')
+        .update({
+          spotify_access_token: tokenData.access_token,
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+          spotify_refresh_token:
+            tokenData.refresh_token ?? profile.spotify_refresh_token,
+          spotify_token_expires_at:
+            Math.floor(Date.now() / 1000) + tokenData.expires_in
+        })
+        .eq('id', profile.id)
+
+      if (updateError) {
+        logger(
+          'ERROR',
+          'Failed to update token in database',
+          undefined,
+          updateError
+        )
+        // Don't fail the request, just log the error
+      }
+    }
+
     const summary: ImportSummary = {
       success: 0,
       skipped: 0,
@@ -104,27 +229,29 @@ export async function POST(
       total_fetched: 0
     }
 
-    // Step 1: Fetch all liked songs from Spotify
-    logger('INFO', `Starting to fetch all liked songs for ${username}`)
-    const allLikedTracks: SpotifyTrack[] = []
-    let nextUrl: string | null = 'me/tracks?limit=50'
+    // Step 1: Fetch all tracks from Spotify (either from playlist or liked songs)
+    const source = playlistId ? `playlist ${playlistId}` : 'liked songs'
+
+    const allTracks: SpotifyTrack[] = []
+    let nextUrl: string | null = playlistId
+      ? `playlists/${playlistId}/tracks?limit=50`
+      : 'me/tracks?limit=50'
 
     while (nextUrl) {
       try {
-        logger('INFO', `Fetching liked songs from: ${nextUrl}`)
-
-        const response: SpotifySavedTracksResponse =
-          await sendApiRequest<SpotifySavedTracksResponse>({
-            path: nextUrl,
-            method: 'GET',
-            // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-            token: profile.spotify_access_token
-          })
-
-        logger(
-          'INFO',
-          `Fetched ${response.items.length} liked songs (total so far: ${allLikedTracks.length + response.items.length})`
-        )
+        const response:
+          | SpotifySavedTracksResponse
+          | SpotifyPlaylistTracksResponse = playlistId
+          ? await sendApiRequest<SpotifyPlaylistTracksResponse>({
+              path: nextUrl,
+              method: 'GET',
+              token: accessToken
+            })
+          : await sendApiRequest<SpotifySavedTracksResponse>({
+              path: nextUrl,
+              method: 'GET',
+              token: accessToken
+            })
 
         if (!response.items || response.items.length === 0) {
           break
@@ -133,7 +260,7 @@ export async function POST(
         // Add tracks to our collection (filter out null tracks)
         for (const item of response.items) {
           if (item.track) {
-            allLikedTracks.push(item.track)
+            allTracks.push(item.track)
           }
         }
 
@@ -144,30 +271,32 @@ export async function POST(
       } catch (error) {
         logger(
           'ERROR',
-          'Error fetching liked songs page',
+          `Error fetching tracks from ${source}`,
           undefined,
           error as Error
         )
         const errorMsg =
           error instanceof Error ? error.message : 'Unknown error'
-        summary.errors.push(`Failed to fetch liked songs: ${errorMsg}`)
+        summary.errors.push(
+          `Failed to fetch tracks from ${source}: ${errorMsg}`
+        )
         break
       }
     }
 
-    summary.total_fetched = allLikedTracks.length
-    logger(
-      'INFO',
-      `Finished fetching. Total liked songs: ${allLikedTracks.length}`
-    )
+    summary.total_fetched = allTracks.length
 
-    if (allLikedTracks.length === 0) {
+    if (allTracks.length === 0) {
       return NextResponse.json(summary)
     }
 
-    // Step 2: Batch upsert tracks to tracks table
-    logger('INFO', 'Starting batch upsert of tracks')
-    const trackRecords = allLikedTracks.map((track) => ({
+    // Step 2: Deduplicate tracks by spotify_track_id
+    const uniqueTracks = Array.from(
+      new Map(allTracks.map((track) => [track.id, track])).values()
+    )
+
+    // Step 3: Batch upsert tracks to tracks table
+    const trackRecords = uniqueTracks.map((track) => ({
       spotify_track_id: track.id,
       name: track.name,
       artist: track.artists[0]?.name || 'Unknown Artist',
@@ -181,7 +310,6 @@ export async function POST(
 
     // Upsert in batches of 50 (Supabase limit)
     const trackBatches = chunkArray(trackRecords, 50)
-    let upsertedCount = 0
 
     for (let index = 0; index < trackBatches.length; index++) {
       const batch = trackBatches[index]
@@ -200,12 +328,6 @@ export async function POST(
           summary.errors.push(
             `Failed to upsert tracks batch ${index + 1}: ${upsertError.message}`
           )
-        } else {
-          upsertedCount += batch.length
-          logger(
-            'INFO',
-            `Upserted batch ${index + 1}/${trackBatches.length} (${batch.length} tracks)`
-          )
         }
       } catch (error) {
         logger(
@@ -220,11 +342,8 @@ export async function POST(
       }
     }
 
-    logger('INFO', `Upserted ${upsertedCount} tracks to database`)
-
-    // Step 3: Get track IDs from database by Spotify IDs
-    logger('INFO', 'Fetching track IDs from database')
-    const spotifyTrackIds = allLikedTracks.map((track) => track.id)
+    // Step 4: Get track IDs from database by Spotify IDs
+    const spotifyTrackIds = uniqueTracks.map((track) => track.id)
     const { data: dbTracks, error: fetchError } = await supabase
       .from('tracks')
       .select('id, spotify_track_id')
@@ -243,10 +362,7 @@ export async function POST(
       trackIdMap.set(track.spotify_track_id, track.id)
     })
 
-    logger('INFO', `Mapped ${trackIdMap.size} tracks from database`)
-
-    // Step 4: Get existing queue track IDs for this user
-    logger('INFO', 'Fetching existing queue tracks')
+    // Step 5: Get existing queue track IDs for this user
     const { data: existingQueue, error: queueFetchError } = await supabase
       .from('jukebox_queue')
       .select('track_id')
@@ -269,11 +385,10 @@ export async function POST(
       // eslint-disable-next-line @typescript-eslint/no-unsafe-return, @typescript-eslint/no-unsafe-member-access
       existingQueue?.map((item) => item.track_id) || []
     )
-    logger('INFO', `Found ${existingTrackIds.size} tracks already in queue`)
 
-    // Step 5: Filter out tracks already in queue and prepare queue items
+    // Step 6: Filter out tracks already in queue and prepare queue items
     const queueItems = []
-    for (const track of allLikedTracks) {
+    for (const track of uniqueTracks) {
       const trackId = trackIdMap.get(track.id)
       if (!trackId) {
         logger('WARN', `Track ${track.name} not found in database, skipping`)
@@ -293,12 +408,7 @@ export async function POST(
       }
     }
 
-    logger(
-      'INFO',
-      `Prepared ${queueItems.length} new tracks to add to queue (${summary.skipped} already in queue)`
-    )
-
-    // Step 6: Batch insert to jukebox_queue
+    // Step 7: Batch insert to jukebox_queue
     if (queueItems.length > 0) {
       const queueBatches = chunkArray(queueItems, 50)
 
@@ -322,10 +432,6 @@ export async function POST(
             summary.failed += batch.length
           } else {
             summary.success += batch.length
-            logger(
-              'INFO',
-              `Inserted queue batch ${index + 1}/${queueBatches.length} (${batch.length} tracks)`
-            )
           }
         } catch (error) {
           logger(
@@ -342,19 +448,9 @@ export async function POST(
       }
     }
 
-    logger(
-      'INFO',
-      `Import complete for ${username}: ${summary.success} added, ${summary.skipped} skipped, ${summary.failed} failed (${summary.total_fetched} total fetched)`
-    )
-
     return NextResponse.json(summary)
   } catch (error) {
-    logger(
-      'ERROR',
-      'Error in import liked songs route',
-      undefined,
-      error as Error
-    )
+    logger('ERROR', 'Error in import playlist route', undefined, error as Error)
     return NextResponse.json(
       {
         success: 0,
