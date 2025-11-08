@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import {
   XMarkIcon,
   HeartIcon,
@@ -38,15 +38,7 @@ export function PlaylistImportModal({
   const [importMessage, setImportMessage] = useState<string | null>(null)
   const { addLog } = useConsoleLogsContext()
 
-  // Fetch playlists when modal opens
-  useEffect(() => {
-    if (isOpen && playlists.length === 0) {
-      void fetchPlaylists()
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isOpen])
-
-  const fetchPlaylists = async (): Promise<void> => {
+  const fetchPlaylists = useCallback(async (): Promise<void> => {
     setIsLoadingPlaylists(true)
     setError(null)
 
@@ -55,15 +47,14 @@ export function PlaylistImportModal({
 
       if (!response.ok) {
         // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-        const errorData = await response
+        const errorData: { error?: string } = await response
           .json()
           .catch(() => ({ error: 'Unknown error' }))
         const errorMsg =
           typeof errorData === 'object' &&
           errorData !== null &&
           'error' in errorData
-            ? // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
-              String(errorData.error)
+            ? String(errorData.error)
             : 'Failed to fetch playlists'
         throw new Error(errorMsg)
       }
@@ -83,7 +74,14 @@ export function PlaylistImportModal({
     } finally {
       setIsLoadingPlaylists(false)
     }
-  }
+  }, [username, addLog])
+
+  // Fetch playlists when modal opens
+  useEffect(() => {
+    if (isOpen && playlists.length === 0) {
+      void fetchPlaylists()
+    }
+  }, [isOpen, playlists.length, fetchPlaylists])
 
   const handleImport = async (
     playlistId: string | null,
@@ -250,7 +248,6 @@ export function PlaylistImportModal({
                   >
                     <div className='h-16 w-16 flex-shrink-0 overflow-hidden rounded-lg bg-gray-700'>
                       {playlist.imageUrl ? (
-                        // eslint-disable-next-line @next/next/no-img-element
                         <img
                           src={playlist.imageUrl}
                           alt={playlist.name}

@@ -706,8 +706,6 @@ class PlayerLifecycleService {
 
     if (typeof window !== 'undefined') {
       window.spotifyPlayerInstance = null
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-member-access
-      delete (window as any).Spotify
     }
 
     const existingScript = document.querySelector(
@@ -736,8 +734,7 @@ class PlayerLifecycleService {
       }
 
       const originalError = window.onSpotifyWebPlaybackSDKError
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      window.onSpotifyWebPlaybackSDKError = (error: any) => {
+      window.onSpotifyWebPlaybackSDKError = (error: unknown) => {
         this.log('ERROR', 'Failed to reload Spotify SDK', error)
         if (originalError) {
           originalError(error)

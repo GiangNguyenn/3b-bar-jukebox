@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-argument */
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
@@ -43,6 +42,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       return NextResponse.json({ error: 'Not authenticated' }, { status: 401 })
     }
 
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
     const body = await request.json()
     const { planType, successUrl, cancelUrl } = body as {
       planType: string
@@ -58,6 +58,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     }
 
     // Get user profile
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
     const { data: profile } = await supabase
       .from('profiles')
       .select('*')
@@ -70,6 +71,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
     // Set default URLs if not provided
     const defaultSuccessUrl = `${request.nextUrl.origin}/api/subscriptions/payment-success?session_id={CHECKOUT_SESSION_ID}`
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
     const defaultCancelUrl = `${request.nextUrl.origin}/${profile.display_name ?? user.email?.split('@')[0] ?? 'user'}/admin?payment=cancelled`
     const finalSuccessUrl = successUrl ?? defaultSuccessUrl
     const finalCancelUrl = cancelUrl ?? defaultCancelUrl

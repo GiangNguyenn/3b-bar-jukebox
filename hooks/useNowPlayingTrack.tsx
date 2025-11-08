@@ -245,8 +245,7 @@ export function useNowPlayingTrack({
         abortControllerRef.current = null
       }
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [fetchCurrentlyPlaying, refetchInterval])
+  }, [fetchCurrentlyPlaying, refetchInterval, enabled])
 
   return {
     data,

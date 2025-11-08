@@ -136,7 +136,6 @@ export async function GET(
       accessToken = tokenData.access_token
 
       // Update the token in the database
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
       const { error: updateError } = await supabase
         .from('profiles')
         .update({
@@ -188,7 +187,6 @@ export async function GET(
         // Update nextUrl for pagination
         if (response.next) {
           // Extract just the path from the full URL
-          // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
           const url = new URL(response.next)
           nextUrl = url.pathname.replace('/v1/', '') + url.search
         } else {

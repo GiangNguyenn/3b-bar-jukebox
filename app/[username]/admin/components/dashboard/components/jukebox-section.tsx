@@ -220,7 +220,6 @@ export function JukeboxSection({
                 onChange={(e): void => {
                   const newVolume = parseInt(e.target.value)
                   setVolume(newVolume)
-                  // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
                   void (async () => {
                     try {
                       await sendApiRequest({

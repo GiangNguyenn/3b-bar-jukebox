@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-unsafe-assignment */
 import { NextResponse } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
@@ -62,6 +61,7 @@ export async function POST(): Promise<NextResponse> {
   }
 
   // Check if profile already exists
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
   const { data: existingProfile } = await supabase
     .from('profiles')
     .select('*')
@@ -73,6 +73,7 @@ export async function POST(): Promise<NextResponse> {
   }
 
   // Create a free subscription for the new user
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
   const { data: subscription, error: subscriptionError } = await supabase
     .from('subscriptions')
     .insert([
@@ -110,13 +111,17 @@ export async function POST(): Promise<NextResponse> {
   }
 
   // Create profile with subscription link - handle display_name conflicts
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access
   const initialDisplayName =
     user.user_metadata?.full_name ?? user.email?.split('@')[0] ?? 'user'
 
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access
   let profileData = {
     id: user.id,
     spotify_user_id: user.id, // Use user ID as spotify_user_id for now
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
     display_name: initialDisplayName,
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
     avatar_url: user.user_metadata?.avatar_url ?? null,
     is_premium: false, // Default to false, will be updated by premium verification
     premium_verified_at: null,

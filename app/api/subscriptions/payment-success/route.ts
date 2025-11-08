@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-argument */
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
@@ -63,6 +62,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     }
 
     // Get user profile
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
     const { data: profile } = await supabase
       .from('profiles')
       .select('*')
@@ -78,6 +78,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     const success =
       await subscriptionService.updateSubscriptionFromStripeSession(
         sessionId,
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-unsafe-member-access
         profile.id,
         supabase
       )
@@ -96,6 +97,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     )
 
     // Redirect to admin page with success message
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
     const adminUrl = `${request.nextUrl.origin}/${profile.display_name ?? user.email?.split('@')[0] ?? 'user'}/admin?payment=success`
     return NextResponse.redirect(adminUrl)
   } catch (error) {

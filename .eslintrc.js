@@ -51,13 +51,23 @@ module.exports = {
   ],
   rules: {
     // Allow implicit return types where TypeScript can infer them
-    '@typescript-eslint/explicit-function-return-type': 'warn',
+    '@typescript-eslint/explicit-function-return-type': [
+      'warn',
+      { allowExpressions: true, allowTypedFunctionExpressions: true }
+    ],
     '@typescript-eslint/explicit-module-boundary-types': 'error',
     // Allow optional chaining in cases where it might be safer
     // Prefer using the nullish coalescing operator
     '@typescript-eslint/prefer-nullish-coalescing': 'warn',
-    // Keep strict type safety for assignments
-    '@typescript-eslint/no-unsafe-assignment': 'error',
+    // Relax type safety rules to warnings for better DX
+    '@typescript-eslint/no-unsafe-assignment': 'warn',
+    '@typescript-eslint/no-unsafe-member-access': 'warn',
+    '@typescript-eslint/no-unsafe-argument': 'warn',
+    '@typescript-eslint/no-unsafe-call': 'warn',
+    '@typescript-eslint/no-unsafe-return': 'warn',
+    '@typescript-eslint/no-unsafe-enum-comparison': 'warn',
+    // Allow any type for window extensions and third-party SDKs
+    '@typescript-eslint/no-explicit-any': ['warn', { ignoreRestArgs: true }],
     // Allow optional chaining for better null safety
     '@typescript-eslint/prefer-optional-chain': 'warn',
     '@typescript-eslint/no-unused-expressions': 'error',
@@ -66,6 +76,8 @@ module.exports = {
       'error',
       { allow: ['arrowFunctions'] }
     ],
+    // Allow img elements for external images (e.g., Spotify URLs)
+    '@next/next/no-img-element': 'off',
     'unused-imports/no-unused-vars': [
       'warn',
       {

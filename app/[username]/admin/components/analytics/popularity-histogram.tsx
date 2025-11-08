@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-explicit-any */
 'use client'
 
 import { useEffect, useState } from 'react'
@@ -21,8 +20,22 @@ interface HistogramData {
   track_count: number
 }
 
+interface TooltipPayload {
+  value: number
+}
+
+interface CustomTooltipProps {
+  active?: boolean
+  payload?: TooltipPayload[]
+  label?: string
+}
+
 // Custom tooltip component for popularity descriptions
-const CustomTooltip = ({ active, payload, label }: any): JSX.Element | null => {
+const CustomTooltip = ({
+  active,
+  payload,
+  label
+}: CustomTooltipProps): JSX.Element | null => {
   if (active && payload && Array.isArray(payload) && payload.length > 0) {
     const getPopularityDescription = (range: string): string => {
       switch (range) {
@@ -48,9 +61,9 @@ const CustomTooltip = ({ active, payload, label }: any): JSX.Element | null => {
       >
         <p className='font-semibold text-black'>{`Popularity: ${label}`}</p>
         <p className='text-sm text-gray-600'>
-          {getPopularityDescription(label)}
+          {getPopularityDescription(label ?? '')}
         </p>
-        <p className='text-sm font-medium text-black'>{`Tracks: ${(payload as any)[0]?.value}`}</p>
+        <p className='text-sm font-medium text-black'>{`Tracks: ${payload[0]?.value ?? 0}`}</p>
       </div>
     )
   }

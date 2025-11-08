@@ -113,7 +113,6 @@ export async function POST(
       try {
         logger('INFO', `Fetching liked songs from: ${nextUrl}`)
 
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
         const response: SpotifySavedTracksResponse =
           await sendApiRequest<SpotifySavedTracksResponse>({
             path: nextUrl,
@@ -124,27 +123,21 @@ export async function POST(
 
         logger(
           'INFO',
-          // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
           `Fetched ${response.items.length} liked songs (total so far: ${allLikedTracks.length + response.items.length})`
         )
 
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
         if (!response.items || response.items.length === 0) {
           break
         }
 
         // Add tracks to our collection (filter out null tracks)
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
         for (const item of response.items) {
-          // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
           if (item.track) {
-            // eslint-disable-next-line @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-unsafe-member-access
             allLikedTracks.push(item.track)
           }
         }
 
         // Move to next page
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call
         nextUrl = response.next
           ? response.next.replace('https://api.spotify.com/v1/', '')
           : null
@@ -208,11 +201,9 @@ export async function POST(
             `Failed to upsert tracks batch ${index + 1}: ${upsertError.message}`
           )
         } else {
-          // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
           upsertedCount += batch.length
           logger(
             'INFO',
-            // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
             `Upserted batch ${index + 1}/${trackBatches.length} (${batch.length} tracks)`
           )
         }
@@ -328,14 +319,11 @@ export async function POST(
             summary.errors.push(
               `Failed to insert queue batch ${index + 1}: ${insertError.message}`
             )
-            // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
             summary.failed += batch.length
           } else {
-            // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
             summary.success += batch.length
             logger(
               'INFO',
-              // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
               `Inserted queue batch ${index + 1}/${queueBatches.length} (${batch.length} tracks)`
             )
           }
@@ -349,7 +337,6 @@ export async function POST(
           summary.errors.push(
             `Failed to insert queue batch ${index + 1}: ${error instanceof Error ? error.message : 'Unknown error'}`
           )
-          // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
           summary.failed += batch.length
         }
       }

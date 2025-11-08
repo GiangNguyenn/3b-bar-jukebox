@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-unsafe-assignment */
 import { NextResponse } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
@@ -41,7 +40,6 @@ export async function DELETE(request: Request): Promise<NextResponse> {
     } = await supabase.auth.getUser()
 
     if (userError || !user) {
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
       logger('ERROR', `Auth error: ${JSON.stringify(userError)}`)
       return NextResponse.json({ error: 'Not authenticated' }, { status: 401 })
     }
@@ -88,6 +86,7 @@ export async function DELETE(request: Request): Promise<NextResponse> {
 
     return NextResponse.json({
       message: 'Suggested track deleted successfully',
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
       deletedTrackId: trackId
     })
   } catch {

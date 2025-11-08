@@ -198,7 +198,6 @@ export async function POST(
       accessToken = tokenData.access_token
 
       // Update the token in the database
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
       const { error: updateError } = await supabase
         .from('profiles')
         .update({
@@ -240,40 +239,32 @@ export async function POST(
 
     while (nextUrl) {
       try {
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
         const response:
           | SpotifySavedTracksResponse
           | SpotifyPlaylistTracksResponse = playlistId
           ? await sendApiRequest<SpotifyPlaylistTracksResponse>({
               path: nextUrl,
               method: 'GET',
-              // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
               token: accessToken
             })
           : await sendApiRequest<SpotifySavedTracksResponse>({
               path: nextUrl,
               method: 'GET',
-              // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
               token: accessToken
             })
 
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
         if (!response.items || response.items.length === 0) {
           break
         }
 
         // Add tracks to our collection (filter out null tracks)
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
         for (const item of response.items) {
-          // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
           if (item.track) {
-            // eslint-disable-next-line @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-unsafe-member-access
             allTracks.push(item.track)
           }
         }
 
         // Move to next page
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call
         nextUrl = response.next
           ? response.next.replace('https://api.spotify.com/v1/', '')
           : null
@@ -438,10 +429,8 @@ export async function POST(
             summary.errors.push(
               `Failed to insert queue batch ${index + 1}: ${insertError.message}`
             )
-            // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
             summary.failed += batch.length
           } else {
-            // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
             summary.success += batch.length
           }
         } catch (error) {
@@ -454,7 +443,6 @@ export async function POST(
           summary.errors.push(
             `Failed to insert queue batch ${index + 1}: ${error instanceof Error ? error.message : 'Unknown error'}`
           )
-          // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
           summary.failed += batch.length
         }
       }

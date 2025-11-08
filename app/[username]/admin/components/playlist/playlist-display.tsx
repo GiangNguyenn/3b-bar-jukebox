@@ -99,7 +99,7 @@ export function PlaylistDisplay({
       })
 
       if (!response.ok) {
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-argument
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
         const errorData: { error?: string } = await response.json()
         throw new Error(errorData.error ?? 'Failed to delete track')
       }
