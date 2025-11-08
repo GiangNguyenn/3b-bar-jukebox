@@ -182,7 +182,7 @@ export default function AdminPage(): JSX.Element {
     const autoPlayService = getAutoPlayService({
       username,
       deviceId,
-      checkInterval: 1000
+      checkInterval: 500 // Reduced for predictive track start
     })
 
     // Set username and deviceId (in case service was already created)
