@@ -82,7 +82,9 @@ export async function GET(
     }
 
     // Check if token needs refresh
-    let accessToken = profile.spotify_access_token
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+    let accessToken: string = profile.spotify_access_token
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
     const tokenExpiresAt = profile.spotify_token_expires_at
     const now = Math.floor(Date.now() / 1000)
 
@@ -117,6 +119,7 @@ export async function GET(
         },
         body: new URLSearchParams({
           grant_type: 'refresh_token',
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
           refresh_token: profile.spotify_refresh_token
         })
       })
@@ -133,10 +136,12 @@ export async function GET(
       accessToken = tokenData.access_token
 
       // Update the token in the database
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
       const { error: updateError } = await supabase
         .from('profiles')
         .update({
           spotify_access_token: tokenData.access_token,
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
           spotify_refresh_token:
             tokenData.refresh_token ?? profile.spotify_refresh_token,
           spotify_token_expires_at:
@@ -161,11 +166,12 @@ export async function GET(
 
     while (nextUrl) {
       try {
-        const response = await sendApiRequest<SpotifyPlaylistsResponse>({
-          path: nextUrl,
-          method: 'GET',
-          token: accessToken
-        })
+        const response: SpotifyPlaylistsResponse =
+          await sendApiRequest<SpotifyPlaylistsResponse>({
+            path: nextUrl,
+            method: 'GET',
+            token: accessToken
+          })
 
         // Transform the Spotify playlists into our simplified format
         const transformedPlaylists = response.items.map((playlist) => ({
@@ -182,6 +188,7 @@ export async function GET(
         // Update nextUrl for pagination
         if (response.next) {
           // Extract just the path from the full URL
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
           const url = new URL(response.next)
           nextUrl = url.pathname.replace('/v1/', '') + url.search
         } else {

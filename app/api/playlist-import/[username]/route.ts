@@ -126,7 +126,9 @@ export async function POST(
     }
 
     // Check if token needs refresh
-    let accessToken = profile.spotify_access_token
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+    let accessToken: string = profile.spotify_access_token
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
     const tokenExpiresAt = profile.spotify_token_expires_at
     const now = Math.floor(Date.now() / 1000)
 
@@ -173,6 +175,7 @@ export async function POST(
         },
         body: new URLSearchParams({
           grant_type: 'refresh_token',
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
           refresh_token: profile.spotify_refresh_token
         })
       })
@@ -195,10 +198,12 @@ export async function POST(
       accessToken = tokenData.access_token
 
       // Update the token in the database
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
       const { error: updateError } = await supabase
         .from('profiles')
         .update({
           spotify_access_token: tokenData.access_token,
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
           spotify_refresh_token:
             tokenData.refresh_token ?? profile.spotify_refresh_token,
           spotify_token_expires_at:
@@ -314,7 +319,6 @@ export async function POST(
 
     // Upsert in batches of 50 (Supabase limit)
     const trackBatches = chunkArray(trackRecords, 50)
-    let upsertedCount = 0
 
     for (let index = 0; index < trackBatches.length; index++) {
       const batch = trackBatches[index]
@@ -333,9 +337,6 @@ export async function POST(
           summary.errors.push(
             `Failed to upsert tracks batch ${index + 1}: ${upsertError.message}`
           )
-        } else {
-          // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
-          upsertedCount += batch.length
         }
       } catch (error) {
         logger(

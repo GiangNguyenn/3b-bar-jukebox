@@ -43,6 +43,7 @@ export function PlaylistImportModal({
     if (isOpen && playlists.length === 0) {
       void fetchPlaylists()
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen])
 
   const fetchPlaylists = async (): Promise<void> => {
@@ -53,6 +54,7 @@ export function PlaylistImportModal({
       const response = await fetch(`/api/playlists/${username}`)
 
       if (!response.ok) {
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
         const errorData = await response
           .json()
           .catch(() => ({ error: 'Unknown error' }))
@@ -60,7 +62,8 @@ export function PlaylistImportModal({
           typeof errorData === 'object' &&
           errorData !== null &&
           'error' in errorData
-            ? String(errorData.error)
+            ? // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+              String(errorData.error)
             : 'Failed to fetch playlists'
         throw new Error(errorMsg)
       }
@@ -132,7 +135,7 @@ export function PlaylistImportModal({
           'PlaylistImportModal'
         )
         summary.errors.forEach((err, index) => {
-          if (err && err.trim()) {
+          if (err?.trim()) {
             addLog(
               'ERROR',
               `Import error ${index + 1}: ${err}`,
@@ -142,7 +145,7 @@ export function PlaylistImportModal({
         })
 
         // Show first error to user if import was not successful
-        const firstError = summary.errors.find((e) => e && e.trim())
+        const firstError = summary.errors.find((e) => e?.trim())
         if (firstError && summary.success === 0) {
           setError(`Import failed: ${firstError}`)
         }
@@ -247,6 +250,7 @@ export function PlaylistImportModal({
                   >
                     <div className='h-16 w-16 flex-shrink-0 overflow-hidden rounded-lg bg-gray-700'>
                       {playlist.imageUrl ? (
+                        // eslint-disable-next-line @next/next/no-img-element
                         <img
                           src={playlist.imageUrl}
                           alt={playlist.name}
