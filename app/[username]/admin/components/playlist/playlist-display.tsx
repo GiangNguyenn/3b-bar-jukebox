@@ -3,7 +3,11 @@
 import { useState } from 'react'
 import { sendApiRequest } from '@/shared/api'
 import { useSpotifyPlayerStore } from '@/hooks/useSpotifyPlayer'
-import { PlayIcon, TrashIcon, MusicalNoteIcon } from '@heroicons/react/24/outline'
+import {
+  PlayIcon,
+  TrashIcon,
+  MusicalNoteIcon
+} from '@heroicons/react/24/outline'
 import { ErrorMessage } from '@/components/ui/error-message'
 import { Loading } from '@/components/ui/loading'
 import { JukeboxQueueItem } from '@/shared/types/queue'
@@ -146,7 +150,7 @@ export function PlaylistDisplay({
         username={username ?? ''}
         onImportComplete={handleImportComplete}
       />
-      
+
       <div className='flex items-center justify-between'>
         <h2 className='text-xl font-semibold'>Queue ({queue.length} tracks)</h2>
         <button

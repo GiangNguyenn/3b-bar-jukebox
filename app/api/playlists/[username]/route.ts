@@ -54,7 +54,9 @@ export async function GET(
     // Get the user's profile to get their Spotify access token
     const { data: profile, error: profileError } = await supabase
       .from('profiles')
-      .select('id, spotify_access_token, spotify_refresh_token, spotify_token_expires_at')
+      .select(
+        'id, spotify_access_token, spotify_refresh_token, spotify_token_expires_at'
+      )
       .ilike('display_name', username)
       .single()
 
@@ -143,7 +145,12 @@ export async function GET(
         .eq('id', profile.id)
 
       if (updateError) {
-        logger('ERROR', 'Failed to update token in database', undefined, updateError)
+        logger(
+          'ERROR',
+          'Failed to update token in database',
+          undefined,
+          updateError
+        )
         // Don't fail the request, just log the error
       }
     }
@@ -210,4 +217,3 @@ export async function GET(
     )
   }
 }
-

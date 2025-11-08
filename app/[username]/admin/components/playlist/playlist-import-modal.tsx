@@ -1,7 +1,11 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { XMarkIcon, HeartIcon, MusicalNoteIcon } from '@heroicons/react/24/outline'
+import {
+  XMarkIcon,
+  HeartIcon,
+  MusicalNoteIcon
+} from '@heroicons/react/24/outline'
 import { Loading } from '@/components/ui/loading'
 import { ErrorMessage } from '@/components/ui/error-message'
 import { PlaylistListItem } from '@/shared/types/spotify'
@@ -47,19 +51,25 @@ export function PlaylistImportModal({
 
     try {
       const response = await fetch(`/api/playlists/${username}`)
-      
+
       if (!response.ok) {
-        const errorData = await response.json().catch(() => ({ error: 'Unknown error' }))
-        const errorMsg = typeof errorData === 'object' && errorData !== null && 'error' in errorData 
-          ? String(errorData.error)
-          : 'Failed to fetch playlists'
+        const errorData = await response
+          .json()
+          .catch(() => ({ error: 'Unknown error' }))
+        const errorMsg =
+          typeof errorData === 'object' &&
+          errorData !== null &&
+          'error' in errorData
+            ? String(errorData.error)
+            : 'Failed to fetch playlists'
         throw new Error(errorMsg)
       }
 
       const data = (await response.json()) as { playlists: PlaylistListItem[] }
       setPlaylists(data.playlists)
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Failed to fetch playlists'
+      const errorMessage =
+        err instanceof Error ? err.message : 'Failed to fetch playlists'
       setError(errorMessage)
       addLog(
         'ERROR',
@@ -72,7 +82,10 @@ export function PlaylistImportModal({
     }
   }
 
-  const handleImport = async (playlistId: string | null, playlistName: string): Promise<void> => {
+  const handleImport = async (
+    playlistId: string | null,
+    playlistName: string
+  ): Promise<void> => {
     setIsImporting(true)
     setError(null)
     setImportMessage(null)
@@ -120,12 +133,16 @@ export function PlaylistImportModal({
         )
         summary.errors.forEach((err, index) => {
           if (err && err.trim()) {
-            addLog('ERROR', `Import error ${index + 1}: ${err}`, 'PlaylistImportModal')
+            addLog(
+              'ERROR',
+              `Import error ${index + 1}: ${err}`,
+              'PlaylistImportModal'
+            )
           }
         })
-        
+
         // Show first error to user if import was not successful
-        const firstError = summary.errors.find(e => e && e.trim())
+        const firstError = summary.errors.find((e) => e && e.trim())
         if (firstError && summary.success === 0) {
           setError(`Import failed: ${firstError}`)
         }
@@ -139,7 +156,8 @@ export function PlaylistImportModal({
         onClose()
       }, 2000)
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Failed to import tracks'
+      const errorMessage =
+        err instanceof Error ? err.message : 'Failed to import tracks'
       setError(errorMessage)
       addLog(
         'ERROR',
@@ -158,14 +176,14 @@ export function PlaylistImportModal({
 
   return (
     <div className='fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4'>
-      <div className='relative w-full max-w-2xl max-h-[80vh] rounded-lg border border-gray-800 bg-gray-900 shadow-xl'>
+      <div className='relative max-h-[80vh] w-full max-w-2xl rounded-lg border border-gray-800 bg-gray-900 shadow-xl'>
         {/* Header */}
         <div className='flex items-center justify-between border-b border-gray-800 p-4'>
-          <h2 className='text-xl font-semibold text-white'>Import Tracks</h2>
+          <h2 className='text-white text-xl font-semibold'>Import Tracks</h2>
           <button
             onClick={onClose}
             disabled={isImporting}
-            className='rounded-lg p-1 text-gray-400 transition-colors hover:bg-gray-800 hover:text-white disabled:cursor-not-allowed disabled:opacity-50'
+            className='hover:text-white rounded-lg p-1 text-gray-400 transition-colors hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-50'
             aria-label='Close modal'
           >
             <XMarkIcon className='h-6 w-6' />
@@ -173,7 +191,10 @@ export function PlaylistImportModal({
         </div>
 
         {/* Content */}
-        <div className='overflow-y-auto p-4' style={{ maxHeight: 'calc(80vh - 8rem)' }}>
+        <div
+          className='overflow-y-auto p-4'
+          style={{ maxHeight: 'calc(80vh - 8rem)' }}
+        >
           {error && (
             <ErrorMessage message={error} onDismiss={() => setError(null)} />
           )}
@@ -198,15 +219,15 @@ export function PlaylistImportModal({
                 className='flex w-full items-center gap-4 rounded-lg border border-gray-800 bg-gray-800/50 p-4 text-left transition-colors hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-50'
               >
                 <div className='flex h-16 w-16 items-center justify-center rounded-lg bg-gradient-to-br from-purple-600 to-blue-600'>
-                  <HeartIcon className='h-8 w-8 text-white' />
+                  <HeartIcon className='text-white h-8 w-8' />
                 </div>
                 <div className='flex-1'>
-                  <h3 className='font-semibold text-white'>Liked Songs</h3>
-                  <p className='text-sm text-gray-400'>Import your liked songs</p>
+                  <h3 className='text-white font-semibold'>Liked Songs</h3>
+                  <p className='text-sm text-gray-400'>
+                    Import your liked songs
+                  </p>
                 </div>
-                {isImporting && (
-                  <Loading className='h-5 w-5' />
-                )}
+                {isImporting && <Loading className='h-5 w-5' />}
               </button>
 
               {/* Playlists */}
@@ -218,7 +239,9 @@ export function PlaylistImportModal({
                 playlists.map((playlist) => (
                   <button
                     key={playlist.id}
-                    onClick={() => void handleImport(playlist.id, playlist.name)}
+                    onClick={() =>
+                      void handleImport(playlist.id, playlist.name)
+                    }
                     disabled={isImporting}
                     className='flex w-full items-center gap-4 rounded-lg border border-gray-800 bg-gray-800/50 p-4 text-left transition-colors hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-50'
                   >
@@ -235,19 +258,18 @@ export function PlaylistImportModal({
                         </div>
                       )}
                     </div>
-                    <div className='flex-1 min-w-0'>
-                      <h3 className='font-semibold text-white truncate'>
+                    <div className='min-w-0 flex-1'>
+                      <h3 className='text-white truncate font-semibold'>
                         {playlist.name}
                       </h3>
                       <p className='text-sm text-gray-400'>
-                        {playlist.trackCount} {playlist.trackCount === 1 ? 'track' : 'tracks'}
+                        {playlist.trackCount}{' '}
+                        {playlist.trackCount === 1 ? 'track' : 'tracks'}
                         {' • '}
                         {playlist.ownerName}
                       </p>
                     </div>
-                    {isImporting && (
-                      <Loading className='h-5 w-5' />
-                    )}
+                    {isImporting && <Loading className='h-5 w-5' />}
                   </button>
                 ))
               )}
@@ -260,7 +282,7 @@ export function PlaylistImportModal({
           <button
             onClick={onClose}
             disabled={isImporting}
-            className='w-full rounded-lg border border-gray-700 bg-gray-800 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-gray-700 disabled:cursor-not-allowed disabled:opacity-50'
+            className='text-white w-full rounded-lg border border-gray-700 bg-gray-800 px-4 py-2 text-sm font-semibold transition-colors hover:bg-gray-700 disabled:cursor-not-allowed disabled:opacity-50'
           >
             Cancel
           </button>
@@ -269,4 +291,3 @@ export function PlaylistImportModal({
     </div>
   )
 }
-

@@ -86,7 +86,9 @@ export async function POST(
     // Get the user's profile to verify authentication
     const { data: profile, error: profileError } = await supabase
       .from('profiles')
-      .select('id, spotify_access_token, spotify_refresh_token, spotify_token_expires_at')
+      .select(
+        'id, spotify_access_token, spotify_refresh_token, spotify_token_expires_at'
+      )
       .ilike('display_name', username)
       .single()
 
@@ -205,7 +207,12 @@ export async function POST(
         .eq('id', profile.id)
 
       if (updateError) {
-        logger('ERROR', 'Failed to update token in database', undefined, updateError)
+        logger(
+          'ERROR',
+          'Failed to update token in database',
+          undefined,
+          updateError
+        )
         // Don't fail the request, just log the error
       }
     }
@@ -220,29 +227,30 @@ export async function POST(
 
     // Step 1: Fetch all tracks from Spotify (either from playlist or liked songs)
     const source = playlistId ? `playlist ${playlistId}` : 'liked songs'
-    
+
     const allTracks: SpotifyTrack[] = []
-    let nextUrl: string | null = playlistId 
+    let nextUrl: string | null = playlistId
       ? `playlists/${playlistId}/tracks?limit=50`
       : 'me/tracks?limit=50'
 
     while (nextUrl) {
       try {
         // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-        const response: SpotifySavedTracksResponse | SpotifyPlaylistTracksResponse =
-          playlistId
-            ? await sendApiRequest<SpotifyPlaylistTracksResponse>({
-                path: nextUrl,
-                method: 'GET',
-                // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-                token: accessToken
-              })
-            : await sendApiRequest<SpotifySavedTracksResponse>({
-                path: nextUrl,
-                method: 'GET',
-                // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-                token: accessToken
-              })
+        const response:
+          | SpotifySavedTracksResponse
+          | SpotifyPlaylistTracksResponse = playlistId
+          ? await sendApiRequest<SpotifyPlaylistTracksResponse>({
+              path: nextUrl,
+              method: 'GET',
+              // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+              token: accessToken
+            })
+          : await sendApiRequest<SpotifySavedTracksResponse>({
+              path: nextUrl,
+              method: 'GET',
+              // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+              token: accessToken
+            })
 
         // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
         if (!response.items || response.items.length === 0) {
@@ -273,7 +281,9 @@ export async function POST(
         )
         const errorMsg =
           error instanceof Error ? error.message : 'Unknown error'
-        summary.errors.push(`Failed to fetch tracks from ${source}: ${errorMsg}`)
+        summary.errors.push(
+          `Failed to fetch tracks from ${source}: ${errorMsg}`
+        )
         break
       }
     }
@@ -286,7 +296,7 @@ export async function POST(
 
     // Step 2: Deduplicate tracks by spotify_track_id
     const uniqueTracks = Array.from(
-      new Map(allTracks.map(track => [track.id, track])).values()
+      new Map(allTracks.map((track) => [track.id, track])).values()
     )
 
     // Step 3: Batch upsert tracks to tracks table
@@ -451,12 +461,7 @@ export async function POST(
 
     return NextResponse.json(summary)
   } catch (error) {
-    logger(
-      'ERROR',
-      'Error in import playlist route',
-      undefined,
-      error as Error
-    )
+    logger('ERROR', 'Error in import playlist route', undefined, error as Error)
     return NextResponse.json(
       {
         success: 0,
@@ -473,4 +478,3 @@ export async function POST(
     )
   }
 }
-
