@@ -27,6 +27,8 @@ interface AutoPlayServiceConfig {
 }
 
 class AutoPlayService {
+  private static instanceCount = 0
+  private instanceId: number
   private isRunning = false
   private checkInterval: number
   private deviceId: string | null = null
@@ -51,8 +53,20 @@ class AutoPlayService {
   private preparedTrackId: string | null = null // ID of the prepared track
   private isPreparingNextTrack: boolean = false // Prevent duplicate preparation
   private nextTrackStarted: boolean = false // Flag indicating next track was started predictively
+  // Spotify queue integration state
+  private spotifyQueuedTrackId: string | null = null // Track currently in Spotify queue
+  private isUpdatingSpotifyQueue: boolean = false // Prevent concurrent queue updates
+  private isStartingNextTrack: boolean = false // Prevent concurrent track transitions
 
   constructor(config: AutoPlayServiceConfig = {}) {
+    AutoPlayService.instanceCount++
+    this.instanceId = AutoPlayService.instanceCount
+    if (AutoPlayService.instanceCount > 1) {
+      logger(
+        'ERROR',
+        `MULTIPLE INSTANCES DETECTED! Count: ${AutoPlayService.instanceCount}`
+      )
+    }
     this.checkInterval = config.checkInterval || 500 // Reduced to 500ms for predictive track start
     this.deviceId = config.deviceId || null
     this.onTrackFinished = config.onTrackFinished
@@ -128,6 +142,11 @@ class AutoPlayService {
       clearInterval(this.intervalRef)
       this.intervalRef = null
     }
+
+    // Clear Spotify queue state when stopping
+    this.spotifyQueuedTrackId = null
+    this.lastProcessedTrackId = null
+    this.resetPredictiveState('Service stopped')
   }
 
   public setDeviceId(deviceId: string | null): void {
@@ -244,45 +263,106 @@ class AutoPlayService {
           'INFO',
           '[checkPlaybackState] Playback paused, resetting predictive state'
         )
-        this.resetPredictiveState()
+        this.resetPredictiveState('Playback paused')
       }
 
       // Reset lastProcessedTrackId if we're playing a different track
       // Edge case: Manual skip detected
       if (currentTrackId && currentTrackId !== this.lastTrackId) {
         this.lastProcessedTrackId = null
-        // Reset predictive state when track changes (manual skip or natural end)
-        if (this.lastTrackId) {
+
+        // Check if the new track is the locked track
+        if (this.spotifyQueuedTrackId === currentTrackId) {
+          // The locked track is now playing - this is expected!
+
+          // Remove the FINISHED track (the previous track) from the queue
+          if (this.lastTrackId && this.lastTrackId !== currentTrackId) {
+            const queue = this.queueManager.getQueue()
+            const finishedTrackItem = queue.find(
+              (item) => item.tracks.spotify_track_id === this.lastTrackId
+            )
+
+            if (finishedTrackItem) {
+              try {
+                await this.queueManager.markAsPlayed(finishedTrackItem.id)
+                await this.refreshQueueFromAPI()
+
+                // Mark the finished track as processed to prevent handleTrackFinished from re-processing it
+                this.lastProcessedTrackId = this.lastTrackId
+              } catch (error) {
+                logger(
+                  'ERROR',
+                  'Failed to remove finished track after locked track transition',
+                  undefined,
+                  error as Error
+                )
+              }
+            }
+          }
+
+          // Clear the lock and reset state so we can prepare the next track
+          this.spotifyQueuedTrackId = null
+          this.resetPredictiveState('Locked track now playing')
+        } else if (
+          this.spotifyQueuedTrackId &&
+          this.spotifyQueuedTrackId !== currentTrackId
+        ) {
+          // Manual skip to a different track - clear the lock
           logger(
             'INFO',
-            `[checkPlaybackState] Track changed from ${this.lastTrackId} to ${currentTrackId}, resetting predictive state`
+            `[checkPlaybackState] Manual skip from locked track ${this.spotifyQueuedTrackId} to ${currentTrackId}`
           )
+          this.spotifyQueuedTrackId = null
+          this.resetPredictiveState('Manual skip to different track')
+        } else {
+          // Track changed but no lock was set
+          if (this.lastTrackId) {
+            logger(
+              'INFO',
+              `[checkPlaybackState] Track changed from ${this.lastTrackId} to ${currentTrackId}`
+            )
+          }
+          this.resetPredictiveState('Track changed (no lock)')
         }
-        this.resetPredictiveState()
       }
 
       // Predictive track start - Phase 1: Prepare next track
       if (this.shouldPrepareNextTrack(currentState) && currentTrackId) {
-        logger(
-          'INFO',
-          `[checkPlaybackState] Preparing next track (${duration - progress}ms remaining)`
-        )
         await this.prepareNextTrack(currentTrackId)
+      }
+
+      // Safety net: Last resort preparation at 10s before end if still not locked
+      if (
+        currentTrackId &&
+        !this.spotifyQueuedTrackId &&
+        !this.isPreparingNextTrack
+      ) {
+        const timeRemaining = duration - progress
+        if (
+          timeRemaining > 0 &&
+          timeRemaining <= 10000 &&
+          timeRemaining > 5000
+        ) {
+          logger(
+            'WARN',
+            `Safety net triggered: ${timeRemaining}ms remaining and track not locked yet`
+          )
+          await this.prepareNextTrack(currentTrackId)
+        }
       }
 
       // Predictive track start - Phase 2: Start next track
       if (this.shouldStartNextTrack(currentState)) {
-        logger(
-          'INFO',
-          `[checkPlaybackState] Starting next track predictively (${duration - progress}ms remaining)`
-        )
         await this.startNextTrackPredictively()
       }
 
       // Fallback: Check if track has finished (for edge cases)
-      if (this.hasTrackFinished(currentState)) {
+      const trackFinished = this.hasTrackFinished(currentState)
+      if (trackFinished) {
+        // Use the FINISHED track ID from lastPlaybackState, not currentTrackId
+        const finishedTrackId = this.lastPlaybackState?.item?.id
         try {
-          await this.handleTrackFinished(currentTrackId)
+          await this.handleTrackFinished(finishedTrackId)
         } catch (error) {
           logger(
             'ERROR',
@@ -319,8 +399,9 @@ class AutoPlayService {
       return false
     }
 
-    // Don't prepare if already prepared or preparing
-    if (this.nextTrackPrepared || this.isPreparingNextTrack) {
+    // Only skip if we have a LOCKED track or are currently preparing
+    // This allows retries if preparation didn't result in a lock
+    if (this.spotifyQueuedTrackId || this.isPreparingNextTrack) {
       return false
     }
 
@@ -353,6 +434,11 @@ class AutoPlayService {
       return null
     }
 
+    // If a track is already locked in Spotify's queue, don't prepare another one
+    if (this.spotifyQueuedTrackId) {
+      return null
+    }
+
     this.isPreparingNextTrack = true
 
     try {
@@ -360,39 +446,105 @@ class AutoPlayService {
       await this.refreshQueueFromAPI()
 
       // Get next track from queue
-      const nextTrack = this.queueManager.getNextTrack()
+      let nextTrack = this.queueManager.getNextTrack()
 
       if (!nextTrack) {
         logger('INFO', '[PrepareNextTrack] No next track available in queue')
         return null
       }
 
-      // Validate that next track is different from current
+      // If the next track in queue is the currently playing track, get the track after it
+      // This can happen because we only remove tracks from the queue when they finish,
+      // but we prepare the next track 30 seconds before the current one finishes
       if (nextTrack.tracks.spotify_track_id === currentTrackId) {
         logger(
-          'WARN',
-          '[PrepareNextTrack] Next track matches current track, skipping'
+          'INFO',
+          '[PrepareNextTrack] Next track in queue is currently playing, getting track after next'
         )
-        return null
+        const trackAfterNext = this.queueManager.getTrackAfterNext()
+
+        if (!trackAfterNext) {
+          logger('INFO', '[PrepareNextTrack] No track after current in queue')
+          return null
+        }
+
+        nextTrack = trackAfterNext
       }
 
-      // Mark as prepared
-      this.nextTrackPrepared = true
-      this.preparedTrackId = nextTrack.tracks.spotify_track_id
+      // Check for active device before attempting to add
+      if (!this.deviceId) {
+        logger(
+          'WARN',
+          'No active device - cannot add track to Spotify queue, using prepared-only mode'
+        )
+        this.nextTrackPrepared = true
+        this.preparedTrackId = nextTrack.tracks.spotify_track_id
+        return nextTrack
+      }
 
-      logger(
-        'INFO',
-        `[PrepareNextTrack] Prepared next track: ${nextTrack.tracks.name} (${this.preparedTrackId})`
-      )
+      // Add track to Spotify queue with retry logic
+      const trackUri = `spotify:track:${nextTrack.tracks.spotify_track_id}`
+      let addSuccess = false
+      let lastError: Error | null = null
+
+      // Retry up to 3 times with exponential backoff
+      for (let attempt = 1; attempt <= 3; attempt++) {
+        try {
+          await sendApiRequest({
+            path: `me/player/queue?uri=${encodeURIComponent(trackUri)}`,
+            method: 'POST'
+          })
+
+          // POST succeeded - trust Spotify's API response
+          addSuccess = true
+          break
+        } catch (error: any) {
+          lastError = error as Error
+
+          // Check error type
+          const status =
+            error?.status || (error?.message?.includes('404') ? 404 : 0)
+
+          if (status === 404) {
+            logger('WARN', 'No active device found - cannot add to queue')
+            break // Don't retry on 404
+          } else if (status === 403) {
+            logger('WARN', 'Premium required to use queue API')
+            break // Don't retry on 403
+          } else if (attempt < 3) {
+            // Retry on other errors with exponential backoff
+            logger(
+              'WARN',
+              `Queue add failed (attempt ${attempt}/3), retrying...`
+            )
+            await new Promise((resolve) =>
+              setTimeout(resolve, 100 * Math.pow(3, attempt - 1))
+            )
+          }
+        }
+      }
+
+      if (addSuccess) {
+        // Mark as prepared and store the queued track ID - track successfully added
+        this.nextTrackPrepared = true
+        this.preparedTrackId = nextTrack.tracks.spotify_track_id
+        this.spotifyQueuedTrackId = nextTrack.tracks.spotify_track_id
+      } else {
+        // Failed to add after retries - use direct play fallback
+        logger(
+          'ERROR',
+          'Failed to add track to Spotify queue after 3 attempts, will use direct play fallback',
+          undefined,
+          lastError || undefined
+        )
+        this.nextTrackPrepared = true
+        this.preparedTrackId = nextTrack.tracks.spotify_track_id
+        // DO NOT set spotifyQueuedTrackId - track is not actually in Spotify's queue
+      }
 
       return nextTrack
     } catch (error) {
-      logger(
-        'ERROR',
-        '[PrepareNextTrack] Failed to prepare next track',
-        undefined,
-        error as Error
-      )
+      logger('ERROR', 'Failed to prepare next track', undefined, error as Error)
       return null
     } finally {
       this.isPreparingNextTrack = false
@@ -436,8 +588,46 @@ class AutoPlayService {
       return
     }
 
+    // Prevent concurrent executions
+    if (this.isStartingNextTrack) {
+      return
+    }
+    this.isStartingNextTrack = true
+
     try {
-      // Get the prepared track
+      // If track is locked in Spotify's queue, let it play regardless of database queue
+      // Note: Track deletion will be handled when Spotify transitions and we detect the track change
+      if (this.spotifyQueuedTrackId === this.preparedTrackId) {
+        // Don't call playNextTrack - let Spotify handle the transition
+        // Don't clear lock here - it will be cleared when the track change is detected
+        // Just mark as started to prevent fallback logic
+        this.nextTrackStarted = true
+        return
+      }
+
+      // For non-locked tracks, delete the currently playing track before transition
+      if (this.lastTrackId) {
+        const queue = this.queueManager.getQueue()
+        const currentQueueItem = queue.find(
+          (item) => item.tracks.spotify_track_id === this.lastTrackId
+        )
+
+        if (currentQueueItem) {
+          try {
+            await this.queueManager.markAsPlayed(currentQueueItem.id)
+            await this.refreshQueueFromAPI()
+          } catch (error) {
+            logger(
+              'ERROR',
+              'Failed to remove finished track',
+              undefined,
+              error as Error
+            )
+          }
+        }
+      }
+
+      // If not in Spotify queue, validate against current database queue
       const nextTrack = this.queueManager.getNextTrack()
 
       if (!nextTrack) {
@@ -445,48 +635,62 @@ class AutoPlayService {
         return
       }
 
-      // Validate that prepared track still matches queue
+      // Validate that prepared track still matches current queue
       if (nextTrack.tracks.spotify_track_id !== this.preparedTrackId) {
         logger(
-          'WARN',
-          `[StartNextTrack] Prepared track mismatch - prepared: ${this.preparedTrackId}, queue: ${nextTrack.tracks.spotify_track_id}`
+          'INFO',
+          `[StartNextTrack] Queue changed before lock-in - prepared: ${this.preparedTrackId}, current queue: ${nextTrack.tracks.spotify_track_id}`
         )
-        // Reset preparation state and don't start
-        this.resetPredictiveState()
+        // Reset preparation state and don't start - will prepare new track on next cycle
+        this.resetPredictiveState('Queue changed before lock-in')
         return
       }
 
+      // Track matches and isn't queued yet - use fallback direct play
       logger(
-        'INFO',
-        `[StartNextTrack] Starting next track predictively: ${nextTrack.tracks.name}`
+        'WARN',
+        `[StartNextTrack] Track not in Spotify queue, using fallback play: ${nextTrack.tracks.name}`
       )
-
-      // Start playing the next track
       await this.playNextTrack(nextTrack, true)
-
-      // Mark as started
       this.nextTrackStarted = true
     } catch (error) {
-      logger(
-        'ERROR',
-        '[StartNextTrack] Failed to start next track',
-        undefined,
-        error as Error
-      )
-      // Reset state on error
-      this.resetPredictiveState()
+      logger('ERROR', 'Failed to start next track', undefined, error as Error)
+      this.resetPredictiveState('Error in startNextTrack')
+    } finally {
+      this.isStartingNextTrack = false
     }
   }
 
-  private resetPredictiveState(): void {
+  private resetPredictiveState(reason: string): void {
+    if (
+      this.nextTrackPrepared ||
+      this.preparedTrackId ||
+      this.nextTrackStarted
+    ) {
+      logger(
+        'INFO',
+        `[ResetPredictiveState] Resetting predictive state - Reason: ${reason}, PreparedTrackId: ${this.preparedTrackId}, NextTrackStarted: ${this.nextTrackStarted}`
+      )
+    }
     this.nextTrackPrepared = false
     this.preparedTrackId = null
     this.isPreparingNextTrack = false
     this.nextTrackStarted = false
+    this.isStartingNextTrack = false
   }
 
   private validatePreparedTrack(): void {
-    // If we have a prepared track, validate it still matches the queue
+    // If we have a track in Spotify's queue, it is LOCKED IN and will play next
+    // We do NOT try to change it even if the database queue order changes
+    if (this.spotifyQueuedTrackId) {
+      logger(
+        'INFO',
+        `[ValidatePreparedTrack] Track locked in Spotify queue: ${this.spotifyQueuedTrackId}, will play regardless of queue changes`
+      )
+      return
+    }
+
+    // If we have a prepared track but it's not yet in Spotify's queue, validate it still matches
     if (!this.preparedTrackId || !this.nextTrackPrepared) {
       return
     }
@@ -494,15 +698,16 @@ class AutoPlayService {
     const nextTrack = this.queueManager.getNextTrack()
 
     // If no next track or it doesn't match, reset preparation
+    // This can happen if the queue changed BEFORE we added the track to Spotify's queue
     if (
       !nextTrack ||
       nextTrack.tracks.spotify_track_id !== this.preparedTrackId
     ) {
       logger(
-        'WARN',
-        `[ValidatePreparedTrack] Queue changed - prepared track ${this.preparedTrackId} no longer matches next track ${nextTrack?.tracks.spotify_track_id || 'none'}`
+        'INFO',
+        `[ValidatePreparedTrack] Queue changed before track was locked in - prepared track ${this.preparedTrackId} no longer matches next track ${nextTrack?.tracks.spotify_track_id || 'none'}`
       )
-      this.resetPredictiveState()
+      this.resetPredictiveState('Queue changed in validatePreparedTrack')
     }
   }
 
@@ -514,6 +719,12 @@ class AutoPlayService {
     const lastState = this.lastPlaybackState
     const currentTrackId = currentState.item.id
     const lastTrackId = lastState.item?.id
+
+    // If we already processed this track's finish, don't detect it again
+    if (this.lastProcessedTrackId === currentTrackId) {
+      // Silently return false - no log needed since this happens every poll cycle
+      return false
+    }
 
     // More sensitive detection - check multiple conditions
     const progress = currentState.progress_ms || 0
@@ -550,74 +761,34 @@ class AutoPlayService {
   private async handleTrackFinished(
     trackId: string | undefined
   ): Promise<void> {
-    logger(
-      'INFO',
-      `[handleTrackFinished] Function called with trackId: ${trackId}`
-    )
-
     if (!trackId) {
-      logger('WARN', 'Track finished but no track ID available')
+      logger(
+        'WARN',
+        'Track finished but no track ID provided to handleTrackFinished'
+      )
       return
     }
 
     // Prevent processing the same track multiple times
     if (this.lastProcessedTrackId === trackId) {
-      logger(
-        'INFO',
-        `[handleTrackFinished] Skipping duplicate processing for track: ${trackId}`
-      )
       return
     }
     this.lastProcessedTrackId = trackId
     this.onTrackFinished?.(trackId)
 
     try {
-      // Find the queue item with this Spotify track ID
-      const queue = this.queueManager.getQueue()
-      logger(
-        'INFO',
-        `[handleTrackFinished] Current queue length: ${queue.length}`
-      )
-      logger(
-        'INFO',
-        `[handleTrackFinished] Queue items: ${JSON.stringify(queue.map((item) => ({ id: item.id, spotify_track_id: item.tracks.spotify_track_id, name: item.tracks.name })))}`
-      )
-
-      const queueItem = queue.find(
-        (item) => item.tracks.spotify_track_id === trackId
-      )
-
-      if (queueItem) {
-        // Track is in queue - mark it as played
-        try {
-          await this.queueManager.markAsPlayed(queueItem.id)
-        } catch (error) {
-          logger(
-            'WARN',
-            `Failed to mark queue item ${queueItem.id} as played`,
-            undefined,
-            error as Error
-          )
-          // Continue with next track even if marking as played fails
-        }
-      } else {
-        logger(
-          'WARN',
-          `No queue item found for finished trackId: ${trackId}. Track may have been manually started or already removed from queue.`
-        )
-      }
+      // Don't delete the track here - it will be deleted when the NEXT track starts
+      // This prevents duplicate deletion attempts during the transition period
 
       // Check if queue is getting low and trigger auto-fill if needed
       await this.checkAndAutoFillQueue()
 
-      // Check if next track was already started predictively
+      // Check if next track was already started predictively (locked in Spotify queue)
       if (this.nextTrackStarted) {
-        logger(
-          'INFO',
-          '[handleTrackFinished] Next track already started predictively, skipping play command'
-        )
-        // Reset predictive state for next iteration
-        this.resetPredictiveState()
+        // Track deletion already handled by track change detection
+        // Just reset the state for the next cycle
+        this.lastProcessedTrackId = null
+        this.resetPredictiveState('Locked track transition successful')
         return
       }
 
@@ -669,8 +840,25 @@ class AutoPlayService {
           '[handleTrackFinished] Starting next track reactively (fallback)'
         )
         await this.playNextTrack(nextTrack, false)
+
+        // Clear spotifyQueuedTrackId since we're using direct play (not the queue)
+        if (this.spotifyQueuedTrackId) {
+          logger(
+            'INFO',
+            `[handleTrackFinished] Clearing spotifyQueuedTrackId after fallback play: ${this.spotifyQueuedTrackId}`
+          )
+          this.spotifyQueuedTrackId = null
+        }
       } else {
         this.onQueueEmpty?.()
+        // Clear spotifyQueuedTrackId since there's no next track
+        if (this.spotifyQueuedTrackId) {
+          logger(
+            'INFO',
+            `[handleTrackFinished] Clearing spotifyQueuedTrackId (queue empty): ${this.spotifyQueuedTrackId}`
+          )
+          this.spotifyQueuedTrackId = null
+        }
       }
     } catch (error) {
       logger(
@@ -1683,7 +1871,7 @@ class AutoPlayService {
       logger('ERROR', 'Failed to play next track', undefined, error as Error)
       // Reset predictive state on error
       if (isPredictive) {
-        this.resetPredictiveState()
+        this.resetPredictiveState('Error in playNextTrack')
       }
     }
   }
@@ -1730,6 +1918,49 @@ class AutoPlayService {
     return this.lastTrackId
   }
 
+  public getLockedTrackId(): string | null {
+    return this.spotifyQueuedTrackId
+  }
+
+  public async resetAfterSeek(): Promise<void> {
+    // Reset predictive state after seeking to prevent stale preparation
+    if (
+      this.nextTrackPrepared ||
+      this.preparedTrackId ||
+      this.spotifyQueuedTrackId
+    ) {
+      logger('INFO', 'Resetting predictive state after seek operation')
+      this.resetPredictiveState('Seek operation')
+    }
+
+    // Immediately check playback state to see if we need to prepare next track
+    // This handles edge case where user seeks to near the end of a song
+    try {
+      const currentState = await this.getCurrentPlaybackState()
+      if (currentState?.item?.id && currentState.is_playing) {
+        const progress = currentState.progress_ms || 0
+        const duration = currentState.item.duration_ms || 0
+        const timeRemaining = duration - progress
+
+        // If we're within 15 seconds of the end after seeking, immediately prepare next track
+        if (timeRemaining > 0 && timeRemaining <= 15000) {
+          logger(
+            'INFO',
+            `After seek: ${timeRemaining}ms remaining - immediately preparing next track`
+          )
+          await this.prepareNextTrack(currentState.item.id)
+        }
+      }
+    } catch (error) {
+      logger(
+        'WARN',
+        'Failed to check playback state after seek',
+        undefined,
+        error as Error
+      )
+    }
+  }
+
   public getStatus(): {
     isRunning: boolean
     deviceId: string | null
@@ -1749,22 +1980,48 @@ class AutoPlayService {
   }
 }
 
+// Global singleton instance that survives hot reloads
+declare global {
+  interface Window {
+    __autoPlayServiceInstance?: AutoPlayService
+  }
+}
+
 // Singleton instance
 let autoPlayServiceInstance: AutoPlayService | null = null
 
 export function getAutoPlayService(
   config?: AutoPlayServiceConfig
 ): AutoPlayService {
+  // In browser, use global instance to survive hot reloads
+  if (typeof window !== 'undefined') {
+    if (window.__autoPlayServiceInstance) {
+      return window.__autoPlayServiceInstance
+    }
+  }
+
   if (!autoPlayServiceInstance) {
     autoPlayServiceInstance = new AutoPlayService(config)
+    // Store in global scope
+    if (typeof window !== 'undefined') {
+      window.__autoPlayServiceInstance = autoPlayServiceInstance
+    }
   }
   return autoPlayServiceInstance
 }
 
 export function resetAutoPlayService(): void {
-  if (autoPlayServiceInstance) {
-    autoPlayServiceInstance.stop()
+  const instance =
+    typeof window !== 'undefined'
+      ? window.__autoPlayServiceInstance
+      : autoPlayServiceInstance
+
+  if (instance) {
+    instance.stop()
     autoPlayServiceInstance = null
+    if (typeof window !== 'undefined') {
+      delete window.__autoPlayServiceInstance
+    }
   }
 }
 

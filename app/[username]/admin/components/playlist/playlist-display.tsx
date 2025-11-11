@@ -1,8 +1,9 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { sendApiRequest } from '@/shared/api'
 import { useSpotifyPlayerStore } from '@/hooks/useSpotifyPlayer'
+import { getAutoPlayService } from '@/services/autoPlayService'
 import {
   PlayIcon,
   TrashIcon,
@@ -14,6 +15,12 @@ import { JukeboxQueueItem } from '@/shared/types/queue'
 import { useConsoleLogsContext } from '@/hooks/ConsoleLogsProvider'
 import { useDebouncedCallback } from 'use-debounce'
 import { PlaylistImportModal } from './playlist-import-modal'
+
+interface PlaybackState {
+  item?: {
+    id: string
+  }
+}
 
 interface PlaylistDisplayProps {
   queue: JukeboxQueueItem[]
@@ -34,8 +41,40 @@ export function PlaylistDisplay({
   const [loadingTrackId, setLoadingTrackId] = useState<string | null>(null)
   const [deletingTrackId, setDeletingTrackId] = useState<string | null>(null)
   const [isImportModalOpen, setIsImportModalOpen] = useState(false)
-  const { deviceId, playbackState } = useSpotifyPlayerStore()
+  const { deviceId } = useSpotifyPlayerStore()
   const { addLog } = useConsoleLogsContext()
+  const [playbackState, setPlaybackState] = useState<PlaybackState | null>(null)
+
+  // Fetch current playback state from Spotify API (more reliable than SDK after transitions)
+  const fetchPlaybackState = async (): Promise<void> => {
+    try {
+      const state = await sendApiRequest({
+        path: 'me/player',
+        method: 'GET'
+      })
+      setPlaybackState(state as PlaybackState)
+    } catch {
+      // Silently fail - playback might be stopped
+    }
+  }
+
+  // Poll playback state every 5 seconds
+  useEffect(() => {
+    void fetchPlaybackState()
+
+    const interval = setInterval(() => {
+      void fetchPlaybackState()
+    }, 5000)
+
+    return () => clearInterval(interval)
+  }, [])
+
+  // Immediately fetch playback state on queue changes (track transitions)
+  useEffect(() => {
+    if (queue.length > 0) {
+      void fetchPlaybackState()
+    }
+  }, [queue])
 
   // Debounced refresh to prevent excessive API calls
   const debouncedRefresh = useDebouncedCallback(async () => {
@@ -186,17 +225,22 @@ export function PlaylistDisplay({
           </thead>
           <tbody>
             {queue.map((item, index) => {
+              // Get fresh lock state on every render - single source of truth
+              const lockedTrackId = getAutoPlayService().getLockedTrackId()
+
               const isCurrentlyPlaying =
                 playbackState?.item?.id === item.tracks.spotify_track_id
               const isTrackLoading = loadingTrackId === item.tracks.spotify_url
               const isTrackDeleting = deletingTrackId === item.id
+              const isLockedTrack =
+                lockedTrackId === item.tracks.spotify_track_id
 
               // Determine if this is the next track to play
               // Queue is already sorted by votes DESC, queued_at ASC from database
               // (see api/playlist/[id]/route.ts lines 41-42)
               // So the first non-playing track is the next track
               let isNextTrack = false
-              if (!isCurrentlyPlaying) {
+              if (!isCurrentlyPlaying && !isLockedTrack) {
                 const availableTracks = queue.filter(
                   (track) =>
                     playbackState?.item?.id !== track.tracks.spotify_track_id
@@ -211,14 +255,25 @@ export function PlaylistDisplay({
                 <tr
                   key={item.id}
                   className={`border-b border-gray-800 last:border-0 hover:bg-gray-800/50 ${
-                    isCurrentlyPlaying ? 'bg-green-900/20' : ''
-                  } ${isNextTrack ? 'bg-blue-900/20' : ''}`}
+                    isCurrentlyPlaying
+                      ? 'bg-green-900/20'
+                      : isLockedTrack
+                        ? 'bg-orange-900/20'
+                        : isNextTrack
+                          ? 'bg-blue-900/20'
+                          : ''
+                  }`}
                 >
                   <td className='px-4 py-3 text-sm text-gray-400'>
                     {isCurrentlyPlaying ? (
                       <div className='flex items-center gap-2'>
                         {index + 1}
                         <span className='h-2 w-2 animate-pulse rounded-full bg-green-500'></span>
+                      </div>
+                    ) : isLockedTrack ? (
+                      <div className='flex items-center gap-2'>
+                        {index + 1}
+                        <span className='h-2 w-2 rounded-full bg-orange-500'></span>
                       </div>
                     ) : isNextTrack ? (
                       <div className='flex items-center gap-2'>
@@ -243,7 +298,12 @@ export function PlaylistDisplay({
                         (Now Playing)
                       </span>
                     )}
-                    {isNextTrack && (
+                    {isLockedTrack && !isCurrentlyPlaying && (
+                      <span className='ml-2 text-xs text-orange-500'>
+                        (Locked in to play next)
+                      </span>
+                    )}
+                    {isNextTrack && !isLockedTrack && (
                       <span className='ml-2 text-xs text-blue-500'>
                         (Next Up)
                       </span>
@@ -277,13 +337,16 @@ export function PlaylistDisplay({
                         disabled={
                           isTrackLoading ||
                           isTrackDeleting ||
-                          isCurrentlyPlaying
+                          isCurrentlyPlaying ||
+                          isLockedTrack
                         }
                         className='hover:text-white rounded p-1 text-gray-400 hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50'
                         title={
                           isCurrentlyPlaying
                             ? 'Cannot delete currently playing track'
-                            : 'Remove from queue'
+                            : isLockedTrack
+                              ? 'Track is locked - queued to play next in Spotify'
+                              : 'Remove from queue'
                         }
                       >
                         {isTrackDeleting ? (

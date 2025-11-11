@@ -1,4 +1,7 @@
 import { JukeboxQueueItem } from '@/shared/types/queue'
+import { createModuleLogger } from '@/shared/utils/logger'
+
+const logger = createModuleLogger('QueueManager')
 
 class QueueManager {
   private queue: JukeboxQueueItem[] = []
@@ -40,14 +43,19 @@ class QueueManager {
 
       if (!response.ok) {
         const errorData = await response.json()
-        console.error('Failed to mark track as played:', errorData.message)
+        logger('ERROR', `Failed to mark track as played: ${errorData.message}`)
         throw new Error(`Failed to mark track as played: ${errorData.message}`)
       }
 
       // Remove the track from the local in-memory queue
       this.queue = this.queue.filter((track) => track.id !== queueId)
     } catch (error) {
-      console.error('An error occurred while marking track as played:', error)
+      logger(
+        'ERROR',
+        'Error marking track as played',
+        undefined,
+        error as Error
+      )
       // Re-throw the error to be handled by the calling service
       throw error
     }

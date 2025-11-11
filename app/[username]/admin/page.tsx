@@ -267,13 +267,6 @@ export default function AdminPage(): JSX.Element {
     [updateTrackSuggestionsState, username]
   )
 
-  const formatTime = useCallback((ms: number): string => {
-    const seconds = Math.floor(ms / 1000)
-    const minutes = Math.floor(seconds / 60)
-    const remainingSeconds = seconds % 60
-    return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`
-  }, [])
-
   // Add graceful token error handling
   const handleTokenError = useCallback(async (): Promise<void> => {
     try {
@@ -418,8 +411,6 @@ export default function AdminPage(): JSX.Element {
 
             <HealthStatusSection
               healthStatus={healthStatus}
-              playbackInfo={null}
-              formatTime={formatTime}
               isReady={isReady}
               playerStatus={playerStatus}
             />
