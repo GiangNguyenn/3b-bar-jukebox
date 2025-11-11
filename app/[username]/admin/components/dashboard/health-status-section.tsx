@@ -1,17 +1,10 @@
 'use client'
 
 import { StatusIndicator } from './components/status-indicator'
-import { PlaybackProgress } from './components/playback-progress'
 import { HealthStatus } from '@/shared/types/health'
 
 interface HealthStatusSectionProps {
   healthStatus: HealthStatus
-  playbackInfo: {
-    currentTrack?: string
-    progress?: number
-    duration_ms?: number
-  } | null
-  formatTime: (ms: number) => string
   isReady: boolean
   playerStatus?:
     | 'ready'
@@ -68,8 +61,6 @@ const connectionColorMap: Record<string, string> = {
 
 export function HealthStatusSection({
   healthStatus,
-  playbackInfo,
-  formatTime,
   isReady,
   playerStatus
 }: HealthStatusSectionProps): JSX.Element {
@@ -118,18 +109,7 @@ export function HealthStatusSection({
                   ? 'Playback Error'
                   : 'Playback Stopped'
           }
-          subtitle={playbackInfo?.currentTrack}
         />
-
-        {playbackInfo?.duration_ms && playbackInfo?.progress && (
-          <div className='mt-2'>
-            <PlaybackProgress
-              progress={playbackInfo.progress}
-              duration_ms={playbackInfo.duration_ms}
-              formatTime={formatTime}
-            />
-          </div>
-        )}
 
         <StatusIndicator
           title='Token Status'

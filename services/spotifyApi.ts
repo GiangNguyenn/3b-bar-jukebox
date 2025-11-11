@@ -1,6 +1,7 @@
 import {
   SpotifyPlaylistItem,
   SpotifyPlaybackState,
+  SpotifyPlayerQueue,
   TrackItem
 } from '@/shared/types/spotify'
 import { sendApiRequest } from '@/shared/api'
@@ -39,6 +40,9 @@ export interface SpotifyApiClient {
   }>
   pausePlayback(deviceId: string): Promise<{ success: boolean }>
   addItemsToPlaylist(playlistId: string, trackUris: string[]): Promise<void>
+  addTrackToQueue(trackUri: string): Promise<void>
+  getCurrentQueue(): Promise<SpotifyPlayerQueue>
+  seekToPosition(position_ms: number, deviceId?: string): Promise<void>
 }
 
 export class SpotifyApiService implements SpotifyApiClient {
@@ -355,5 +359,49 @@ export class SpotifyApiService implements SpotifyApiClient {
         throw error
       }
     }, 'SpotifyApi.pausePlayback')
+  }
+
+  async addTrackToQueue(trackUri: string): Promise<void> {
+    const formattedUri = trackUri.startsWith('spotify:track:')
+      ? trackUri
+      : `spotify:track:${trackUri}`
+
+    return handleOperationError(
+      async () =>
+        this.apiClient({
+          path: `me/player/queue?uri=${encodeURIComponent(formattedUri)}`,
+          method: 'POST',
+          retryConfig: this.retryConfig
+        }),
+      'SpotifyApi.addTrackToQueue'
+    )
+  }
+
+  async getCurrentQueue(): Promise<SpotifyPlayerQueue> {
+    return handleOperationError(
+      async () =>
+        this.apiClient<SpotifyPlayerQueue>({
+          path: 'me/player/queue',
+          method: 'GET',
+          retryConfig: this.retryConfig
+        }),
+      'SpotifyApi.getCurrentQueue'
+    )
+  }
+
+  async seekToPosition(position_ms: number, deviceId?: string): Promise<void> {
+    const path = deviceId
+      ? `me/player/seek?position_ms=${position_ms}&device_id=${deviceId}`
+      : `me/player/seek?position_ms=${position_ms}`
+
+    return handleOperationError(
+      async () =>
+        this.apiClient({
+          path,
+          method: 'PUT',
+          retryConfig: this.retryConfig
+        }),
+      'SpotifyApi.seekToPosition'
+    )
   }
 }

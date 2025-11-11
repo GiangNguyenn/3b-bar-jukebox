@@ -318,8 +318,8 @@ class PlayerLifecycleService {
         this.currentQueueTrack = matchingQueueItem
       } else if (!matchingQueueItem && this.currentQueueTrack) {
         this.log(
-          'WARN',
-          `Currently playing track ${currentSpotifyTrack.id} not found in queue`
+          'INFO',
+          `Currently playing track ${currentSpotifyTrack.id} not found in queue (expected during transitions)`
         )
         this.currentQueueTrack = null
       } else if (
