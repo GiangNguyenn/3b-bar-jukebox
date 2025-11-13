@@ -1651,6 +1651,38 @@ class AutoPlayService {
       return
     }
 
+    // Defensive check: verify we're not about to play a track that's already playing
+    // This is a final safety net to catch edge cases where all other protections failed
+    try {
+      const currentPlaybackState = await sendApiRequest<{
+        item?: { id: string; name: string }
+        is_playing: boolean
+      }>({
+        path: 'me/player',
+        method: 'GET'
+      })
+
+      if (
+        currentPlaybackState?.item &&
+        currentPlaybackState.item.id === track.tracks.spotify_track_id &&
+        currentPlaybackState.is_playing
+      ) {
+        logger(
+          'WARN',
+          `[playNextTrack] Track ${track.tracks.name} (${track.tracks.spotify_track_id}) is already playing. Skipping playback to prevent duplicate.`
+        )
+        return
+      }
+    } catch (apiError) {
+      // If we can't verify, log warning but continue with playback
+      logger(
+        'WARN',
+        '[playNextTrack] Failed to verify current playback state before playing next track, continuing anyway',
+        undefined,
+        apiError as Error
+      )
+    }
+
     try {
       const trackUri = `spotify:track:${track.tracks.spotify_track_id}`
 

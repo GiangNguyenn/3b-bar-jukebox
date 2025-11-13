@@ -3,6 +3,8 @@ import { JukeboxQueueItem } from '@/shared/types/queue'
 class QueueManager {
   private queue: JukeboxQueueItem[] = []
   private static instance: QueueManager
+  // Track IDs currently being deleted to prevent race conditions with queue refreshes
+  private pendingDeletes: Set<string> = new Set()
 
   private constructor() {}
 
@@ -14,7 +16,10 @@ class QueueManager {
   }
 
   public updateQueue(newQueue: JukeboxQueueItem[]): void {
-    this.queue = newQueue
+    // Filter out any tracks that are currently being deleted
+    // This prevents race conditions where a queue refresh brings back tracks
+    // that are in the process of being removed
+    this.queue = newQueue.filter((track) => !this.pendingDeletes.has(track.id))
   }
 
   public getNextTrack(): JukeboxQueueItem | undefined {
@@ -33,6 +38,23 @@ class QueueManager {
   }
 
   public async markAsPlayed(queueId: string, maxRetries = 2): Promise<void> {
+    // Store the track for potential rollback
+    const trackToRemove = this.queue.find((track) => track.id === queueId)
+
+    if (!trackToRemove) {
+      console.warn(
+        `Track ${queueId} not found in queue, may have already been removed`
+      )
+      return
+    }
+
+    // Optimistically remove from local queue immediately
+    // This prevents race conditions with queue refreshes during the DELETE request
+    this.queue = this.queue.filter((track) => track.id !== queueId)
+
+    // Mark as pending delete to prevent queue refresh from bringing it back
+    this.pendingDeletes.add(queueId)
+
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
       try {
         const response = await fetch(`/api/queue/${queueId}`, {
@@ -40,17 +62,16 @@ class QueueManager {
         })
 
         if (response.ok) {
-          // Success - remove from local queue
-          this.queue = this.queue.filter((track) => track.id !== queueId)
+          // Success - remove from pending deletes
+          this.pendingDeletes.delete(queueId)
           return
         }
 
         if (response.status === 404) {
-          // Track already removed from database
-          // Update local queue to match and treat as success
-          this.queue = this.queue.filter((track) => track.id !== queueId)
+          // Track already removed from database - treat as success
+          this.pendingDeletes.delete(queueId)
           console.warn(
-            `Track ${queueId} already removed from database (404), updated local queue`
+            `Track ${queueId} already removed from database (404), continuing`
           )
           return
         }
@@ -65,12 +86,16 @@ class QueueManager {
           continue
         }
 
-        // Exhausted retries
-        const errorData = await response.json()
+        // Exhausted retries - rollback the optimistic update
         console.error(
-          `Failed to mark track ${queueId} as played after ${maxRetries + 1} attempts:`,
-          errorData.message
+          `Failed to mark track ${queueId} as played after ${maxRetries + 1} attempts, rolling back local queue`
         )
+
+        // Add track back to queue at the beginning (it was highest priority)
+        this.queue.unshift(trackToRemove)
+        this.pendingDeletes.delete(queueId)
+
+        const errorData = await response.json()
         throw new Error(`Failed to mark track as played: ${errorData.message}`)
       } catch (error) {
         // Network or parsing errors
@@ -84,11 +109,16 @@ class QueueManager {
           continue
         }
 
-        // Exhausted retries
+        // Exhausted retries - rollback the optimistic update
         console.error(
-          `An error occurred while marking track ${queueId} as played after ${maxRetries + 1} attempts:`,
+          `An error occurred while marking track ${queueId} as played after ${maxRetries + 1} attempts, rolling back local queue:`,
           error
         )
+
+        // Add track back to queue at the beginning (it was highest priority)
+        this.queue.unshift(trackToRemove)
+        this.pendingDeletes.delete(queueId)
+
         throw error
       }
     }

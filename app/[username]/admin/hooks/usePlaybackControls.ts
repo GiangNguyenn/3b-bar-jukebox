@@ -73,20 +73,43 @@ export function usePlaybackControls(): {
   }, [deviceId, playbackState, getIsActuallyPlaying, addLog, setPlaybackState])
 
   const handleSkip = useCallback(async (): Promise<void> => {
-    if (!deviceId || !playbackState?.item) {
-      addLog(
-        'WARN',
-        'Cannot skip: No device or no currently playing track',
-        'Playback'
-      )
+    if (!deviceId) {
+      addLog('WARN', 'Cannot skip: No device available', 'Playback')
       return
     }
 
     setIsSkipLoading(true)
 
     try {
-      const currentTrackId = playbackState.item.id
-      const currentTrackName = playbackState.item.name
+      // Fetch real-time playback state from Spotify API to avoid race conditions
+      // This ensures we always have the most current track information
+      let currentPlaybackState: SpotifyPlaybackState | null = null
+
+      try {
+        currentPlaybackState = await sendApiRequest<SpotifyPlaybackState>({
+          path: 'me/player',
+          method: 'GET'
+        })
+      } catch (apiError) {
+        addLog(
+          'WARN',
+          'Failed to fetch current playback state from API, falling back to cached state',
+          'Playback',
+          apiError instanceof Error ? apiError : undefined
+        )
+        // Fallback to cached state if API call fails
+        currentPlaybackState = playbackState
+      }
+
+      // Verify we have a currently playing track
+      if (!currentPlaybackState?.item) {
+        addLog('WARN', 'Cannot skip: No currently playing track', 'Playback')
+        setIsSkipLoading(false)
+        return
+      }
+
+      const currentTrackId = currentPlaybackState.item.id
+      const currentTrackName = currentPlaybackState.item.name
       addLog(
         'INFO',
         `Attempting to skip track: ${currentTrackName}`,

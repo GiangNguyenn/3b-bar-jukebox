@@ -178,6 +178,38 @@ class PlayerLifecycleService {
       return
     }
 
+    // Defensive check: verify we're not about to play a track that's already playing
+    // This is a final safety net to catch edge cases where all other protections failed
+    try {
+      const { sendApiRequest } = await import('@/shared/api')
+      const currentPlaybackState = await sendApiRequest<{
+        item?: { id: string; name: string }
+        is_playing: boolean
+      }>({
+        path: 'me/player',
+        method: 'GET'
+      })
+
+      if (
+        currentPlaybackState?.item &&
+        currentPlaybackState.item.id === track.tracks.spotify_track_id &&
+        currentPlaybackState.is_playing
+      ) {
+        this.log(
+          'WARN',
+          `Track ${track.tracks.name} (${track.tracks.spotify_track_id}) is already playing. Skipping playback to prevent duplicate.`
+        )
+        return
+      }
+    } catch (apiError) {
+      // If we can't verify, log warning but continue with playback
+      this.log(
+        'WARN',
+        'Failed to verify current playback state before playing next track, continuing anyway',
+        apiError
+      )
+    }
+
     const trackUri = `spotify:track:${track.tracks.spotify_track_id}`
     this.log(
       'INFO',
@@ -360,14 +392,21 @@ class PlayerLifecycleService {
 
     let nextTrack = queueManager.getNextTrack()
 
-    // Validate that the next track is not the same as the finished track
-    if (
+    // Strengthen duplicate detection: validate that next track is not the same as finished track
+    // Try multiple times with aggressive retry to handle race conditions
+    let duplicateRemovalAttempts = 0
+    const maxDuplicateRemovalAttempts = 3
+
+    while (
       nextTrack &&
-      nextTrack.tracks.spotify_track_id === currentSpotifyTrackId
+      nextTrack.tracks.spotify_track_id === currentSpotifyTrackId &&
+      duplicateRemovalAttempts < maxDuplicateRemovalAttempts
     ) {
+      duplicateRemovalAttempts++
+
       this.log(
         'ERROR',
-        `Next track matches finished track (${currentSpotifyTrackId}) - queue sync issue detected. Attempting to remove duplicate.`
+        `Next track matches finished track (${currentSpotifyTrackId}) - queue sync issue detected. Attempting to remove duplicate (attempt ${duplicateRemovalAttempts}/${maxDuplicateRemovalAttempts}).`
       )
 
       try {
@@ -376,14 +415,56 @@ class PlayerLifecycleService {
           'INFO',
           `Successfully removed duplicate track on retry: ${nextTrack.id}`
         )
+
+        // Get next track again
         nextTrack = queueManager.getNextTrack()
+
+        // If we successfully removed it and got a different track, break
+        if (
+          !nextTrack ||
+          nextTrack.tracks.spotify_track_id !== currentSpotifyTrackId
+        ) {
+          break
+        }
       } catch (retryError) {
         this.log(
           'ERROR',
-          'Failed to remove duplicate track on retry',
+          `Failed to remove duplicate track on attempt ${duplicateRemovalAttempts}`,
           retryError
         )
-        nextTrack = undefined
+
+        // If this was the last attempt, set nextTrack to undefined to prevent playback
+        if (duplicateRemovalAttempts >= maxDuplicateRemovalAttempts) {
+          nextTrack = undefined
+          break
+        }
+      }
+    }
+
+    // Final validation: if next track STILL matches finished track after all attempts
+    if (
+      nextTrack &&
+      nextTrack.tracks.spotify_track_id === currentSpotifyTrackId
+    ) {
+      this.log(
+        'ERROR',
+        `Next track STILL matches finished track after ${maxDuplicateRemovalAttempts} removal attempts. Refusing to play duplicate. Pausing playback.`
+      )
+      nextTrack = undefined
+
+      // Pause playback to prevent playing the same track again
+      if (this.deviceId) {
+        try {
+          const SpotifyApiService = (await import('@/services/spotifyApi'))
+            .SpotifyApiService
+          await SpotifyApiService.getInstance().pausePlayback(this.deviceId)
+        } catch (pauseError) {
+          this.log(
+            'ERROR',
+            'Failed to pause playback after duplicate detection',
+            pauseError
+          )
+        }
       }
     }
 
@@ -397,7 +478,10 @@ class PlayerLifecycleService {
       // Play the next track immediately using SDK event (0ms delay)
       await this.playNextTrack(nextTrack)
     } else {
-      this.log('INFO', 'Queue is empty. Playback will stop.')
+      this.log(
+        'INFO',
+        'Queue is empty or duplicate track detected. Playback will stop.'
+      )
       this.currentQueueTrack = null
     }
   }
