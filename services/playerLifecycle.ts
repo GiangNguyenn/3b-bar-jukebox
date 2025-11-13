@@ -113,6 +113,101 @@ class PlayerLifecycleService {
     }
   }
 
+  private async playTrackWithRetry(
+    trackUri: string,
+    deviceId: string,
+    maxRetries = 3
+  ): Promise<boolean> {
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      try {
+        this.log(
+          'INFO',
+          `Playing track ${trackUri} on device ${deviceId} (attempt ${attempt + 1}/${maxRetries + 1})`
+        )
+
+        await sendApiRequest({
+          path: `me/player/play?device_id=${deviceId}`,
+          method: 'PUT',
+          body: {
+            uris: [trackUri]
+          }
+        })
+
+        this.log('INFO', `Successfully started playback for ${trackUri}`)
+        return true
+      } catch (error) {
+        const errorMessage =
+          error instanceof Error ? error.message : String(error)
+
+        // Handle "Restriction violated" by skipping to next track
+        if (errorMessage.includes('Restriction violated')) {
+          this.log(
+            'WARN',
+            `Restriction violated for track ${trackUri}, skipping to next track`
+          )
+          return false // Don't retry, just skip this track
+        }
+
+        // If we've exhausted retries, fail
+        if (attempt === maxRetries) {
+          this.log(
+            'ERROR',
+            `Failed to play track ${trackUri} after ${maxRetries + 1} attempts`,
+            error
+          )
+          return false
+        }
+
+        // Exponential backoff: 500ms, 1000ms, 2000ms
+        const backoffMs = 500 * Math.pow(2, attempt)
+        this.log(
+          'WARN',
+          `Playback attempt ${attempt + 1} failed, retrying in ${backoffMs}ms`,
+          error
+        )
+        await new Promise((resolve) => setTimeout(resolve, backoffMs))
+      }
+    }
+    return false
+  }
+
+  private async playNextTrack(track: JukeboxQueueItem): Promise<void> {
+    if (!this.deviceId) {
+      this.log('ERROR', 'No device ID available to play next track')
+      return
+    }
+
+    const trackUri = `spotify:track:${track.tracks.spotify_track_id}`
+    this.log(
+      'INFO',
+      `Starting next track: ${track.tracks.name} by ${track.tracks.artist}`
+    )
+
+    const success = await this.playTrackWithRetry(trackUri, this.deviceId, 3)
+
+    if (!success) {
+      this.log(
+        'WARN',
+        `Failed to play track ${track.tracks.name}, trying next track in queue`
+      )
+
+      // Remove the problematic track from queue
+      try {
+        await queueManager.markAsPlayed(track.id)
+      } catch (error) {
+        this.log('ERROR', 'Failed to remove problematic track from queue', error)
+      }
+
+      // Try to play the next track recursively
+      const nextTrack = queueManager.getNextTrack()
+      if (nextTrack) {
+        await this.playNextTrack(nextTrack)
+      } else {
+        this.log('INFO', 'No more tracks available in queue')
+      }
+    }
+  }
+
   private async handleRestrictionViolatedError(): Promise<void> {
     try {
       const currentTrack = this.currentQueueTrack
@@ -290,9 +385,12 @@ class PlayerLifecycleService {
     if (nextTrack) {
       this.log(
         'INFO',
-        `Next track in queue: ${nextTrack.tracks.name} (AutoPlayService will handle playback)`
+        `Next track in queue: ${nextTrack.tracks.name}, starting playback immediately`
       )
       this.currentQueueTrack = nextTrack
+      
+      // Play the next track immediately using SDK event (0ms delay)
+      await this.playNextTrack(nextTrack)
     } else {
       this.log('INFO', 'Queue is empty. Playback will stop.')
       this.currentQueueTrack = null

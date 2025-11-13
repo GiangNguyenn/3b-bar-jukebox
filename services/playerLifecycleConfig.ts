@@ -14,10 +14,10 @@ export const PLAYER_LIFECYCLE_CONFIG = {
   STATUS_DEBOUNCE: 500, // 500ms for status transitions
   // Queue thresholds
   QUEUE_LOW_THRESHOLD: 10, // Number of tracks before triggering auto-fill
-  TRACK_END_THRESHOLD_MS: 1000, // Milliseconds from track end to consider it finished
+  TRACK_END_THRESHOLD_MS: 500, // Milliseconds from track end to consider it finished (reduced from 1000ms)
   // Predictive track start thresholds
-  TRACK_PREPARE_THRESHOLD_MS: 3000, // Start preparing 3s before end
-  TRACK_START_THRESHOLD_MS: 1500, // Start playing 1.5s before end
+  TRACK_PREPARE_THRESHOLD_MS: 2500, // Start preparing 2.5s before end (reduced from 3000ms)
+  TRACK_START_THRESHOLD_MS: 1000, // Start playing 1s before end (reduced from 1500ms)
   // Timeouts
   CLEANUP_TIMEOUT_MS: 5 * 60 * 1000, // 5 minutes
   SDK_RELOAD_TIMEOUT_MS: 10000 // 10 seconds

@@ -32,24 +32,65 @@ class QueueManager {
     return this.queue
   }
 
-  public async markAsPlayed(queueId: string): Promise<void> {
-    try {
-      const response = await fetch(`/api/queue/${queueId}`, {
-        method: 'DELETE'
-      })
+  public async markAsPlayed(queueId: string, maxRetries = 2): Promise<void> {
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      try {
+        const response = await fetch(`/api/queue/${queueId}`, {
+          method: 'DELETE'
+        })
 
-      if (!response.ok) {
+        if (response.ok) {
+          // Success - remove from local queue
+          this.queue = this.queue.filter((track) => track.id !== queueId)
+          return
+        }
+
+        if (response.status === 404) {
+          // Track already removed from database
+          // Update local queue to match and treat as success
+          this.queue = this.queue.filter((track) => track.id !== queueId)
+          console.warn(
+            `Track ${queueId} already removed from database (404), updated local queue`
+          )
+          return
+        }
+
+        // Other errors - retry if attempts remain
+        if (attempt < maxRetries) {
+          const backoffMs = 500 * (attempt + 1)
+          console.warn(
+            `Failed to mark track ${queueId} as played (attempt ${attempt + 1}/${maxRetries + 1}), retrying in ${backoffMs}ms`
+          )
+          await new Promise((resolve) => setTimeout(resolve, backoffMs))
+          continue
+        }
+
+        // Exhausted retries
         const errorData = await response.json()
-        console.error('Failed to mark track as played:', errorData.message)
+        console.error(
+          `Failed to mark track ${queueId} as played after ${maxRetries + 1} attempts:`,
+          errorData.message
+        )
         throw new Error(`Failed to mark track as played: ${errorData.message}`)
-      }
+      } catch (error) {
+        // Network or parsing errors
+        if (attempt < maxRetries) {
+          const backoffMs = 500 * (attempt + 1)
+          console.warn(
+            `Error marking track ${queueId} as played (attempt ${attempt + 1}/${maxRetries + 1}), retrying in ${backoffMs}ms:`,
+            error
+          )
+          await new Promise((resolve) => setTimeout(resolve, backoffMs))
+          continue
+        }
 
-      // Remove the track from the local in-memory queue
-      this.queue = this.queue.filter((track) => track.id !== queueId)
-    } catch (error) {
-      console.error('An error occurred while marking track as played:', error)
-      // Re-throw the error to be handled by the calling service
-      throw error
+        // Exhausted retries
+        console.error(
+          `An error occurred while marking track ${queueId} as played after ${maxRetries + 1} attempts:`,
+          error
+        )
+        throw error
+      }
     }
   }
 }
