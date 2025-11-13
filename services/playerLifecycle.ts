@@ -195,7 +195,11 @@ class PlayerLifecycleService {
       try {
         await queueManager.markAsPlayed(track.id)
       } catch (error) {
-        this.log('ERROR', 'Failed to remove problematic track from queue', error)
+        this.log(
+          'ERROR',
+          'Failed to remove problematic track from queue',
+          error
+        )
       }
 
       // Try to play the next track recursively
@@ -388,7 +392,7 @@ class PlayerLifecycleService {
         `Next track in queue: ${nextTrack.tracks.name}, starting playback immediately`
       )
       this.currentQueueTrack = nextTrack
-      
+
       // Play the next track immediately using SDK event (0ms delay)
       await this.playNextTrack(nextTrack)
     } else {
