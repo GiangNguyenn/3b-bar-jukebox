@@ -49,6 +49,7 @@ class PlayerLifecycleService {
   private verificationTimeoutRef: NodeJS.Timeout | null = null
   private authRetryCount: number = 0
   private lastProcessedTrackId: string | null = null
+  private lastKnownPlayingTrackId: string | null = null
   private addLog:
     | ((
         level: LogLevel,
@@ -403,6 +404,24 @@ class PlayerLifecycleService {
 
   private syncQueueWithPlayback(state: PlayerSDKState): void {
     const currentSpotifyTrack = state.track_window?.current_track
+    
+    // Reset lastProcessedTrackId when a new track starts playing
+    // This prevents the guard from blocking legitimate track-finished events
+    // if the same song plays again (e.g., due to queue sync issues or failed operations)
+    if (currentSpotifyTrack) {
+      const currentTrackId = currentSpotifyTrack.id
+      if (this.lastKnownPlayingTrackId !== currentTrackId) {
+        if (this.lastKnownPlayingTrackId) {
+          this.log(
+            'INFO',
+            `Track changed from ${this.lastKnownPlayingTrackId} to ${currentTrackId}, resetting track processing guard`
+          )
+        }
+        this.lastProcessedTrackId = null
+        this.lastKnownPlayingTrackId = currentTrackId
+      }
+    }
+    
     if (currentSpotifyTrack && !state.paused) {
       const queue = queueManager.getQueue()
       const matchingQueueItem = queue.find(
@@ -792,6 +811,7 @@ class PlayerLifecycleService {
 
     // Reset state
     this.lastProcessedTrackId = null
+    this.lastKnownPlayingTrackId = null
     this.authRetryCount = 0
 
     this.log('INFO', 'Player destroyed')
