@@ -404,7 +404,7 @@ class PlayerLifecycleService {
 
   private syncQueueWithPlayback(state: PlayerSDKState): void {
     const currentSpotifyTrack = state.track_window?.current_track
-    
+
     // Reset lastProcessedTrackId when a new track starts playing
     // This prevents the guard from blocking legitimate track-finished events
     // if the same song plays again (e.g., due to queue sync issues or failed operations)
@@ -421,7 +421,7 @@ class PlayerLifecycleService {
         this.lastKnownPlayingTrackId = currentTrackId
       }
     }
-    
+
     if (currentSpotifyTrack && !state.paused) {
       const queue = queueManager.getQueue()
       const matchingQueueItem = queue.find(
