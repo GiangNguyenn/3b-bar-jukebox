@@ -491,6 +491,12 @@ class AutoPlayService {
     // Note: predictiveFailed is NOT reset here - it persists for reactive fallback
   }
 
+  public resetAfterSeek(): void {
+    // Reset predictive state after seeking to prevent stale track preparation
+    this.resetPredictiveState()
+    this.predictiveFailed = false
+  }
+
   private validatePreparedTrack(): void {
     // If we have a prepared track, validate it still matches the queue
     if (!this.preparedTrackId || !this.nextTrackPrepared) {
@@ -1730,6 +1736,12 @@ class AutoPlayService {
       isInitialized: this.isInitialized,
       queueLength: this.queueManager.getQueue().length
     }
+  }
+
+  public getLockedTrackId(): string | null {
+    // Track locking feature not yet implemented
+    // Returns null to indicate no track is currently locked
+    return null
   }
 }
 

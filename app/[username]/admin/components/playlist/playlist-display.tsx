@@ -226,6 +226,7 @@ export function PlaylistDisplay({
           <tbody>
             {queue.map((item, index) => {
               // Get fresh lock state on every render - single source of truth
+              // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call
               const lockedTrackId = getAutoPlayService().getLockedTrackId()
 
               const isCurrentlyPlaying =
