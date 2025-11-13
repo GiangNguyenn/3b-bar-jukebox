@@ -8,9 +8,10 @@ import { usePlaybackControls } from '../../../hooks/usePlaybackControls'
 import { useSpotifyPlayerStore } from '@/hooks/useSpotifyPlayer'
 import { sendApiRequest } from '@/shared/api'
 import { useConsoleLogsContext } from '@/hooks/ConsoleLogsProvider'
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import { Copy, Check, QrCode } from 'lucide-react'
 import { QRCodeComponent } from '@/components/ui'
+import { getAutoPlayService } from '@/services/autoPlayService'
 
 interface JukeboxSectionProps {
   className?: string
@@ -26,6 +27,9 @@ export function JukeboxSection({
   const [volume, setVolume] = useState(50)
   const [copied, setCopied] = useState(false)
   const [showQRCode, setShowQRCode] = useState(false)
+  const [isSeeking, setIsSeeking] = useState(false)
+  const [isDragging, setIsDragging] = useState(false)
+  const progressBarRef = useRef<HTMLDivElement>(null)
 
   const { data: currentlyPlaying, isLoading } = useNowPlayingTrack({
     token: null, // Use admin credentials
@@ -93,6 +97,71 @@ export function JukeboxSection({
     return Math.min((progress / duration) * 100, 100)
   }
 
+  const handleSeek = async (clientX: number): Promise<void> => {
+    if (
+      !progressBarRef.current ||
+      !deviceId ||
+      !currentlyPlaying?.item?.duration_ms
+    )
+      return
+
+    const rect = progressBarRef.current.getBoundingClientRect()
+    const clickPosition = clientX - rect.left
+    const clickPercentage = Math.max(0, Math.min(1, clickPosition / rect.width))
+    const seekPosition = Math.floor(
+      clickPercentage * currentlyPlaying.item.duration_ms
+    )
+
+    setIsSeeking(true)
+    try {
+      await sendApiRequest({
+        path: `me/player/seek?position_ms=${seekPosition}${deviceId ? `&device_id=${deviceId}` : ''}`,
+        method: 'PUT'
+      })
+      addLog('INFO', `Seeked to ${formatTime(seekPosition)}`, 'JukeboxSection')
+
+      // Reset predictive state after seeking to prevent stale track preparation
+      // This will also immediately prepare next track if we seeked to near the end
+      void getAutoPlayService().resetAfterSeek()
+    } catch (error) {
+      addLog(
+        'ERROR',
+        'Failed to seek',
+        'JukeboxSection',
+        error instanceof Error ? error : undefined
+      )
+    } finally {
+      setTimeout(() => setIsSeeking(false), 500)
+    }
+  }
+
+  const handleClick = (e: React.MouseEvent<HTMLDivElement>): void => {
+    if (!isDragging) {
+      void handleSeek(e.clientX)
+    }
+  }
+
+  const handleMouseDown = (e: React.MouseEvent<HTMLDivElement>): void => {
+    setIsDragging(true)
+    void handleSeek(e.clientX)
+  }
+
+  const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>): void => {
+    if (isDragging) {
+      void handleSeek(e.clientX)
+    }
+  }
+
+  const handleMouseUp = (): void => {
+    setIsDragging(false)
+  }
+
+  const handleMouseLeave = (): void => {
+    if (isDragging) {
+      setIsDragging(false)
+    }
+  }
+
   return (
     <div
       className={`rounded-lg border border-gray-800 bg-gray-900/50 p-4 ${className}`}
@@ -136,15 +205,25 @@ export function JukeboxSection({
               </div>
             </div>
 
-            {/* Progress Bar */}
+            {/* Progress Bar - Clickable */}
             {currentlyPlaying.progress_ms &&
               currentlyPlaying.item.duration_ms && (
                 <div className='space-y-1'>
-                  <div className='h-2 w-full rounded-full bg-gray-700'>
+                  <div
+                    ref={progressBarRef}
+                    className='h-2 w-full cursor-pointer rounded-full bg-gray-700 transition-all hover:h-2.5'
+                    onClick={handleClick}
+                    onMouseDown={handleMouseDown}
+                    onMouseMove={handleMouseMove}
+                    onMouseUp={handleMouseUp}
+                    onMouseLeave={handleMouseLeave}
+                    title='Click or drag to seek'
+                  >
                     <div
-                      className='h-2 rounded-full bg-green-500 transition-all duration-1000'
+                      className={`pointer-events-none h-full rounded-full transition-all ${isSeeking ? 'bg-blue-500' : 'bg-green-500'}`}
                       style={{
-                        width: `${getProgressPercentage(currentlyPlaying.progress_ms, currentlyPlaying.item.duration_ms)}%`
+                        width: `${getProgressPercentage(currentlyPlaying.progress_ms, currentlyPlaying.item.duration_ms)}%`,
+                        transitionDuration: isSeeking ? '0ms' : '1000ms'
                       }}
                     />
                   </div>
