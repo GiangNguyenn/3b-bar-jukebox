@@ -46,12 +46,10 @@ class AutoPlayService {
   private trackSuggestionsState: any = null // User's track suggestions configuration
   private isAutoPlayDisabled: boolean = false // Flag to temporarily disable auto-play during manual operations
   private isInitialized: boolean = false // Flag to track if the service is properly initialized
-  // Predictive track start state
+  // Predictive track preparation state (preparation only, no playback)
   private nextTrackPrepared: boolean = false // Flag indicating next track is ready
   private preparedTrackId: string | null = null // ID of the prepared track
   private isPreparingNextTrack: boolean = false // Prevent duplicate preparation
-  private nextTrackStarted: boolean = false // Flag indicating next track was started predictively
-  private predictiveFailed: boolean = false // Flag indicating predictive start failed
 
   constructor(config: AutoPlayServiceConfig = {}) {
     this.checkInterval = config.checkInterval || 500 // Reduced to 500ms for predictive track start
@@ -240,7 +238,7 @@ class AutoPlayService {
       const duration = currentState.item?.duration_ms || 0
 
       // Edge case: Reset predictive state if playback is paused
-      if (!isPlaying && (this.nextTrackPrepared || this.nextTrackStarted)) {
+      if (!isPlaying && this.nextTrackPrepared) {
         logger(
           'INFO',
           '[checkPlaybackState] Playback paused, resetting predictive state'
@@ -262,22 +260,13 @@ class AutoPlayService {
         this.resetPredictiveState()
       }
 
-      // Predictive track start - Phase 1: Prepare next track
+      // Predictive track preparation only (no playback - PlayerLifecycle handles that)
       if (this.shouldPrepareNextTrack(currentState) && currentTrackId) {
         logger(
           'INFO',
           `[checkPlaybackState] Preparing next track (${duration - progress}ms remaining)`
         )
         await this.prepareNextTrack(currentTrackId)
-      }
-
-      // Predictive track start - Phase 2: Start next track
-      if (this.shouldStartNextTrack(currentState)) {
-        logger(
-          'INFO',
-          `[checkPlaybackState] Starting next track predictively (${duration - progress}ms remaining)`
-        )
-        await this.startNextTrackPredictively()
       }
 
       // Fallback: Check if track has finished (for edge cases)
@@ -401,100 +390,15 @@ class AutoPlayService {
     }
   }
 
-  private shouldStartNextTrack(currentState: SpotifyPlaybackState): boolean {
-    // Edge case: Don't start if playback is paused
-    if (!currentState.item || !currentState.is_playing) {
-      return false
-    }
-
-    // Don't start if already started
-    if (this.nextTrackStarted) {
-      return false
-    }
-
-    // Only start if we've prepared a track
-    if (!this.nextTrackPrepared || !this.preparedTrackId) {
-      return false
-    }
-
-    // Edge case: Don't start if auto-play is disabled
-    if (this.isAutoPlayDisabled) {
-      return false
-    }
-
-    const progress = currentState.progress_ms || 0
-    const duration = currentState.item.duration_ms || 0
-    const timeRemaining = duration - progress
-
-    // Check if we're within the start threshold
-    return (
-      timeRemaining > 0 &&
-      timeRemaining <= PLAYER_LIFECYCLE_CONFIG.TRACK_START_THRESHOLD_MS
-    )
-  }
-
-  private async startNextTrackPredictively(): Promise<void> {
-    if (!this.preparedTrackId || this.nextTrackStarted) {
-      return
-    }
-
-    try {
-      // Get the prepared track
-      const nextTrack = this.queueManager.getNextTrack()
-
-      if (!nextTrack) {
-        logger('WARN', '[StartNextTrack] No next track available')
-        return
-      }
-
-      // Validate that prepared track still matches queue
-      if (nextTrack.tracks.spotify_track_id !== this.preparedTrackId) {
-        logger(
-          'WARN',
-          `[StartNextTrack] Prepared track mismatch - prepared: ${this.preparedTrackId}, queue: ${nextTrack.tracks.spotify_track_id}`
-        )
-        // Reset preparation state and don't start
-        this.resetPredictiveState()
-        return
-      }
-
-      logger(
-        'INFO',
-        `[StartNextTrack] Starting next track predictively: ${nextTrack.tracks.name}`
-      )
-
-      // Start playing the next track
-      await this.playNextTrack(nextTrack, true)
-
-      // Mark as started and clear failure flag
-      this.nextTrackStarted = true
-      this.predictiveFailed = false
-    } catch (error) {
-      logger(
-        'ERROR',
-        '[StartNextTrack] Failed to start next track predictively, reactive fallback will handle it',
-        undefined,
-        error as Error
-      )
-      // Set failure flag to allow reactive fallback
-      this.predictiveFailed = true
-      // Reset preparation state
-      this.resetPredictiveState()
-    }
-  }
-
   private resetPredictiveState(): void {
     this.nextTrackPrepared = false
     this.preparedTrackId = null
     this.isPreparingNextTrack = false
-    this.nextTrackStarted = false
-    // Note: predictiveFailed is NOT reset here - it persists for reactive fallback
   }
 
   public resetAfterSeek(): void {
     // Reset predictive state after seeking to prevent stale track preparation
     this.resetPredictiveState()
-    this.predictiveFailed = false
   }
 
   private validatePreparedTrack(): void {
@@ -622,32 +526,7 @@ class AutoPlayService {
       // Check if queue is getting low and trigger auto-fill if needed
       await this.checkAndAutoFillQueue()
 
-      // Check if next track was started predictively
-      if (this.nextTrackStarted && !this.predictiveFailed) {
-        logger(
-          'INFO',
-          '[handleTrackFinished] Next track already started predictively'
-        )
-        // Reset predictive state for next iteration
-        this.resetPredictiveState()
-        this.predictiveFailed = false
-        return
-      }
-
-      // If predictive start failed or didn't trigger, PlayerLifecycle will handle reactive playback
-      // AutoPlayService no longer needs to play tracks reactively
-      if (this.predictiveFailed) {
-        logger(
-          'INFO',
-          '[handleTrackFinished] Predictive start failed, PlayerLifecycle will handle reactive playback'
-        )
-        // Reset flags for next track
-        this.resetPredictiveState()
-        this.predictiveFailed = false
-        return
-      }
-
-      // Check if queue is empty
+      // PlayerLifecycle handles all track transitions - AutoPlayService only manages queue
       const nextTrack = this.queueManager.getNextTrack()
       if (!nextTrack) {
         logger('INFO', '[handleTrackFinished] Queue is empty')
@@ -661,7 +540,6 @@ class AutoPlayService {
 
       // Reset predictive state for next track
       this.resetPredictiveState()
-      this.predictiveFailed = false
     } catch (error) {
       logger(
         'ERROR',
@@ -1639,74 +1517,6 @@ class AutoPlayService {
 
       // Dispatch the event on the window object
       window.dispatchEvent(event)
-    }
-  }
-
-  private async playNextTrack(
-    track: JukeboxQueueItem,
-    isPredictive: boolean = false
-  ): Promise<void> {
-    if (!this.deviceId) {
-      logger('ERROR', 'No device ID available to play next track')
-      return
-    }
-
-    // Defensive check: verify we're not about to play a track that's already playing
-    // This is a final safety net to catch edge cases where all other protections failed
-    try {
-      const currentPlaybackState = await sendApiRequest<{
-        item?: { id: string; name: string }
-        is_playing: boolean
-      }>({
-        path: 'me/player',
-        method: 'GET'
-      })
-
-      if (
-        currentPlaybackState?.item &&
-        currentPlaybackState.item.id === track.tracks.spotify_track_id &&
-        currentPlaybackState.is_playing
-      ) {
-        logger(
-          'WARN',
-          `[playNextTrack] Track ${track.tracks.name} (${track.tracks.spotify_track_id}) is already playing. Skipping playback to prevent duplicate.`
-        )
-        return
-      }
-    } catch (apiError) {
-      // If we can't verify, log warning but continue with playback
-      logger(
-        'WARN',
-        '[playNextTrack] Failed to verify current playback state before playing next track, continuing anyway',
-        undefined,
-        apiError as Error
-      )
-    }
-
-    try {
-      const trackUri = `spotify:track:${track.tracks.spotify_track_id}`
-
-      logger(
-        'INFO',
-        `[playNextTrack] Playing track ${track.tracks.name} (${isPredictive ? 'predictive' : 'reactive'})`
-      )
-
-      await sendApiRequest({
-        path: 'me/player/play',
-        method: 'PUT',
-        body: {
-          device_id: this.deviceId,
-          uris: [trackUri]
-        }
-      })
-
-      this.onNextTrackStarted?.(track)
-    } catch (error) {
-      logger('ERROR', 'Failed to play next track', undefined, error as Error)
-      // Reset predictive state on error
-      if (isPredictive) {
-        this.resetPredictiveState()
-      }
     }
   }
 

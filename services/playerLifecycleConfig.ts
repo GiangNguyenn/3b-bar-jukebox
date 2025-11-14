@@ -20,7 +20,13 @@ export const PLAYER_LIFECYCLE_CONFIG = {
   TRACK_START_THRESHOLD_MS: 1000, // Start playing 1s before end (reduced from 1500ms)
   // Timeouts
   CLEANUP_TIMEOUT_MS: 5 * 60 * 1000, // 5 minutes
-  SDK_RELOAD_TIMEOUT_MS: 10000 // 10 seconds
+  SDK_RELOAD_TIMEOUT_MS: 10000, // 10 seconds
+  // Playback verification
+  PLAYBACK_VERIFICATION_TIMEOUT_MS: 3000, // 3 seconds to verify playback started
+  PLAYBACK_VERIFICATION_INTERVAL_MS: 200, // Poll every 200ms for verification
+  // Transition retry
+  MAX_TRANSITION_RETRIES: 3, // Maximum retry attempts for track transitions
+  TRANSITION_LOCK_TIMEOUT_MS: 5000 // 5 seconds timeout for transition lock
 } as const
 
 export type PlayerLifecycleConfig = typeof PLAYER_LIFECYCLE_CONFIG

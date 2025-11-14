@@ -50,6 +50,15 @@ class PlayerLifecycleService {
   private authRetryCount: number = 0
   private lastProcessedTrackId: string | null = null
   private lastKnownPlayingTrackId: string | null = null
+  private transitionLock: {
+    isLocked: boolean
+    lockTime: number
+    targetTrackId: string | null
+  } = {
+    isLocked: false,
+    lockTime: 0,
+    targetTrackId: null
+  }
   private addLog:
     | ((
         level: LogLevel,
@@ -112,6 +121,99 @@ class PlayerLifecycleService {
         console.error(`[PlayerLifecycle] ${message}`, error)
       }
     }
+  }
+
+  private acquireTransitionLock(targetTrackId: string): boolean {
+    const now = Date.now()
+
+    // Check if lock is expired
+    if (
+      this.transitionLock.isLocked &&
+      now - this.transitionLock.lockTime >
+        PLAYER_LIFECYCLE_CONFIG.TRANSITION_LOCK_TIMEOUT_MS
+    ) {
+      this.log(
+        'WARN',
+        `Transition lock expired, releasing (was locked for ${now - this.transitionLock.lockTime}ms)`
+      )
+      this.releaseTransitionLock()
+    }
+
+    // If already locked, check if it's for the same track
+    if (this.transitionLock.isLocked) {
+      if (this.transitionLock.targetTrackId === targetTrackId) {
+        this.log(
+          'INFO',
+          `Transition already in progress for track ${targetTrackId}`
+        )
+        return false
+      } else {
+        this.log(
+          'WARN',
+          `Transition lock held for different track (${this.transitionLock.targetTrackId}), releasing`
+        )
+        this.releaseTransitionLock()
+      }
+    }
+
+    // Acquire lock
+    this.transitionLock = {
+      isLocked: true,
+      lockTime: now,
+      targetTrackId
+    }
+    return true
+  }
+
+  private releaseTransitionLock(): void {
+    this.transitionLock = {
+      isLocked: false,
+      lockTime: 0,
+      targetTrackId: null
+    }
+  }
+
+  private async verifyPlaybackStarted(
+    expectedTrackId: string,
+    timeoutMs: number = PLAYER_LIFECYCLE_CONFIG.PLAYBACK_VERIFICATION_TIMEOUT_MS
+  ): Promise<boolean> {
+    const startTime = Date.now()
+    const intervalMs = PLAYER_LIFECYCLE_CONFIG.PLAYBACK_VERIFICATION_INTERVAL_MS
+
+    while (Date.now() - startTime < timeoutMs) {
+      try {
+        const playbackState = await sendApiRequest<{
+          item?: { id: string }
+          is_playing: boolean
+        }>({
+          path: 'me/player',
+          method: 'GET'
+        })
+
+        if (
+          playbackState?.item?.id === expectedTrackId &&
+          playbackState.is_playing
+        ) {
+          this.log(
+            'INFO',
+            `Playback verified: track ${expectedTrackId} is playing`
+          )
+          return true
+        }
+
+        // Wait before next check
+        await new Promise((resolve) => setTimeout(resolve, intervalMs))
+      } catch (error) {
+        this.log('WARN', 'Error during playback verification, retrying', error)
+        await new Promise((resolve) => setTimeout(resolve, intervalMs))
+      }
+    }
+
+    this.log(
+      'WARN',
+      `Playback verification timeout: track ${expectedTrackId} did not start within ${timeoutMs}ms`
+    )
+    return false
   }
 
   private async playTrackWithRetry(
@@ -178,50 +280,149 @@ class PlayerLifecycleService {
       return
     }
 
-    // Defensive check: verify we're not about to play a track that's already playing
-    // This is a final safety net to catch edge cases where all other protections failed
-    try {
-      const { sendApiRequest } = await import('@/shared/api')
-      const currentPlaybackState = await sendApiRequest<{
-        item?: { id: string; name: string }
-        is_playing: boolean
-      }>({
-        path: 'me/player',
-        method: 'GET'
-      })
+    const targetTrackId = track.tracks.spotify_track_id
 
-      if (
-        currentPlaybackState?.item &&
-        currentPlaybackState.item.id === track.tracks.spotify_track_id &&
-        currentPlaybackState.is_playing
-      ) {
-        this.log(
-          'WARN',
-          `Track ${track.tracks.name} (${track.tracks.spotify_track_id}) is already playing. Skipping playback to prevent duplicate.`
-        )
-        return
-      }
-    } catch (apiError) {
-      // If we can't verify, log warning but continue with playback
+    // Acquire transition lock to prevent concurrent transitions
+    if (!this.acquireTransitionLock(targetTrackId)) {
       this.log(
-        'WARN',
-        'Failed to verify current playback state before playing next track, continuing anyway',
-        apiError
+        'INFO',
+        `Transition already in progress for track ${track.tracks.name}, skipping`
       )
+      return
     }
 
-    const trackUri = `spotify:track:${track.tracks.spotify_track_id}`
-    this.log(
-      'INFO',
-      `Starting next track: ${track.tracks.name} by ${track.tracks.artist}`
-    )
+    try {
+      // Defensive check: verify we're not about to play a track that's already playing
+      try {
+        const currentPlaybackState = await sendApiRequest<{
+          item?: { id: string; name: string }
+          is_playing: boolean
+        }>({
+          path: 'me/player',
+          method: 'GET'
+        })
 
-    const success = await this.playTrackWithRetry(trackUri, this.deviceId, 3)
+        if (
+          currentPlaybackState?.item &&
+          currentPlaybackState.item.id === targetTrackId &&
+          currentPlaybackState.is_playing
+        ) {
+          this.log(
+            'INFO',
+            `Track ${track.tracks.name} is already playing, verification successful`
+          )
+          this.releaseTransitionLock()
+          return
+        }
+      } catch (apiError) {
+        // If we can't verify, log warning but continue with playback
+        this.log(
+          'WARN',
+          'Failed to verify current playback state before playing next track, continuing anyway',
+          apiError
+        )
+      }
 
-    if (!success) {
+      const trackUri = `spotify:track:${targetTrackId}`
       this.log(
-        'WARN',
-        `Failed to play track ${track.tracks.name}, trying next track in queue`
+        'INFO',
+        `Starting next track: ${track.tracks.name} by ${track.tracks.artist}`
+      )
+
+      // Retry logic with verification
+      const maxRetries = PLAYER_LIFECYCLE_CONFIG.MAX_TRANSITION_RETRIES
+      let lastError: Error | null = null
+
+      for (let attempt = 0; attempt <= maxRetries; attempt++) {
+        try {
+          // Attempt to play the track
+          await sendApiRequest({
+            path: `me/player/play?device_id=${this.deviceId}`,
+            method: 'PUT',
+            body: {
+              uris: [trackUri]
+            }
+          })
+
+          this.log(
+            'INFO',
+            `Play API call succeeded (attempt ${attempt + 1}/${maxRetries + 1}), verifying playback...`
+          )
+
+          // Verify playback actually started
+          const verified = await this.verifyPlaybackStarted(targetTrackId)
+
+          if (verified) {
+            this.log(
+              'INFO',
+              `Successfully started and verified playback for ${track.tracks.name}`
+            )
+            this.releaseTransitionLock()
+            return
+          } else {
+            this.log(
+              'WARN',
+              `Playback verification failed for attempt ${attempt + 1}`
+            )
+            lastError = new Error('Playback verification failed')
+          }
+        } catch (error) {
+          const errorMessage =
+            error instanceof Error ? error.message : String(error)
+
+          // Handle "Restriction violated" by skipping to next track
+          if (errorMessage.includes('Restriction violated')) {
+            this.log(
+              'WARN',
+              `Restriction violated for track ${track.tracks.name}, skipping to next track`
+            )
+            this.releaseTransitionLock()
+
+            // Remove the problematic track from queue
+            try {
+              await queueManager.markAsPlayed(track.id)
+            } catch (markError) {
+              this.log(
+                'ERROR',
+                'Failed to remove problematic track from queue',
+                markError
+              )
+            }
+
+            // Try to play the next track
+            const nextTrack = queueManager.getNextTrack()
+            if (nextTrack) {
+              await this.playNextTrack(nextTrack)
+            } else {
+              this.log('INFO', 'No more tracks available in queue')
+            }
+            return
+          }
+
+          lastError = error instanceof Error ? error : new Error(String(error))
+          this.log(
+            'WARN',
+            `Play attempt ${attempt + 1} failed: ${errorMessage}`,
+            error
+          )
+
+          // Exponential backoff before retry (except on last attempt)
+          if (attempt < maxRetries) {
+            const backoffMs = 500 * Math.pow(2, attempt)
+            this.log(
+              'INFO',
+              `Retrying in ${backoffMs}ms (attempt ${attempt + 2}/${maxRetries + 1})`
+            )
+            await new Promise((resolve) => setTimeout(resolve, backoffMs))
+          }
+        }
+      }
+
+      // All retries failed
+      this.log(
+        'ERROR',
+        `Failed to play track ${track.tracks.name} after ${maxRetries + 1} attempts`,
+        lastError || undefined
       )
 
       // Remove the problematic track from queue
@@ -235,13 +436,16 @@ class PlayerLifecycleService {
         )
       }
 
-      // Try to play the next track recursively
+      // Try to play the next track
       const nextTrack = queueManager.getNextTrack()
       if (nextTrack) {
         await this.playNextTrack(nextTrack)
       } else {
         this.log('INFO', 'No more tracks available in queue')
       }
+    } finally {
+      // Always release lock
+      this.releaseTransitionLock()
     }
   }
 
@@ -390,98 +594,53 @@ class PlayerLifecycleService {
 
     await this.checkAndAutoFillQueue()
 
-    let nextTrack = queueManager.getNextTrack()
+    // Get next track - transition lock will prevent duplicates
+    const nextTrack = queueManager.getNextTrack()
 
-    // Strengthen duplicate detection: validate that next track is not the same as finished track
-    // Try multiple times with aggressive retry to handle race conditions
-    let duplicateRemovalAttempts = 0
-    const maxDuplicateRemovalAttempts = 3
-
-    while (
-      nextTrack &&
-      nextTrack.tracks.spotify_track_id === currentSpotifyTrackId &&
-      duplicateRemovalAttempts < maxDuplicateRemovalAttempts
-    ) {
-      duplicateRemovalAttempts++
-
-      this.log(
-        'ERROR',
-        `Next track matches finished track (${currentSpotifyTrackId}) - queue sync issue detected. Attempting to remove duplicate (attempt ${duplicateRemovalAttempts}/${maxDuplicateRemovalAttempts}).`
-      )
-
-      try {
-        await queueManager.markAsPlayed(nextTrack.id)
-        this.log(
-          'INFO',
-          `Successfully removed duplicate track on retry: ${nextTrack.id}`
-        )
-
-        // Get next track again
-        nextTrack = queueManager.getNextTrack()
-
-        // If we successfully removed it and got a different track, break
-        if (
-          !nextTrack ||
-          nextTrack.tracks.spotify_track_id !== currentSpotifyTrackId
-        ) {
-          break
-        }
-      } catch (retryError) {
-        this.log(
-          'ERROR',
-          `Failed to remove duplicate track on attempt ${duplicateRemovalAttempts}`,
-          retryError
-        )
-
-        // If this was the last attempt, set nextTrack to undefined to prevent playback
-        if (duplicateRemovalAttempts >= maxDuplicateRemovalAttempts) {
-          nextTrack = undefined
-          break
-        }
-      }
-    }
-
-    // Final validation: if next track STILL matches finished track after all attempts
+    // Simple check: if next track is the same as finished track, skip it once
     if (
       nextTrack &&
       nextTrack.tracks.spotify_track_id === currentSpotifyTrackId
     ) {
       this.log(
-        'ERROR',
-        `Next track STILL matches finished track after ${maxDuplicateRemovalAttempts} removal attempts. Refusing to play duplicate. Pausing playback.`
+        'WARN',
+        `Next track matches finished track (${currentSpotifyTrackId}) - removing duplicate`
       )
-      nextTrack = undefined
-
-      // Pause playback to prevent playing the same track again
-      if (this.deviceId) {
-        try {
-          const SpotifyApiService = (await import('@/services/spotifyApi'))
-            .SpotifyApiService
-          await SpotifyApiService.getInstance().pausePlayback(this.deviceId)
-        } catch (pauseError) {
+      try {
+        await queueManager.markAsPlayed(nextTrack.id)
+        // Get next track again after removing duplicate
+        const newNextTrack = queueManager.getNextTrack()
+        if (newNextTrack) {
           this.log(
-            'ERROR',
-            'Failed to pause playback after duplicate detection',
-            pauseError
+            'INFO',
+            `Next track in queue: ${newNextTrack.tracks.name}, starting playback`
           )
+          this.currentQueueTrack = newNextTrack
+          await this.playNextTrack(newNextTrack)
+        } else {
+          this.log('INFO', 'Queue is empty after removing duplicate')
+          this.currentQueueTrack = null
         }
+      } catch (error) {
+        this.log(
+          'ERROR',
+          'Failed to remove duplicate track, skipping to next',
+          error
+        )
+        this.currentQueueTrack = null
       }
+      return
     }
 
     if (nextTrack) {
       this.log(
         'INFO',
-        `Next track in queue: ${nextTrack.tracks.name}, starting playback immediately`
+        `Next track in queue: ${nextTrack.tracks.name}, starting playback`
       )
       this.currentQueueTrack = nextTrack
-
-      // Play the next track immediately using SDK event (0ms delay)
       await this.playNextTrack(nextTrack)
     } else {
-      this.log(
-        'INFO',
-        'Queue is empty or duplicate track detected. Playback will stop.'
-      )
+      this.log('INFO', 'Queue is empty. Playback will stop.')
       this.currentQueueTrack = null
     }
   }
@@ -489,7 +648,7 @@ class PlayerLifecycleService {
   private syncQueueWithPlayback(state: PlayerSDKState): void {
     const currentSpotifyTrack = state.track_window?.current_track
 
-    // Reset lastProcessedTrackId when a new track starts playing
+    // Reset lastProcessedTrackId and release transition lock when a new track starts playing
     // This prevents the guard from blocking legitimate track-finished events
     // if the same song plays again (e.g., due to queue sync issues or failed operations)
     if (currentSpotifyTrack) {
@@ -498,11 +657,16 @@ class PlayerLifecycleService {
         if (this.lastKnownPlayingTrackId) {
           this.log(
             'INFO',
-            `Track changed from ${this.lastKnownPlayingTrackId} to ${currentTrackId}, resetting track processing guard`
+            `Track changed from ${this.lastKnownPlayingTrackId} to ${currentTrackId}, resetting track processing guard and releasing transition lock`
           )
         }
         this.lastProcessedTrackId = null
         this.lastKnownPlayingTrackId = currentTrackId
+
+        // Release transition lock when track changes (transition completed)
+        if (this.transitionLock.isLocked) {
+          this.releaseTransitionLock()
+        }
       }
     }
 
@@ -580,24 +744,43 @@ class PlayerLifecycleService {
       return false
     }
 
-    const trackJustFinished =
-      !this.lastKnownState.paused &&
-      state.paused &&
-      state.position === 0 &&
-      this.lastKnownState.track_window.current_track?.uri ===
-        state.track_window.current_track?.uri
+    const lastTrackId = this.lastKnownState.track_window?.current_track?.id
+    const currentTrackId = state.track_window?.current_track?.id
 
+    // Most reliable indicator: track ID changed (new track started)
+    // This means the previous track finished
+    if (lastTrackId && currentTrackId && lastTrackId !== currentTrackId) {
+      this.log(
+        'INFO',
+        `Track ID changed from ${lastTrackId} to ${currentTrackId} - previous track finished`
+      )
+      return true
+    }
+
+    // Fallback: check if track just finished (paused at position 0, same track)
+    const trackJustFinished = Boolean(
+      lastTrackId &&
+        currentTrackId &&
+        lastTrackId === currentTrackId &&
+        !this.lastKnownState.paused &&
+        state.paused &&
+        state.position === 0
+    )
+
+    // Fallback: check if track is near end and has stalled
     const isNearEnd =
       state.duration > 0 &&
       state.duration - state.position <
         PLAYER_LIFECYCLE_CONFIG.TRACK_END_THRESHOLD_MS
 
-    const hasStalled =
-      !this.lastKnownState.paused &&
-      state.paused &&
-      state.position === this.lastKnownState.position &&
-      this.lastKnownState.track_window.current_track?.uri ===
-        state.track_window.current_track?.uri
+    const hasStalled = Boolean(
+      lastTrackId &&
+        currentTrackId &&
+        lastTrackId === currentTrackId &&
+        !this.lastKnownState.paused &&
+        state.paused &&
+        state.position === this.lastKnownState.position
+    )
 
     return trackJustFinished || (isNearEnd && hasStalled)
   }
