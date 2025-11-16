@@ -622,6 +622,24 @@ class AutoPlayService {
       // Check if queue is getting low and trigger auto-fill if needed
       await this.checkAndAutoFillQueue()
 
+      // After updating the queue, perform a safety check:
+      // if playback has stopped but there is a next track available,
+      // proactively start it. This complements PlayerLifecycle's
+      // SDK-driven handling and ensures we don't stall after transitions.
+      const safeNextTrack = this.queueManager.getNextTrack()
+      const latestPlaybackState = await this.getCurrentPlaybackState()
+
+      if (
+        safeNextTrack &&
+        (!latestPlaybackState || latestPlaybackState.is_playing === false)
+      ) {
+        logger(
+          'WARN',
+          '[handleTrackFinished] Playback is not active but queue has tracks – starting next track as fallback'
+        )
+        await this.playNextTrack(safeNextTrack, false)
+      }
+
       // Check if next track was started predictively
       if (this.nextTrackStarted && !this.predictiveFailed) {
         logger(
