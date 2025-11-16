@@ -594,42 +594,26 @@ class PlayerLifecycleService {
       return false
     }
 
-    const previousState = this.lastKnownState
-    const sameTrackUri =
-      previousState.track_window.current_track?.uri ===
-      state.track_window.current_track?.uri
-
-    const wasPlaying = !previousState.paused
-    const isPausedNow = state.paused
-
-    const previousPosition = previousState.position
-    const currentPosition = state.position
-
-    const duration = state.duration
-    const timeRemaining =
-      duration > 0 ? duration - currentPosition : Number.POSITIVE_INFINITY
+    const trackJustFinished =
+      !this.lastKnownState.paused &&
+      state.paused &&
+      state.position === 0 &&
+      this.lastKnownState.track_window.current_track?.uri ===
+        state.track_window.current_track?.uri
 
     const isNearEnd =
-      duration > 0 &&
-      timeRemaining <= PLAYER_LIFECYCLE_CONFIG.TRACK_END_THRESHOLD_MS
+      state.duration > 0 &&
+      state.duration - state.position <
+        PLAYER_LIFECYCLE_CONFIG.TRACK_END_THRESHOLD_MS
 
-    // Case 1: classic \"finished\" signal – went from playing to paused and reset to start
-    const trackResetToStart =
-      wasPlaying && isPausedNow && currentPosition === 0 && sameTrackUri
+    const hasStalled =
+      !this.lastKnownState.paused &&
+      state.paused &&
+      state.position === this.lastKnownState.position &&
+      this.lastKnownState.track_window.current_track?.uri ===
+        state.track_window.current_track?.uri
 
-    // Case 2: finished at end of track (SDK often reports paused at duration, not 0)
-    const pausedAtEnd =
-      wasPlaying && isPausedNow && sameTrackUri && isNearEnd && currentPosition >= previousPosition
-
-    // Case 3: stalled near the end (position stops changing while we were playing)
-    const hasStalledNearEnd =
-      wasPlaying &&
-      isPausedNow &&
-      sameTrackUri &&
-      isNearEnd &&
-      currentPosition === previousPosition
-
-    return trackResetToStart || pausedAtEnd || hasStalledNearEnd
+    return trackJustFinished || (isNearEnd && hasStalled)
   }
 
   private async handlePlayerStateChanged(

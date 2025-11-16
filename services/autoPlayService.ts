@@ -646,23 +646,19 @@ class AutoPlayService {
           'INFO',
           '[handleTrackFinished] Next track already started predictively'
         )
-        // Reset predictive state for next iteration
-        this.resetPredictiveState()
-        this.predictiveFailed = false
-        return
+        // We don't early-return here so that predictive state is always
+        // reset in the shared cleanup path at the end of this method.
       }
 
-      // If predictive start failed or didn't trigger, PlayerLifecycle will handle reactive playback
-      // AutoPlayService no longer needs to play tracks reactively
+      // If predictive start failed or didn't trigger, PlayerLifecycle will handle
+      // reactive playback. AutoPlayService no longer needs to play tracks reactively.
       if (this.predictiveFailed) {
         logger(
           'INFO',
           '[handleTrackFinished] Predictive start failed, PlayerLifecycle will handle reactive playback'
         )
-        // Reset flags for next track
-        this.resetPredictiveState()
-        this.predictiveFailed = false
-        return
+        // Again, avoid early returns so that predictive flags are cleared
+        // consistently in the final cleanup section below.
       }
 
       // Check if queue is empty
