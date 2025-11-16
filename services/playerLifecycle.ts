@@ -393,7 +393,7 @@ class PlayerLifecycleService {
     let nextTrack = queueManager.getNextTrack()
 
     // Strengthen duplicate detection: validate that next track is not the same as finished track
-    // Try multiple times with aggressive retry to handle race conditions
+    // Try limited retries, then fall back to an alternative track instead of pausing playback
     let duplicateRemovalAttempts = 0
     const maxDuplicateRemovalAttempts = 3
 
@@ -433,37 +433,51 @@ class PlayerLifecycleService {
           retryError
         )
 
-        // If this was the last attempt, set nextTrack to undefined to prevent playback
+        // On final failure, break out and try an alternative instead of forcing a pause
         if (duplicateRemovalAttempts >= maxDuplicateRemovalAttempts) {
-          nextTrack = undefined
           break
         }
       }
     }
 
-    // Final validation: if next track STILL matches finished track after all attempts
+    // Final validation: if next track STILL matches finished track after all attempts,
+    // prefer an alternative track over pausing playback, falling back to pause only
+    // when no safe alternative exists.
     if (
       nextTrack &&
       nextTrack.tracks.spotify_track_id === currentSpotifyTrackId
     ) {
-      this.log(
-        'ERROR',
-        `Next track STILL matches finished track after ${maxDuplicateRemovalAttempts} removal attempts. Refusing to play duplicate. Pausing playback.`
-      )
-      nextTrack = undefined
+      const alternativeTrack = queueManager.getTrackAfterNext()
 
-      // Pause playback to prevent playing the same track again
-      if (this.deviceId) {
-        try {
-          const SpotifyApiService = (await import('@/services/spotifyApi'))
-            .SpotifyApiService
-          await SpotifyApiService.getInstance().pausePlayback(this.deviceId)
-        } catch (pauseError) {
-          this.log(
-            'ERROR',
-            'Failed to pause playback after duplicate detection',
-            pauseError
-          )
+      if (
+        alternativeTrack &&
+        alternativeTrack.tracks.spotify_track_id !== currentSpotifyTrackId
+      ) {
+        this.log(
+          'WARN',
+          `Next track still matches finished track (${currentSpotifyTrackId}) after ${duplicateRemovalAttempts} attempts, but an alternative is available. Switching to alternative track ${alternativeTrack.id} instead of pausing playback.`
+        )
+        nextTrack = alternativeTrack
+      } else {
+        this.log(
+          'ERROR',
+          `Next track STILL matches finished track after ${maxDuplicateRemovalAttempts} removal attempts and no safe alternative exists. Refusing to play duplicate. Pausing playback.`
+        )
+        nextTrack = undefined
+
+        // Pause playback to prevent playing the same track again
+        if (this.deviceId) {
+          try {
+            const SpotifyApiService = (await import('@/services/spotifyApi'))
+              .SpotifyApiService
+            await SpotifyApiService.getInstance().pausePlayback(this.deviceId)
+          } catch (pauseError) {
+            this.log(
+              'ERROR',
+              'Failed to pause playback after duplicate detection',
+              pauseError
+            )
+          }
         }
       }
     }

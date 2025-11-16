@@ -622,29 +622,43 @@ class AutoPlayService {
       // Check if queue is getting low and trigger auto-fill if needed
       await this.checkAndAutoFillQueue()
 
+      // After updating the queue, perform a safety check:
+      // if playback has stopped but there is a next track available,
+      // proactively start it. This complements PlayerLifecycle's
+      // SDK-driven handling and ensures we don't stall after transitions.
+      const safeNextTrack = this.queueManager.getNextTrack()
+      const latestPlaybackState = await this.getCurrentPlaybackState()
+
+      if (
+        safeNextTrack &&
+        (!latestPlaybackState || latestPlaybackState.is_playing === false)
+      ) {
+        logger(
+          'WARN',
+          '[handleTrackFinished] Playback is not active but queue has tracks – starting next track as fallback'
+        )
+        await this.playNextTrack(safeNextTrack, false)
+      }
+
       // Check if next track was started predictively
       if (this.nextTrackStarted && !this.predictiveFailed) {
         logger(
           'INFO',
           '[handleTrackFinished] Next track already started predictively'
         )
-        // Reset predictive state for next iteration
-        this.resetPredictiveState()
-        this.predictiveFailed = false
-        return
+        // We don't early-return here so that predictive state is always
+        // reset in the shared cleanup path at the end of this method.
       }
 
-      // If predictive start failed or didn't trigger, PlayerLifecycle will handle reactive playback
-      // AutoPlayService no longer needs to play tracks reactively
+      // If predictive start failed or didn't trigger, PlayerLifecycle will handle
+      // reactive playback. AutoPlayService no longer needs to play tracks reactively.
       if (this.predictiveFailed) {
         logger(
           'INFO',
           '[handleTrackFinished] Predictive start failed, PlayerLifecycle will handle reactive playback'
         )
-        // Reset flags for next track
-        this.resetPredictiveState()
-        this.predictiveFailed = false
-        return
+        // Again, avoid early returns so that predictive flags are cleared
+        // consistently in the final cleanup section below.
       }
 
       // Check if queue is empty
