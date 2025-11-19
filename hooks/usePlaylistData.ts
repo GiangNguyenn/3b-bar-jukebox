@@ -4,6 +4,7 @@ import type { Database } from '@/types/supabase'
 import { JukeboxQueueItem } from '@/shared/types/queue'
 import { useConsoleLogsContext } from './ConsoleLogsProvider'
 import { queueManager } from '@/services/queueManager'
+import { queryWithRetry } from '@/lib/supabaseQuery'
 
 export function usePlaylistData(username?: string) {
   const [queue, setQueue] = useState<JukeboxQueueItem[]>([])
@@ -85,11 +86,6 @@ export function usePlaylistData(username?: string) {
 
     // Poll every 10 seconds as fallback
     const POLL_INTERVAL = 10000
-    addLog(
-      'INFO',
-      `Starting API polling every ${POLL_INTERVAL}ms`,
-      'usePlaylistData'
-    )
 
     pollingIntervalRef.current = setInterval(async () => {
       // Only poll if real-time is not connected or if it's been more than 30 seconds since last update
@@ -97,11 +93,6 @@ export function usePlaylistData(username?: string) {
       const shouldPoll = !isRealtimeConnected || timeSinceLastPoll > 30000
 
       if (shouldPoll) {
-        addLog(
-          'INFO',
-          `Polling API (realtime: ${isRealtimeConnected}, time since last: ${timeSinceLastPoll}ms)`,
-          'usePlaylistData'
-        )
         await fetchQueue(true)
       }
     }, POLL_INTERVAL)
@@ -120,18 +111,30 @@ export function usePlaylistData(username?: string) {
     if (!username) return null
 
     try {
-      const { data: profile, error: profileError } = await supabase
-        .from('profiles')
-        .select('id')
-        .ilike('display_name', username)
-        .single<{ id: string }>()
+      const { data: profile, error: profileError } = await queryWithRetry<{
+        id: string
+      }>(
+        supabase
+          .from('profiles')
+          .select('id')
+          .ilike('display_name', username)
+          .single<{ id: string }>(),
+        undefined,
+        `Fetch profile for username: ${username}`
+      )
 
-      if (profileError || !profile) {
+      if (profileError ?? !profile) {
+        const errorToLog =
+          profileError instanceof Error
+            ? profileError
+            : profileError !== null && profileError !== undefined
+              ? new Error(String(profileError))
+              : new Error('No profile returned')
         addLog(
           'ERROR',
           `Failed to fetch profile for username: ${username}`,
           'usePlaylistData',
-          profileError || new Error('No profile returned')
+          errorToLog
         )
         return null
       }

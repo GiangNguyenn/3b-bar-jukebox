@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { supabase } from '@/lib/supabase'
+import { supabase, queryWithRetry } from '@/lib/supabase'
 
 export async function POST(request: Request): Promise<NextResponse> {
   try {
@@ -17,13 +17,22 @@ export async function POST(request: Request): Promise<NextResponse> {
     }
 
     // Get the profile ID for the username
-    const { data: profile, error: profileError } = await supabase
-      .from('profiles')
-      .select('id')
-      .ilike('display_name', username)
-      .single<{ id: string }>()
+    const profileResult = await queryWithRetry<{
+      id: string
+    }>(
+      supabase
+        .from('profiles')
+        .select('id')
+        .ilike('display_name', username)
+        .single<{ id: string }>(),
+      undefined,
+      `Fetch profile for username: ${username}`
+    )
 
-    if (profileError || !profile) {
+    const profile = profileResult.data
+    const profileError = profileResult.error
+
+    if (profileError ?? !profile) {
       return NextResponse.json(
         { error: `Profile not found for ${username}` },
         { status: 404 }
@@ -31,14 +40,30 @@ export async function POST(request: Request): Promise<NextResponse> {
     }
 
     // Get available tracks after exclusion
-    const tracksQuery = supabase
-      .from('tracks')
-      .select(
-        'id, spotify_track_id, name, artist, album, duration_ms, popularity, spotify_url'
-      )
-      .limit(50) // Get up to 50 tracks to pick from
+    const tracksResult = await queryWithRetry<
+      Array<{
+        id: string
+        spotify_track_id: string
+        name: string
+        artist: string
+        album: string
+        duration_ms: number
+        popularity: number
+        spotify_url: string
+      }>
+    >(
+      supabase
+        .from('tracks')
+        .select(
+          'id, spotify_track_id, name, artist, album, duration_ms, popularity, spotify_url'
+        )
+        .limit(50), // Get up to 50 tracks to pick from
+      undefined,
+      'Fetch tracks for random selection'
+    )
 
-    const { data: allTracks, error: tracksError } = await tracksQuery
+    const allTracks = tracksResult.data
+    const tracksError = tracksResult.error
 
     if (tracksError) {
       return NextResponse.json(

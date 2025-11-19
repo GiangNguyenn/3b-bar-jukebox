@@ -76,7 +76,6 @@ class PlayerLifecycleService {
   }
 
   async initializeQueue(playlistId: string): Promise<void> {
-    this.log('INFO', `Initializing queue with playlist ID: ${playlistId}`)
     this.currentQueueTrack = queueManager.getNextTrack() ?? null
   }
 
@@ -84,15 +83,7 @@ class PlayerLifecycleService {
     const queue = queueManager.getQueue()
 
     if (queue.length <= PLAYER_LIFECYCLE_CONFIG.QUEUE_LOW_THRESHOLD) {
-      this.log(
-        'INFO',
-        `Queue is low (${queue.length} tracks remaining), triggering auto-fill`
-      )
-
-      this.log(
-        'INFO',
-        `Auto-fill needed but will be handled by AutoPlayService (no username context here)`
-      )
+      // Auto-fill will be handled by AutoPlayService
     }
   }
 
@@ -134,7 +125,6 @@ class PlayerLifecycleService {
           }
         })
 
-        this.log('INFO', `Successfully started playback for ${trackUri}`)
         return true
       } catch (error) {
         const errorMessage =
@@ -211,10 +201,6 @@ class PlayerLifecycleService {
     }
 
     const trackUri = `spotify:track:${track.tracks.spotify_track_id}`
-    this.log(
-      'INFO',
-      `Starting next track: ${track.tracks.name} by ${track.tracks.artist}`
-    )
 
     const success = await this.playTrackWithRetry(trackUri, this.deviceId, 3)
 
@@ -239,8 +225,6 @@ class PlayerLifecycleService {
       const nextTrack = queueManager.getNextTrack()
       if (nextTrack) {
         await this.playNextTrack(nextTrack)
-      } else {
-        this.log('INFO', 'No more tracks available in queue')
       }
     }
   }
@@ -262,13 +246,8 @@ class PlayerLifecycleService {
 
       if (nextTrack) {
         this.currentQueueTrack = nextTrack
-        this.log(
-          'INFO',
-          `Next track ready after restriction error: ${nextTrack.tracks.name} (AutoPlayService will handle playback)`
-        )
       } else {
         this.currentQueueTrack = null
-        this.log('INFO', 'No more tracks in queue after restriction error')
       }
     } catch (error) {
       this.log('ERROR', 'Error handling restriction violated error', error)
@@ -355,25 +334,14 @@ class PlayerLifecycleService {
 
     this.lastProcessedTrackId = currentSpotifyTrackId
 
-    this.log(
-      'INFO',
-      `Track finished detected for Spotify track ID: ${currentSpotifyTrackId}`
-    )
-
     const queue = queueManager.getQueue()
     const finishedQueueItem = queue.find(
       (item) => item.tracks.spotify_track_id === currentSpotifyTrackId
     )
 
     if (finishedQueueItem) {
-      this.log(
-        'INFO',
-        `Found queue item for finished track: ${finishedQueueItem.id}`
-      )
-
       try {
         await queueManager.markAsPlayed(finishedQueueItem.id)
-        this.log('INFO', `Marked queue item ${finishedQueueItem.id} as played`)
       } catch (error) {
         this.log(
           'WARN',
@@ -483,19 +451,11 @@ class PlayerLifecycleService {
     }
 
     if (nextTrack) {
-      this.log(
-        'INFO',
-        `Next track in queue: ${nextTrack.tracks.name}, starting playback immediately`
-      )
       this.currentQueueTrack = nextTrack
 
       // Play the next track immediately using SDK event (0ms delay)
       await this.playNextTrack(nextTrack)
     } else {
-      this.log(
-        'INFO',
-        'Queue is empty or duplicate track detected. Playback will stop.'
-      )
       this.currentQueueTrack = null
     }
   }
@@ -509,12 +469,6 @@ class PlayerLifecycleService {
     if (currentSpotifyTrack) {
       const currentTrackId = currentSpotifyTrack.id
       if (this.lastKnownPlayingTrackId !== currentTrackId) {
-        if (this.lastKnownPlayingTrackId) {
-          this.log(
-            'INFO',
-            `Track changed from ${this.lastKnownPlayingTrackId} to ${currentTrackId}, resetting track processing guard`
-          )
-        }
         this.lastProcessedTrackId = null
         this.lastKnownPlayingTrackId = currentTrackId
       }
@@ -530,16 +484,8 @@ class PlayerLifecycleService {
         matchingQueueItem &&
         this.currentQueueTrack?.id !== matchingQueueItem.id
       ) {
-        this.log(
-          'INFO',
-          `Synced playing track with queue: ${matchingQueueItem.id} (${matchingQueueItem.tracks.name})`
-        )
         this.currentQueueTrack = matchingQueueItem
       } else if (!matchingQueueItem && this.currentQueueTrack) {
-        this.log(
-          'INFO',
-          `Currently playing track ${currentSpotifyTrack.id} not found in queue (expected during transitions)`
-        )
         this.currentQueueTrack = null
       } else if (
         !matchingQueueItem &&
@@ -547,10 +493,6 @@ class PlayerLifecycleService {
         queue.length > 0
       ) {
         const firstInQueue = queue[0]
-        this.log(
-          'INFO',
-          `Music playing but track not matched. Assuming queue[0] is playing: ${firstInQueue.tracks.name} (${firstInQueue.tracks.spotify_track_id})`
-        )
         this.currentQueueTrack = firstInQueue
       }
     }
@@ -911,8 +853,6 @@ class PlayerLifecycleService {
     this.lastProcessedTrackId = null
     this.lastKnownPlayingTrackId = null
     this.authRetryCount = 0
-
-    this.log('INFO', 'Player destroyed')
   }
 
   getPlayer(): Spotify.Player | null {
@@ -920,8 +860,6 @@ class PlayerLifecycleService {
   }
 
   async reloadSDK(): Promise<void> {
-    this.log('INFO', 'Reloading Spotify SDK...')
-
     this.playerRef = null
 
     if (typeof window !== 'undefined') {
@@ -933,7 +871,6 @@ class PlayerLifecycleService {
     )
     if (existingScript) {
       existingScript.remove()
-      this.log('INFO', 'Removed existing Spotify SDK script')
     }
 
     await new Promise((resolve) => setTimeout(resolve, 100))
@@ -946,7 +883,6 @@ class PlayerLifecycleService {
 
       const originalReady = window.onSpotifyWebPlaybackSDKReady
       window.onSpotifyWebPlaybackSDKReady = () => {
-        this.log('INFO', 'Spotify SDK reloaded successfully')
         if (originalReady) {
           originalReady()
         }

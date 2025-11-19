@@ -9,3 +9,20 @@ if (!supabaseUrl || !supabaseAnonKey) {
 }
 
 export const supabase = createClient<Database>(supabaseUrl, supabaseAnonKey)
+
+// Export retry utilities
+export {
+  withRetry,
+  DEFAULT_RETRY_CONFIG,
+  type RetryConfig
+} from '@/shared/utils/supabaseRetry'
+
+export {
+  selectWithRetry,
+  insertWithRetry,
+  updateWithRetry,
+  upsertWithRetry,
+  deleteWithRetry,
+  rpcWithRetry,
+  queryWithRetry
+} from './supabaseQuery'
