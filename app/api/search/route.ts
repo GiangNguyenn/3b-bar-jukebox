@@ -4,6 +4,7 @@ import { NextResponse } from 'next/server'
 import type { Database } from '@/types/supabase'
 import { SpotifyTokenResponse } from '@/shared/types/spotify'
 import { createModuleLogger } from '@/shared/utils/logger'
+import { queryWithRetry } from '@/lib/supabaseQuery'
 
 // Set up logger for this module
 const logger = createModuleLogger('Search')
@@ -104,13 +105,25 @@ export async function GET(
 
     // Get user profile from database - use provided username or fall back to admin
     const displayName = username ?? '3B'
-    const { data: userProfile, error: profileError } = await supabase
-      .from('profiles')
-      .select(
-        'id, spotify_access_token, spotify_refresh_token, spotify_token_expires_at'
-      )
-      .ilike('display_name', displayName)
-      .single()
+    const profileResult = await queryWithRetry<{
+      id: string
+      spotify_access_token: string | null
+      spotify_refresh_token: string | null
+      spotify_token_expires_at: number | null
+    }>(
+      supabase
+        .from('profiles')
+        .select(
+          'id, spotify_access_token, spotify_refresh_token, spotify_token_expires_at'
+        )
+        .ilike('display_name', displayName)
+        .single(),
+      undefined,
+      `Fetch user profile for ${displayName}`
+    )
+
+    const userProfile = profileResult.data
+    const profileError = profileResult.error
 
     if (profileError || !userProfile) {
       logger(
@@ -178,16 +191,22 @@ export async function GET(
       accessToken = tokenData.access_token
 
       // Update the token in the database
-      const { error: updateError } = await supabase
-        .from('profiles')
-        .update({
-          spotify_access_token: tokenData.access_token,
-          spotify_refresh_token:
-            tokenData.refresh_token ?? typedProfile.spotify_refresh_token,
-          spotify_token_expires_at:
-            Math.floor(Date.now() / 1000) + tokenData.expires_in
-        })
-        .eq('id', userProfile.id)
+      const updateResult = await queryWithRetry(
+        supabase
+          .from('profiles')
+          .update({
+            spotify_access_token: tokenData.access_token,
+            spotify_refresh_token:
+              tokenData.refresh_token ?? typedProfile.spotify_refresh_token,
+            spotify_token_expires_at:
+              Math.floor(Date.now() / 1000) + tokenData.expires_in
+          })
+          .eq('id', userProfile.id),
+        undefined,
+        `Update token for profileId: ${userProfile.id}`
+      )
+
+      const updateError = updateResult.error
 
       if (updateError) {
         // Log error but continue

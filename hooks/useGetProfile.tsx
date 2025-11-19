@@ -3,6 +3,7 @@ import { createBrowserClient } from '@supabase/ssr'
 import type { Database } from '@/types/supabase'
 import { AppError } from '@/shared/utils/errorHandling'
 import { ERROR_MESSAGES } from '@/shared/constants/errors'
+import { queryWithRetry } from '@/lib/supabaseQuery'
 
 type Profile = Database['public']['Tables']['profiles']['Row']
 
@@ -29,14 +30,22 @@ export function useGetProfile() {
           return
         }
 
-        const { data, error } = await supabase
-          .from('profiles')
-          .select('*')
-          .eq('id', user.id)
-          .single()
+        const { data, error } = await queryWithRetry<Profile>(
+          supabase.from('profiles').select('*').eq('id', user.id).single(),
+          undefined,
+          `Fetch profile for userId: ${user.id}`
+        )
 
         if (error) {
-          setError(error.message)
+          const errorMessage =
+            error instanceof Error
+              ? error.message
+              : typeof error === 'object' &&
+                  error !== null &&
+                  'message' in error
+                ? String(error.message)
+                : 'An error occurred'
+          setError(errorMessage)
         } else {
           setProfile(data)
         }

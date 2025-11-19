@@ -105,14 +105,11 @@ export async function POST(
     }
 
     // Step 1: Fetch all liked songs from Spotify
-    logger('INFO', `Starting to fetch all liked songs for ${username}`)
     const allLikedTracks: SpotifyTrack[] = []
     let nextUrl: string | null = 'me/tracks?limit=50'
 
     while (nextUrl) {
       try {
-        logger('INFO', `Fetching liked songs from: ${nextUrl}`)
-
         const response: SpotifySavedTracksResponse =
           await sendApiRequest<SpotifySavedTracksResponse>({
             path: nextUrl,
@@ -120,11 +117,6 @@ export async function POST(
             // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
             token: profile.spotify_access_token
           })
-
-        logger(
-          'INFO',
-          `Fetched ${response.items.length} liked songs (total so far: ${allLikedTracks.length + response.items.length})`
-        )
 
         if (!response.items || response.items.length === 0) {
           break
@@ -156,17 +148,12 @@ export async function POST(
     }
 
     summary.total_fetched = allLikedTracks.length
-    logger(
-      'INFO',
-      `Finished fetching. Total liked songs: ${allLikedTracks.length}`
-    )
 
     if (allLikedTracks.length === 0) {
       return NextResponse.json(summary)
     }
 
     // Step 2: Batch upsert tracks to tracks table
-    logger('INFO', 'Starting batch upsert of tracks')
     const trackRecords = allLikedTracks.map((track) => ({
       spotify_track_id: track.id,
       name: track.name,
@@ -181,7 +168,6 @@ export async function POST(
 
     // Upsert in batches of 50 (Supabase limit)
     const trackBatches = chunkArray(trackRecords, 50)
-    let upsertedCount = 0
 
     for (let index = 0; index < trackBatches.length; index++) {
       const batch = trackBatches[index]
@@ -200,12 +186,6 @@ export async function POST(
           summary.errors.push(
             `Failed to upsert tracks batch ${index + 1}: ${upsertError.message}`
           )
-        } else {
-          upsertedCount += batch.length
-          logger(
-            'INFO',
-            `Upserted batch ${index + 1}/${trackBatches.length} (${batch.length} tracks)`
-          )
         }
       } catch (error) {
         logger(
@@ -220,10 +200,7 @@ export async function POST(
       }
     }
 
-    logger('INFO', `Upserted ${upsertedCount} tracks to database`)
-
     // Step 3: Get track IDs from database by Spotify IDs
-    logger('INFO', 'Fetching track IDs from database')
     const spotifyTrackIds = allLikedTracks.map((track) => track.id)
     const { data: dbTracks, error: fetchError } = await supabase
       .from('tracks')
@@ -243,10 +220,7 @@ export async function POST(
       trackIdMap.set(track.spotify_track_id, track.id)
     })
 
-    logger('INFO', `Mapped ${trackIdMap.size} tracks from database`)
-
     // Step 4: Get existing queue track IDs for this user
-    logger('INFO', 'Fetching existing queue tracks')
     const { data: existingQueue, error: queueFetchError } = await supabase
       .from('jukebox_queue')
       .select('track_id')
@@ -269,7 +243,6 @@ export async function POST(
       // eslint-disable-next-line @typescript-eslint/no-unsafe-return, @typescript-eslint/no-unsafe-member-access
       existingQueue?.map((item) => item.track_id) || []
     )
-    logger('INFO', `Found ${existingTrackIds.size} tracks already in queue`)
 
     // Step 5: Filter out tracks already in queue and prepare queue items
     const queueItems = []

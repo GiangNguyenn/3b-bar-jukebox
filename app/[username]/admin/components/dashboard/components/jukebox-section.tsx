@@ -118,7 +118,6 @@ export function JukeboxSection({
         path: `me/player/seek?position_ms=${seekPosition}${deviceId ? `&device_id=${deviceId}` : ''}`,
         method: 'PUT'
       })
-      addLog('INFO', `Seeked to ${formatTime(seekPosition)}`, 'JukeboxSection')
 
       // Reset predictive state after seeking to prevent stale track preparation
       // This will also immediately prepare next track if we seeked to near the end

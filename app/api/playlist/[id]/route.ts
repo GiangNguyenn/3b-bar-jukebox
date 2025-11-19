@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { z } from 'zod'
-import { supabase } from '@/lib/supabase'
+import { supabase, queryWithRetry } from '@/lib/supabase'
 import { createModuleLogger } from '@/shared/utils/logger'
 import { parseWithType } from '@/shared/types/utils'
 import type { JukeboxQueueItem } from '@/shared/types/queue'
@@ -14,18 +14,27 @@ export async function GET(
   try {
     const username = params.id
 
-    const { data: profile, error: profileError } = await supabase
-      .from('profiles')
-      .select('id')
-      .ilike('display_name', username)
-      .single<{ id: string }>()
+    const profileResult = await queryWithRetry<{
+      id: string
+    }>(
+      supabase
+        .from('profiles')
+        .select('id')
+        .ilike('display_name', username)
+        .single<{ id: string }>(),
+      undefined,
+      `Fetch profile for username: ${username}`
+    )
 
-    if (profileError || !profile) {
+    const profile = profileResult.data
+    const profileError = profileResult.error
+
+    if (profileError ?? !profile) {
       logger(
         'ERROR',
         `Failed to fetch profile for username: ${username}`,
         undefined,
-        profileError || new Error('No profile returned')
+        (profileError as Error | null) ?? new Error('No profile returned')
       )
       return NextResponse.json(
         { error: `Profile not found for ${username}` },
@@ -33,13 +42,22 @@ export async function GET(
       )
     }
 
-    const { data, error } = await supabase
-      .from('jukebox_queue')
-      .select('id, profile_id, track_id, votes, queued_at, tracks:track_id(*)')
-      .eq('profile_id', profile.id)
-      .order('votes', { ascending: false })
-      .order('queued_at', { ascending: true })
-      .returns<JukeboxQueueItem[]>()
+    const queueResult = await queryWithRetry<JukeboxQueueItem[]>(
+      supabase
+        .from('jukebox_queue')
+        .select(
+          'id, profile_id, track_id, votes, queued_at, tracks:track_id(*)'
+        )
+        .eq('profile_id', profile.id)
+        .order('votes', { ascending: false })
+        .order('queued_at', { ascending: true })
+        .returns<JukeboxQueueItem[]>(),
+      undefined,
+      `Fetch jukebox queue for profileId: ${profile.id}`
+    )
+
+    const data = queueResult.data
+    const error = queueResult.error
 
     if (error) {
       logger(
@@ -94,18 +112,27 @@ export async function POST(
 ): Promise<NextResponse<AddTrackResponseBody>> {
   try {
     const username = params.id
-    const { data: profile, error: profileError } = await supabase
-      .from('profiles')
-      .select('id')
-      .ilike('display_name', username)
-      .single<{ id: string }>()
+    const profileResult = await queryWithRetry<{
+      id: string
+    }>(
+      supabase
+        .from('profiles')
+        .select('id')
+        .ilike('display_name', username)
+        .single<{ id: string }>(),
+      undefined,
+      `Fetch profile for username: ${username}`
+    )
 
-    if (profileError || !profile) {
+    const profile = profileResult.data
+    const profileError = profileResult.error
+
+    if (profileError ?? !profile) {
       logger(
         'ERROR',
         `Failed to fetch profile for username: ${username}`,
         undefined,
-        profileError || new Error('No profile returned')
+        (profileError as Error | null) ?? new Error('No profile returned')
       )
       return NextResponse.json(
         { error: `Profile not found for ${username}` },
@@ -127,19 +154,26 @@ export async function POST(
 
     try {
       // Get admin profile for Spotify API access
-      const { data: adminProfile, error: adminError } = await supabase
-        .from('profiles')
-        .select(
-          'spotify_access_token, spotify_refresh_token, spotify_token_expires_at'
-        )
-        .ilike('display_name', '3B')
-        .single()
+      const adminResult = await queryWithRetry<{
+        spotify_access_token: string | null
+        spotify_refresh_token: string | null
+        spotify_token_expires_at: number | null
+      }>(
+        supabase
+          .from('profiles')
+          .select(
+            'spotify_access_token, spotify_refresh_token, spotify_token_expires_at'
+          )
+          .ilike('display_name', '3B')
+          .single(),
+        undefined,
+        'Fetch admin profile for Spotify API access'
+      )
+
+      const adminProfile = adminResult.data
+      const adminError = adminResult.error
 
       if (!adminError && adminProfile?.spotify_access_token) {
-        logger(
-          'INFO',
-          `Playlist API - Admin profile found, access token available: ${!!adminProfile.spotify_access_token}`
-        )
         // First, get track details (includes artist ID but not genres)
         const trackResponse = await fetch(
           `https://api.spotify.com/v1/tracks/${tracks.id}`,
@@ -150,19 +184,11 @@ export async function POST(
           }
         )
 
-        logger(
-          'INFO',
-          `Playlist API - Track response status: ${trackResponse.status}`
-        )
         if (trackResponse.ok) {
           detailedTrackInfo = (await trackResponse.json()) as {
             album?: { release_date?: string }
             artists?: Array<{ id: string; name: string }>
           }
-          logger(
-            'INFO',
-            `Playlist API - Track info: ${JSON.stringify(detailedTrackInfo)}`
-          )
 
           // Then, get artist genres if we have an artist ID
           if (detailedTrackInfo?.artists?.[0]?.id) {
@@ -175,19 +201,10 @@ export async function POST(
                 }
               }
             )
-
-            logger(
-              'INFO',
-              `Playlist API - Artist response status: ${artistResponse.status}`
-            )
             if (artistResponse.ok) {
               // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
               const artistData = await artistResponse.json()
               artistGenres = (artistData as { genres?: string[] }).genres ?? []
-              logger(
-                'INFO',
-                `Playlist API - Artist genres: ${JSON.stringify(artistGenres)}`
-              )
             }
           }
         }
@@ -227,26 +244,35 @@ export async function POST(
       )
     }
 
-    const { data: upsertedTrack, error: upsertError } = await supabase
-      .from('tracks')
-      .upsert(
-        {
-          spotify_track_id: tracks.id,
-          name: tracks.name,
-          artist: tracks.artists[0].name,
-          album: tracks.album.name,
-          duration_ms: tracks.duration_ms,
-          popularity: tracks.popularity,
-          spotify_url: tracks.uri,
-          genre: genre,
-          release_year: releaseYear
-        },
-        { onConflict: 'spotify_track_id' }
-      )
-      .select('id')
-      .single()
+    const upsertResult = await queryWithRetry<{
+      id: string
+    }>(
+      supabase
+        .from('tracks')
+        .upsert(
+          {
+            spotify_track_id: tracks.id,
+            name: tracks.name,
+            artist: tracks.artists[0].name,
+            album: tracks.album.name,
+            duration_ms: tracks.duration_ms,
+            popularity: tracks.popularity,
+            spotify_url: tracks.uri,
+            genre: genre,
+            release_year: releaseYear
+          },
+          { onConflict: 'spotify_track_id' }
+        )
+        .select('id')
+        .single(),
+      undefined,
+      `Upsert track with Spotify ID: ${tracks.id}`
+    )
 
-    if (upsertError || !upsertedTrack) {
+    const upsertedTrack = upsertResult.data
+    const upsertError = upsertResult.error
+
+    if (upsertError ?? !upsertedTrack) {
       logger('ERROR', `Upsert error details: ${JSON.stringify(upsertError)}`)
       logger(
         'ERROR',
@@ -264,7 +290,8 @@ export async function POST(
         'ERROR',
         `Failed to upsert track with Spotify ID: ${tracks.id}`,
         undefined,
-        upsertError || new Error('No track returned from upsert')
+        (upsertError as Error | null) ??
+          new Error('No track returned from upsert')
       )
       return NextResponse.json(
         { error: `Failed to save track with Spotify ID ${tracks.id}` },
@@ -273,14 +300,32 @@ export async function POST(
     }
 
     // Check if track is already in the users queue
-    const { data: existingQueueItem, error: checkError } = await supabase
-      .from('jukebox_queue')
-      .select('id, tracks:track_id(spotify_track_id, name)')
-      .eq('profile_id', profile.id)
-      .eq('track_id', upsertedTrack.id)
-      .single()
+    const checkResult = await queryWithRetry<{
+      id: string
+      tracks: {
+        spotify_track_id: string
+        name: string
+      }
+    }>(
+      supabase
+        .from('jukebox_queue')
+        .select('id, tracks:track_id(spotify_track_id, name)')
+        .eq('profile_id', profile.id)
+        .eq('track_id', upsertedTrack.id)
+        .single(),
+      undefined,
+      `Check for duplicate track in queue for profileId: ${profile.id}`
+    )
 
-    if (checkError && checkError.code !== 'PGRST116') {
+    const existingQueueItem = checkResult.data
+    const checkError = checkResult.error
+
+    if (
+      checkError &&
+      typeof checkError === 'object' &&
+      'code' in checkError &&
+      checkError.code !== 'PGRST116'
+    ) {
       // PGRST116 not found which is expected
       logger(
         'ERROR',
@@ -303,12 +348,18 @@ export async function POST(
       )
     }
 
-    const { error: insertError } = await supabase.from('jukebox_queue').insert({
-      profile_id: profile.id,
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-      track_id: upsertedTrack.id,
-      votes: initialVotes ?? 5
-    })
+    const insertResult = await queryWithRetry(
+      supabase.from('jukebox_queue').insert({
+        profile_id: profile.id,
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+        track_id: upsertedTrack.id,
+        votes: initialVotes ?? 5
+      }),
+      undefined,
+      `Insert track into jukebox queue for profileId: ${profile.id}`
+    )
+
+    const insertError = insertResult.error
 
     if (insertError) {
       logger(
@@ -319,7 +370,7 @@ export async function POST(
         'ERROR',
         'Failed to insert track into jukebox queue',
         undefined,
-        insertError
+        insertError as Error
       )
       return NextResponse.json(
         { error: 'Failed to add track to queue' },
@@ -330,25 +381,36 @@ export async function POST(
     // Only log track suggestions for user-initiated requests
     if (requestSource === 'user') {
       // Log the track suggestion for analytics
-      const { error: logError } = await supabase.rpc('log_track_suggestion', {
-        p_profile_id: profile.id,
-        p_spotify_track_id: tracks.id,
-        p_track_name: tracks.name,
-        p_artist_name: tracks.artists[0].name,
-        p_album_name: tracks.album.name,
-        p_duration_ms: tracks.duration_ms,
-        p_popularity: tracks.popularity,
-        p_spotify_url: tracks.uri,
-        p_genre: genre, // Use the genre we fetched from detailed track info
-        p_release_year: releaseYear // Use the release year we extracted from detailed track info
-      })
+      const logResult = await queryWithRetry(
+        supabase.rpc('log_track_suggestion', {
+          p_profile_id: profile.id,
+          p_spotify_track_id: tracks.id,
+          p_track_name: tracks.name,
+          p_artist_name: tracks.artists[0].name,
+          p_album_name: tracks.album.name,
+          p_duration_ms: tracks.duration_ms,
+          p_popularity: tracks.popularity,
+          p_spotify_url: tracks.uri,
+          p_genre: genre, // Use the genre we fetched from detailed track info
+          p_release_year: releaseYear // Use the release year we extracted from detailed track info
+        }),
+        undefined,
+        `Log track suggestion for profileId: ${profile.id}`
+      )
+
+      const logError = logResult.error
 
       if (logError) {
         logger(
           'ERROR',
           `Track suggestion logging error: ${JSON.stringify(logError)}`
         )
-        logger('ERROR', 'Failed to log track suggestion', undefined, logError)
+        logger(
+          'ERROR',
+          'Failed to log track suggestion',
+          undefined,
+          logError as Error
+        )
         // Don't fail the entire request if logging fails, just log the error
       }
     }

@@ -365,7 +365,6 @@ class AutoPlayService {
       const nextTrack = this.queueManager.getNextTrack()
 
       if (!nextTrack) {
-        logger('INFO', '[PrepareNextTrack] No next track available in queue')
         return null
       }
 
@@ -664,13 +663,7 @@ class AutoPlayService {
       // Check if queue is empty
       const nextTrack = this.queueManager.getNextTrack()
       if (!nextTrack) {
-        logger('INFO', '[handleTrackFinished] Queue is empty')
         this.onQueueEmpty?.()
-      } else {
-        logger(
-          'INFO',
-          `[handleTrackFinished] PlayerLifecycle will handle starting next track: ${nextTrack.tracks.name}`
-        )
       }
 
       // Reset predictive state for next track

@@ -3,6 +3,7 @@ import { cookies } from 'next/headers'
 import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import { parseWithType } from '@/shared/types/utils'
+import { queryWithRetry } from '@/lib/supabaseQuery'
 
 const voteSchema = z.object({
   queueId: z.string().uuid(),
@@ -41,13 +42,18 @@ export async function POST(request: Request): Promise<NextResponse> {
     const voteValue = voteDirection === 'up' ? 1 : -1
 
     // First get the current votes
-    const { data: currentQueue, error: fetchError } = await supabase
-      .from('jukebox_queue')
-      .select('votes')
-      .eq('id', queueId)
-      .single()
+    const fetchResult = await queryWithRetry<{
+      votes: number
+    }>(
+      supabase.from('jukebox_queue').select('votes').eq('id', queueId).single(),
+      undefined,
+      `Fetch queue item for voting: ${queueId}`
+    )
 
-    if (fetchError || !currentQueue) {
+    const currentQueue = fetchResult.data
+    const fetchError = fetchResult.error
+
+    if (fetchError ?? !currentQueue) {
       return NextResponse.json(
         { error: 'Queue item not found' },
         { status: 404 }
@@ -55,15 +61,26 @@ export async function POST(request: Request): Promise<NextResponse> {
     }
 
     // Update the votes column with the new value
-    const { error: updateError } = await supabase
-      .from('jukebox_queue')
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access
-      .update({ votes: currentQueue.votes + voteValue })
-      .eq('id', queueId)
+    const updateResult = await queryWithRetry(
+      supabase
+        .from('jukebox_queue')
+        .update({ votes: currentQueue.votes + voteValue })
+        .eq('id', queueId),
+      undefined,
+      `Update votes for queueId: ${queueId}`
+    )
+
+    const updateError = updateResult.error
 
     if (updateError) {
+      const errorMessage =
+        typeof updateError === 'object' &&
+        updateError !== null &&
+        'message' in updateError
+          ? String(updateError.message)
+          : 'Unknown error'
       return NextResponse.json(
-        { error: 'Error updating votes', details: updateError.message },
+        { error: 'Error updating votes', details: errorMessage },
         { status: 500 }
       )
     }
