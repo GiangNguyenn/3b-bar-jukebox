@@ -2,9 +2,9 @@ import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
 import { NextResponse } from 'next/server'
 import type { Database } from '@/types/supabase'
-import { SpotifyTokenResponse } from '@/shared/types/spotify'
 import { createModuleLogger } from '@/shared/utils/logger'
 import { queryWithRetry } from '@/lib/supabaseQuery'
+import { refreshTokenWithRetry } from '@/recovery/tokenRecovery'
 
 // Set up logger for this module
 const logger = createModuleLogger('Search')
@@ -161,45 +161,55 @@ export async function GET(
         )
       }
 
-      const response = await fetch('https://accounts.spotify.com/api/token', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/x-www-form-urlencoded',
-          Authorization: `Basic ${Buffer.from(
-            `${SPOTIFY_CLIENT_ID}:${SPOTIFY_CLIENT_SECRET}`
-          ).toString('base64')}`
-        },
-        body: new URLSearchParams({
-          grant_type: 'refresh_token',
-          refresh_token: typedProfile.spotify_refresh_token
-        })
-      })
-
-      if (!response.ok) {
-        logger('ERROR', `Error refreshing token: ${await response.text()}`)
+      if (!SPOTIFY_CLIENT_ID || !SPOTIFY_CLIENT_SECRET) {
+        logger('ERROR', 'Missing Spotify client credentials')
         return NextResponse.json(
           {
-            error: 'Failed to refresh token',
-            code: 'TOKEN_REFRESH_ERROR',
+            error: 'Server configuration error',
+            code: 'INVALID_CLIENT_CREDENTIALS',
             status: 500
           },
           { status: 500 }
         )
       }
 
-      const tokenData = (await response.json()) as SpotifyTokenResponse
-      accessToken = tokenData.access_token
+      // Use recovery module for token refresh with retry logic
+      const refreshResult = await refreshTokenWithRetry(
+        typedProfile.spotify_refresh_token,
+        SPOTIFY_CLIENT_ID,
+        SPOTIFY_CLIENT_SECRET
+      )
+
+      if (!refreshResult.success || !refreshResult.accessToken) {
+        const errorCode = refreshResult.error?.code ?? 'TOKEN_REFRESH_ERROR'
+        const errorMessage =
+          refreshResult.error?.message ?? 'Failed to refresh token'
+
+        logger('ERROR', `Token refresh failed: ${errorCode} - ${errorMessage}`)
+
+        return NextResponse.json(
+          {
+            error: errorMessage,
+            code: errorCode,
+            status: refreshResult.error?.isRecoverable ? 503 : 500
+          },
+          { status: refreshResult.error?.isRecoverable ? 503 : 500 }
+        )
+      }
+
+      accessToken = refreshResult.accessToken
 
       // Update the token in the database
       const updateResult = await queryWithRetry(
         supabase
           .from('profiles')
           .update({
-            spotify_access_token: tokenData.access_token,
+            spotify_access_token: refreshResult.accessToken,
             spotify_refresh_token:
-              tokenData.refresh_token ?? typedProfile.spotify_refresh_token,
-            spotify_token_expires_at:
-              Math.floor(Date.now() / 1000) + tokenData.expires_in
+              refreshResult.refreshToken ?? typedProfile.spotify_refresh_token,
+            spotify_token_expires_at: refreshResult.expiresIn
+              ? Math.floor(Date.now() / 1000) + refreshResult.expiresIn
+              : null
           })
           .eq('id', userProfile.id),
         undefined,

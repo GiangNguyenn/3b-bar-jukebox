@@ -11,6 +11,11 @@ import {
   DEFAULT_MAX_OFFSET
 } from '@/shared/constants/trackSuggestion'
 import { PLAYER_LIFECYCLE_CONFIG } from './playerLifecycleConfig'
+import {
+  TrackSuggestionsState,
+  isValidTrackSuggestionsState
+} from '@/shared/types/trackSuggestions'
+import { TrackDuplicateDetector } from '@/shared/utils/trackDuplicateDetector'
 
 const logger = createModuleLogger('AutoPlayService')
 
@@ -40,10 +45,11 @@ class AutoPlayService {
   private onQueueLow?: () => void
   private username: string | null = null
   private isAutoFilling = false // Prevent multiple simultaneous auto-fill operations
-  private lastProcessedTrackId: string | null = null // Prevent processing the same track multiple times
+  private duplicateDetector: TrackDuplicateDetector =
+    new TrackDuplicateDetector()
   private autoFillTargetSize: number
   private autoFillMaxAttempts: number
-  private trackSuggestionsState: any = null // User's track suggestions configuration
+  private trackSuggestionsState: TrackSuggestionsState | null = null // User's track suggestions configuration
   private isAutoPlayDisabled: boolean = false // Flag to temporarily disable auto-play during manual operations
   private isInitialized: boolean = false // Flag to track if the service is properly initialized
   // Predictive track start state
@@ -167,7 +173,7 @@ class AutoPlayService {
     }
   }
 
-  public setTrackSuggestionsState(state: any): void {
+  public setTrackSuggestionsState(state: TrackSuggestionsState | null): void {
     logger(
       'INFO',
       `[setTrackSuggestionsState] Setting track suggestions state: ${JSON.stringify(state)}`
@@ -176,6 +182,12 @@ class AutoPlayService {
       'INFO',
       `[setTrackSuggestionsState] State type: ${typeof state}, is null: ${state === null}, is undefined: ${state === undefined}`
     )
+
+    // Validate state before setting
+    if (state && !isValidTrackSuggestionsState(state)) {
+      logger('WARN', 'Invalid track suggestions state provided')
+      return
+    }
 
     this.trackSuggestionsState = state
 
@@ -248,10 +260,10 @@ class AutoPlayService {
         this.resetPredictiveState()
       }
 
-      // Reset lastProcessedTrackId if we're playing a different track
+      // Reset duplicate detector if we're playing a different track
       // Edge case: Manual skip detected
       if (currentTrackId && currentTrackId !== this.lastTrackId) {
-        this.lastProcessedTrackId = null
+        this.duplicateDetector.setLastKnownPlayingTrack(currentTrackId)
         // Reset predictive state when track changes (manual skip or natural end)
         if (this.lastTrackId) {
           logger(
@@ -572,14 +584,13 @@ class AutoPlayService {
     }
 
     // Prevent processing the same track multiple times
-    if (this.lastProcessedTrackId === trackId) {
+    if (!this.duplicateDetector.shouldProcessTrack(trackId)) {
       logger(
         'INFO',
         `[handleTrackFinished] Skipping duplicate processing for track: ${trackId}`
       )
       return
     }
-    this.lastProcessedTrackId = trackId
     this.onTrackFinished?.(trackId)
 
     try {
@@ -774,7 +785,9 @@ class AutoPlayService {
             'autoFillTargetSize'
           ]
           const missingFields = requiredFields.filter(
-            (field: string) => !(field in this.trackSuggestionsState)
+            (field: string) =>
+              !this.trackSuggestionsState ||
+              !(field in this.trackSuggestionsState)
           )
 
           if (missingFields.length > 0) {

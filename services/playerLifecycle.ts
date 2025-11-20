@@ -13,9 +13,15 @@ import { JukeboxQueueItem } from '@/shared/types/queue'
 import { tokenManager } from '@/shared/token/tokenManager'
 import { queueManager } from '@/services/queueManager'
 import { PLAYER_LIFECYCLE_CONFIG } from './playerLifecycleConfig'
+import { TrackDuplicateDetector } from '@/shared/utils/trackDuplicateDetector'
+import {
+  requiresUserAction,
+  getUserFriendlyErrorMessage
+} from '@/recovery/tokenRecovery'
 
-// Extended type for internal SDK state tracking
-interface PlayerSDKState extends SpotifySDKPlaybackState {
+// Type for internal SDK state tracking - composed instead of extended
+// to properly represent the actual SDK state structure
+interface PlayerSDKState {
   paused: boolean
   position: number
   duration: number
@@ -30,8 +36,36 @@ interface PlayerSDKState extends SpotifySDKPlaybackState {
         images: Array<{ url: string }>
       }
       duration_ms: number
-    }
+    } | null
   }
+  disallows?: {
+    pausing: boolean
+    peeking_next: boolean
+    peeking_prev: boolean
+    resuming: boolean
+    seeking: boolean
+    skipping_next: boolean
+    skipping_prev: boolean
+  }
+}
+
+// Type guard for runtime validation of PlayerSDKState
+function isPlayerSDKState(state: unknown): state is PlayerSDKState {
+  if (!state || typeof state !== 'object') return false
+  const s = state as Record<string, unknown>
+  const paused = s.paused
+  const position = s.position
+  const duration = s.duration
+  const trackWindow = s.track_window
+  return (
+    typeof paused === 'boolean' &&
+    typeof position === 'number' &&
+    typeof duration === 'number' &&
+    trackWindow !== null &&
+    trackWindow !== undefined &&
+    typeof trackWindow === 'object' &&
+    'current_track' in trackWindow
+  )
 }
 
 // Type for the navigation callback
@@ -48,8 +82,8 @@ class PlayerLifecycleService {
   private reconnectionTimeoutRef: NodeJS.Timeout | null = null
   private verificationTimeoutRef: NodeJS.Timeout | null = null
   private authRetryCount: number = 0
-  private lastProcessedTrackId: string | null = null
-  private lastKnownPlayingTrackId: string | null = null
+  private duplicateDetector: TrackDuplicateDetector =
+    new TrackDuplicateDetector()
   private addLog:
     | ((
         level: LogLevel,
@@ -256,8 +290,15 @@ class PlayerLifecycleService {
 
   private async verifyDeviceWithTimeout(deviceId: string): Promise<boolean> {
     return new Promise((resolve) => {
+      // Clear any existing timeout first
+      if (this.verificationTimeoutRef) {
+        clearTimeout(this.verificationTimeoutRef)
+        this.verificationTimeoutRef = null
+      }
+
       const timeout = setTimeout(() => {
         this.log('WARN', 'Device verification timed out')
+        this.verificationTimeoutRef = null
         resolve(false)
       }, PLAYER_LIFECYCLE_CONFIG.GRACE_PERIODS.verificationTimeout)
 
@@ -266,10 +307,12 @@ class PlayerLifecycleService {
       validateDevice(deviceId)
         .then((result) => {
           clearTimeout(timeout)
+          this.verificationTimeoutRef = null
           resolve(result.isValid && !(result.device?.isRestricted ?? false))
         })
         .catch((error) => {
           clearTimeout(timeout)
+          this.verificationTimeoutRef = null
           this.log('ERROR', 'Device verification failed', error)
           resolve(false)
         })
@@ -325,14 +368,20 @@ class PlayerLifecycleService {
   }
 
   private async handleTrackFinished(state: PlayerSDKState): Promise<void> {
-    const currentSpotifyTrackId = state.track_window?.current_track?.id
+    const currentTrack = state.track_window?.current_track
 
-    // Prevent duplicate processing
-    if (this.lastProcessedTrackId === currentSpotifyTrackId) {
+    // Early return with proper null handling
+    if (!currentTrack?.id) {
+      this.log('WARN', 'Track finished but no track ID available')
       return
     }
 
-    this.lastProcessedTrackId = currentSpotifyTrackId
+    const currentSpotifyTrackId = currentTrack.id
+
+    // Use shared duplicate detector
+    if (!this.duplicateDetector.shouldProcessTrack(currentSpotifyTrackId)) {
+      return
+    }
 
     const queue = queueManager.getQueue()
     const finishedQueueItem = queue.find(
@@ -463,14 +512,17 @@ class PlayerLifecycleService {
   private syncQueueWithPlayback(state: PlayerSDKState): void {
     const currentSpotifyTrack = state.track_window?.current_track
 
-    // Reset lastProcessedTrackId when a new track starts playing
+    // Update duplicate detector when a new track starts playing
     // This prevents the guard from blocking legitimate track-finished events
     // if the same song plays again (e.g., due to queue sync issues or failed operations)
     if (currentSpotifyTrack) {
       const currentTrackId = currentSpotifyTrack.id
-      if (this.lastKnownPlayingTrackId !== currentTrackId) {
-        this.lastProcessedTrackId = null
-        this.lastKnownPlayingTrackId = currentTrackId
+      const lastKnownId = this.duplicateDetector.getLastKnownPlayingTrackId()
+
+      // If track changed, reset processed flag but keep track of new track
+      if (lastKnownId !== currentTrackId) {
+        // Use the setter to update without processing
+        this.duplicateDetector.setLastKnownPlayingTrack(currentTrackId)
       }
     }
 
@@ -498,23 +550,30 @@ class PlayerLifecycleService {
     }
   }
 
-  private transformStateForUI(state: PlayerSDKState): SpotifyPlaybackState {
+  private transformStateForUI(
+    state: PlayerSDKState
+  ): SpotifyPlaybackState | null {
+    const currentTrack = state.track_window?.current_track
+
+    if (!currentTrack) {
+      // Return null instead of invalid empty object
+      return null
+    }
+
     return {
-      item: state.track_window?.current_track
-        ? {
-            id: state.track_window.current_track.id,
-            name: state.track_window.current_track.name,
-            uri: state.track_window.current_track.uri,
-            duration_ms: state.track_window.current_track.duration_ms,
-            artists: state.track_window.current_track.artists.map((artist) => ({
-              name: artist.name
-            })),
-            album: {
-              name: state.track_window.current_track.album.name,
-              images: state.track_window.current_track.album.images
-            }
-          }
-        : ({} as SpotifyPlaybackState['item']),
+      item: {
+        id: currentTrack.id,
+        name: currentTrack.name,
+        uri: currentTrack.uri,
+        duration_ms: currentTrack.duration_ms,
+        artists: currentTrack.artists.map((artist) => ({
+          name: artist.name
+        })),
+        album: {
+          name: currentTrack.album.name,
+          images: currentTrack.album.images
+        }
+      },
       is_playing: !state.paused,
       progress_ms: state.position,
       timestamp: Date.now(),
@@ -536,12 +595,19 @@ class PlayerLifecycleService {
       return false
     }
 
+    const lastTrack = this.lastKnownState.track_window?.current_track
+    const currentTrack = state.track_window?.current_track
+
+    // Both tracks must exist to compare
+    if (!lastTrack || !currentTrack) {
+      return false
+    }
+
     const trackJustFinished =
       !this.lastKnownState.paused &&
       state.paused &&
       state.position === 0 &&
-      this.lastKnownState.track_window.current_track?.uri ===
-        state.track_window.current_track?.uri
+      lastTrack.uri === currentTrack.uri
 
     const isNearEnd =
       state.duration > 0 &&
@@ -552,8 +618,7 @@ class PlayerLifecycleService {
       !this.lastKnownState.paused &&
       state.paused &&
       state.position === this.lastKnownState.position &&
-      this.lastKnownState.track_window.current_track?.uri ===
-        state.track_window.current_track?.uri
+      lastTrack.uri === currentTrack.uri
 
     return trackJustFinished || (isNearEnd && hasStalled)
   }
@@ -571,7 +636,10 @@ class PlayerLifecycleService {
       this.lastKnownState = state
 
       const transformedState = this.transformStateForUI(state)
-      onPlaybackStateChange(transformedState)
+      // Only call callback if we have a valid state
+      if (transformedState) {
+        onPlaybackStateChange(transformedState)
+      }
     } catch (error) {
       this.log('ERROR', 'Error in player state changed handler', error)
     }
@@ -594,7 +662,7 @@ class PlayerLifecycleService {
       )
       onStatusChange(
         'error',
-        `Authentication failed after ${this.authRetryCount} attempts`
+        `Authentication failed after ${this.authRetryCount} attempts. Please reconnect your Spotify account.`
       )
       return
     }
@@ -603,11 +671,17 @@ class PlayerLifecycleService {
 
     try {
       tokenManager.clearCache()
-      await tokenManager.getToken()
+
+      // Attempt to get a fresh token (this will use the recovery logic in API endpoints)
+      const token = await tokenManager.getToken()
+
+      if (!token) {
+        throw new Error('Failed to obtain token after refresh')
+      }
 
       onStatusChange(
         'initializing',
-        `Refreshing authentication (attempt ${this.authRetryCount})`
+        `Refreshing authentication (attempt ${this.authRetryCount}/${PLAYER_LIFECYCLE_CONFIG.MAX_AUTH_RETRY_ATTEMPTS})`
       )
 
       this.destroyPlayer()
@@ -616,9 +690,32 @@ class PlayerLifecycleService {
         onDeviceIdChange,
         onPlaybackStateChange
       )
+
+      // Reset retry count on success
+      this.authRetryCount = 0
     } catch (error) {
       this.log('ERROR', 'Failed to recover from authentication error', error)
-      onStatusChange('error', `Authentication error: ${message}`)
+
+      // Check if error indicates user action is required
+      const errorMessage =
+        error instanceof Error ? error.message : String(error)
+      const needsUserAction =
+        errorMessage.includes('INVALID_REFRESH_TOKEN') ||
+        errorMessage.includes('INVALID_CLIENT_CREDENTIALS') ||
+        errorMessage.includes('NO_REFRESH_TOKEN')
+
+      if (needsUserAction) {
+        onStatusChange(
+          'error',
+          'Please reconnect your Spotify account to continue playback.'
+        )
+      } else {
+        // For recoverable errors, show retry message
+        onStatusChange(
+          'error',
+          `Authentication error (attempt ${this.authRetryCount}/${PLAYER_LIFECYCLE_CONFIG.MAX_AUTH_RETRY_ATTEMPTS}). Retrying...`
+        )
+      }
     }
   }
 
@@ -796,10 +893,17 @@ class PlayerLifecycleService {
           return
         }
 
-        void this.handlePlayerStateChanged(
-          state as PlayerSDKState,
-          onPlaybackStateChange
-        )
+        // Runtime validation instead of unsafe type assertion
+        if (!isPlayerSDKState(state)) {
+          this.log(
+            'ERROR',
+            'Invalid state shape received in player_state_changed',
+            new Error('Invalid state structure')
+          )
+          return
+        }
+
+        void this.handlePlayerStateChanged(state, onPlaybackStateChange)
       })
 
       // Connect to Spotify
@@ -823,16 +927,27 @@ class PlayerLifecycleService {
       }, PLAYER_LIFECYCLE_CONFIG.CLEANUP_TIMEOUT_MS)
 
       // Return device ID when ready event fires
+      // Store cleanup function to prevent memory leaks
+      let cleanup: (() => void) | null = null
+
       return new Promise<string>((resolve, reject) => {
         const readyHandler = (event: { device_id: string }) => {
+          cleanup?.() // Remove listeners to prevent memory leaks
           resolve(event.device_id)
         }
         const errorHandler = (event: { message: string }) => {
+          cleanup?.() // Remove listeners to prevent memory leaks
           reject(new Error(event.message))
         }
 
         player.addListener('ready', readyHandler)
         player.addListener('initialization_error', errorHandler)
+
+        // Store cleanup function
+        cleanup = () => {
+          player.removeListener('ready', readyHandler)
+          player.removeListener('initialization_error', errorHandler)
+        }
       })
     } catch (error) {
       this.clearAllTimeouts()
@@ -850,8 +965,7 @@ class PlayerLifecycleService {
     }
 
     // Reset state
-    this.lastProcessedTrackId = null
-    this.lastKnownPlayingTrackId = null
+    this.duplicateDetector.reset()
     this.authRetryCount = 0
   }
 
@@ -881,35 +995,60 @@ class PlayerLifecycleService {
         return
       }
 
+      let timeoutId: NodeJS.Timeout | null = null
+      let isResolved = false
+
+      const cleanup = () => {
+        if (timeoutId) {
+          clearTimeout(timeoutId)
+          timeoutId = null
+        }
+      }
+
       const originalReady = window.onSpotifyWebPlaybackSDKReady
       window.onSpotifyWebPlaybackSDKReady = () => {
+        cleanup() // Clear timeout if script loads successfully
         if (originalReady) {
           originalReady()
         }
-        resolve()
+        if (!isResolved) {
+          isResolved = true
+          resolve()
+        }
       }
 
       const originalError = window.onSpotifyWebPlaybackSDKError
       window.onSpotifyWebPlaybackSDKError = (error: unknown) => {
+        cleanup() // Clear timeout on error
         this.log('ERROR', 'Failed to reload Spotify SDK', error)
         if (originalError) {
           originalError(error)
         }
-        reject(new Error(`SDK reload failed: ${String(error)}`))
+        if (!isResolved) {
+          isResolved = true
+          reject(new Error(`SDK reload failed: ${String(error)}`))
+        }
       }
 
       const script = document.createElement('script')
       script.src = 'https://sdk.scdn.co/spotify-player.js'
       script.async = true
       script.onerror = () => {
+        cleanup() // Clear timeout on script error
         this.log('ERROR', 'Failed to load Spotify SDK script')
-        reject(new Error('Failed to load Spotify SDK script'))
+        if (!isResolved) {
+          isResolved = true
+          reject(new Error('Failed to load Spotify SDK script'))
+        }
       }
 
       document.body.appendChild(script)
 
-      setTimeout(() => {
-        reject(new Error('SDK reload timeout'))
+      timeoutId = setTimeout(() => {
+        if (!isResolved) {
+          isResolved = true
+          reject(new Error('SDK reload timeout'))
+        }
       }, PLAYER_LIFECYCLE_CONFIG.SDK_RELOAD_TIMEOUT_MS)
     })
   }
