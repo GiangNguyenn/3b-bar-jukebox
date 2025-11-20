@@ -2,7 +2,10 @@ import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
 import { NextResponse } from 'next/server'
 import type { Database } from '@/types/supabase'
-import { SpotifyTokenResponse } from '@/shared/types/spotify'
+import {
+  refreshTokenWithRetry,
+  isNetworkErrorRecoverable
+} from '@/recovery/tokenRecovery'
 
 // Types
 interface ErrorResponse {
@@ -23,13 +26,6 @@ interface AdminProfile {
   spotify_refresh_token: string | null
   spotify_token_expires_at: number | null
 }
-
-// Constants
-const AUTH = {
-  TOKEN_URL: 'https://accounts.spotify.com/api/token',
-  GRANT_TYPE: 'refresh_token',
-  CONTENT_TYPE: 'application/x-www-form-urlencoded'
-} as const
 
 // Environment variables
 const SPOTIFY_CLIENT_ID = process.env.SPOTIFY_CLIENT_ID
@@ -118,44 +114,54 @@ export async function GET(): Promise<
 
     if (tokenExpiresAt <= now) {
       // Token is expired, refresh it
-      const response = await fetch(AUTH.TOKEN_URL, {
-        method: 'POST',
-        headers: {
-          'Content-Type': AUTH.CONTENT_TYPE,
-          Authorization: `Basic ${Buffer.from(
-            `${SPOTIFY_CLIENT_ID}:${SPOTIFY_CLIENT_SECRET}`
-          ).toString('base64')}`
-        },
-        body: new URLSearchParams({
-          grant_type: AUTH.GRANT_TYPE,
-          refresh_token: typedProfile.spotify_refresh_token
-        })
-      })
-
-      if (!response.ok) {
-        const errorText = await response.text()
-        console.error('[AuthToken] Error refreshing token:', errorText)
+      if (!SPOTIFY_CLIENT_ID || !SPOTIFY_CLIENT_SECRET) {
+        console.error('[AuthToken] Missing Spotify client credentials')
         return NextResponse.json(
           {
-            error: 'Failed to refresh token',
-            code: 'TOKEN_REFRESH_ERROR',
+            error: 'Server configuration error',
+            code: 'INVALID_CLIENT_CREDENTIALS',
             status: 500
           },
           { status: 500 }
         )
       }
 
-      const tokenData = (await response.json()) as SpotifyTokenResponse
+      // Use recovery module for token refresh with retry logic
+      const refreshResult = await refreshTokenWithRetry(
+        typedProfile.spotify_refresh_token,
+        SPOTIFY_CLIENT_ID,
+        SPOTIFY_CLIENT_SECRET
+      )
+
+      if (!refreshResult.success || !refreshResult.accessToken) {
+        const errorCode = refreshResult.error?.code ?? 'TOKEN_REFRESH_ERROR'
+        const errorMessage =
+          refreshResult.error?.message ?? 'Failed to refresh token'
+
+        console.error(
+          `[AuthToken] Token refresh failed: ${errorCode} - ${errorMessage}`
+        )
+
+        return NextResponse.json(
+          {
+            error: errorMessage,
+            code: errorCode,
+            status: refreshResult.error?.isRecoverable ? 503 : 500
+          },
+          { status: refreshResult.error?.isRecoverable ? 503 : 500 }
+        )
+      }
 
       // Update the token in the database
       const { error: updateError } = await supabase
         .from('profiles')
         .update({
-          spotify_access_token: tokenData.access_token,
+          spotify_access_token: refreshResult.accessToken,
           spotify_refresh_token:
-            tokenData.refresh_token ?? typedProfile.spotify_refresh_token,
-          spotify_token_expires_at:
-            Math.floor(Date.now() / 1000) + tokenData.expires_in
+            refreshResult.refreshToken ?? typedProfile.spotify_refresh_token,
+          spotify_token_expires_at: refreshResult.expiresIn
+            ? Math.floor(Date.now() / 1000) + refreshResult.expiresIn
+            : null
         })
         .eq('id', adminProfile.id)
 
@@ -164,10 +170,12 @@ export async function GET(): Promise<
       }
 
       return NextResponse.json({
-        access_token: tokenData.access_token,
+        access_token: refreshResult.accessToken,
         refresh_token:
-          tokenData.refresh_token ?? typedProfile.spotify_refresh_token,
-        expires_at: Math.floor(Date.now() / 1000) + tokenData.expires_in
+          refreshResult.refreshToken ?? typedProfile.spotify_refresh_token,
+        expires_at: refreshResult.expiresIn
+          ? Math.floor(Date.now() / 1000) + refreshResult.expiresIn
+          : tokenExpiresAt
       })
     }
 
@@ -178,6 +186,22 @@ export async function GET(): Promise<
       expires_at: tokenExpiresAt
     })
   } catch (error) {
+    // Check if it's a network error that might be recoverable
+    if (isNetworkErrorRecoverable(error)) {
+      console.warn(
+        '[AuthToken] Network error (potentially recoverable):',
+        error
+      )
+      return NextResponse.json(
+        {
+          error: 'Network error. Please try again.',
+          code: 'NETWORK_ERROR',
+          status: 503
+        },
+        { status: 503 }
+      )
+    }
+
     console.error('[AuthToken] Error:', error)
     return NextResponse.json(
       {

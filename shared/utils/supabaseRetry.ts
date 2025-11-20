@@ -1,23 +1,19 @@
 import { createModuleLogger } from './logger'
+import { calculateBackoffDelay } from './retryHelpers'
+import { isRetryableNetworkError } from './networkErrorDetection'
+import { type RetryConfig, DEFAULT_RETRY_CONFIG } from './retryConfig'
 
 const logger = createModuleLogger('SupabaseRetry')
 
-export interface RetryConfig {
-  maxRetries?: number
-  baseDelay?: number
-  maxDelay?: number
-}
-
-export const DEFAULT_RETRY_CONFIG: Required<RetryConfig> = {
-  maxRetries: 3,
-  baseDelay: 1000,
-  maxDelay: 10000
-}
+// Re-export for backward compatibility
+export type { RetryConfig }
+export { DEFAULT_RETRY_CONFIG }
 
 /**
  * Determines if an error should trigger a retry
  * Retries on: network errors, timeouts, 5xx errors
  * Skips retries on: 4xx client errors (400, 401, 403, 404, etc.)
+ * Uses shared network error detection but keeps Supabase-specific error code handling
  */
 function shouldRetry(error: unknown): boolean {
   if (!error) return false
@@ -48,7 +44,7 @@ function shouldRetry(error: unknown): boolean {
     // Check for specific Supabase error codes that indicate retryable errors
     const code = supabaseError.code
     if (code) {
-      // Network/connection errors
+      // Network/connection errors (Supabase-specific codes)
       if (
         code === 'PGRST301' || // Connection timeout
         code === 'PGRST302' || // Connection error
@@ -70,37 +66,13 @@ function shouldRetry(error: unknown): boolean {
     }
   }
 
-  // Check if it's a network error (Error object with network-related messages)
+  // Use shared network error detection for Error objects
   if (error instanceof Error) {
-    const message = error.message.toLowerCase()
-    if (
-      message.includes('network') ||
-      message.includes('timeout') ||
-      message.includes('connection') ||
-      message.includes('fetch failed') ||
-      message.includes('econnrefused') ||
-      message.includes('etimedout')
-    ) {
-      return true
-    }
+    return isRetryableNetworkError(error)
   }
 
   // Default: retry on unknown errors (could be network issues)
   return true
-}
-
-/**
- * Calculates exponential backoff delay with jitter
- */
-function calculateBackoffDelay(
-  attempt: number,
-  baseDelay: number,
-  maxDelay: number
-): number {
-  const exponentialDelay = baseDelay * Math.pow(2, attempt)
-  const jitter = Math.random() * 0.3 * exponentialDelay // Add up to 30% jitter
-  const delay = Math.min(exponentialDelay + jitter, maxDelay)
-  return Math.floor(delay)
 }
 
 /**

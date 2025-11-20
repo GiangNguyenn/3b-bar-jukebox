@@ -5,12 +5,19 @@ import { JukeboxQueueItem } from '@/shared/types/queue'
 import { useConsoleLogsContext } from './ConsoleLogsProvider'
 import { queueManager } from '@/services/queueManager'
 import { queryWithRetry } from '@/lib/supabaseQuery'
+import { fetchWithRetry } from '@/shared/utils/fetchWithRetry'
+import {
+  recoverQueueFromCache,
+  categorizeQueueError,
+  logQueueRecovery
+} from '@/recovery/queueRecovery'
 
 export function usePlaylistData(username?: string) {
   const [queue, setQueue] = useState<JukeboxQueueItem[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [isRefreshing, setIsRefreshing] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [isStale, setIsStale] = useState(false)
   const [isRealtimeConnected, setIsRealtimeConnected] = useState(false)
   const { addLog } = useConsoleLogsContext()
   const supabase = createBrowserClient<Database>(
@@ -22,6 +29,7 @@ export function usePlaylistData(username?: string) {
   const isInitialLoadRef = useRef(true)
   const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null)
   const lastPollTimeRef = useRef<number>(0)
+  const wasQueueEmptyRef = useRef<boolean>(true)
 
   // Fetch queue data from API
   const fetchQueue = useCallback(
@@ -35,9 +43,14 @@ export function usePlaylistData(username?: string) {
         } else if (isBackgroundRefresh) {
           setIsRefreshing(true)
         }
-        setError(null)
 
-        const response = await fetch(`/api/playlist/${username}`)
+        // Use fetchWithRetry for automatic retry on network failures
+        const response = await fetchWithRetry(
+          `/api/playlist/${username}`,
+          undefined,
+          undefined,
+          `Queue fetch for ${username}`
+        )
 
         if (!response.ok) {
           const errorData = await response.json()
@@ -50,6 +63,13 @@ export function usePlaylistData(username?: string) {
         // Update queueManager with the fetched data
         queueManager.updateQueue(data)
 
+        // Track if queue was empty
+        wasQueueEmptyRef.current = data.length === 0
+
+        // Clear error and stale flags on successful fetch
+        setError(null)
+        setIsStale(false)
+
         lastPollTimeRef.current = Date.now()
         addLog(
           'INFO',
@@ -57,15 +77,48 @@ export function usePlaylistData(username?: string) {
           'usePlaylistData'
         )
       } catch (err) {
-        const errorMessage =
-          err instanceof Error ? err.message : 'Unknown error occurred'
-        setError(errorMessage)
-        addLog(
-          'ERROR',
-          `Failed to fetch queue: ${errorMessage}`,
-          'usePlaylistData',
-          err instanceof Error ? err : undefined
-        )
+        // Categorize the error for better user feedback
+        const { type: errorType, message: errorMessage } =
+          categorizeQueueError(err)
+
+        // Attempt to recover using cached queue data
+        const recovery = recoverQueueFromCache()
+
+        // Log recovery action
+        // recovery.source can be 'fresh' | 'cached' | 'empty', but logQueueRecovery expects 'cached' | 'empty'
+        const recoverySource: 'cached' | 'empty' =
+          recovery.source === 'fresh' ? 'empty' : recovery.source
+        logQueueRecovery(errorType, recoverySource, recovery.queue.length)
+
+        // Update state with recovery data
+        if (recovery.source === 'cached') {
+          // Update queue with cached data if we don't have data or if queue became empty
+          // This ensures recovery works even if queue was cleared due to error
+          if (wasQueueEmptyRef.current || queue.length === 0) {
+            setQueue(recovery.queue)
+            wasQueueEmptyRef.current = recovery.queue.length === 0
+          }
+          setIsStale(true)
+          setError(errorMessage)
+          addLog(
+            'WARN',
+            `Queue fetch failed, using cached data: ${errorMessage}`,
+            'usePlaylistData',
+            err instanceof Error ? err : undefined
+          )
+        } else {
+          // No cached data available
+          setQueue([])
+          wasQueueEmptyRef.current = true
+          setIsStale(true)
+          setError(errorMessage)
+          addLog(
+            'ERROR',
+            `Failed to fetch queue and no cache available: ${errorMessage}`,
+            'usePlaylistData',
+            err instanceof Error ? err : undefined
+          )
+        }
       } finally {
         if (isInitialLoadRef.current) {
           setIsLoading(false)
@@ -303,6 +356,7 @@ export function usePlaylistData(username?: string) {
     isLoading,
     isRefreshing,
     error,
+    isStale,
     mutate,
     optimisticUpdate,
     isRealtimeConnected

@@ -192,7 +192,19 @@ export function useSpotifyPlayerHook(
     try {
       const deviceId = await playerLifecycleService.createPlayer(
         (status, error) => {
-          spotifyPlayerStore.getState().setStatus(status as PlayerStatus, error)
+          // Validate status is a valid PlayerStatus before setting
+          const validStatuses: PlayerStatus[] = [
+            'initializing',
+            'ready',
+            'reconnecting',
+            'error',
+            'disconnected',
+            'verifying'
+          ]
+          const validStatus = validStatuses.includes(status as PlayerStatus)
+            ? (status as PlayerStatus)
+            : 'error'
+          spotifyPlayerStore.getState().setStatus(validStatus, error)
         },
         (deviceId) => {
           spotifyPlayerStore.getState().setDeviceId(deviceId)

@@ -35,6 +35,8 @@ export function TrackSuggestionsTab({
 }: TrackSuggestionsTabProps): JSX.Element {
   const { addLog } = useConsoleLogsContext()
   const [isAdvancedOpen, setIsAdvancedOpen] = useState(false)
+  const [lastSuggestedTrack, setLastSuggestedTrack] =
+    useState<LastSuggestedTrackInfo | null>(null)
   const {
     state,
     setGenres,
@@ -147,7 +149,7 @@ export function TrackSuggestionsTab({
         (await response.json()) as LastSuggestedTrackResponse
 
       if (data.track?.uri !== lastTrackUriRef.current) {
-        updateState({ lastSuggestedTrack: data.track ?? undefined })
+        setLastSuggestedTrack(data.track ?? null)
         lastTrackUriRef.current = data.track?.uri ?? null
       }
     } catch (error: unknown) {
@@ -241,7 +243,7 @@ export function TrackSuggestionsTab({
       <div className='grid gap-6 md:grid-cols-2'>
         <div className='space-y-6'>
           <GenresSelector
-            selectedGenres={state.genres}
+            selectedGenres={state.genres as Genre[]}
             onGenresChange={setGenres}
           />
           <YearRangeSelector
@@ -303,7 +305,7 @@ export function TrackSuggestionsTab({
         )}
       </div>
 
-      <LastSuggestedTrack trackInfo={state.lastSuggestedTrack} />
+      <LastSuggestedTrack trackInfo={lastSuggestedTrack ?? undefined} />
 
       {/* Description Section */}
       <div className='rounded-lg border bg-muted p-4'>

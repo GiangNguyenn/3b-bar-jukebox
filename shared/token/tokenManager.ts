@@ -1,5 +1,13 @@
 import { getAppAccessToken } from '@/services/spotify/auth'
 import { getBaseUrl } from '@/shared/utils/domain'
+import type {
+  TokenResponse,
+  TokenResponseWithExpiry
+} from '@/shared/types/token'
+import {
+  safeParseTokenResponse,
+  safeParseTokenHealthResponse
+} from '@/shared/validations/tokenSchemas'
 
 // Add logging context
 let addLog: (
@@ -14,15 +22,8 @@ export function setTokenManagerLogger(logger: typeof addLog) {
   addLog = logger
 }
 
-// Token types
-export interface TokenResponse {
-  access_token: string
-  token_type: string
-  scope: string
-  expires_in: number
-  refresh_token?: string
-}
-
+// Legacy interface - kept for backward compatibility
+// Consider migrating to shared/types/token.ts types
 export interface TokenInfo {
   lastRefresh: number
   expiresIn: number
@@ -74,18 +75,9 @@ class TokenManager {
       return this.tokenCache.token
     }
 
-    // If we're already refreshing, return the existing promise
+    // If we're already refreshing, await the existing promise
     if (this.refreshPromise) {
       return this.refreshPromise
-    }
-
-    // Prevent multiple simultaneous refreshes
-    if (this.refreshInProgress) {
-      // Wait for existing refresh to complete
-      while (this.refreshInProgress) {
-        await new Promise((resolve) => setTimeout(resolve, 100))
-      }
-      return this.tokenCache.token || this.refreshToken()
     }
 
     // Start a new refresh
@@ -108,13 +100,26 @@ class TokenManager {
         headers: { 'Content-Type': 'application/json' }
       })
       if (tryUser.ok) {
-        const data = (await tryUser.json()) as TokenResponse
-        if (data?.access_token) {
-          this.tokenCache = {
-            token: data.access_token,
-            expiry: Date.now() + (data.expires_in ?? 0) * 1000
+        try {
+          const dataRaw = await tryUser.json()
+          const parseResult = safeParseTokenResponse(dataRaw)
+          if (parseResult.success) {
+            const data = parseResult.data
+            this.tokenCache = {
+              token: data.access_token,
+              expiry: Date.now() + data.expires_in * 1000
+            }
+            return data.access_token
           }
-          return data.access_token
+        } catch (parseError) {
+          if (addLog) {
+            addLog(
+              'WARN',
+              'Failed to parse user token response',
+              'TokenManager',
+              parseError instanceof Error ? parseError : undefined
+            )
+          }
         }
       }
 
@@ -123,46 +128,103 @@ class TokenManager {
         cache: 'no-store'
       })
       if (tryAdmin.ok) {
-        const adminData = (await tryAdmin.json()) as {
-          access_token: string
-          refresh_token?: string
-          expires_at?: number
-          expires_in?: number
-        }
-        const accessToken = adminData?.access_token
-        const expiresAtMs = adminData?.expires_at
-          ? adminData.expires_at * 1000
-          : Date.now() + (adminData?.expires_in ?? 0) * 1000
-        if (accessToken) {
-          this.tokenCache = { token: accessToken, expiry: expiresAtMs }
-          return accessToken
-        }
-      }
-
-      // Fallback 2: public username token (default admin display_name '3B')
-      const tryPublic = await fetch(
-        `${this.config.baseUrl}/api/token/${encodeURIComponent('3B')}`,
-        { cache: 'no-store' }
-      )
-      if (tryPublic.ok) {
-        const publicData = (await tryPublic.json()) as {
-          access_token: string
-          refresh_token?: string
-          expires_at: number
-        }
-        const accessToken = publicData?.access_token
-        const expiresAtMs = publicData?.expires_at * 1000
-        if (accessToken && expiresAtMs) {
-          this.tokenCache = { token: accessToken, expiry: expiresAtMs }
-          return accessToken
+        try {
+          const adminDataRaw = await tryAdmin.json()
+          const parseResult = safeParseTokenResponse(adminDataRaw)
+          if (parseResult.success) {
+            const adminData = parseResult.data
+            const expiresAtMs = Date.now() + adminData.expires_in * 1000
+            this.tokenCache = {
+              token: adminData.access_token,
+              expiry: expiresAtMs
+            }
+            return adminData.access_token
+          }
+        } catch (parseError) {
+          if (addLog) {
+            addLog(
+              'WARN',
+              'Failed to parse admin token response',
+              'TokenManager',
+              parseError instanceof Error ? parseError : undefined
+            )
+          }
         }
       }
 
-      throw new Error(
+      // Fallback 2: public username token endpoint
+      // Note: This fallback uses a hardcoded username '3B' which should be
+      // made configurable in the future. For now, we'll attempt it but
+      // it may fail if the admin username is different.
+      try {
+        const tryPublic = await fetch(
+          `${this.config.baseUrl}/api/token/${encodeURIComponent('3B')}`,
+          { cache: 'no-store' }
+        )
+        if (tryPublic.ok) {
+          try {
+            const publicDataRaw = await tryPublic.json()
+            // Public endpoint may return expires_at instead of expires_in
+            const healthParseResult =
+              safeParseTokenHealthResponse(publicDataRaw)
+            if (healthParseResult.success) {
+              const publicData = healthParseResult.data
+              const accessToken = publicData.access_token
+              if (accessToken) {
+                // Calculate expiry from expires_at if available, otherwise use expires_in
+                let expiresAtMs: number
+                if (publicData.expires_at) {
+                  expiresAtMs = publicData.expires_at * 1000
+                } else if (publicData.expires_in) {
+                  expiresAtMs = Date.now() + publicData.expires_in * 1000
+                } else if (publicData.expiresIn) {
+                  expiresAtMs = Date.now() + publicData.expiresIn * 1000
+                } else {
+                  // Default to 1 hour if no expiry info
+                  expiresAtMs = Date.now() + 3600 * 1000
+                }
+                this.tokenCache = { token: accessToken, expiry: expiresAtMs }
+                return accessToken
+              }
+            }
+          } catch (parseError) {
+            if (addLog) {
+              addLog(
+                'WARN',
+                'Failed to parse public token response',
+                'TokenManager',
+                parseError instanceof Error ? parseError : undefined
+              )
+            }
+          }
+        }
+      } catch (fetchError) {
+        // Silently ignore fetch errors for fallback endpoint
+        if (addLog) {
+          addLog(
+            'WARN',
+            'Failed to fetch public token endpoint (this is expected if admin username is not "3B")',
+            'TokenManager',
+            fetchError instanceof Error ? fetchError : undefined
+          )
+        }
+      }
+
+      const errorMessage =
         'Failed to get token from user, admin, or public endpoints.'
-      )
+      if (addLog) {
+        addLog('ERROR', errorMessage, 'TokenManager')
+      }
+      throw new Error(errorMessage)
     } catch (error) {
-      console.error('[TokenManager] Error refreshing token:', error)
+      if (addLog) {
+        addLog(
+          'ERROR',
+          'Error refreshing token',
+          'TokenManager',
+          error instanceof Error ? error : undefined
+        )
+      }
       throw error
     }
   }

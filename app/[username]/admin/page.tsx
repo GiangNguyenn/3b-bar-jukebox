@@ -59,11 +59,15 @@ function useAdminTokenManagement(params: {
   useEffect(() => {
     if (!isReady) return
 
-    const interval = setInterval(() => {
-      const runRefresh: () => Promise<void> = async (): Promise<void> => {
-        try {
-          await tokenManager.refreshIfNeeded()
-        } catch (error: unknown) {
+    let isMounted = true
+
+    const runRefresh = async (): Promise<void> => {
+      if (!isMounted) return
+
+      try {
+        await tokenManager.refreshIfNeeded()
+      } catch (error: unknown) {
+        if (isMounted) {
           addLog(
             'ERROR',
             'Proactive token refresh failed',
@@ -72,10 +76,20 @@ function useAdminTokenManagement(params: {
           )
         }
       }
+    }
+
+    // Run immediately
+    void runRefresh()
+
+    // Then run every 60 seconds
+    const interval = setInterval(() => {
       void runRefresh()
     }, 60000)
 
-    return (): void => clearInterval(interval)
+    return (): void => {
+      isMounted = false
+      clearInterval(interval)
+    }
   }, [isReady, addLog])
 }
 
@@ -119,6 +133,7 @@ export default function AdminPage(): JSX.Element {
     data: queue,
     isLoading: queueLoading,
     error: playlistError,
+    isStale: queueIsStale,
     mutate: refreshQueue,
     optimisticUpdate
   } = usePlaylistData(username)
@@ -275,21 +290,43 @@ export default function AdminPage(): JSX.Element {
       // Clear token cache
       tokenManager.clearCache()
 
-      // Force token refresh
-      await tokenManager.getToken()
+      // Force token refresh (this will use recovery logic in API endpoints)
+      const token = await tokenManager.getToken()
+
+      if (!token) {
+        throw new Error('Failed to obtain token after refresh')
+      }
 
       // Reinitialize player
       await createPlayer()
 
       setError(null)
     } catch (error: unknown) {
+      const errorMessage =
+        error instanceof Error ? error.message : String(error)
+
+      // Determine if this is a recoverable error
+      const needsUserAction =
+        errorMessage.includes('INVALID_REFRESH_TOKEN') ||
+        errorMessage.includes('INVALID_CLIENT_CREDENTIALS') ||
+        errorMessage.includes('NO_REFRESH_TOKEN') ||
+        errorMessage.includes('NOT_AUTHENTICATED')
+
       addLog(
         'ERROR',
-        'Automatic token refresh failed',
+        `Automatic token refresh failed: ${errorMessage}`,
         'AdminPage',
         error instanceof Error ? error : undefined
       )
-      setError('Token refresh failed. Please check your Spotify credentials.')
+
+      if (needsUserAction) {
+        setError('Please reconnect your Spotify account to continue playback.')
+      } else {
+        // For recoverable errors, show a more helpful message
+        setError(
+          'Temporary issue refreshing token. The system will retry automatically.'
+        )
+      }
     } finally {
       setIsLoading(false)
     }
@@ -305,15 +342,8 @@ export default function AdminPage(): JSX.Element {
 
   // Recovery removed
 
-  if (playlistError) {
-    return (
-      <div className='p-4 text-red-500'>
-        <p>Error loading queue: {playlistError ?? 'Unknown error'}</p>
-      </div>
-    )
-  }
-
-  if (queueLoading && (!queue || queue.length === 0)) {
+  // Only show loading if we have no queue data at all
+  if (queueLoading && (!queue || queue.length === 0) && !playlistError) {
     return (
       <div className='text-white min-h-screen bg-black p-4'>
         <div className='mx-auto max-w-xl space-y-4'>
@@ -329,6 +359,34 @@ export default function AdminPage(): JSX.Element {
   return (
     <div className='text-white min-h-screen bg-black p-4'>
       <AutoFillNotification />
+
+      {/* Queue Error Warning Banner */}
+      {playlistError && (
+        <div className='mx-auto mb-4 max-w-xl rounded-lg border border-yellow-600 bg-yellow-900/50 p-4'>
+          <div className='flex items-start justify-between gap-4'>
+            <div className='flex-1'>
+              <h3 className='mb-1 font-semibold text-yellow-200'>
+                Queue Sync Issue
+              </h3>
+              <p className='mb-2 text-sm text-yellow-100'>{playlistError}</p>
+              {queueIsStale && queue.length > 0 && (
+                <p className='text-xs text-yellow-200'>
+                  Using cached queue data ({queue.length} tracks). Playback will
+                  continue normally.
+                </p>
+              )}
+            </div>
+            <button
+              onClick={() => {
+                void refreshQueue()
+              }}
+              className='text-white whitespace-nowrap rounded-md bg-yellow-600 px-4 py-2 text-sm font-medium transition-colors hover:bg-yellow-700'
+            >
+              Retry
+            </button>
+          </div>
+        </div>
+      )}
 
       <div className='mx-auto max-w-xl space-y-4'>
         <h1 className='mb-8 text-2xl font-bold'>Admin Controls</h1>
