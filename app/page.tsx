@@ -264,6 +264,9 @@ export default function Home(): JSX.Element {
                   <h4 className='text-white mb-2 text-2xl font-bold'>
                     Premium
                   </h4>
+                  <p className='text-white mb-2 text-4xl font-bold'>
+                    $1<span className='text-xl text-gray-300'>/month</span>
+                  </p>
                   <p className='text-gray-300'>
                     Support the developers & get advanced features
                   </p>
