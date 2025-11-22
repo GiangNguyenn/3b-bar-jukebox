@@ -170,7 +170,8 @@ export class SpotifyApiService implements SpotifyApiClient {
         let deviceId = targetDeviceId
         if (!deviceId) {
           // Get the app's device ID from the store
-          deviceId = spotifyPlayerStore.getState().deviceId
+          const appDeviceId = spotifyPlayerStore.getState().deviceId
+          deviceId = appDeviceId ?? undefined
           if (!deviceId) {
             throw new Error(
               'App device ID is not available. Please ensure the Spotify player is initialized.'
