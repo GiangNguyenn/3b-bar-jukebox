@@ -3,6 +3,7 @@ import { sendApiRequest } from '@/shared/api'
 import { QueueManager } from './queueManager'
 import { createModuleLogger } from '@/shared/utils/logger'
 import { SpotifyPlaybackState } from '@/shared/types/spotify'
+import { transferPlaybackToDevice } from '@/services/deviceManagement/deviceTransfer'
 import {
   FALLBACK_GENRES,
   DEFAULT_YEAR_RANGE,
@@ -1668,6 +1669,20 @@ class AutoPlayService {
   ): Promise<void> {
     if (!this.deviceId) {
       logger('ERROR', 'No device ID available to play next track')
+      return
+    }
+
+    // Always transfer playback to the app's device before playing
+    const transferred = await transferPlaybackToDevice(this.deviceId)
+    if (!transferred) {
+      logger(
+        'ERROR',
+        `Failed to transfer playback to app device: ${this.deviceId}. Cannot play next track.`
+      )
+      // Reset predictive state on error
+      if (isPredictive) {
+        this.resetPredictiveState()
+      }
       return
     }
 

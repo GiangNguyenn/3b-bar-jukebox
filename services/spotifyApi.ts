@@ -8,6 +8,8 @@ import { sendApiRequest } from '@/shared/api'
 import { handleOperationError } from '@/shared/utils/errorHandling'
 import { showToast } from '@/lib/toast'
 import { queueManager } from '@/services/queueManager'
+import { spotifyPlayerStore } from '@/hooks/useSpotifyPlayer'
+import { transferPlaybackToDevice } from '@/services/deviceManagement/deviceTransfer'
 
 // Add logging context
 let addLog: (
@@ -164,19 +166,25 @@ export class SpotifyApiService implements SpotifyApiClient {
   }> {
     return handleOperationError(async () => {
       try {
-        // Ensure we are on the intended device if provided; otherwise pick an active device
+        // Always use the app's device ID - never fallback to other devices
         let deviceId = targetDeviceId
         if (!deviceId) {
-          deviceId = await this.ensureActiveDevice()
-        } else {
-          // Transfer playback to the specific device without auto-play
-          await this.apiClient({
-            path: 'me/player',
-            method: 'PUT',
-            body: { device_ids: [deviceId], play: false },
-            retryConfig: this.retryConfig
-          })
-          await new Promise((resolve) => setTimeout(resolve, 800))
+          // Get the app's device ID from the store
+          const appDeviceId = spotifyPlayerStore.getState().deviceId
+          deviceId = appDeviceId ?? undefined
+          if (!deviceId) {
+            throw new Error(
+              'App device ID is not available. Please ensure the Spotify player is initialized.'
+            )
+          }
+        }
+
+        // Always transfer playback to the app's device before playing
+        const transferred = await transferPlaybackToDevice(deviceId)
+        if (!transferred) {
+          throw new Error(
+            `Failed to transfer playback to app device: ${deviceId}`
+          )
         }
 
         // Get the next track from our database queue
@@ -274,62 +282,36 @@ export class SpotifyApiService implements SpotifyApiClient {
     }, 'SpotifyApi.resumePlayback')
   }
 
-  private async ensureActiveDevice(): Promise<string> {
+  private async ensureAppDevice(): Promise<string> {
     try {
-      const currentState = await this.getPlaybackState()
+      // Only use the app's device ID from the store - never fallback to other devices
+      const appDeviceId = spotifyPlayerStore.getState().deviceId
 
-      // If we already have an active device, return its ID
-      if (currentState?.device?.id) {
-        return currentState.device.id
+      if (!appDeviceId) {
+        throw new Error(
+          'App device ID is not available. Please ensure the Spotify player is initialized.'
+        )
       }
 
-      // Get available devices
-      const devices = await this.apiClient<{
-        devices: Array<{ id: string; is_active: boolean }>
-      }>({
-        path: 'me/player/devices',
-        retryConfig: this.retryConfig
-      })
-
-      // Find an active device or use the first available one
-      const activeDevice =
-        devices.devices.find((device) => device.is_active) || devices.devices[0]
-
-      if (!activeDevice) {
-        throw new Error('No available devices found')
+      // Transfer playback to the app's device
+      const transferred = await transferPlaybackToDevice(appDeviceId)
+      if (!transferred) {
+        throw new Error(
+          `Failed to transfer playback to app device: ${appDeviceId}`
+        )
       }
 
-      // Transfer playback to the selected device
-      await this.apiClient({
-        path: 'me/player',
-        method: 'PUT',
-        body: {
-          device_ids: [activeDevice.id],
-          play: false
-        },
-        retryConfig: this.retryConfig
-      })
-
-      // Wait a moment for the device to become active
-      await new Promise((resolve) => setTimeout(resolve, 1000))
-
-      // Verify the device is now active
-      const newState = await this.getPlaybackState()
-      if (newState?.device?.id !== activeDevice.id) {
-        throw new Error('Failed to activate device')
-      }
-
-      return activeDevice.id
+      return appDeviceId
     } catch (error) {
       if (addLog) {
         addLog(
           'ERROR',
-          'Error ensuring active device',
+          'Error ensuring app device',
           'SpotifyApi',
           error instanceof Error ? error : undefined
         )
       } else {
-        console.error('[SpotifyApi] Error ensuring active device:', error)
+        console.error('[SpotifyApi] Error ensuring app device:', error)
       }
       throw error
     }
@@ -390,14 +372,19 @@ export class SpotifyApiService implements SpotifyApiClient {
   }
 
   async seekToPosition(position_ms: number, deviceId?: string): Promise<void> {
-    const path = deviceId
-      ? `me/player/seek?position_ms=${position_ms}&device_id=${deviceId}`
-      : `me/player/seek?position_ms=${position_ms}`
+    // Always require the app's device ID - never fallback
+    const appDeviceId = deviceId || spotifyPlayerStore.getState().deviceId
+
+    if (!appDeviceId) {
+      throw new Error(
+        'App device ID is not available. Please ensure the Spotify player is initialized.'
+      )
+    }
 
     return handleOperationError(
       async () =>
         this.apiClient({
-          path,
+          path: `me/player/seek?position_ms=${position_ms}&device_id=${appDeviceId}`,
           method: 'PUT',
           retryConfig: this.retryConfig
         }),

@@ -202,6 +202,16 @@ class PlayerLifecycleService {
       return
     }
 
+    // Always transfer playback to the app's device before playing
+    const transferred = await transferPlaybackToDevice(this.deviceId)
+    if (!transferred) {
+      this.log(
+        'ERROR',
+        `Failed to transfer playback to app device: ${this.deviceId}. Cannot play next track.`
+      )
+      return
+    }
+
     // Defensive check: verify we're not about to play a track that's already playing
     // This is a final safety net to catch edge cases where all other protections failed
     try {
