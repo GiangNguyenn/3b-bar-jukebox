@@ -300,6 +300,11 @@ export async function GET(): Promise<
         )
       }
 
+      // Calculate expires_at - use refreshResult.expiresIn if available, otherwise fall back to previous tokenExpiresAt
+      const newExpiresAt = refreshResult.expiresIn
+        ? Math.floor(Date.now() / 1000) + refreshResult.expiresIn
+        : tokenExpiresAt
+
       // Update the token in the database
       const { error: updateError } = await supabase
         .from('profiles')
@@ -307,9 +312,7 @@ export async function GET(): Promise<
           spotify_access_token: refreshResult.accessToken,
           spotify_refresh_token:
             refreshResult.refreshToken ?? typedProfile.spotify_refresh_token,
-          spotify_token_expires_at: refreshResult.expiresIn
-            ? Math.floor(Date.now() / 1000) + refreshResult.expiresIn
-            : null
+          spotify_token_expires_at: newExpiresAt
         })
         .eq('id', userProfile.id)
 
@@ -317,11 +320,16 @@ export async function GET(): Promise<
         logger('ERROR', 'Error updating token', JSON.stringify(updateError))
       }
 
+      // Calculate expires_in for response - ensure it matches what's stored in database
+      const expiresInSeconds =
+        refreshResult.expiresIn ??
+        (tokenExpiresAt ? tokenExpiresAt - Math.floor(Date.now() / 1000) : 3600)
+
       return NextResponse.json({
         access_token: refreshResult.accessToken,
         refresh_token:
           refreshResult.refreshToken ?? typedProfile.spotify_refresh_token,
-        expires_in: refreshResult.expiresIn ?? 3600
+        expires_in: expiresInSeconds
       })
     }
 

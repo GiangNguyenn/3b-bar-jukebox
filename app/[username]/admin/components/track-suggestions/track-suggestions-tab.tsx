@@ -160,7 +160,7 @@ export function TrackSuggestionsTab({
         error instanceof Error ? error : new Error('Unknown error')
       )
     }
-  }, [updateState, addLog])
+  }, [addLog])
 
   useEffect(() => {
     // Initial fetch
