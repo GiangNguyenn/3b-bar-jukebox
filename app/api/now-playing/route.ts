@@ -33,8 +33,8 @@ if (!SPOTIFY_CLIENT_ID || !SPOTIFY_CLIENT_SECRET) {
   )
 }
 
-export const dynamic = 'force-dynamic'
 // Use revalidate for caching - 8 seconds matches our polling interval
+// Removed 'force-dynamic' to allow caching to work properly
 export const revalidate = 8
 
 export async function GET(): Promise<
