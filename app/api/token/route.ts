@@ -303,9 +303,11 @@ export async function GET(): Promise<
       // Calculate expires_at - use refreshResult.expiresIn if available
       // If expiresIn is undefined, use a safe default (3600 seconds = 1 hour)
       // Don't use tokenExpiresAt as fallback since it's already expired (that's why we're refreshing)
-      const newExpiresAt = refreshResult.expiresIn
-        ? Math.floor(Date.now() / 1000) + refreshResult.expiresIn
-        : Math.floor(Date.now() / 1000) + 3600 // Default to 1 hour if expiresIn is not provided
+      // Use explicit undefined check instead of truthy check to handle expiresIn === 0 correctly
+      const newExpiresAt =
+        refreshResult.expiresIn !== undefined
+          ? Math.floor(Date.now() / 1000) + refreshResult.expiresIn
+          : Math.floor(Date.now() / 1000) + 3600 // Default to 1 hour if expiresIn is not provided
 
       // Update the token in the database
       const { error: updateError } = await supabase
@@ -324,6 +326,7 @@ export async function GET(): Promise<
 
       // Calculate expires_in for response - ensure it matches what's stored in database
       // Use the same default (3600 seconds) if expiresIn is not provided
+      // Nullish coalescing correctly handles expiresIn === 0 (uses 0) and undefined (uses 3600)
       const expiresInSeconds = refreshResult.expiresIn ?? 3600
 
       return NextResponse.json({

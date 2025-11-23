@@ -168,9 +168,10 @@ export async function GET(
         .from('profiles')
         .update({
           spotify_access_token: refreshResult.accessToken,
-          spotify_token_expires_at: refreshResult.expiresIn
-            ? Math.floor(Date.now() / 1000) + refreshResult.expiresIn
-            : null
+          spotify_token_expires_at:
+            refreshResult.expiresIn !== undefined
+              ? Math.floor(Date.now() / 1000) + refreshResult.expiresIn
+              : null
         })
         .eq('id', userProfile.id)
 
