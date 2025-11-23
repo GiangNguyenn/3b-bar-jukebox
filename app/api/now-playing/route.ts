@@ -226,7 +226,7 @@ export async function GET(): Promise<
     }
 
     const playbackData = JSON.parse(responseText) as SpotifyPlaybackState
-    
+
     // Add caching headers to reduce API calls
     const response = NextResponse.json(playbackData)
     response.headers.set(
