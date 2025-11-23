@@ -133,9 +133,10 @@ export async function GET(
           // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
           spotify_refresh_token:
             refreshResult.refreshToken ?? profile.spotify_refresh_token,
-          spotify_token_expires_at: refreshResult.expiresIn
-            ? Math.floor(Date.now() / 1000) + refreshResult.expiresIn
-            : null
+          spotify_token_expires_at:
+            refreshResult.expiresIn !== undefined
+              ? Math.floor(Date.now() / 1000) + refreshResult.expiresIn
+              : null
         })
         .eq('id', profile.id)
 
