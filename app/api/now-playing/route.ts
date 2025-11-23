@@ -204,7 +204,13 @@ export async function GET(): Promise<
     // Handle 204 No Content (no currently playing track)
     // 204 is a success status (2xx), so nowPlayingResponse.ok is true
     if (nowPlayingResponse.status === 204) {
-      return NextResponse.json(null)
+      const response = NextResponse.json(null)
+      // Add caching headers even for null responses to reduce API calls when not playing
+      response.headers.set(
+        'Cache-Control',
+        'public, s-maxage=8, stale-while-revalidate=16'
+      )
+      return response
     }
 
     if (!nowPlayingResponse.ok) {
@@ -223,7 +229,13 @@ export async function GET(): Promise<
     const responseText = await nowPlayingResponse.text()
     if (!responseText.trim()) {
       // Empty body (shouldn't happen if status is 200, but handle it)
-      return NextResponse.json(null)
+      const response = NextResponse.json(null)
+      // Add caching headers even for null responses to reduce API calls
+      response.headers.set(
+        'Cache-Control',
+        'public, s-maxage=8, stale-while-revalidate=16'
+      )
+      return response
     }
 
     const playbackData = JSON.parse(responseText) as SpotifyPlaybackState
