@@ -104,11 +104,13 @@ export async function POST(
       total_fetched: 0
     }
 
-    // Step 1: Fetch all liked songs from Spotify
+    // Step 1: Fetch liked songs from Spotify
+    // Limit to 100 tracks to reduce Vercel usage and prevent excessive imports
+    const MAX_IMPORT_TRACKS = 100
     const allLikedTracks: SpotifyTrack[] = []
     let nextUrl: string | null = 'me/tracks?limit=50'
 
-    while (nextUrl) {
+    while (nextUrl && allLikedTracks.length < MAX_IMPORT_TRACKS) {
       try {
         const response: SpotifySavedTracksResponse =
           await sendApiRequest<SpotifySavedTracksResponse>({
@@ -123,16 +125,24 @@ export async function POST(
         }
 
         // Add tracks to our collection (filter out null tracks)
+        // Stop if we've reached the maximum limit
         for (const item of response.items) {
-          if (item.track) {
+          if (item.track && allLikedTracks.length < MAX_IMPORT_TRACKS) {
             allLikedTracks.push(item.track)
+          }
+          if (allLikedTracks.length >= MAX_IMPORT_TRACKS) {
+            break
           }
         }
 
-        // Move to next page
-        nextUrl = response.next
-          ? response.next.replace('https://api.spotify.com/v1/', '')
-          : null
+        // Move to next page only if we haven't reached the limit
+        if (allLikedTracks.length < MAX_IMPORT_TRACKS) {
+          nextUrl = response.next
+            ? response.next.replace('https://api.spotify.com/v1/', '')
+            : null
+        } else {
+          nextUrl = null // Stop fetching if we've reached the limit
+        }
       } catch (error) {
         logger(
           'ERROR',

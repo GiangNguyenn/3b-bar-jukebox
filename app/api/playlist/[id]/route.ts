@@ -54,6 +54,7 @@ export async function GET(
         .eq('profile_id', profile.id)
         .order('votes', { ascending: false })
         .order('queued_at', { ascending: true })
+        .limit(100) // Limit to top 100 tracks by votes to reduce response size and Vercel usage
         .returns<JukeboxQueueItem[]>(),
       undefined,
       `Fetch jukebox queue for profileId: ${profile.id}`
