@@ -390,6 +390,9 @@ class PlayerLifecycleService {
 
     // Use shared duplicate detector
     if (!this.duplicateDetector.shouldProcessTrack(currentSpotifyTrackId)) {
+      // Still update the last known track even if we're not processing
+      // This keeps the detector in sync with actual playback state
+      this.duplicateDetector.setLastKnownPlayingTrack(currentSpotifyTrackId)
       return
     }
 
@@ -647,6 +650,8 @@ class PlayerLifecycleService {
 
       const transformedState = this.transformStateForUI(state)
       // Only call callback if we have a valid state
+      // transformStateForUI returns SpotifyPlaybackState | null, but callback expects SpotifyPlaybackState
+      // This guard ensures we never pass null, maintaining the callback's type contract
       if (transformedState) {
         onPlaybackStateChange(transformedState)
       }

@@ -775,6 +775,18 @@ class AutoPlayService {
         if (!this.trackSuggestionsState) {
           await new Promise((resolve) => setTimeout(resolve, 1000))
         } else {
+          // Guard against null/undefined before field checks
+          // Store in local variable to help TypeScript's control flow analysis
+          // This prevents the 'in' operator from failing if state becomes null between checks
+          const trackSuggestionsState = this.trackSuggestionsState
+          if (!trackSuggestionsState) {
+            logger(
+              'WARN',
+              '[checkAndAutoFillQueue] Track suggestions state is null in else block'
+            )
+            return
+          }
+
           // Validate that track suggestions state has required fields
           const requiredFields = [
             'genres',
@@ -786,9 +798,7 @@ class AutoPlayService {
             'autoFillTargetSize'
           ]
           const missingFields = requiredFields.filter(
-            (field: string) =>
-              !this.trackSuggestionsState ||
-              !(field in this.trackSuggestionsState)
+            (field: string) => !(field in trackSuggestionsState)
           )
 
           if (missingFields.length > 0) {
@@ -798,7 +808,7 @@ class AutoPlayService {
             )
             logger(
               'WARN',
-              `[checkAndAutoFillQueue] Track suggestions state: ${JSON.stringify(this.trackSuggestionsState)}`
+              `[checkAndAutoFillQueue] Track suggestions state: ${JSON.stringify(trackSuggestionsState)}`
             )
           }
         }

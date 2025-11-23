@@ -101,12 +101,11 @@ export function usePlaylistData(username?: string) {
 
         // Update state with recovery data
         if (recovery.source === 'cached') {
-          // Update queue with cached data if we don't have data or if queue became empty
-          // This ensures recovery works even if queue was cleared due to error
-          if (wasQueueEmptyRef.current || queue.length === 0) {
-            setQueue(recovery.queue)
-            wasQueueEmptyRef.current = recovery.queue.length === 0
-          }
+          // Always update queue with cached data when available
+          // wasQueueEmptyRef is only set on successful fetch, so it may be stale
+          // Always use cached data to ensure users see the most recent available queue
+          setQueue(recovery.queue)
+          wasQueueEmptyRef.current = recovery.queue.length === 0
           setIsStale(true)
           setError(errorMessage)
           addLog(
