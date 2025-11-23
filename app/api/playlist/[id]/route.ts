@@ -7,6 +7,9 @@ import type { JukeboxQueueItem } from '@/shared/types/queue'
 
 const logger = createModuleLogger('API Playlist')
 
+// Add caching for GET requests - 15 seconds matches our polling interval
+export const revalidate = 15
+
 export async function GET(
   request: Request,
   { params }: { params: { id: string } }
@@ -72,7 +75,13 @@ export async function GET(
       )
     }
 
-    return NextResponse.json(data)
+    // Add caching headers to reduce API calls
+    const response = NextResponse.json(data)
+    response.headers.set(
+      'Cache-Control',
+      'public, s-maxage=15, stale-while-revalidate=30'
+    )
+    return response
   } catch (error) {
     logger(
       'ERROR',

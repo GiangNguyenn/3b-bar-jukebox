@@ -23,7 +23,7 @@ export const TOKEN_EXPIRY_THRESHOLDS = {
 /**
  * Token health check interval in milliseconds
  */
-export const TOKEN_HEALTH_CHECK_INTERVAL = 30000 // 30 seconds
+export const TOKEN_HEALTH_CHECK_INTERVAL = 60000 // 60 seconds - reduced frequency to lower API usage
 
 /**
  * Token refresh check interval in milliseconds (for proactive refresh)

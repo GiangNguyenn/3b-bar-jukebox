@@ -137,8 +137,8 @@ export function usePlaylistData(username?: string) {
       clearInterval(pollingIntervalRef.current)
     }
 
-    // Poll every 10 seconds as fallback
-    const POLL_INTERVAL = 10000
+    // Poll every 30 seconds as fallback - reduces API calls significantly
+    const POLL_INTERVAL = 30000
 
     pollingIntervalRef.current = setInterval(async () => {
       // Only poll if real-time is not connected or if it's been more than 30 seconds since last update
@@ -269,24 +269,8 @@ export function usePlaylistData(username?: string) {
     ]
   )
 
-  // Listen for queueManager updates
-  useEffect(() => {
-    const checkQueueManagerUpdates = (): void => {
-      const queueManagerQueue = queueManager.getQueue()
-      const currentQueueIds = queue.map((item) => item.id).sort()
-      const queueManagerIds = queueManagerQueue.map((item) => item.id).sort()
-
-      // If queueManager has different data, update our state
-      if (JSON.stringify(currentQueueIds) !== JSON.stringify(queueManagerIds)) {
-        setQueue(queueManagerQueue)
-      }
-    }
-
-    // Check for updates every second
-    const interval = setInterval(checkQueueManagerUpdates, 1000)
-
-    return () => clearInterval(interval)
-  }, [queue, addLog])
+  // Queue manager updates are handled via real-time subscriptions and polling
+  // Removed 1-second interval check to reduce unnecessary CPU usage
 
   // Initial setup
   useEffect(() => {

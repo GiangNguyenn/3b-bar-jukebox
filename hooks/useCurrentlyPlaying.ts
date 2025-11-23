@@ -28,7 +28,7 @@ export function useCurrentlyPlaying() {
     error: currentlyPlayingError,
     isLoading
   } = useSWR('currently-playing', currentlyPlayingFetcher, {
-    refreshInterval: 10000,
+    refreshInterval: 30000, // Poll every 30 seconds - reduces API calls
     revalidateOnFocus: false,
     revalidateOnReconnect: false,
     onError: (error) => {

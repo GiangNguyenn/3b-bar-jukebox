@@ -26,7 +26,7 @@ export default function DisplayPage(): ReactElement {
   } = useNowPlayingTrack({
     token: null, // Use admin credentials for public display
     enabled: true,
-    refetchInterval: 2000 // Poll every 2 seconds - still smooth but reduces API calls by 50%
+    refetchInterval: 8000 // Poll every 8 seconds - reduces API calls significantly while maintaining smooth UX
   })
 
   // Extract track values with proper dependency management

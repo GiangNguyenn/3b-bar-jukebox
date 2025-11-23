@@ -34,7 +34,8 @@ if (!SPOTIFY_CLIENT_ID || !SPOTIFY_CLIENT_SECRET) {
 }
 
 export const dynamic = 'force-dynamic'
-export const revalidate = 0
+// Use revalidate for caching - 8 seconds matches our polling interval
+export const revalidate = 8
 
 export async function GET(): Promise<
   NextResponse<SpotifyPlaybackState | null | ErrorResponse>
@@ -225,7 +226,14 @@ export async function GET(): Promise<
     }
 
     const playbackData = JSON.parse(responseText) as SpotifyPlaybackState
-    return NextResponse.json(playbackData)
+    
+    // Add caching headers to reduce API calls
+    const response = NextResponse.json(playbackData)
+    response.headers.set(
+      'Cache-Control',
+      'public, s-maxage=8, stale-while-revalidate=16'
+    )
+    return response
   } catch (error) {
     logger(
       'ERROR',

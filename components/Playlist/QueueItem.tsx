@@ -1,5 +1,5 @@
 import { JukeboxQueueItem } from '@/shared/types/queue'
-import React from 'react'
+import React, { useRef, useEffect, useState } from 'react'
 import Image from 'next/image'
 import { useTrackArtwork } from '@/hooks/useTrackArtwork'
 
@@ -26,14 +26,51 @@ const QueueItem: React.FC<IQueueItemProps> = ({
   accentColor2 = '#6b7280',
   accentColor3 = '#f3f4f6'
 }): JSX.Element | null => {
+  const [isVisible, setIsVisible] = useState(false)
+  const itemRef = useRef<HTMLDivElement>(null)
+
+  // Lazy load artwork only when item is visible
+  useEffect(() => {
+    if (!itemRef.current) return
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (entry.isIntersecting) {
+            setIsVisible(true)
+            // Once visible, we can disconnect the observer
+            observer.disconnect()
+          }
+        })
+      },
+      {
+        // Start loading when item is 100px away from viewport
+        rootMargin: '100px'
+      }
+    )
+
+    observer.observe(itemRef.current)
+
+    return () => {
+      observer.disconnect()
+    }
+  }, [])
+
+  // Only fetch artwork if item is visible or playing
+  const shouldFetchArtwork = isVisible || isPlaying
+
   const { url: artworkUrl, isLoading: isArtworkLoading } = useTrackArtwork(
-    track.tracks?.spotify_track_id ?? ''
+    track.tracks?.spotify_track_id ?? '',
+    {
+      enabled: shouldFetchArtwork
+    }
   )
 
   if (!track.tracks) return null
 
   return (
     <div
+      ref={itemRef}
       className={`flex items-center space-x-4 py-2 ${isPlaying ? 'border-l-4 border-green-500 bg-green-100' : ''}`}
       data-track-id={track.tracks.id}
     >
