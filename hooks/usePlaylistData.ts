@@ -52,19 +52,28 @@ export function usePlaylistData(username?: string) {
           `Queue fetch for ${username}`
         )
 
+        // Read response body once - cannot be read multiple times
+        const data = (await response.json()) as
+          | JukeboxQueueItem[]
+          | { error?: string }
+
         if (!response.ok) {
-          const errorData = await response.json()
-          throw new Error(errorData.error || 'Failed to fetch queue')
+          const errorMessage =
+            typeof data === 'object' && data !== null && 'error' in data
+              ? String(data.error)
+              : 'Failed to fetch queue'
+          throw new Error(errorMessage)
         }
 
-        const data = (await response.json()) as JukeboxQueueItem[]
-        setQueue(data)
+        // Type assertion: if response.ok is true, data should be JukeboxQueueItem[]
+        const queueData = data as JukeboxQueueItem[]
+        setQueue(queueData)
 
         // Update queueManager with the fetched data
-        queueManager.updateQueue(data)
+        queueManager.updateQueue(queueData)
 
         // Track if queue was empty
-        wasQueueEmptyRef.current = data.length === 0
+        wasQueueEmptyRef.current = queueData.length === 0
 
         // Clear error and stale flags on successful fetch
         setError(null)
@@ -73,7 +82,7 @@ export function usePlaylistData(username?: string) {
         lastPollTimeRef.current = Date.now()
         addLog(
           'INFO',
-          `Queue data fetched successfully: ${data.length} tracks`,
+          `Queue data fetched successfully: ${queueData.length} tracks`,
           'usePlaylistData'
         )
       } catch (err) {
