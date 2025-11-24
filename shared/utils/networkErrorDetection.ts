@@ -14,7 +14,10 @@ const NETWORK_ERROR_PATTERNS = [
   'econnrefused',
   'etimedout',
   'enotfound',
-  'network request failed'
+  'network request failed',
+  'err_connection_closed',
+  'connection closed',
+  'connection reset'
 ] as const
 
 /**
