@@ -152,7 +152,11 @@ export async function transferPlaybackToDevice(
         }
 
         // If it's a network error and we're configured to skip verification, treat as success
-        if (isNetworkErr && skipVerificationOnNetworkError && transferApiSucceeded) {
+        if (
+          isNetworkErr &&
+          skipVerificationOnNetworkError &&
+          transferApiSucceeded
+        ) {
           if (addLog) {
             addLog(
               'WARN',

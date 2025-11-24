@@ -401,10 +401,7 @@ class AutoPlayService {
       const nextTrack = this.queueManager.getNextTrack()
 
       if (!nextTrack) {
-        logger(
-          'INFO',
-          '[PrepareNextTrack] No next track available in queue'
-        )
+        logger('INFO', '[PrepareNextTrack] No next track available in queue')
         return null
       }
 
