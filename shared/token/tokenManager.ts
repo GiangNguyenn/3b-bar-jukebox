@@ -108,9 +108,7 @@ class TokenManager {
   ): void {
     if (addLog) {
       const errorMessage =
-        parseError instanceof Error
-          ? parseError.message
-          : 'Unknown parse error'
+        parseError instanceof Error ? parseError.message : 'Unknown parse error'
       addLog(
         'WARN',
         `Failed to parse ${context} token response: ${errorMessage}`,

@@ -117,7 +117,9 @@ export function usePremiumStatus(): PremiumStatus & {
               return
             }
 
-            throw new Error(errorData.error || 'Failed to verify premium status')
+            throw new Error(
+              errorData.error || 'Failed to verify premium status'
+            )
           }
 
           throw new Error('Failed to verify premium status')

@@ -86,7 +86,9 @@ export async function updateTokenInDatabase(
     }
   }
 
-  logger('INFO', `Successfully updated token in database for profile ${profileId}`)
+  logger(
+    'INFO',
+    `Successfully updated token in database for profile ${profileId}`
+  )
   return { success: true }
 }
-

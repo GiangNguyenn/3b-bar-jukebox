@@ -165,9 +165,7 @@ export const PremiumVerificationResponseSchema = z.object({
 /**
  * Safe parser for premium verification responses
  */
-export function safeParsePremiumVerificationResponse(
-  data: unknown
-):
+export function safeParsePremiumVerificationResponse(data: unknown):
   | {
       success: true
       data: {

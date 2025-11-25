@@ -128,16 +128,12 @@ export async function GET(
 
       // Update the token in the database with retry logic
       // This is critical - if database update fails, we should not use the token
-      const updateResult = await updateTokenInDatabase(
-        supabase,
-        profile.id,
-        {
-          accessToken: refreshResult.accessToken,
-          refreshToken: refreshResult.refreshToken,
-          expiresIn: refreshResult.expiresIn,
-          currentRefreshToken: profile.spotify_refresh_token as string
-        }
-      )
+      const updateResult = await updateTokenInDatabase(supabase, profile.id, {
+        accessToken: refreshResult.accessToken,
+        refreshToken: refreshResult.refreshToken,
+        expiresIn: refreshResult.expiresIn,
+        currentRefreshToken: profile.spotify_refresh_token as string
+      })
 
       if (!updateResult.success) {
         const errorCode = updateResult.error?.code ?? 'DATABASE_UPDATE_ERROR'
