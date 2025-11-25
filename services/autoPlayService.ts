@@ -381,6 +381,8 @@ class AutoPlayService {
               'INFO',
               `[PrepareNextTrack] Refreshed queue from API before preparation (${freshQueueLength} tracks)`
             )
+            // Small delay after refresh to ensure any pending deletes have been processed
+            await new Promise((resolve) => setTimeout(resolve, 100))
           } else {
             logger(
               'WARN',
@@ -410,22 +412,61 @@ class AutoPlayService {
       if (nextTrack.tracks.spotify_track_id === currentTrackId) {
         logger(
           'WARN',
-          `[PrepareNextTrack] Next track matches current track (${currentTrackId}), skipping. This may indicate a queue sync issue.`
+          `[PrepareNextTrack] Next track matches current track (${currentTrackId}), removing duplicate and trying again. This may indicate a queue sync issue.`
         )
-        // Try to get the track after next as a fallback
-        const trackAfterNext = this.queueManager.getTrackAfterNext()
-        if (
-          trackAfterNext &&
-          trackAfterNext.tracks.spotify_track_id !== currentTrackId
-        ) {
+        // Remove the duplicate track and try again
+        try {
+          await this.queueManager.markAsPlayed(nextTrack.id)
+          // Small delay to ensure DELETE has propagated
+          await new Promise((resolve) => setTimeout(resolve, 200))
+          // Refresh queue again after removing duplicate
+          if (this.username) {
+            try {
+              await this.refreshQueueFromAPI()
+            } catch (refreshError) {
+              logger(
+                'WARN',
+                '[PrepareNextTrack] Failed to refresh queue after removing duplicate, using cached queue',
+                undefined,
+                refreshError as Error
+              )
+            }
+          }
+          // Get the next track again (should be different now)
+          const nextTrackAfterRemoval = this.queueManager.getNextTrack()
+          if (
+            nextTrackAfterRemoval &&
+            nextTrackAfterRemoval.tracks.spotify_track_id !== currentTrackId
+          ) {
+            logger(
+              'INFO',
+              `[PrepareNextTrack] Using track after duplicate removal: ${nextTrackAfterRemoval.tracks.name}`
+            )
+            this.nextTrackPrepared = true
+            this.preparedTrackId = nextTrackAfterRemoval.tracks.spotify_track_id
+            return nextTrackAfterRemoval
+          }
+          // Try to get the track after next as a fallback
+          const trackAfterNext = this.queueManager.getTrackAfterNext()
+          if (
+            trackAfterNext &&
+            trackAfterNext.tracks.spotify_track_id !== currentTrackId
+          ) {
+            logger(
+              'INFO',
+              `[PrepareNextTrack] Using track after next as fallback: ${trackAfterNext.tracks.name}`
+            )
+            this.nextTrackPrepared = true
+            this.preparedTrackId = trackAfterNext.tracks.spotify_track_id
+            return trackAfterNext
+          }
+        } catch (error) {
           logger(
-            'INFO',
-            `[PrepareNextTrack] Using track after next as fallback: ${trackAfterNext.tracks.name}`
+            'ERROR',
+            '[PrepareNextTrack] Failed to remove duplicate track',
+            undefined,
+            error as Error
           )
-          // Mark as prepared
-          this.nextTrackPrepared = true
-          this.preparedTrackId = trackAfterNext.tracks.spotify_track_id
-          return trackAfterNext
         }
         return null
       }
@@ -654,6 +695,9 @@ class AutoPlayService {
         // Track is in queue - mark it as played
         try {
           await this.queueManager.markAsPlayed(queueItem.id)
+          // Small delay to ensure DELETE has propagated to database before refreshing
+          // This prevents race conditions where refresh brings back the track that was just deleted
+          await new Promise((resolve) => setTimeout(resolve, 200))
           // Refresh queue from API after marking as played to ensure sync
           // This prevents issues where the next track is the same as the finished track
           if (this.username) {
@@ -699,6 +743,54 @@ class AutoPlayService {
       // SDK-driven handling and ensures we don't stall after transitions.
       const safeNextTrack = this.queueManager.getNextTrack()
       const latestPlaybackState = await this.getCurrentPlaybackState()
+
+      // Additional safety check: ensure next track is not the same as the finished track
+      if (
+        safeNextTrack &&
+        safeNextTrack.tracks.spotify_track_id === trackId
+      ) {
+        logger(
+          'WARN',
+          `[handleTrackFinished] Next track is the same as finished track (${trackId}), removing duplicate before playing`
+        )
+        try {
+          await this.queueManager.markAsPlayed(safeNextTrack.id)
+          await new Promise((resolve) => setTimeout(resolve, 200))
+          if (this.username) {
+            await this.refreshQueueFromAPI()
+          }
+        } catch (error) {
+          logger(
+            'ERROR',
+            '[handleTrackFinished] Failed to remove duplicate track before safety check',
+            undefined,
+            error as Error
+          )
+        }
+        // Get the next track again after removing duplicate
+        const nextTrackAfterRemoval = this.queueManager.getNextTrack()
+        if (
+          nextTrackAfterRemoval &&
+          nextTrackAfterRemoval.tracks.spotify_track_id !== trackId &&
+          (!latestPlaybackState || latestPlaybackState.is_playing === false)
+        ) {
+          logger(
+            'INFO',
+            `[handleTrackFinished] Playing next track after duplicate removal: ${nextTrackAfterRemoval.tracks.name}`
+          )
+          try {
+            await this.playNextTrack(nextTrackAfterRemoval, false)
+          } catch (fallbackError) {
+            logger(
+              'ERROR',
+              `[handleTrackFinished] Fallback playNextTrack failed after duplicate removal`,
+              undefined,
+              fallbackError as Error
+            )
+          }
+        }
+        return
+      }
 
       if (
         safeNextTrack &&
