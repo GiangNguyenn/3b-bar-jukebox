@@ -1,4 +1,6 @@
 import { createModuleLogger } from '@/shared/utils/logger'
+import { safeParseSpotifyErrorResponse } from '@/shared/validations/tokenSchemas'
+import { safeParseTokenResponse } from '@/shared/validations/tokenSchemas'
 
 const logger = createModuleLogger('TokenRecovery')
 
@@ -17,11 +19,6 @@ export interface TokenRefreshResult {
   error?: TokenRefreshError
 }
 
-interface SpotifyErrorResponse {
-  error?: string
-  error_description?: string
-}
-
 /**
  * Parses Spotify error response to determine error type and recoverability
  */
@@ -36,10 +33,18 @@ export function parseSpotifyError(
 
   // Try to parse JSON error response
   try {
-    const errorData = JSON.parse(errorText) as SpotifyErrorResponse
-    errorCode = errorData.error ?? 'UNKNOWN_ERROR'
-    errorMessage =
-      errorData.error_description ?? errorData.error ?? errorMessage
+    const errorDataParsed = JSON.parse(errorText)
+    const parseResult = safeParseSpotifyErrorResponse(errorDataParsed)
+    if (parseResult.success) {
+      const errorData = parseResult.data
+      errorCode = errorData.error ?? 'UNKNOWN_ERROR'
+      errorMessage =
+        errorData.error_description ?? errorData.error ?? errorMessage
+    } else {
+      // If validation fails, use the raw text
+      errorMessage =
+        errorText || `HTTP ${response.status}: ${response.statusText}`
+    }
   } catch {
     // If not JSON, use the raw text
     errorMessage =
@@ -170,11 +175,25 @@ export async function refreshTokenWithRetry(
       })
 
       if (response.ok) {
-        const tokenData = (await response.json()) as {
-          access_token: string
-          refresh_token?: string
-          expires_in: number
+        const tokenDataRaw = await response.json()
+        const parseResult = safeParseTokenResponse(tokenDataRaw)
+
+        if (!parseResult.success) {
+          logger(
+            'ERROR',
+            `Invalid token response format (attempt ${attempt + 1})`
+          )
+          return {
+            success: false,
+            error: {
+              code: 'INVALID_RESPONSE',
+              message: 'Invalid token response format from Spotify',
+              isRecoverable: false
+            }
+          }
         }
+
+        const tokenData = parseResult.data
 
         logger('INFO', `Token refresh successful (attempt ${attempt + 1})`)
 

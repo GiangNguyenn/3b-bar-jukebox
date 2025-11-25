@@ -953,12 +953,23 @@ class PlayerLifecycleService {
       this.log('ERROR', 'Failed to recover from authentication error', error)
 
       // Check if error indicates user action is required
+      // Check both error message and error code if available
       const errorMessage =
         error instanceof Error ? error.message : String(error)
+      const errorCode =
+        error instanceof Error && 'code' in error
+          ? (error as Error & { code?: string }).code
+          : undefined
+
       const needsUserAction =
+        errorCode === 'INVALID_REFRESH_TOKEN' ||
+        errorCode === 'INVALID_CLIENT_CREDENTIALS' ||
+        errorCode === 'NO_REFRESH_TOKEN' ||
+        errorCode === 'NOT_AUTHENTICATED' ||
         errorMessage.includes('INVALID_REFRESH_TOKEN') ||
         errorMessage.includes('INVALID_CLIENT_CREDENTIALS') ||
-        errorMessage.includes('NO_REFRESH_TOKEN')
+        errorMessage.includes('NO_REFRESH_TOKEN') ||
+        errorMessage.includes('NOT_AUTHENTICATED')
 
       if (needsUserAction) {
         onStatusChange(

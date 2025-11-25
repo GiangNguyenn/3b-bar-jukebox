@@ -7,6 +7,7 @@ import {
   refreshTokenWithRetry,
   isNetworkErrorRecoverable
 } from '@/recovery/tokenRecovery'
+import { updateTokenInDatabase } from '@/recovery/tokenDatabaseUpdate'
 
 const logger = createModuleLogger('API Token')
 
@@ -300,28 +301,38 @@ export async function GET(): Promise<
         )
       }
 
-      // Calculate expires_at - use refreshResult.expiresIn if available
-      // If expiresIn is undefined, use a safe default (3600 seconds = 1 hour)
-      // Don't use tokenExpiresAt as fallback since it's already expired (that's why we're refreshing)
-      // Use explicit undefined check instead of truthy check to handle expiresIn === 0 correctly
-      const newExpiresAt =
-        refreshResult.expiresIn !== undefined
-          ? Math.floor(Date.now() / 1000) + refreshResult.expiresIn
-          : Math.floor(Date.now() / 1000) + 3600 // Default to 1 hour if expiresIn is not provided
+      // Update the token in the database with retry logic
+      // This is critical - if database update fails, we should not return the token
+      const updateResult = await updateTokenInDatabase(
+        supabase,
+        userProfile.id,
+        {
+          accessToken: refreshResult.accessToken,
+          refreshToken: refreshResult.refreshToken,
+          expiresIn: refreshResult.expiresIn,
+          currentRefreshToken: typedProfile.spotify_refresh_token
+        }
+      )
 
-      // Update the token in the database
-      const { error: updateError } = await supabase
-        .from('profiles')
-        .update({
-          spotify_access_token: refreshResult.accessToken,
-          spotify_refresh_token:
-            refreshResult.refreshToken ?? typedProfile.spotify_refresh_token,
-          spotify_token_expires_at: newExpiresAt
-        })
-        .eq('id', userProfile.id)
+      if (!updateResult.success) {
+        const errorCode = updateResult.error?.code ?? 'DATABASE_UPDATE_ERROR'
+        const errorMessage =
+          updateResult.error?.message ?? 'Failed to update token in database'
 
-      if (updateError) {
-        logger('ERROR', 'Error updating token', JSON.stringify(updateError))
+        logger(
+          'ERROR',
+          `Token refresh succeeded but database update failed: ${errorCode} - ${errorMessage}`
+        )
+
+        // Return error - don't return token if we can't persist it
+        return NextResponse.json(
+          {
+            error: errorMessage,
+            code: errorCode,
+            status: updateResult.error?.isRecoverable ? 503 : 500
+          },
+          { status: updateResult.error?.isRecoverable ? 503 : 500 }
+        )
       }
 
       // Calculate expires_in for response - ensure it matches what's stored in database

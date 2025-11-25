@@ -3,6 +3,7 @@ import { supabase } from '@/lib/supabase'
 import { createModuleLogger } from '@/shared/utils/logger'
 import { sendApiRequest } from '@/shared/api'
 import { refreshTokenWithRetry } from '@/recovery/tokenRecovery'
+import { updateTokenInDatabase } from '@/recovery/tokenDatabaseUpdate'
 
 export const maxDuration = 60 // Maximum for Vercel hobby plan
 export const dynamic = 'force-dynamic'
@@ -187,29 +188,40 @@ export async function POST(
 
       accessToken = refreshResult.accessToken
 
-      // Update the token in the database
-      const { error: updateError } = await supabase
-        .from('profiles')
-        .update({
-          spotify_access_token: refreshResult.accessToken,
-          // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-          spotify_refresh_token:
-            refreshResult.refreshToken ?? profile.spotify_refresh_token,
-          spotify_token_expires_at:
-            refreshResult.expiresIn !== undefined
-              ? Math.floor(Date.now() / 1000) + refreshResult.expiresIn
-              : null
-        })
-        .eq('id', profile.id)
+      // Update the token in the database with retry logic
+      // This is critical - if database update fails, we should not use the token
+      const updateResult = await updateTokenInDatabase(
+        supabase,
+        profile.id,
+        {
+          accessToken: refreshResult.accessToken,
+          refreshToken: refreshResult.refreshToken,
+          expiresIn: refreshResult.expiresIn,
+          currentRefreshToken: profile.spotify_refresh_token as string
+        }
+      )
 
-      if (updateError) {
+      if (!updateResult.success) {
+        const errorCode = updateResult.error?.code ?? 'DATABASE_UPDATE_ERROR'
+        const errorMessage =
+          updateResult.error?.message ?? 'Failed to update token in database'
+
         logger(
           'ERROR',
-          'Failed to update token in database',
-          undefined,
-          updateError
+          `Token refresh succeeded but database update failed: ${errorCode} - ${errorMessage}`
         )
-        // Don't fail the request, just log the error
+
+        // Return error - don't proceed with request if we can't persist token
+        return NextResponse.json(
+          {
+            success: 0,
+            skipped: 0,
+            failed: 0,
+            errors: [errorMessage],
+            total_fetched: 0
+          },
+          { status: updateResult.error?.isRecoverable ? 503 : 500 }
+        )
       }
     }
 

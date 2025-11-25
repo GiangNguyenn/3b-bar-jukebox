@@ -5,6 +5,7 @@ import type { Database } from '@/types/supabase'
 import { SpotifyPlaybackState } from '@/shared/types/spotify'
 import { createModuleLogger } from '@/shared/utils/logger'
 import { refreshTokenWithRetry } from '@/recovery/tokenRecovery'
+import { updateTokenInDatabase } from '@/recovery/tokenDatabaseUpdate'
 
 // Set up logger for this module
 const logger = createModuleLogger('NowPlaying')
@@ -149,28 +150,38 @@ export async function GET(): Promise<
 
       accessToken = refreshResult.accessToken
 
-      // Update the token in the database
-      const { error: updateError } = await supabase
-        .from('profiles')
-        .update({
-          spotify_access_token: refreshResult.accessToken,
-          spotify_refresh_token:
-            refreshResult.refreshToken ?? typedProfile.spotify_refresh_token,
-          spotify_token_expires_at:
-            refreshResult.expiresIn !== undefined
-              ? Math.floor(Date.now() / 1000) + refreshResult.expiresIn
-              : null
-        })
-        .eq('id', userProfile.id)
+      // Update the token in the database with retry logic
+      // This is critical - if database update fails, we should not use the token
+      const updateResult = await updateTokenInDatabase(
+        supabase,
+        userProfile.id,
+        {
+          accessToken: refreshResult.accessToken,
+          refreshToken: refreshResult.refreshToken,
+          expiresIn: refreshResult.expiresIn,
+          currentRefreshToken: typedProfile.spotify_refresh_token
+        }
+      )
 
-      if (updateError) {
+      if (!updateResult.success) {
+        const errorCode = updateResult.error?.code ?? 'DATABASE_UPDATE_ERROR'
+        const errorMessage =
+          updateResult.error?.message ?? 'Failed to update token in database'
+
         logger(
           'ERROR',
-          `Failed to update now playing: ${JSON.stringify(updateError)}`,
-          undefined,
-          updateError instanceof Error ? updateError : undefined
+          `Token refresh succeeded but database update failed: ${errorCode} - ${errorMessage}`
         )
-        // Log error but continue
+
+        // Return error - don't proceed with request if we can't persist token
+        return NextResponse.json(
+          {
+            error: errorMessage,
+            code: errorCode,
+            status: updateResult.error?.isRecoverable ? 503 : 500
+          },
+          { status: updateResult.error?.isRecoverable ? 503 : 500 }
+        )
       }
     }
 
