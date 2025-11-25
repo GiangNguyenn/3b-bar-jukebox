@@ -255,8 +255,12 @@ export async function GET(): Promise<
       return response
     }
 
+    // Read response body once and reuse for both error logging and JSON parsing
+    // Response bodies can only be read once, so we must store the text
+    const responseText = await nowPlayingResponse.text()
+
     if (!nowPlayingResponse.ok) {
-      logger('ERROR', `Spotify API error: ${await nowPlayingResponse.text()}`)
+      logger('ERROR', `Spotify API error: ${responseText}`)
       const errorResponse = NextResponse.json(
         {
           error: 'Failed to get currently playing track',
@@ -273,7 +277,6 @@ export async function GET(): Promise<
     }
 
     // Check if response has content before parsing JSON
-    const responseText = await nowPlayingResponse.text()
     if (!responseText.trim()) {
       // Empty body (shouldn't happen if status is 200, but handle it)
       const response = NextResponse.json(null)
