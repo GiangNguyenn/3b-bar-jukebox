@@ -43,7 +43,10 @@ export async function GET(
         { error: `Profile not found for ${username}` },
         { status: 404 }
       )
-      errorResponse.headers.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate')
+      errorResponse.headers.set(
+        'Cache-Control',
+        'no-store, no-cache, must-revalidate, proxy-revalidate'
+      )
       return errorResponse
     }
 
@@ -76,7 +79,10 @@ export async function GET(
         { error: 'Failed to fetch jukebox queue' },
         { status: 500 }
       )
-      errorResponse.headers.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate')
+      errorResponse.headers.set(
+        'Cache-Control',
+        'no-store, no-cache, must-revalidate, proxy-revalidate'
+      )
       return errorResponse
     }
 
@@ -98,7 +104,10 @@ export async function GET(
       { error: 'An unexpected error occurred' },
       { status: 500 }
     )
-    errorResponse.headers.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate')
+    errorResponse.headers.set(
+      'Cache-Control',
+      'no-store, no-cache, must-revalidate, proxy-revalidate'
+    )
     return errorResponse
   }
 }
@@ -258,7 +267,10 @@ export async function POST(
         { error: 'Invalid Spotify track ID provided' },
         { status: 400 }
       )
-      errorResponse.headers.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate')
+      errorResponse.headers.set(
+        'Cache-Control',
+        'no-store, no-cache, must-revalidate, proxy-revalidate'
+      )
       return errorResponse
     }
 
@@ -315,7 +327,10 @@ export async function POST(
         { error: `Failed to save track with Spotify ID ${tracks.id}` },
         { status: 500 }
       )
-      errorResponse.headers.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate')
+      errorResponse.headers.set(
+        'Cache-Control',
+        'no-store, no-cache, must-revalidate, proxy-revalidate'
+      )
       return errorResponse
     }
 
@@ -355,7 +370,10 @@ export async function POST(
         { error: 'Failed to check for duplicate track' },
         { status: 500 }
       )
-      errorResponse.headers.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate')
+      errorResponse.headers.set(
+        'Cache-Control',
+        'no-store, no-cache, must-revalidate, proxy-revalidate'
+      )
       return errorResponse
     }
 
@@ -368,7 +386,10 @@ export async function POST(
         { error: 'This track is already in your playlist' },
         { status: 409 }
       )
-      errorResponse.headers.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate')
+      errorResponse.headers.set(
+        'Cache-Control',
+        'no-store, no-cache, must-revalidate, proxy-revalidate'
+      )
       return errorResponse
     }
 
@@ -400,7 +421,10 @@ export async function POST(
         { error: 'Failed to add track to queue' },
         { status: 500 }
       )
-      errorResponse.headers.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate')
+      errorResponse.headers.set(
+        'Cache-Control',
+        'no-store, no-cache, must-revalidate, proxy-revalidate'
+      )
       return errorResponse
     }
 
@@ -456,8 +480,14 @@ export async function POST(
       const errorMessage = error.issues
         .map((issue) => `${issue.path.join('.')}: ${issue.message}`)
         .join(', ')
-      const errorResponse = NextResponse.json({ error: errorMessage }, { status: 400 })
-      errorResponse.headers.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate')
+      const errorResponse = NextResponse.json(
+        { error: errorMessage },
+        { status: 400 }
+      )
+      errorResponse.headers.set(
+        'Cache-Control',
+        'no-store, no-cache, must-revalidate, proxy-revalidate'
+      )
       return errorResponse
     }
     const errorMessage =
@@ -467,7 +497,10 @@ export async function POST(
       { error: 'Failed to add track to queue', details: errorMessage },
       { status: 500 }
     )
-    errorResponse.headers.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate')
+    errorResponse.headers.set(
+      'Cache-Control',
+      'no-store, no-cache, must-revalidate, proxy-revalidate'
+    )
     return errorResponse
   }
 }

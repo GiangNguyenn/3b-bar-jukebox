@@ -90,7 +90,10 @@ export async function GET(): Promise<
         { status: 500 }
       )
       // Prevent caching of error responses
-      errorResponse.headers.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate')
+      errorResponse.headers.set(
+        'Cache-Control',
+        'no-store, no-cache, must-revalidate, proxy-revalidate'
+      )
       return errorResponse
     }
 
@@ -113,7 +116,10 @@ export async function GET(): Promise<
           },
           { status: 500 }
         )
-        errorResponse.headers.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate')
+        errorResponse.headers.set(
+          'Cache-Control',
+          'no-store, no-cache, must-revalidate, proxy-revalidate'
+        )
         return errorResponse
       }
 
@@ -127,7 +133,10 @@ export async function GET(): Promise<
           },
           { status: 500 }
         )
-        errorResponse.headers.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate')
+        errorResponse.headers.set(
+          'Cache-Control',
+          'no-store, no-cache, must-revalidate, proxy-revalidate'
+        )
         return errorResponse
       }
 
@@ -153,7 +162,10 @@ export async function GET(): Promise<
           },
           { status: refreshResult.error?.isRecoverable ? 503 : 500 }
         )
-        errorResponse.headers.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate')
+        errorResponse.headers.set(
+          'Cache-Control',
+          'no-store, no-cache, must-revalidate, proxy-revalidate'
+        )
         return errorResponse
       }
 
@@ -191,7 +203,10 @@ export async function GET(): Promise<
           },
           { status: updateResult.error?.isRecoverable ? 503 : 500 }
         )
-        errorResponse.headers.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate')
+        errorResponse.headers.set(
+          'Cache-Control',
+          'no-store, no-cache, must-revalidate, proxy-revalidate'
+        )
         return errorResponse
       }
     }
@@ -206,7 +221,10 @@ export async function GET(): Promise<
         },
         { status: 500 }
       )
-      errorResponse.headers.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate')
+      errorResponse.headers.set(
+        'Cache-Control',
+        'no-store, no-cache, must-revalidate, proxy-revalidate'
+      )
       return errorResponse
     }
 
@@ -247,7 +265,10 @@ export async function GET(): Promise<
         },
         { status: nowPlayingResponse.status }
       )
-      errorResponse.headers.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate')
+      errorResponse.headers.set(
+        'Cache-Control',
+        'no-store, no-cache, must-revalidate, proxy-revalidate'
+      )
       return errorResponse
     }
 
@@ -288,7 +309,10 @@ export async function GET(): Promise<
       },
       { status: 500 }
     )
-    errorResponse.headers.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate')
+    errorResponse.headers.set(
+      'Cache-Control',
+      'no-store, no-cache, must-revalidate, proxy-revalidate'
+    )
     return errorResponse
   }
 }

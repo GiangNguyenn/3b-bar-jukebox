@@ -51,7 +51,10 @@ export async function GET(
         },
         { status: 400 }
       )
-      errorResponse.headers.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate')
+      errorResponse.headers.set(
+        'Cache-Control',
+        'no-store, no-cache, must-revalidate, proxy-revalidate'
+      )
       return errorResponse
     }
 
@@ -102,7 +105,10 @@ export async function GET(
         },
         { status: 500 }
       )
-      errorResponse.headers.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate')
+      errorResponse.headers.set(
+        'Cache-Control',
+        'no-store, no-cache, must-revalidate, proxy-revalidate'
+      )
       return errorResponse
     }
 
@@ -125,7 +131,10 @@ export async function GET(
           },
           { status: 500 }
         )
-        errorResponse.headers.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate')
+        errorResponse.headers.set(
+          'Cache-Control',
+          'no-store, no-cache, must-revalidate, proxy-revalidate'
+        )
         return errorResponse
       }
 
@@ -139,7 +148,10 @@ export async function GET(
           },
           { status: 500 }
         )
-        errorResponse.headers.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate')
+        errorResponse.headers.set(
+          'Cache-Control',
+          'no-store, no-cache, must-revalidate, proxy-revalidate'
+        )
         return errorResponse
       }
 
@@ -168,7 +180,10 @@ export async function GET(
           },
           { status: refreshResult.error?.isRecoverable ? 503 : 500 }
         )
-        errorResponse.headers.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate')
+        errorResponse.headers.set(
+          'Cache-Control',
+          'no-store, no-cache, must-revalidate, proxy-revalidate'
+        )
         return errorResponse
       }
 
@@ -206,7 +221,10 @@ export async function GET(
           },
           { status: updateResult.error?.isRecoverable ? 503 : 500 }
         )
-        errorResponse.headers.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate')
+        errorResponse.headers.set(
+          'Cache-Control',
+          'no-store, no-cache, must-revalidate, proxy-revalidate'
+        )
         return errorResponse
       }
     }
@@ -221,7 +239,10 @@ export async function GET(
         },
         { status: 500 }
       )
-      errorResponse.headers.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate')
+      errorResponse.headers.set(
+        'Cache-Control',
+        'no-store, no-cache, must-revalidate, proxy-revalidate'
+      )
       return errorResponse
     }
 
@@ -263,7 +284,10 @@ export async function GET(
         },
         { status: spotifyResponse.status }
       )
-      errorResponse.headers.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate')
+      errorResponse.headers.set(
+        'Cache-Control',
+        'no-store, no-cache, must-revalidate, proxy-revalidate'
+      )
       return errorResponse
     }
 
@@ -307,7 +331,10 @@ export async function GET(
       },
       { status: 500 }
     )
-    errorResponse.headers.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate')
+    errorResponse.headers.set(
+      'Cache-Control',
+      'no-store, no-cache, must-revalidate, proxy-revalidate'
+    )
     return errorResponse
   }
 }
