@@ -81,7 +81,7 @@ export async function GET(): Promise<
         'ERROR',
         `Error fetching admin profile: ${JSON.stringify(profileError)}`
       )
-      return NextResponse.json(
+      const errorResponse = NextResponse.json(
         {
           error: 'Failed to get admin credentials',
           code: 'ADMIN_PROFILE_ERROR',
@@ -89,6 +89,9 @@ export async function GET(): Promise<
         },
         { status: 500 }
       )
+      // Prevent caching of error responses
+      errorResponse.headers.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate')
+      return errorResponse
     }
 
     const typedProfile = userProfile as UserProfile
@@ -102,7 +105,7 @@ export async function GET(): Promise<
       // Token is expired, refresh it
       if (!typedProfile.spotify_refresh_token) {
         logger('ERROR', 'No refresh token available')
-        return NextResponse.json(
+        const errorResponse = NextResponse.json(
           {
             error: 'No refresh token available',
             code: 'NO_REFRESH_TOKEN',
@@ -110,11 +113,13 @@ export async function GET(): Promise<
           },
           { status: 500 }
         )
+        errorResponse.headers.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate')
+        return errorResponse
       }
 
       if (!SPOTIFY_CLIENT_ID || !SPOTIFY_CLIENT_SECRET) {
         logger('ERROR', 'Missing Spotify client credentials')
-        return NextResponse.json(
+        const errorResponse = NextResponse.json(
           {
             error: 'Server configuration error',
             code: 'INVALID_CLIENT_CREDENTIALS',
@@ -122,6 +127,8 @@ export async function GET(): Promise<
           },
           { status: 500 }
         )
+        errorResponse.headers.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate')
+        return errorResponse
       }
 
       // Use recovery module for token refresh with retry logic
@@ -138,7 +145,7 @@ export async function GET(): Promise<
 
         logger('ERROR', `Token refresh failed: ${errorCode} - ${errorMessage}`)
 
-        return NextResponse.json(
+        const errorResponse = NextResponse.json(
           {
             error: errorMessage,
             code: errorCode,
@@ -146,6 +153,8 @@ export async function GET(): Promise<
           },
           { status: refreshResult.error?.isRecoverable ? 503 : 500 }
         )
+        errorResponse.headers.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate')
+        return errorResponse
       }
 
       accessToken = refreshResult.accessToken
@@ -154,7 +163,7 @@ export async function GET(): Promise<
       // This is critical - if database update fails, we should not use the token
       const updateResult = await updateTokenInDatabase(
         supabase,
-        userProfile.id,
+        String(userProfile.id),
         {
           accessToken: refreshResult.accessToken,
           refreshToken: refreshResult.refreshToken,
@@ -174,7 +183,7 @@ export async function GET(): Promise<
         )
 
         // Return error - don't proceed with request if we can't persist token
-        return NextResponse.json(
+        const errorResponse = NextResponse.json(
           {
             error: errorMessage,
             code: errorCode,
@@ -182,12 +191,14 @@ export async function GET(): Promise<
           },
           { status: updateResult.error?.isRecoverable ? 503 : 500 }
         )
+        errorResponse.headers.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate')
+        return errorResponse
       }
     }
 
     if (!accessToken) {
       logger('ERROR', 'No access token available')
-      return NextResponse.json(
+      const errorResponse = NextResponse.json(
         {
           error: 'No access token available',
           code: 'NO_ACCESS_TOKEN',
@@ -195,6 +206,8 @@ export async function GET(): Promise<
         },
         { status: 500 }
       )
+      errorResponse.headers.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate')
+      return errorResponse
     }
 
     // Get currently playing track from Spotify API
@@ -226,7 +239,7 @@ export async function GET(): Promise<
 
     if (!nowPlayingResponse.ok) {
       logger('ERROR', `Spotify API error: ${await nowPlayingResponse.text()}`)
-      return NextResponse.json(
+      const errorResponse = NextResponse.json(
         {
           error: 'Failed to get currently playing track',
           code: 'SPOTIFY_API_ERROR',
@@ -234,6 +247,8 @@ export async function GET(): Promise<
         },
         { status: nowPlayingResponse.status }
       )
+      errorResponse.headers.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate')
+      return errorResponse
     }
 
     // Check if response has content before parsing JSON
@@ -265,7 +280,7 @@ export async function GET(): Promise<
       undefined,
       error instanceof Error ? error : undefined
     )
-    return NextResponse.json(
+    const errorResponse = NextResponse.json(
       {
         error: 'Internal server error',
         code: 'INTERNAL_ERROR',
@@ -273,5 +288,7 @@ export async function GET(): Promise<
       },
       { status: 500 }
     )
+    errorResponse.headers.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate')
+    return errorResponse
   }
 }

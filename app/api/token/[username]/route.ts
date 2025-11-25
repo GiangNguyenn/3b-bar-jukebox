@@ -161,7 +161,7 @@ export async function GET(
       // This is critical - if database update fails, we should not return the token
       const updateResult = await updateTokenInDatabase(
         supabase,
-        userProfile.id,
+        String(userProfile.id),
         {
           accessToken: refreshResult.accessToken,
           refreshToken: refreshResult.refreshToken,

@@ -43,7 +43,7 @@ export async function GET(
 
     if (!trackId) {
       logger('ERROR', 'Track artwork API: No track ID provided')
-      return NextResponse.json(
+      const errorResponse = NextResponse.json(
         {
           error: 'Track ID is required',
           code: 'MISSING_TRACK_ID',
@@ -51,6 +51,8 @@ export async function GET(
         },
         { status: 400 }
       )
+      errorResponse.headers.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate')
+      return errorResponse
     }
 
     const cookieStore = cookies()
@@ -92,7 +94,7 @@ export async function GET(
         'ERROR',
         `Track artwork API: Error fetching admin profile: ${JSON.stringify(profileError)}`
       )
-      return NextResponse.json(
+      const errorResponse = NextResponse.json(
         {
           error: 'Failed to get admin credentials',
           code: 'ADMIN_PROFILE_ERROR',
@@ -100,6 +102,8 @@ export async function GET(
         },
         { status: 500 }
       )
+      errorResponse.headers.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate')
+      return errorResponse
     }
 
     const typedProfile = userProfile as UserProfile
@@ -113,7 +117,7 @@ export async function GET(
       // Token is expired, refresh it
       if (!typedProfile.spotify_refresh_token) {
         logger('ERROR', 'Track artwork API: No refresh token available')
-        return NextResponse.json(
+        const errorResponse = NextResponse.json(
           {
             error: 'No refresh token available',
             code: 'NO_REFRESH_TOKEN',
@@ -121,11 +125,13 @@ export async function GET(
           },
           { status: 500 }
         )
+        errorResponse.headers.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate')
+        return errorResponse
       }
 
       if (!SPOTIFY_CLIENT_ID || !SPOTIFY_CLIENT_SECRET) {
         logger('ERROR', 'Missing Spotify client credentials')
-        return NextResponse.json(
+        const errorResponse = NextResponse.json(
           {
             error: 'Server configuration error',
             code: 'INVALID_CLIENT_CREDENTIALS',
@@ -133,6 +139,8 @@ export async function GET(
           },
           { status: 500 }
         )
+        errorResponse.headers.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate')
+        return errorResponse
       }
 
       // Use recovery module for token refresh with retry logic
@@ -152,7 +160,7 @@ export async function GET(
           `Track artwork API: Token refresh failed: ${errorCode} - ${errorMessage}`
         )
 
-        return NextResponse.json(
+        const errorResponse = NextResponse.json(
           {
             error: errorMessage,
             code: errorCode,
@@ -160,6 +168,8 @@ export async function GET(
           },
           { status: refreshResult.error?.isRecoverable ? 503 : 500 }
         )
+        errorResponse.headers.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate')
+        return errorResponse
       }
 
       accessToken = refreshResult.accessToken
@@ -168,7 +178,7 @@ export async function GET(
       // This is critical - if database update fails, we should not use the token
       const updateResult = await updateTokenInDatabase(
         supabase,
-        userProfile.id,
+        String(userProfile.id),
         {
           accessToken: refreshResult.accessToken,
           refreshToken: refreshResult.refreshToken,
@@ -188,7 +198,7 @@ export async function GET(
         )
 
         // Return error - don't proceed with request if we can't persist token
-        return NextResponse.json(
+        const errorResponse = NextResponse.json(
           {
             error: errorMessage,
             code: errorCode,
@@ -196,12 +206,14 @@ export async function GET(
           },
           { status: updateResult.error?.isRecoverable ? 503 : 500 }
         )
+        errorResponse.headers.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate')
+        return errorResponse
       }
     }
 
     if (!accessToken) {
       logger('ERROR', 'Track artwork API: No access token available')
-      return NextResponse.json(
+      const errorResponse = NextResponse.json(
         {
           error: 'No access token available',
           code: 'NO_ACCESS_TOKEN',
@@ -209,6 +221,8 @@ export async function GET(
         },
         { status: 500 }
       )
+      errorResponse.headers.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate')
+      return errorResponse
     }
 
     logger(
@@ -241,7 +255,7 @@ export async function GET(
           errorText
         })}`
       )
-      return NextResponse.json(
+      const errorResponse = NextResponse.json(
         {
           error: `Failed to fetch track from Spotify: ${spotifyResponse.status} ${spotifyResponse.statusText}`,
           code: 'SPOTIFY_API_ERROR',
@@ -249,6 +263,8 @@ export async function GET(
         },
         { status: spotifyResponse.status }
       )
+      errorResponse.headers.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate')
+      return errorResponse
     }
 
     const trackData = (await spotifyResponse.json()) as {
@@ -283,7 +299,7 @@ export async function GET(
       'ERROR',
       `Track artwork API: Unexpected error: ${JSON.stringify(error)}`
     )
-    return NextResponse.json(
+    const errorResponse = NextResponse.json(
       {
         error: 'Failed to fetch track artwork',
         code: 'INTERNAL_ERROR',
@@ -291,5 +307,7 @@ export async function GET(
       },
       { status: 500 }
     )
+    errorResponse.headers.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate')
+    return errorResponse
   }
 }

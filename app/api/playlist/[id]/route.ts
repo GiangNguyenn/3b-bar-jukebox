@@ -39,10 +39,12 @@ export async function GET(
         undefined,
         (profileError as Error | null) ?? new Error('No profile returned')
       )
-      return NextResponse.json(
+      const errorResponse = NextResponse.json(
         { error: `Profile not found for ${username}` },
         { status: 404 }
       )
+      errorResponse.headers.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate')
+      return errorResponse
     }
 
     const queueResult = await queryWithRetry<JukeboxQueueItem[]>(
@@ -70,10 +72,12 @@ export async function GET(
         JSON.stringify({ profileId: profile.id, error }),
         error as Error
       )
-      return NextResponse.json(
+      const errorResponse = NextResponse.json(
         { error: 'Failed to fetch jukebox queue' },
         { status: 500 }
       )
+      errorResponse.headers.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate')
+      return errorResponse
     }
 
     // Add caching headers to reduce API calls
@@ -90,10 +94,12 @@ export async function GET(
       undefined,
       error as Error
     )
-    return NextResponse.json(
+    const errorResponse = NextResponse.json(
       { error: 'An unexpected error occurred' },
       { status: 500 }
     )
+    errorResponse.headers.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate')
+    return errorResponse
   }
 }
 
@@ -248,10 +254,12 @@ export async function POST(
         'ERROR',
         `Track ID validation failed - length: ${tracks.id.length}, contains hyphens: ${tracks.id.includes('-')}, alphanumeric: ${!/^[0-9A-Za-z]+$/.test(tracks.id)}`
       )
-      return NextResponse.json(
+      const errorResponse = NextResponse.json(
         { error: 'Invalid Spotify track ID provided' },
         { status: 400 }
       )
+      errorResponse.headers.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate')
+      return errorResponse
     }
 
     const upsertResult = await queryWithRetry<{
@@ -303,10 +311,12 @@ export async function POST(
         (upsertError as Error | null) ??
           new Error('No track returned from upsert')
       )
-      return NextResponse.json(
+      const errorResponse = NextResponse.json(
         { error: `Failed to save track with Spotify ID ${tracks.id}` },
         { status: 500 }
       )
+      errorResponse.headers.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate')
+      return errorResponse
     }
 
     // Check if track is already in the users queue
@@ -341,10 +351,12 @@ export async function POST(
         'ERROR',
         `Error checking for duplicate track: ${JSON.stringify(checkError)}`
       )
-      return NextResponse.json(
+      const errorResponse = NextResponse.json(
         { error: 'Failed to check for duplicate track' },
         { status: 500 }
       )
+      errorResponse.headers.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate')
+      return errorResponse
     }
 
     if (existingQueueItem) {
@@ -352,10 +364,12 @@ export async function POST(
         'WARN',
         `Track ${tracks.name} (${tracks.id}) is already in the queue for user ${username}`
       )
-      return NextResponse.json(
+      const errorResponse = NextResponse.json(
         { error: 'This track is already in your playlist' },
         { status: 409 }
       )
+      errorResponse.headers.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate')
+      return errorResponse
     }
 
     const insertResult = await queryWithRetry(
@@ -382,10 +396,12 @@ export async function POST(
         undefined,
         insertError as Error
       )
-      return NextResponse.json(
+      const errorResponse = NextResponse.json(
         { error: 'Failed to add track to queue' },
         { status: 500 }
       )
+      errorResponse.headers.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate')
+      return errorResponse
     }
 
     // Only log track suggestions for user-initiated requests
@@ -440,14 +456,18 @@ export async function POST(
       const errorMessage = error.issues
         .map((issue) => `${issue.path.join('.')}: ${issue.message}`)
         .join(', ')
-      return NextResponse.json({ error: errorMessage }, { status: 400 })
+      const errorResponse = NextResponse.json({ error: errorMessage }, { status: 400 })
+      errorResponse.headers.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate')
+      return errorResponse
     }
     const errorMessage =
       error instanceof Error ? error.message : 'An unknown error occurred'
     logger('ERROR', `Playlist API - Error message: ${errorMessage}`)
-    return NextResponse.json(
+    const errorResponse = NextResponse.json(
       { error: 'Failed to add track to queue', details: errorMessage },
       { status: 500 }
     )
+    errorResponse.headers.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate')
+    return errorResponse
   }
 }

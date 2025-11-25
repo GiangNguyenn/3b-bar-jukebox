@@ -190,7 +190,7 @@ export async function POST(
 
       // Update the token in the database with retry logic
       // This is critical - if database update fails, we should not use the token
-      const updateResult = await updateTokenInDatabase(supabase, profile.id, {
+      const updateResult = await updateTokenInDatabase(supabase, String(profile.id), {
         accessToken: refreshResult.accessToken,
         refreshToken: refreshResult.refreshToken,
         expiresIn: refreshResult.expiresIn,

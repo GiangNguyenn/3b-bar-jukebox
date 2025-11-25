@@ -163,7 +163,7 @@ export async function GET(): Promise<
       // This is critical - if database update fails, we should not return the token
       const updateResult = await updateTokenInDatabase(
         supabase,
-        adminProfile.id,
+        String(adminProfile.id),
         {
           accessToken: refreshResult.accessToken,
           refreshToken: refreshResult.refreshToken,
