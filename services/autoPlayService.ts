@@ -17,6 +17,7 @@ import {
   isValidTrackSuggestionsState
 } from '@/shared/types/trackSuggestions'
 import { TrackDuplicateDetector } from '@/shared/utils/trackDuplicateDetector'
+import { buildTrackUri } from '@/shared/utils/spotifyUri'
 
 const logger = createModuleLogger('AutoPlayService')
 
@@ -1951,7 +1952,7 @@ class AutoPlayService {
     }
 
     try {
-      const trackUri = `spotify:track:${track.tracks.spotify_track_id}`
+      const trackUri = buildTrackUri(track.tracks.spotify_track_id)
 
       logger(
         'INFO',
@@ -2003,7 +2004,7 @@ class AutoPlayService {
             method: 'PUT',
             body: {
               device_id: this.deviceId,
-              uris: [`spotify:track:${track.tracks.spotify_track_id}`]
+              uris: [buildTrackUri(track.tracks.spotify_track_id)]
             }
           })
           logger(

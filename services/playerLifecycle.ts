@@ -5,19 +5,18 @@ import {
   setDeviceManagementLogger
 } from '@/services/deviceManagement'
 import type { LogLevel } from '@/hooks/ConsoleLogsProvider'
-import {
-  SpotifySDKPlaybackState,
-  SpotifyPlaybackState
-} from '@/shared/types/spotify'
+import { SpotifyPlaybackState } from '@/shared/types/spotify'
 import { JukeboxQueueItem } from '@/shared/types/queue'
 import { tokenManager } from '@/shared/token/tokenManager'
 import { queueManager } from '@/services/queueManager'
 import { PLAYER_LIFECYCLE_CONFIG } from './playerLifecycleConfig'
 import { TrackDuplicateDetector } from '@/shared/utils/trackDuplicateDetector'
+import { buildTrackUri } from '@/shared/utils/spotifyUri'
 import {
-  requiresUserAction,
-  getUserFriendlyErrorMessage
-} from '@/recovery/tokenRecovery'
+  ensureTrackNotDuplicate,
+  withErrorHandling,
+  TimeoutManager
+} from './playerLifecycle/utils'
 
 // Type for internal SDK state tracking - composed instead of extended
 // to properly represent the actual SDK state structure
@@ -77,10 +76,7 @@ class PlayerLifecycleService {
   private lastKnownState: PlayerSDKState | null = null
   private currentQueueTrack: JukeboxQueueItem | null = null
   private deviceId: string | null = null
-  private cleanupTimeoutRef: NodeJS.Timeout | null = null
-  private notReadyTimeoutRef: NodeJS.Timeout | null = null
-  private reconnectionTimeoutRef: NodeJS.Timeout | null = null
-  private verificationTimeoutRef: NodeJS.Timeout | null = null
+  private timeoutManager: TimeoutManager = new TimeoutManager()
   private authRetryCount: number = 0
   private duplicateDetector: TrackDuplicateDetector =
     new TrackDuplicateDetector()
@@ -109,11 +105,11 @@ class PlayerLifecycleService {
     this.navigationCallback = callback
   }
 
-  async initializeQueue(playlistId: string): Promise<void> {
+  initializeQueue(): void {
     this.currentQueueTrack = queueManager.getNextTrack() ?? null
   }
 
-  private async checkAndAutoFillQueue(): Promise<void> {
+  private checkAndAutoFillQueue(): void {
     const queue = queueManager.getQueue()
 
     if (queue.length <= PLAYER_LIFECYCLE_CONFIG.QUEUE_LOW_THRESHOLD) {
@@ -196,398 +192,322 @@ class PlayerLifecycleService {
     return false
   }
 
-  private async playNextTrack(
-    track: JukeboxQueueItem,
-    recursionDepth: number = 0
-  ): Promise<void> {
-    // Prevent infinite recursion - limit depth to queue size (safety limit: 50)
-    const MAX_RECURSION_DEPTH = 50
-    if (recursionDepth >= MAX_RECURSION_DEPTH) {
-      this.log(
-        'ERROR',
-        `[playNextTrack] Maximum recursion depth (${MAX_RECURSION_DEPTH}) reached. Stopping recursive attempts to prevent stack overflow. Track: ${track.tracks.name}, Queue ID: ${track.id}`
-      )
-      return
-    }
-
+  private async playNextTrack(track: JukeboxQueueItem): Promise<void> {
     if (!this.deviceId) {
-      this.log(
-        'ERROR',
-        'No device ID available to play next track',
-        undefined,
-        undefined
-      )
+      this.log('ERROR', 'No device ID available to play next track')
       return
     }
 
-    // Log track transition attempt with context
-    this.log(
-      'INFO',
-      `[playNextTrack] Starting track transition - Track: ${track.tracks.name} (${track.tracks.spotify_track_id}), Device: ${this.deviceId}, Queue ID: ${track.id}`
-    )
+    // Iterative approach: try tracks from queue until success or exhaustion
+    const MAX_ATTEMPTS = 10 // Safety limit to prevent infinite loops
+    let currentTrack: JukeboxQueueItem | null = track
+    let attempts = 0
+    let lastPlayingTrackId: string | null = null
 
-    // Always transfer playback to the app's device before playing
-    // Add retry logic with exponential backoff for transfer failures
-    let transferred = false
-    const maxTransferRetries = 2
-    let transferAttempt = 0
-    const transferErrors: Error[] = []
-
-    while (!transferred && transferAttempt <= maxTransferRetries) {
-      try {
-        transferred = await transferPlaybackToDevice(this.deviceId)
-      } catch (transferError) {
-        transferErrors.push(
-          transferError instanceof Error
-            ? transferError
-            : new Error(String(transferError))
-        )
-        transferred = false
-      }
-
-      if (!transferred) {
-        transferAttempt++
-        if (transferAttempt <= maxTransferRetries) {
-          const retryDelay = 1000 * transferAttempt // Exponential backoff: 1s, 2s
-          this.log(
-            'WARN',
-            `[playNextTrack] Device transfer failed (attempt ${transferAttempt}/${maxTransferRetries + 1}), retrying in ${retryDelay}ms... Device: ${this.deviceId}, Track: ${track.tracks.name}`,
-            undefined,
-            transferErrors[transferErrors.length - 1]
-          )
-          await new Promise((resolve) => setTimeout(resolve, retryDelay))
-        } else {
-          this.log(
-            'WARN',
-            `[playNextTrack] Device transfer failed after ${maxTransferRetries + 1} attempts. Attempting to check if device is already active and proceed with playback. Device: ${this.deviceId}, Track: ${track.tracks.name}, Errors: ${transferErrors.length}`,
-            undefined,
-            transferErrors[transferErrors.length - 1]
-          )
-
-          // Fallback: Check if device is already active via alternative method
-          try {
-            const { sendApiRequest } = await import('@/shared/api')
-            const playbackState = await sendApiRequest<{
-              device?: { id: string; is_active: boolean }
-              is_playing: boolean
-            }>({
-              path: 'me/player',
-              method: 'GET'
-            })
-
-            this.log(
-              'INFO',
-              `[playNextTrack] Fallback device check - Device ID: ${playbackState?.device?.id}, Is Active: ${playbackState?.device?.is_active}, Is Playing: ${playbackState?.is_playing}`
-            )
-
-            if (
-              playbackState?.device?.id === this.deviceId &&
-              playbackState.device.is_active
-            ) {
-              this.log(
-                'INFO',
-                `[playNextTrack] Device ${this.deviceId} is already active - proceeding with playback despite transfer verification failure`
-              )
-              transferred = true // Treat as success since device is active
-            } else {
-              this.log(
-                'ERROR',
-                `[playNextTrack] Device ${this.deviceId} is not active. Current device: ${playbackState?.device?.id || 'none'}, Is Active: ${playbackState?.device?.is_active || false}. Cannot proceed with playback.`
-              )
-            }
-          } catch (fallbackError) {
-            this.log(
-              'WARN',
-              `[playNextTrack] Failed to verify device state via fallback method, but attempting playback anyway. Error: ${fallbackError instanceof Error ? fallbackError.message : String(fallbackError)}`,
-              fallbackError
-            )
-            // Attempt playback anyway - device might be active but API is having issues
-            transferred = true
-          }
-        }
-      }
-    }
-
-    if (!transferred) {
-      this.log(
-        'ERROR',
-        `[playNextTrack] Failed to transfer playback to app device: ${this.deviceId} after all retry attempts. Cannot play next track. Track: ${track.tracks.name}, Queue ID: ${track.id}, Total transfer errors: ${transferErrors.length}`,
-        undefined,
-        transferErrors[transferErrors.length - 1]
-      )
-      return
-    }
-
-    // Defensive check: verify we're not about to play a track that's already playing
-    // This is a final safety net to catch edge cases where all other protections failed
+    // Get current playing track ID for duplicate detection
     try {
-      const { sendApiRequest } = await import('@/shared/api')
-      const currentPlaybackState = await sendApiRequest<{
-        item?: { id: string; name: string }
-        is_playing: boolean
+      const playbackState = await sendApiRequest<{
+        item?: { id: string }
       }>({
         path: 'me/player',
         method: 'GET'
       })
-
-      if (
-        currentPlaybackState?.item &&
-        currentPlaybackState.item.id === track.tracks.spotify_track_id &&
-        currentPlaybackState.is_playing
-      ) {
-        this.log(
-          'WARN',
-          `Track ${track.tracks.name} (${track.tracks.spotify_track_id}) is already playing. Removing from queue and attempting next track.`
-        )
-        // Remove duplicate track from queue and try next track
-        try {
-          await queueManager.markAsPlayed(track.id)
-          this.log(
-            'INFO',
-            `[playNextTrack] Removed duplicate track from queue: ${track.id}`
-          )
-        } catch (error) {
-          this.log(
-            'ERROR',
-            `[playNextTrack] Failed to remove duplicate track from queue. Track: ${track.tracks.name}, Queue ID: ${track.id}`,
-            error
-          )
-        }
-
-        // Attempt to play the next track instead of returning early
-        const nextTrack = queueManager.getNextTrack()
-        if (nextTrack) {
-          this.log(
-            'INFO',
-            `[playNextTrack] Attempting to play next track after duplicate detection: ${nextTrack.tracks.name} (${nextTrack.tracks.spotify_track_id})`
-          )
-          try {
-            await this.playNextTrack(nextTrack, recursionDepth + 1)
-          } catch (error) {
-            this.log(
-              'ERROR',
-              `[playNextTrack] Failed to play next track after duplicate detection. Track: ${nextTrack.tracks.name}, Queue ID: ${nextTrack.id}`,
-              error
-            )
-            // Continue attempting remaining tracks
-            const nextNextTrack = queueManager.getNextTrack()
-            if (nextNextTrack && recursionDepth + 1 < MAX_RECURSION_DEPTH) {
-              this.log(
-                'INFO',
-                `[playNextTrack] Attempting alternative track after error: ${nextNextTrack.tracks.name}`
-              )
-              await this.playNextTrack(nextNextTrack, recursionDepth + 2)
-            }
-          }
-        }
-        return
-      }
-    } catch (apiError) {
-      // If we can't verify, log warning but continue with playback
+      lastPlayingTrackId = playbackState?.item?.id ?? null
+    } catch (error) {
+      // If we can't get playback state, continue anyway
       this.log(
         'WARN',
-        'Failed to verify current playback state before playing next track, continuing anyway',
-        apiError
+        'Failed to get current playback state for duplicate detection, continuing anyway',
+        error
       )
     }
 
-    const trackUri = `spotify:track:${track.tracks.spotify_track_id}`
+    while (currentTrack && attempts < MAX_ATTEMPTS) {
+      attempts++
 
-    this.log(
-      'INFO',
-      `[playNextTrack] Attempting to play track URI: ${trackUri} on device: ${this.deviceId}`
-    )
-
-    const success = await this.playTrackWithRetry(trackUri, this.deviceId, 3)
-
-    if (!success) {
-      this.log(
-        'WARN',
-        `[playNextTrack] Failed to play track ${track.tracks.name} (${track.tracks.spotify_track_id}) after retries. Queue ID: ${track.id}. Trying next track in queue.`
-      )
-
-      // Remove the problematic track from queue
-      try {
-        await queueManager.markAsPlayed(track.id)
-        this.log(
-          'INFO',
-          `[playNextTrack] Removed problematic track from queue: ${track.id}`
-        )
-      } catch (error) {
-        this.log(
-          'ERROR',
-          `[playNextTrack] Failed to remove problematic track from queue. Track: ${track.tracks.name}, Queue ID: ${track.id}`,
-          error
-        )
-      }
-
-      // Try to play the next track recursively
-      const nextTrack = queueManager.getNextTrack()
-      if (nextTrack) {
-        this.log(
-          'INFO',
-          `[playNextTrack] Attempting to play next track in queue: ${nextTrack.tracks.name} (${nextTrack.tracks.spotify_track_id}), Recursion depth: ${recursionDepth + 1}`
-        )
-        try {
-          await this.playNextTrack(nextTrack, recursionDepth + 1)
-        } catch (error) {
-          this.log(
-            'ERROR',
-            `[playNextTrack] Recursive call failed. Track: ${nextTrack.tracks.name}, Queue ID: ${nextTrack.id}, Recursion depth: ${recursionDepth + 1}`,
-            error
-          )
-          // Attempt to continue with next track if available
-          const nextNextTrack = queueManager.getNextTrack()
-          if (nextNextTrack && recursionDepth + 2 < MAX_RECURSION_DEPTH) {
-            this.log(
-              'INFO',
-              `[playNextTrack] Attempting alternative track after recursive failure: ${nextNextTrack.tracks.name} (${nextNextTrack.tracks.spotify_track_id})`
-            )
-            try {
-              await this.playNextTrack(nextNextTrack, recursionDepth + 2)
-            } catch (retryError) {
-              this.log(
-                'ERROR',
-                `[playNextTrack] Alternative track attempt also failed. Track: ${nextNextTrack.tracks.name}, Queue ID: ${nextNextTrack.id}`,
-                retryError
-              )
-              // Log but don't throw - allow caller to handle
-            }
-          } else {
-            this.log(
-              'WARN',
-              '[playNextTrack] No more tracks available or recursion limit reached after recursive failure'
-            )
-          }
-        }
-      } else {
-        this.log(
-          'WARN',
-          '[playNextTrack] No next track available in queue after failed playback attempt'
-        )
-      }
-    } else {
       this.log(
         'INFO',
-        `[playNextTrack] Successfully started playback of track: ${track.tracks.name} (${track.tracks.spotify_track_id})`
+        `[playNextTrack] Attempt ${attempts}/${MAX_ATTEMPTS} - Track: ${currentTrack.tracks.name} (${currentTrack.tracks.spotify_track_id}), Queue ID: ${currentTrack.id}`
       )
+
+      // Check for duplicate if we have last playing track ID
+      if (lastPlayingTrackId) {
+        const validTrack = await ensureTrackNotDuplicate(
+          currentTrack,
+          lastPlayingTrackId,
+          3,
+          this.addLog ?? undefined
+        )
+
+        if (!validTrack) {
+          this.log(
+            'WARN',
+            `Track ${currentTrack.tracks.name} is a duplicate, queue exhausted or removal failed`
+          )
+          break
+        }
+
+        currentTrack = validTrack
+      }
+
+      // Transfer playback to device
+      const transferred = await transferPlaybackToDevice(this.deviceId)
+
+      if (!transferred) {
+        this.log(
+          'ERROR',
+          `Failed to transfer playback to device ${this.deviceId}. Cannot play track.`
+        )
+        // Try next track in queue
+        await withErrorHandling(
+          async () => {
+            await queueManager.markAsPlayed(currentTrack!.id)
+          },
+          '[playNextTrack] Remove track after transfer failure',
+          this.addLog ?? undefined
+        )
+        currentTrack = queueManager.getNextTrack() ?? null
+        continue
+      }
+
+      // Build track URI and attempt playback
+      const trackUri = buildTrackUri(currentTrack.tracks.spotify_track_id)
+
+      this.log(
+        'INFO',
+        `[playNextTrack] Attempting to play track URI: ${trackUri} on device: ${this.deviceId}`
+      )
+
+      const success = await this.playTrackWithRetry(trackUri, this.deviceId, 3)
+
+      if (success) {
+        this.log(
+          'INFO',
+          `[playNextTrack] Successfully started playback of track: ${currentTrack.tracks.name} (${currentTrack.tracks.spotify_track_id})`
+        )
+        this.currentQueueTrack = currentTrack
+        return
+      }
+
+      // Playback failed - remove track and try next
+      this.log(
+        'WARN',
+        `[playNextTrack] Failed to play track ${currentTrack.tracks.name} (${currentTrack.tracks.spotify_track_id}) after retries. Queue ID: ${currentTrack.id}. Trying next track.`
+      )
+
+      await withErrorHandling(
+        async () => {
+          await queueManager.markAsPlayed(currentTrack!.id)
+        },
+        '[playNextTrack] Remove failed track',
+        this.addLog ?? undefined
+      )
+
+      // Get next track from queue
+      currentTrack = queueManager.getNextTrack() ?? null
+    }
+
+    if (attempts >= MAX_ATTEMPTS) {
+      this.log(
+        'ERROR',
+        `[playNextTrack] Maximum attempts (${MAX_ATTEMPTS}) reached. Stopping track playback attempts.`
+      )
+    } else if (!currentTrack) {
+      this.log('WARN', '[playNextTrack] No more tracks available in queue')
     }
   }
 
   private async handleRestrictionViolatedError(): Promise<void> {
-    try {
-      const currentTrack = this.currentQueueTrack
-      if (!currentTrack) {
-        this.log(
-          'WARN',
-          'No current track found, cannot remove problematic track'
-        )
-        return
-      }
-
-      await queueManager.markAsPlayed(currentTrack.id)
-
-      const nextTrack = queueManager.getNextTrack()
-
-      if (nextTrack) {
-        this.currentQueueTrack = nextTrack
-      } else {
-        this.currentQueueTrack = null
-      }
-    } catch (error) {
-      this.log('ERROR', 'Error handling restriction violated error', error)
+    const currentTrack = this.currentQueueTrack
+    if (!currentTrack) {
+      this.log(
+        'WARN',
+        'No current track found, cannot remove problematic track'
+      )
+      return
     }
+
+    await withErrorHandling(
+      async () => {
+        await queueManager.markAsPlayed(currentTrack.id)
+        const nextTrack = queueManager.getNextTrack()
+        this.currentQueueTrack = nextTrack ?? null
+      },
+      '[handleRestrictionViolatedError] Remove restricted track',
+      this.addLog ?? undefined
+    )
   }
 
   private async verifyDeviceWithTimeout(deviceId: string): Promise<boolean> {
     return new Promise((resolve) => {
+      const timeoutKey = 'deviceVerification'
+
       // Clear any existing timeout first
-      if (this.verificationTimeoutRef) {
-        clearTimeout(this.verificationTimeoutRef)
-        this.verificationTimeoutRef = null
-      }
+      this.timeoutManager.clear(timeoutKey)
 
       const timeout = setTimeout(() => {
         this.log('WARN', 'Device verification timed out')
-        this.verificationTimeoutRef = null
+        this.timeoutManager.clear(timeoutKey)
         resolve(false)
       }, PLAYER_LIFECYCLE_CONFIG.GRACE_PERIODS.verificationTimeout)
 
-      this.verificationTimeoutRef = timeout
+      this.timeoutManager.set(timeoutKey, timeout)
 
       validateDevice(deviceId)
         .then((result) => {
-          clearTimeout(timeout)
-          this.verificationTimeoutRef = null
+          this.timeoutManager.clear(timeoutKey)
           resolve(result.isValid && !(result.device?.isRestricted ?? false))
         })
         .catch((error) => {
-          clearTimeout(timeout)
-          this.verificationTimeoutRef = null
+          this.timeoutManager.clear(timeoutKey)
           this.log('ERROR', 'Device verification failed', error)
           resolve(false)
         })
     })
   }
 
-  private async handleNotReady(
+  private handleNotReady(
     deviceId: string,
     onStatusChange: (status: string, error?: string) => void
-  ): Promise<void> {
+  ): void {
     this.log('WARN', `Device ${deviceId} reported as not ready`)
 
-    if (this.notReadyTimeoutRef) {
-      clearTimeout(this.notReadyTimeoutRef)
-    }
+    const timeoutKey = 'notReady'
+    this.timeoutManager.clear(timeoutKey)
 
-    this.notReadyTimeoutRef = setTimeout(async () => {
-      onStatusChange('reconnecting')
+    const timeout = setTimeout(() => {
+      void (async () => {
+        onStatusChange('reconnecting')
 
-      try {
-        const devicesResponse = await sendApiRequest<{
-          devices: Array<{
-            id: string
-            is_active: boolean
-            name: string
-          }>
-        }>({
-          path: 'me/player/devices',
-          method: 'GET'
-        })
+        try {
+          const devicesResponse = await sendApiRequest<{
+            devices: Array<{
+              id: string
+              is_active: boolean
+              name: string
+            }>
+          }>({
+            path: 'me/player/devices',
+            method: 'GET'
+          })
 
-        if (devicesResponse?.devices) {
-          const availableDevice = devicesResponse.devices.find(
-            (d) => d.id !== deviceId && d.is_active
-          )
-
-          if (availableDevice) {
-            const transferSuccess = await transferPlaybackToDevice(
-              availableDevice.id
+          if (devicesResponse?.devices) {
+            const availableDevice = devicesResponse.devices.find(
+              (d) => d.id !== deviceId && d.is_active
             )
-            if (transferSuccess) {
-              onStatusChange('ready')
-              return
+
+            if (availableDevice) {
+              const transferSuccess = await transferPlaybackToDevice(
+                availableDevice.id
+              )
+              if (transferSuccess) {
+                onStatusChange('ready')
+                return
+              }
             }
           }
+        } catch (error) {
+          this.log('ERROR', 'Failed to find alternative device', error)
         }
-      } catch (error) {
-        this.log('ERROR', 'Failed to find alternative device', error)
+
+        onStatusChange('error', 'Device transfer failed')
+      })()
+    }, PLAYER_LIFECYCLE_CONFIG.GRACE_PERIODS.notReadyToReconnecting)
+
+    this.timeoutManager.set(timeoutKey, timeout)
+  }
+
+  private async markFinishedTrackAsPlayed(
+    trackId: string,
+    trackName: string
+  ): Promise<void> {
+    const queue = queueManager.getQueue()
+    const finishedQueueItem = queue.find(
+      (item) => item.tracks.spotify_track_id === trackId
+    )
+
+    if (finishedQueueItem) {
+      await withErrorHandling(
+        async () => {
+          this.log(
+            'INFO',
+            `[markFinishedTrackAsPlayed] Marking queue item as played - Queue ID: ${finishedQueueItem.id}, Track: ${finishedQueueItem.tracks.name}`
+          )
+          await queueManager.markAsPlayed(finishedQueueItem.id)
+          this.log(
+            'INFO',
+            `[markFinishedTrackAsPlayed] Successfully marked queue item as played: ${finishedQueueItem.id}`
+          )
+        },
+        '[markFinishedTrackAsPlayed] Mark track as played',
+        this.addLog ?? undefined
+      )
+    } else {
+      this.log(
+        'WARN',
+        `[markFinishedTrackAsPlayed] No queue item found for finished track: ${trackId} (${trackName}). Track may have been manually started or already removed from queue. Queue length: ${queue.length}`
+      )
+    }
+  }
+
+  private async findNextValidTrack(
+    finishedTrackId: string
+  ): Promise<JukeboxQueueItem | null> {
+    this.checkAndAutoFillQueue()
+
+    const nextTrack = queueManager.getNextTrack()
+
+    if (!nextTrack) {
+      return null
+    }
+
+    // Use utility function to ensure track is not a duplicate
+    const validTrack = await ensureTrackNotDuplicate(
+      nextTrack,
+      finishedTrackId,
+      3,
+      this.addLog ?? undefined
+    )
+
+    if (!validTrack) {
+      // If duplicate removal failed, try alternative track
+      const alternativeTrack = queueManager.getTrackAfterNext()
+      if (
+        alternativeTrack &&
+        alternativeTrack.tracks.spotify_track_id !== finishedTrackId
+      ) {
+        this.log(
+          'WARN',
+          `[findNextValidTrack] Using alternative track ${alternativeTrack.id} after duplicate detection failure`
+        )
+        return alternativeTrack
       }
 
-      onStatusChange('error', 'Device transfer failed')
-    }, PLAYER_LIFECYCLE_CONFIG.GRACE_PERIODS.notReadyToReconnecting)
+      // No valid track available - pause playback
+      if (this.deviceId) {
+        await withErrorHandling(
+          async () => {
+            const SpotifyApiService = (await import('@/services/spotifyApi'))
+              .SpotifyApiService
+            await SpotifyApiService.getInstance().pausePlayback(this.deviceId!)
+          },
+          '[findNextValidTrack] Pause playback after duplicate detection',
+          this.addLog ?? undefined
+        )
+      }
+      return null
+    }
+
+    return validTrack
   }
 
   private async handleTrackFinished(state: PlayerSDKState): Promise<void> {
     const currentTrack = state.track_window?.current_track
 
-    // Early return with proper null handling
     if (!currentTrack?.id) {
       this.log(
         'WARN',
-        '[handleTrackFinished] Track finished but no track ID available',
-        undefined,
-        undefined
+        '[handleTrackFinished] Track finished but no track ID available'
       )
       return
     }
@@ -600,10 +520,8 @@ class PlayerLifecycleService {
       `[handleTrackFinished] Track finished - ID: ${currentSpotifyTrackId}, Name: ${currentTrackName}, Position: ${state.position}, Duration: ${state.duration}`
     )
 
-    // Use shared duplicate detector
+    // Use shared duplicate detector to prevent duplicate processing
     if (!this.duplicateDetector.shouldProcessTrack(currentSpotifyTrackId)) {
-      // Still update the last known track even if we're not processing
-      // This keeps the detector in sync with actual playback state
       this.duplicateDetector.setLastKnownPlayingTrack(currentSpotifyTrackId)
       this.log(
         'INFO',
@@ -612,138 +530,14 @@ class PlayerLifecycleService {
       return
     }
 
-    const queue = queueManager.getQueue()
-    this.log(
-      'INFO',
-      `[handleTrackFinished] Current queue state - Length: ${queue.length}, Queue IDs: ${queue.map((q) => q.id).join(', ')}`
+    // Mark finished track as played
+    await this.markFinishedTrackAsPlayed(
+      currentSpotifyTrackId,
+      currentTrackName
     )
 
-    const finishedQueueItem = queue.find(
-      (item) => item.tracks.spotify_track_id === currentSpotifyTrackId
-    )
-
-    if (finishedQueueItem) {
-      try {
-        this.log(
-          'INFO',
-          `[handleTrackFinished] Marking queue item as played - Queue ID: ${finishedQueueItem.id}, Track: ${finishedQueueItem.tracks.name}`
-        )
-        await queueManager.markAsPlayed(finishedQueueItem.id)
-        this.log(
-          'INFO',
-          `[handleTrackFinished] Successfully marked queue item as played: ${finishedQueueItem.id}`
-        )
-      } catch (error) {
-        this.log(
-          'WARN',
-          `[handleTrackFinished] Failed to mark queue item ${finishedQueueItem.id} as played. Track: ${finishedQueueItem.tracks.name}, Error: ${error instanceof Error ? error.message : String(error)}`,
-          error
-        )
-      }
-    } else {
-      this.log(
-        'WARN',
-        `[handleTrackFinished] No queue item found for finished track: ${currentSpotifyTrackId} (${currentTrackName}). Track may have been manually started or already removed from queue. Queue length: ${queue.length}`
-      )
-    }
-
-    await this.checkAndAutoFillQueue()
-
-    let nextTrack = queueManager.getNextTrack()
-    this.log(
-      'INFO',
-      `[handleTrackFinished] Next track after markAsPlayed - ${nextTrack ? `Found: ${nextTrack.tracks.name} (${nextTrack.tracks.spotify_track_id}), Queue ID: ${nextTrack.id}` : 'None available'}`
-    )
-
-    // Strengthen duplicate detection: validate that next track is not the same as finished track
-    // Try limited retries, then fall back to an alternative track instead of pausing playback
-    let duplicateRemovalAttempts = 0
-    const maxDuplicateRemovalAttempts = 3
-
-    while (
-      nextTrack &&
-      nextTrack.tracks.spotify_track_id === currentSpotifyTrackId &&
-      duplicateRemovalAttempts < maxDuplicateRemovalAttempts
-    ) {
-      duplicateRemovalAttempts++
-
-      this.log(
-        'ERROR',
-        `Next track matches finished track (${currentSpotifyTrackId}) - queue sync issue detected. Attempting to remove duplicate (attempt ${duplicateRemovalAttempts}/${maxDuplicateRemovalAttempts}).`
-      )
-
-      try {
-        await queueManager.markAsPlayed(nextTrack.id)
-        this.log(
-          'INFO',
-          `Successfully removed duplicate track on retry: ${nextTrack.id}`
-        )
-
-        // Get next track again
-        nextTrack = queueManager.getNextTrack()
-
-        // If we successfully removed it and got a different track, break
-        if (
-          !nextTrack ||
-          nextTrack.tracks.spotify_track_id !== currentSpotifyTrackId
-        ) {
-          break
-        }
-      } catch (retryError) {
-        this.log(
-          'ERROR',
-          `Failed to remove duplicate track on attempt ${duplicateRemovalAttempts}`,
-          retryError
-        )
-
-        // On final failure, break out and try an alternative instead of forcing a pause
-        if (duplicateRemovalAttempts >= maxDuplicateRemovalAttempts) {
-          break
-        }
-      }
-    }
-
-    // Final validation: if next track STILL matches finished track after all attempts,
-    // prefer an alternative track over pausing playback, falling back to pause only
-    // when no safe alternative exists.
-    if (
-      nextTrack &&
-      nextTrack.tracks.spotify_track_id === currentSpotifyTrackId
-    ) {
-      const alternativeTrack = queueManager.getTrackAfterNext()
-
-      if (
-        alternativeTrack &&
-        alternativeTrack.tracks.spotify_track_id !== currentSpotifyTrackId
-      ) {
-        this.log(
-          'WARN',
-          `Next track still matches finished track (${currentSpotifyTrackId}) after ${duplicateRemovalAttempts} attempts, but an alternative is available. Switching to alternative track ${alternativeTrack.id} instead of pausing playback.`
-        )
-        nextTrack = alternativeTrack
-      } else {
-        this.log(
-          'ERROR',
-          `Next track STILL matches finished track after ${maxDuplicateRemovalAttempts} removal attempts and no safe alternative exists. Refusing to play duplicate. Pausing playback.`
-        )
-        nextTrack = undefined
-
-        // Pause playback to prevent playing the same track again
-        if (this.deviceId) {
-          try {
-            const SpotifyApiService = (await import('@/services/spotifyApi'))
-              .SpotifyApiService
-            await SpotifyApiService.getInstance().pausePlayback(this.deviceId)
-          } catch (pauseError) {
-            this.log(
-              'ERROR',
-              'Failed to pause playback after duplicate detection',
-              pauseError
-            )
-          }
-        }
-      }
-    }
+    // Find next valid track (handles duplicate detection)
+    const nextTrack = await this.findNextValidTrack(currentSpotifyTrackId)
 
     if (nextTrack) {
       this.currentQueueTrack = nextTrack
@@ -751,8 +545,6 @@ class PlayerLifecycleService {
         'INFO',
         `[handleTrackFinished] Playing next track: ${nextTrack.tracks.name} (${nextTrack.tracks.spotify_track_id}), Queue ID: ${nextTrack.id}`
       )
-
-      // Play the next track immediately using SDK event (0ms delay)
       await this.playNextTrack(nextTrack)
     } else {
       this.currentQueueTrack = null
@@ -1010,23 +802,7 @@ class PlayerLifecycleService {
   }
 
   private clearAllTimeouts(): void {
-    const timeouts = [
-      this.cleanupTimeoutRef,
-      this.notReadyTimeoutRef,
-      this.reconnectionTimeoutRef,
-      this.verificationTimeoutRef
-    ]
-
-    timeouts.forEach((timeout) => {
-      if (timeout) {
-        clearTimeout(timeout)
-      }
-    })
-
-    this.cleanupTimeoutRef = null
-    this.notReadyTimeoutRef = null
-    this.reconnectionTimeoutRef = null
-    this.verificationTimeoutRef = null
+    this.timeoutManager.clearAll()
   }
 
   async createPlayer(
@@ -1059,9 +835,7 @@ class PlayerLifecycleService {
       )
 
       // Clear any existing cleanup timeout
-      if (this.cleanupTimeoutRef) {
-        clearTimeout(this.cleanupTimeoutRef)
-      }
+      this.timeoutManager.clear('cleanup')
 
       onStatusChange('initializing')
 
@@ -1080,34 +854,34 @@ class PlayerLifecycleService {
       })
 
       // Set up event listeners
-      player.addListener('ready', async ({ device_id }) => {
-        if (this.notReadyTimeoutRef) {
-          clearTimeout(this.notReadyTimeoutRef)
-        }
+      player.addListener('ready', ({ device_id }) => {
+        void (async () => {
+          this.timeoutManager.clear('notReady')
 
-        onStatusChange('verifying')
+          onStatusChange('verifying')
 
-        const deviceVerified = await this.verifyDeviceWithTimeout(device_id)
-        if (!deviceVerified) {
-          this.log(
-            'WARN',
-            'Device setup verification failed, but proceeding anyway'
-          )
-        }
+          const deviceVerified = await this.verifyDeviceWithTimeout(device_id)
+          if (!deviceVerified) {
+            this.log(
+              'WARN',
+              'Device setup verification failed, but proceeding anyway'
+            )
+          }
 
-        this.deviceId = device_id
-        onDeviceIdChange(device_id)
+          this.deviceId = device_id
+          onDeviceIdChange(device_id)
 
-        const transferSuccess = await transferPlaybackToDevice(device_id)
-        if (!transferSuccess) {
-          this.log('ERROR', 'Failed to transfer playback to new device')
-          onStatusChange('error', 'Failed to transfer playback')
-          return
-        }
+          const transferSuccess = await transferPlaybackToDevice(device_id)
+          if (!transferSuccess) {
+            this.log('ERROR', 'Failed to transfer playback to new device')
+            onStatusChange('error', 'Failed to transfer playback')
+            return
+          }
 
-        onStatusChange('ready')
-        // Reset auth retry count on successful connection
-        this.authRetryCount = 0
+          onStatusChange('ready')
+          // Reset auth retry count on successful connection
+          this.authRetryCount = 0
+        })()
       })
 
       player.addListener('not_ready', (event) => {
@@ -1184,7 +958,7 @@ class PlayerLifecycleService {
       window.spotifyPlayerInstance = player
 
       // Set up cleanup timeout
-      this.cleanupTimeoutRef = setTimeout(() => {
+      const cleanupTimeout = setTimeout(() => {
         if (this.playerRef === player) {
           this.log(
             'INFO',
@@ -1192,17 +966,18 @@ class PlayerLifecycleService {
           )
         }
       }, PLAYER_LIFECYCLE_CONFIG.CLEANUP_TIMEOUT_MS)
+      this.timeoutManager.set('cleanup', cleanupTimeout)
 
       // Return device ID when ready event fires
       // Store cleanup function to prevent memory leaks
       let cleanup: (() => void) | null = null
 
       return new Promise<string>((resolve, reject) => {
-        const readyHandler = (event: { device_id: string }) => {
+        const readyHandler = (event: { device_id: string }): void => {
           cleanup?.() // Remove listeners to prevent memory leaks
           resolve(event.device_id)
         }
-        const errorHandler = (event: { message: string }) => {
+        const errorHandler = (event: { message: string }): void => {
           cleanup?.() // Remove listeners to prevent memory leaks
           reject(new Error(event.message))
         }
@@ -1211,7 +986,7 @@ class PlayerLifecycleService {
         player.addListener('initialization_error', errorHandler)
 
         // Store cleanup function
-        cleanup = () => {
+        cleanup = (): void => {
           player.removeListener('ready', readyHandler)
           player.removeListener('initialization_error', errorHandler)
         }
@@ -1265,15 +1040,16 @@ class PlayerLifecycleService {
       let timeoutId: NodeJS.Timeout | null = null
       let isResolved = false
 
-      const cleanup = () => {
+      const cleanup = (): void => {
         if (timeoutId) {
           clearTimeout(timeoutId)
           timeoutId = null
         }
       }
 
+      // eslint-disable-next-line @typescript-eslint/unbound-method
       const originalReady = window.onSpotifyWebPlaybackSDKReady
-      window.onSpotifyWebPlaybackSDKReady = () => {
+      window.onSpotifyWebPlaybackSDKReady = (): void => {
         cleanup() // Clear timeout if script loads successfully
         if (originalReady) {
           originalReady()
@@ -1285,11 +1061,12 @@ class PlayerLifecycleService {
       }
 
       const originalError = window.onSpotifyWebPlaybackSDKError
-      window.onSpotifyWebPlaybackSDKError = (error: unknown) => {
+      window.onSpotifyWebPlaybackSDKError = (error: unknown): void => {
         cleanup() // Clear timeout on error
         this.log('ERROR', 'Failed to reload Spotify SDK', error)
         if (originalError) {
-          originalError(error)
+          // Call original function - use call with null to avoid unbound method warning
+          originalError.call(undefined, error)
         }
         if (!isResolved) {
           isResolved = true

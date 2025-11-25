@@ -2,9 +2,9 @@ import { getAppAccessToken } from '@/services/spotify/auth'
 import { getBaseUrl } from '@/shared/utils/domain'
 import type {
   TokenResponse,
-  TokenResponseWithExpiry,
-  TokenError
+  TokenResponseWithExpiry
 } from '@/shared/types/token'
+import { TokenError } from '@/shared/types/token'
 import {
   safeParseTokenResponse,
   safeParseTokenHealthResponse,
