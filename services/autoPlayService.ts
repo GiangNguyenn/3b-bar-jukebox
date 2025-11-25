@@ -745,10 +745,7 @@ class AutoPlayService {
       const latestPlaybackState = await this.getCurrentPlaybackState()
 
       // Additional safety check: ensure next track is not the same as the finished track
-      if (
-        safeNextTrack &&
-        safeNextTrack.tracks.spotify_track_id === trackId
-      ) {
+      if (safeNextTrack && safeNextTrack.tracks.spotify_track_id === trackId) {
         logger(
           'WARN',
           `[handleTrackFinished] Next track is the same as finished track (${trackId}), removing duplicate before playing`
