@@ -52,3 +52,20 @@ export const OFFLINE_ERROR_CODES = [
 ] as const
 
 export type OfflineErrorCode = (typeof OFFLINE_ERROR_CODES)[number]
+
+/**
+ * Error class for token-related errors with error codes
+ */
+export class TokenError extends Error {
+  public readonly code?: string
+
+  constructor(message: string, code?: string) {
+    super(message)
+    this.name = 'TokenError'
+    this.code = code
+    // Maintains proper stack trace for where our error was thrown (only available on V8)
+    if (Error.captureStackTrace) {
+      Error.captureStackTrace(this, TokenError)
+    }
+  }
+}

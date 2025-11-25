@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useReducer, useEffect } from 'react'
 import type {
   TokenResponse,
   TokenErrorResponse,
@@ -17,22 +17,70 @@ export interface UserTokenHookResult {
   isJukeboxOffline: boolean
 }
 
+interface UserTokenState {
+  token: string | null
+  loading: boolean
+  error: string | null
+  isJukeboxOffline: boolean
+}
+
+type UserTokenAction =
+  | { type: 'FETCH_START' }
+  | { type: 'FETCH_SUCCESS'; token: string }
+  | {
+      type: 'FETCH_ERROR'
+      error: string
+      isJukeboxOffline: boolean
+    }
+
+function userTokenReducer(
+  state: UserTokenState,
+  action: UserTokenAction
+): UserTokenState {
+  switch (action.type) {
+    case 'FETCH_START':
+      return {
+        ...state,
+        loading: true,
+        error: null,
+        isJukeboxOffline: false
+      }
+    case 'FETCH_SUCCESS':
+      return {
+        token: action.token,
+        loading: false,
+        error: null,
+        isJukeboxOffline: false
+      }
+    case 'FETCH_ERROR':
+      return {
+        ...state,
+        token: null,
+        loading: false,
+        error: action.error,
+        isJukeboxOffline: action.isJukeboxOffline
+      }
+    default:
+      return state
+  }
+}
+
+const initialState: UserTokenState = {
+  token: null,
+  loading: true,
+  error: null,
+  isJukeboxOffline: false
+}
+
 export function useUserToken(): UserTokenHookResult {
-  const [token, setToken] = useState<string | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-  const [isJukeboxOffline, setIsJukeboxOffline] = useState(false)
-  const abortControllerRef = useRef<AbortController | null>(null)
+  const [state, dispatch] = useReducer(userTokenReducer, initialState)
 
   useEffect(() => {
     const abortController = new AbortController()
-    abortControllerRef.current = abortController
 
     const fetchToken = async (): Promise<void> => {
       try {
-        setLoading(true)
-        setError(null)
-        setIsJukeboxOffline(false)
+        dispatch({ type: 'FETCH_START' })
 
         const response = await fetch('/api/token', {
           method: 'GET',
@@ -59,22 +107,31 @@ export function useUserToken(): UserTokenHookResult {
                   )) ||
                 response.status >= 500
 
-              setError(errorMessage)
-              setIsJukeboxOffline(isOffline)
-              setToken(null)
+              dispatch({
+                type: 'FETCH_ERROR',
+                error: errorMessage,
+                isJukeboxOffline: isOffline
+              })
             } else {
               // Invalid error response format
-              setError('Invalid error response from server')
-              setIsJukeboxOffline(response.status >= 500)
-              setToken(null)
+              dispatch({
+                type: 'FETCH_ERROR',
+                error: `Invalid error response format from server (status: ${response.status})`,
+                isJukeboxOffline: response.status >= 500
+              })
             }
           } catch (parseError) {
             // Failed to parse error response as JSON
-            setError('Invalid error response from server')
-            setIsJukeboxOffline(response.status >= 500)
-            setToken(null)
+            const parseErrorMessage =
+              parseError instanceof Error
+                ? parseError.message
+                : 'Unknown parse error'
+            dispatch({
+              type: 'FETCH_ERROR',
+              error: `Failed to parse error response (status: ${response.status}): ${parseErrorMessage}`,
+              isJukeboxOffline: response.status >= 500
+            })
           }
-          // Don't set loading here - outer finally block will handle it
           return
         }
 
@@ -83,20 +140,28 @@ export function useUserToken(): UserTokenHookResult {
           const parseResult = safeParseTokenResponse(dataRaw)
 
           if (parseResult.success) {
-            const data = parseResult.data
-            setToken(data.access_token)
-            setError(null)
-            setIsJukeboxOffline(false)
+            dispatch({
+              type: 'FETCH_SUCCESS',
+              token: parseResult.data.access_token
+            })
           } else {
-            setError('Invalid token response format')
-            setIsJukeboxOffline(true)
-            setToken(null)
+            dispatch({
+              type: 'FETCH_ERROR',
+              error: `Invalid token response format: ${parseResult.error.message}`,
+              isJukeboxOffline: true
+            })
           }
         } catch (parseError) {
           // Failed to parse response as JSON
-          setError('Invalid token response format')
-          setIsJukeboxOffline(true)
-          setToken(null)
+          const parseErrorMessage =
+            parseError instanceof Error
+              ? parseError.message
+              : 'Unknown parse error'
+          dispatch({
+            type: 'FETCH_ERROR',
+            error: `Failed to parse token response: ${parseErrorMessage}`,
+            isJukeboxOffline: true
+          })
         }
       } catch (err) {
         // Handle AbortError silently (component unmounted)
@@ -107,11 +172,11 @@ export function useUserToken(): UserTokenHookResult {
         // Network or system errors indicate jukebox is offline
         const errorMessage =
           err instanceof Error ? err.message : 'Failed to retrieve token'
-        setError(errorMessage)
-        setIsJukeboxOffline(true)
-        setToken(null)
-      } finally {
-        setLoading(false)
+        dispatch({
+          type: 'FETCH_ERROR',
+          error: errorMessage,
+          isJukeboxOffline: true
+        })
       }
     }
 
@@ -123,9 +188,9 @@ export function useUserToken(): UserTokenHookResult {
   }, [])
 
   return {
-    token,
-    loading,
-    error,
-    isJukeboxOffline
+    token: state.token,
+    loading: state.loading,
+    error: state.error,
+    isJukeboxOffline: state.isJukeboxOffline
   }
 }

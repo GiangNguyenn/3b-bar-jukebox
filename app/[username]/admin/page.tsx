@@ -35,63 +35,7 @@ import { ArrowRightOnRectangleIcon } from '@heroicons/react/24/outline'
 
 // Autoplay helper removed
 
-function useAdminTokenManagement(params: {
-  tokenHealthStatus: 'valid' | 'error' | 'unknown' | 'expired'
-  isLoading: boolean
-  isReady: boolean
-  handleTokenError: () => Promise<void>
-  addLog: (
-    level: 'WARN' | 'ERROR' | 'INFO' | 'LOG',
-    message: string,
-    context?: string,
-    error?: Error
-  ) => void
-}): void {
-  const { tokenHealthStatus, isLoading, isReady, handleTokenError, addLog } =
-    params
-
-  useEffect(() => {
-    if (tokenHealthStatus === 'error' && !isLoading && isReady) {
-      void handleTokenError()
-    }
-  }, [tokenHealthStatus, isLoading, isReady, handleTokenError])
-
-  useEffect(() => {
-    if (!isReady) return
-
-    let isMounted = true
-
-    const runRefresh = async (): Promise<void> => {
-      if (!isMounted) return
-
-      try {
-        await tokenManager.refreshIfNeeded()
-      } catch (error: unknown) {
-        if (isMounted) {
-          addLog(
-            'ERROR',
-            'Proactive token refresh failed',
-            'AdminPage',
-            error instanceof Error ? error : undefined
-          )
-        }
-      }
-    }
-
-    // Run immediately
-    void runRefresh()
-
-    // Then run every 60 seconds
-    const interval = setInterval(() => {
-      void runRefresh()
-    }, 60000)
-
-    return (): void => {
-      isMounted = false
-      clearInterval(interval)
-    }
-  }, [isReady, addLog])
-}
+import { useAdminTokenManagement } from '@/hooks/useAdminTokenManagement'
 
 // Recovery removed
 

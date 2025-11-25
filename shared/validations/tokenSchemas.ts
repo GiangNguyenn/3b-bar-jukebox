@@ -99,3 +99,106 @@ export function safeParseTokenHealthResponse(
   }
   return { success: false, error: result.error }
 }
+
+/**
+ * Zod schema for Spotify error responses
+ */
+export const SpotifyErrorResponseSchema = z.object({
+  error: z.string().optional(),
+  error_description: z.string().optional()
+})
+
+/**
+ * Safe parser for Spotify error responses
+ */
+export function safeParseSpotifyErrorResponse(
+  data: unknown
+):
+  | { success: true; data: { error?: string; error_description?: string } }
+  | { success: false; error: z.ZodError } {
+  const result = SpotifyErrorResponseSchema.safeParse(data)
+  if (result.success) {
+    return { success: true, data: result.data }
+  }
+  return { success: false, error: result.error }
+}
+
+/**
+ * Zod schema for premium verification response
+ * Note: This should match the response from /api/auth/verify-premium
+ */
+export const PremiumVerificationResponseSchema = z.object({
+  isPremium: z.boolean(),
+  productType: z.string(),
+  userProfile: z
+    .object({
+      display_name: z.string(),
+      external_urls: z.object({ spotify: z.string() }),
+      followers: z.object({
+        href: z.string().nullable(),
+        total: z.number()
+      }),
+      href: z.string(),
+      id: z.string(),
+      images: z.array(
+        z.object({
+          height: z.number().nullable(),
+          url: z.string(),
+          width: z.number().nullable()
+        })
+      ),
+      type: z.string(),
+      uri: z.string(),
+      product: z.enum([
+        'free',
+        'premium',
+        'premium_duo',
+        'premium_family',
+        'premium_student',
+        'open'
+      ])
+    })
+    .optional(),
+  cached: z.boolean().optional()
+})
+
+/**
+ * Safe parser for premium verification responses
+ */
+export function safeParsePremiumVerificationResponse(data: unknown):
+  | {
+      success: true
+      data: {
+        isPremium: boolean
+        productType: string
+        userProfile?: {
+          display_name: string
+          external_urls: { spotify: string }
+          followers: { href: string | null; total: number }
+          href: string
+          id: string
+          images: Array<{
+            height: number | null
+            url: string
+            width: number | null
+          }>
+          type: string
+          uri: string
+          product:
+            | 'free'
+            | 'premium'
+            | 'premium_duo'
+            | 'premium_family'
+            | 'premium_student'
+            | 'open'
+        }
+        cached?: boolean
+      }
+    }
+  | { success: false; error: z.ZodError } {
+  const result = PremiumVerificationResponseSchema.safeParse(data)
+  if (result.success) {
+    return { success: true, data: result.data }
+  }
+  return { success: false, error: result.error }
+}

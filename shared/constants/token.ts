@@ -29,3 +29,9 @@ export const TOKEN_HEALTH_CHECK_INTERVAL = 60000 // 60 seconds - reduced frequen
  * Token refresh check interval in milliseconds (for proactive refresh)
  */
 export const TOKEN_REFRESH_CHECK_INTERVAL = 60000 // 60 seconds
+
+/**
+ * Default token expiry time in seconds (1 hour)
+ * Used as fallback when token expiry information is not available
+ */
+export const DEFAULT_TOKEN_EXPIRY_SECONDS = 3600 // 1 hour

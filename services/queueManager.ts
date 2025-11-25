@@ -50,9 +50,17 @@ class QueueManager {
 
     // Optimistically remove from local queue immediately
     // This prevents race conditions with queue refreshes during the DELETE request
+    // NOTE: There is a small window between optimistic removal (line 53) and rollback (lines 95, 119)
+    // where getNextTrack() could return a track that will be rolled back if the API call fails.
+    // This is an acceptable risk because:
+    // 1. The window is very small (typically < 1 second for API calls)
+    // 2. If API call succeeds, rollback never happens (most common case)
+    // 3. If API call fails, an error is thrown which callers should handle
+    // 4. The pendingDeletes Set prevents queue refresh from bringing back tracks during deletion
     this.queue = this.queue.filter((track) => track.id !== queueId)
 
     // Mark as pending delete to prevent queue refresh from bringing it back
+    // This protects against race conditions with updateQueue() calls
     this.pendingDeletes.add(queueId)
 
     for (let attempt = 0; attempt <= maxRetries; attempt++) {

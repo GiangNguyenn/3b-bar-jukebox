@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect } from 'react'
 import { useConsoleLogsContext } from '../ConsoleLogsProvider'
 import type { TokenHealthResponse } from '@/shared/types/token'
 import {
@@ -19,11 +19,23 @@ export function useTokenHealth(): TokenHealthStatus {
   })
 
   const { addLog } = useConsoleLogsContext()
-  const abortControllerRef = useRef<AbortController | null>(null)
 
   useEffect(() => {
     const abortController = new AbortController()
-    abortControllerRef.current = abortController
+
+    // Helper to safely update state only if component is still mounted
+    const safeUpdateStatus = (
+      newStatus: TokenHealthStatus,
+      logLevel?: 'ERROR' | 'WARN',
+      logMessage?: string
+    ): void => {
+      if (!abortController.signal.aborted) {
+        setTokenStatus(newStatus)
+        if (logLevel && logMessage) {
+          addLog(logLevel, logMessage, 'TokenHealth')
+        }
+      }
+    }
 
     const checkTokenStatus = async (): Promise<void> => {
       // Don't proceed if component has unmounted
@@ -39,14 +51,11 @@ export function useTokenHealth(): TokenHealthStatus {
         })
 
         if (!response.ok) {
-          if (!abortController.signal.aborted) {
-            addLog(
-              'ERROR',
-              `Token validation failed: ${response.status} ${response.statusText}`,
-              'TokenHealth'
-            )
-            setTokenStatus({ status: 'error', expiringSoon: false })
-          }
+          safeUpdateStatus(
+            { status: 'error', expiringSoon: false },
+            'ERROR',
+            `Token validation failed: ${response.status} ${response.statusText}`
+          )
           return
         }
 
@@ -55,14 +64,11 @@ export function useTokenHealth(): TokenHealthStatus {
           const parseResult = safeParseTokenHealthResponse(dataRaw)
 
           if (!parseResult.success) {
-            if (!abortController.signal.aborted) {
-              addLog(
-                'ERROR',
-                'Invalid token health response format',
-                'TokenHealth'
-              )
-              setTokenStatus({ status: 'error', expiringSoon: false })
-            }
+            safeUpdateStatus(
+              { status: 'error', expiringSoon: false },
+              'ERROR',
+              'Invalid token health response format'
+            )
             return
           }
 
@@ -73,47 +79,34 @@ export function useTokenHealth(): TokenHealthStatus {
 
           if (expiresIn === undefined) {
             // No expiry info, assume valid
-            if (!abortController.signal.aborted) {
-              setTokenStatus({ status: 'valid', expiringSoon: false })
-            }
+            safeUpdateStatus({ status: 'valid', expiringSoon: false })
             return
           }
 
           // Validate expiresIn is a number
           if (typeof expiresIn !== 'number' || expiresIn < 0) {
-            if (!abortController.signal.aborted) {
-              addLog(
-                'ERROR',
-                `Invalid expiresIn value: ${expiresIn}`,
-                'TokenHealth'
-              )
-              setTokenStatus({ status: 'error', expiringSoon: false })
-            }
+            safeUpdateStatus(
+              { status: 'error', expiringSoon: false },
+              'ERROR',
+              `Invalid expiresIn value: ${expiresIn}`
+            )
             return
           }
 
           if (expiresIn < TOKEN_EXPIRY_THRESHOLDS.CRITICAL) {
-            if (!abortController.signal.aborted) {
-              setTokenStatus({ status: 'valid', expiringSoon: true })
-              addLog(
-                'ERROR',
-                `Token expiring critically soon: ${expiresIn}s remaining`,
-                'TokenHealth'
-              )
-            }
+            safeUpdateStatus(
+              { status: 'valid', expiringSoon: true },
+              'ERROR',
+              `Token expiring critically soon: ${expiresIn}s remaining`
+            )
           } else if (expiresIn < TOKEN_EXPIRY_THRESHOLDS.WARNING) {
-            if (!abortController.signal.aborted) {
-              setTokenStatus({ status: 'valid', expiringSoon: true })
-              addLog(
-                'WARN',
-                `Token expiring soon: ${expiresIn}s remaining`,
-                'TokenHealth'
-              )
-            }
+            safeUpdateStatus(
+              { status: 'valid', expiringSoon: true },
+              'WARN',
+              `Token expiring soon: ${expiresIn}s remaining`
+            )
           } else {
-            if (!abortController.signal.aborted) {
-              setTokenStatus({ status: 'valid', expiringSoon: false })
-            }
+            safeUpdateStatus({ status: 'valid', expiringSoon: false })
           }
         } catch (parseError) {
           if (!abortController.signal.aborted) {
@@ -132,14 +125,13 @@ export function useTokenHealth(): TokenHealthStatus {
           return
         }
 
-        if (!abortController.signal.aborted) {
-          addLog(
-            'ERROR',
-            'Token validation error',
-            'TokenHealth',
-            error instanceof Error ? error : undefined
-          )
-          setTokenStatus({ status: 'error', expiringSoon: false })
+        safeUpdateStatus(
+          { status: 'error', expiringSoon: false },
+          'ERROR',
+          'Token validation error'
+        )
+        if (!abortController.signal.aborted && error instanceof Error) {
+          addLog('ERROR', 'Token validation error', 'TokenHealth', error)
         }
       }
     }

@@ -5,6 +5,7 @@ import type { Database } from '@/types/supabase'
 import { SpotifyPlaybackState } from '@/shared/types/spotify'
 import { createModuleLogger } from '@/shared/utils/logger'
 import { refreshTokenWithRetry } from '@/recovery/tokenRecovery'
+import { updateTokenInDatabase } from '@/recovery/tokenDatabaseUpdate'
 
 // Set up logger for this module
 const logger = createModuleLogger('NowPlaying')
@@ -80,7 +81,7 @@ export async function GET(): Promise<
         'ERROR',
         `Error fetching admin profile: ${JSON.stringify(profileError)}`
       )
-      return NextResponse.json(
+      const errorResponse = NextResponse.json(
         {
           error: 'Failed to get admin credentials',
           code: 'ADMIN_PROFILE_ERROR',
@@ -88,6 +89,12 @@ export async function GET(): Promise<
         },
         { status: 500 }
       )
+      // Prevent caching of error responses
+      errorResponse.headers.set(
+        'Cache-Control',
+        'no-store, no-cache, must-revalidate, proxy-revalidate'
+      )
+      return errorResponse
     }
 
     const typedProfile = userProfile as UserProfile
@@ -101,7 +108,7 @@ export async function GET(): Promise<
       // Token is expired, refresh it
       if (!typedProfile.spotify_refresh_token) {
         logger('ERROR', 'No refresh token available')
-        return NextResponse.json(
+        const errorResponse = NextResponse.json(
           {
             error: 'No refresh token available',
             code: 'NO_REFRESH_TOKEN',
@@ -109,11 +116,16 @@ export async function GET(): Promise<
           },
           { status: 500 }
         )
+        errorResponse.headers.set(
+          'Cache-Control',
+          'no-store, no-cache, must-revalidate, proxy-revalidate'
+        )
+        return errorResponse
       }
 
       if (!SPOTIFY_CLIENT_ID || !SPOTIFY_CLIENT_SECRET) {
         logger('ERROR', 'Missing Spotify client credentials')
-        return NextResponse.json(
+        const errorResponse = NextResponse.json(
           {
             error: 'Server configuration error',
             code: 'INVALID_CLIENT_CREDENTIALS',
@@ -121,6 +133,11 @@ export async function GET(): Promise<
           },
           { status: 500 }
         )
+        errorResponse.headers.set(
+          'Cache-Control',
+          'no-store, no-cache, must-revalidate, proxy-revalidate'
+        )
+        return errorResponse
       }
 
       // Use recovery module for token refresh with retry logic
@@ -137,7 +154,7 @@ export async function GET(): Promise<
 
         logger('ERROR', `Token refresh failed: ${errorCode} - ${errorMessage}`)
 
-        return NextResponse.json(
+        const errorResponse = NextResponse.json(
           {
             error: errorMessage,
             code: errorCode,
@@ -145,38 +162,58 @@ export async function GET(): Promise<
           },
           { status: refreshResult.error?.isRecoverable ? 503 : 500 }
         )
+        errorResponse.headers.set(
+          'Cache-Control',
+          'no-store, no-cache, must-revalidate, proxy-revalidate'
+        )
+        return errorResponse
       }
 
       accessToken = refreshResult.accessToken
 
-      // Update the token in the database
-      const { error: updateError } = await supabase
-        .from('profiles')
-        .update({
-          spotify_access_token: refreshResult.accessToken,
-          spotify_refresh_token:
-            refreshResult.refreshToken ?? typedProfile.spotify_refresh_token,
-          spotify_token_expires_at:
-            refreshResult.expiresIn !== undefined
-              ? Math.floor(Date.now() / 1000) + refreshResult.expiresIn
-              : null
-        })
-        .eq('id', userProfile.id)
+      // Update the token in the database with retry logic
+      // This is critical - if database update fails, we should not use the token
+      const updateResult = await updateTokenInDatabase(
+        supabase,
+        String(userProfile.id),
+        {
+          accessToken: refreshResult.accessToken,
+          refreshToken: refreshResult.refreshToken,
+          expiresIn: refreshResult.expiresIn,
+          currentRefreshToken: typedProfile.spotify_refresh_token
+        }
+      )
 
-      if (updateError) {
+      if (!updateResult.success) {
+        const errorCode = updateResult.error?.code ?? 'DATABASE_UPDATE_ERROR'
+        const errorMessage =
+          updateResult.error?.message ?? 'Failed to update token in database'
+
         logger(
           'ERROR',
-          `Failed to update now playing: ${JSON.stringify(updateError)}`,
-          undefined,
-          updateError instanceof Error ? updateError : undefined
+          `Token refresh succeeded but database update failed: ${errorCode} - ${errorMessage}`
         )
-        // Log error but continue
+
+        // Return error - don't proceed with request if we can't persist token
+        const errorResponse = NextResponse.json(
+          {
+            error: errorMessage,
+            code: errorCode,
+            status: updateResult.error?.isRecoverable ? 503 : 500
+          },
+          { status: updateResult.error?.isRecoverable ? 503 : 500 }
+        )
+        errorResponse.headers.set(
+          'Cache-Control',
+          'no-store, no-cache, must-revalidate, proxy-revalidate'
+        )
+        return errorResponse
       }
     }
 
     if (!accessToken) {
       logger('ERROR', 'No access token available')
-      return NextResponse.json(
+      const errorResponse = NextResponse.json(
         {
           error: 'No access token available',
           code: 'NO_ACCESS_TOKEN',
@@ -184,6 +221,11 @@ export async function GET(): Promise<
         },
         { status: 500 }
       )
+      errorResponse.headers.set(
+        'Cache-Control',
+        'no-store, no-cache, must-revalidate, proxy-revalidate'
+      )
+      return errorResponse
     }
 
     // Get currently playing track from Spotify API
@@ -213,9 +255,13 @@ export async function GET(): Promise<
       return response
     }
 
+    // Read response body once and reuse for both error logging and JSON parsing
+    // Response bodies can only be read once, so we must store the text
+    const responseText = await nowPlayingResponse.text()
+
     if (!nowPlayingResponse.ok) {
-      logger('ERROR', `Spotify API error: ${await nowPlayingResponse.text()}`)
-      return NextResponse.json(
+      logger('ERROR', `Spotify API error: ${responseText}`)
+      const errorResponse = NextResponse.json(
         {
           error: 'Failed to get currently playing track',
           code: 'SPOTIFY_API_ERROR',
@@ -223,10 +269,14 @@ export async function GET(): Promise<
         },
         { status: nowPlayingResponse.status }
       )
+      errorResponse.headers.set(
+        'Cache-Control',
+        'no-store, no-cache, must-revalidate, proxy-revalidate'
+      )
+      return errorResponse
     }
 
     // Check if response has content before parsing JSON
-    const responseText = await nowPlayingResponse.text()
     if (!responseText.trim()) {
       // Empty body (shouldn't happen if status is 200, but handle it)
       const response = NextResponse.json(null)
@@ -254,7 +304,7 @@ export async function GET(): Promise<
       undefined,
       error instanceof Error ? error : undefined
     )
-    return NextResponse.json(
+    const errorResponse = NextResponse.json(
       {
         error: 'Internal server error',
         code: 'INTERNAL_ERROR',
@@ -262,5 +312,10 @@ export async function GET(): Promise<
       },
       { status: 500 }
     )
+    errorResponse.headers.set(
+      'Cache-Control',
+      'no-store, no-cache, must-revalidate, proxy-revalidate'
+    )
+    return errorResponse
   }
 }

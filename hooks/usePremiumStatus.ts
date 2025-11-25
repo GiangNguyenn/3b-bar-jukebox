@@ -1,9 +1,10 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { createBrowserClient } from '@supabase/ssr'
 import type { Database } from '@/types/supabase'
 import { useConsoleLogsContext } from '@/hooks/ConsoleLogsProvider'
 import { SpotifyUserProfile } from '@/shared/types/spotify'
 import { tokenManager } from '@/shared/token/tokenManager'
+import { safeParsePremiumVerificationResponse } from '@/shared/validations/tokenSchemas'
 
 interface PremiumStatus {
   isPremium: boolean
@@ -33,9 +34,13 @@ export function usePremiumStatus(): PremiumStatus & {
     needsReauth: false
   })
 
-  const supabase = createBrowserClient<Database>(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  const supabase = useMemo(
+    () =>
+      createBrowserClient<Database>(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+      ),
+    []
   )
 
   const checkPremiumStatus = useCallback(
@@ -66,7 +71,7 @@ export function usePremiumStatus(): PremiumStatus & {
 
         // Step 2: Check if user has valid Spotify authentication
         try {
-          const spotifyToken = await tokenManager.getToken()
+          await tokenManager.getToken()
         } catch (tokenError) {
           setStatus({
             isPremium: false,
@@ -88,27 +93,58 @@ export function usePremiumStatus(): PremiumStatus & {
         })
 
         if (!response.ok) {
-          const errorData = await response.json()
-
-          // Handle specific authentication errors
+          const errorDataRaw = await response.json()
+          // Type guard for error response structure
           if (
-            errorData.code === 'NO_SPOTIFY_TOKEN' ||
-            errorData.code === 'INVALID_SPOTIFY_TOKEN'
+            typeof errorDataRaw === 'object' &&
+            errorDataRaw !== null &&
+            'code' in errorDataRaw &&
+            'error' in errorDataRaw
           ) {
-            setStatus({
-              isPremium: false,
-              productType: '',
-              isLoading: false,
-              error: errorData.error,
-              needsReauth: true
-            })
-            return
+            const errorData = errorDataRaw as { code: string; error: string }
+            // Handle specific authentication errors
+            if (
+              errorData.code === 'NO_SPOTIFY_TOKEN' ||
+              errorData.code === 'INVALID_SPOTIFY_TOKEN'
+            ) {
+              setStatus({
+                isPremium: false,
+                productType: '',
+                isLoading: false,
+                error: errorData.error,
+                needsReauth: true
+              })
+              return
+            }
+
+            throw new Error(
+              errorData.error || 'Failed to verify premium status'
+            )
           }
 
-          throw new Error(errorData.error || 'Failed to verify premium status')
+          throw new Error('Failed to verify premium status')
         }
 
-        const data = (await response.json()) as PremiumVerificationResponse
+        const dataRaw = await response.json()
+        const parseResult = safeParsePremiumVerificationResponse(dataRaw)
+
+        if (!parseResult.success) {
+          addLog(
+            'ERROR',
+            'Invalid premium verification response format',
+            'usePremiumStatus'
+          )
+          setStatus({
+            isPremium: false,
+            productType: '',
+            isLoading: false,
+            error: 'Invalid response from server',
+            needsReauth: false
+          })
+          return
+        }
+
+        const data = parseResult.data
 
         setStatus({
           isPremium: data.isPremium,

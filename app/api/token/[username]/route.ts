@@ -7,6 +7,7 @@ import {
   refreshTokenWithRetry,
   isNetworkErrorRecoverable
 } from '@/recovery/tokenRecovery'
+import { updateTokenInDatabase } from '@/recovery/tokenDatabaseUpdate'
 
 const logger = createModuleLogger('API Token')
 
@@ -156,31 +157,53 @@ export async function GET(
         )
       }
 
-      // Update the token in the database
-      const { error: updateError } = await supabase
-        .from('profiles')
-        .update({
-          spotify_access_token: refreshResult.accessToken,
-          spotify_refresh_token:
-            refreshResult.refreshToken ?? typedProfile.spotify_refresh_token,
-          spotify_token_expires_at:
-            refreshResult.expiresIn !== undefined
-              ? Math.floor(Date.now() / 1000) + refreshResult.expiresIn
-              : null
-        })
-        .eq('id', userProfile.id)
+      // Update the token in the database with retry logic
+      // This is critical - if database update fails, we should not return the token
+      const updateResult = await updateTokenInDatabase(
+        supabase,
+        String(userProfile.id),
+        {
+          accessToken: refreshResult.accessToken,
+          refreshToken: refreshResult.refreshToken,
+          expiresIn: refreshResult.expiresIn,
+          currentRefreshToken: typedProfile.spotify_refresh_token
+        }
+      )
 
-      if (updateError) {
-        logger('ERROR', 'Error updating token', JSON.stringify(updateError))
+      if (!updateResult.success) {
+        const errorCode = updateResult.error?.code ?? 'DATABASE_UPDATE_ERROR'
+        const errorMessage =
+          updateResult.error?.message ?? 'Failed to update token in database'
+
+        logger(
+          'ERROR',
+          `Token refresh succeeded but database update failed: ${errorCode} - ${errorMessage}`
+        )
+
+        // Return error - don't return token if we can't persist it
+        return NextResponse.json(
+          {
+            error: errorMessage,
+            code: errorCode,
+            status: updateResult.error?.isRecoverable ? 503 : 500
+          },
+          { status: updateResult.error?.isRecoverable ? 503 : 500 }
+        )
       }
+
+      // Calculate expires_at - use refreshResult.expiresIn if available
+      // If expiresIn is undefined, use a safe default (3600 seconds = 1 hour)
+      // Don't use tokenExpiresAt as fallback since it's already expired
+      const expiresAt =
+        refreshResult.expiresIn !== undefined
+          ? Math.floor(Date.now() / 1000) + refreshResult.expiresIn
+          : Math.floor(Date.now() / 1000) + 3600 // Default to 1 hour if expiresIn is not provided
 
       return NextResponse.json({
         access_token: refreshResult.accessToken,
         refresh_token:
           refreshResult.refreshToken ?? typedProfile.spotify_refresh_token,
-        expires_at: refreshResult.expiresIn
-          ? Math.floor(Date.now() / 1000) + refreshResult.expiresIn
-          : tokenExpiresAt
+        expires_at: expiresAt
       })
     }
 
