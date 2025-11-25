@@ -52,19 +52,28 @@ export function usePlaylistData(username?: string) {
           `Queue fetch for ${username}`
         )
 
+        // Read response body once - cannot be read multiple times
+        const data = (await response.json()) as
+          | JukeboxQueueItem[]
+          | { error?: string }
+
         if (!response.ok) {
-          const errorData = await response.json()
-          throw new Error(errorData.error || 'Failed to fetch queue')
+          const errorMessage =
+            typeof data === 'object' && data !== null && 'error' in data
+              ? String(data.error)
+              : 'Failed to fetch queue'
+          throw new Error(errorMessage)
         }
 
-        const data = (await response.json()) as JukeboxQueueItem[]
-        setQueue(data)
+        // Type assertion: if response.ok is true, data should be JukeboxQueueItem[]
+        const queueData = data as JukeboxQueueItem[]
+        setQueue(queueData)
 
         // Update queueManager with the fetched data
-        queueManager.updateQueue(data)
+        queueManager.updateQueue(queueData)
 
         // Track if queue was empty
-        wasQueueEmptyRef.current = data.length === 0
+        wasQueueEmptyRef.current = queueData.length === 0
 
         // Clear error and stale flags on successful fetch
         setError(null)
@@ -73,7 +82,7 @@ export function usePlaylistData(username?: string) {
         lastPollTimeRef.current = Date.now()
         addLog(
           'INFO',
-          `Queue data fetched successfully: ${data.length} tracks`,
+          `Queue data fetched successfully: ${queueData.length} tracks`,
           'usePlaylistData'
         )
       } catch (err) {
@@ -92,12 +101,11 @@ export function usePlaylistData(username?: string) {
 
         // Update state with recovery data
         if (recovery.source === 'cached') {
-          // Update queue with cached data if we don't have data or if queue became empty
-          // This ensures recovery works even if queue was cleared due to error
-          if (wasQueueEmptyRef.current || queue.length === 0) {
-            setQueue(recovery.queue)
-            wasQueueEmptyRef.current = recovery.queue.length === 0
-          }
+          // Always update queue with cached data when available
+          // wasQueueEmptyRef is only set on successful fetch, so it may be stale
+          // Always use cached data to ensure users see the most recent available queue
+          setQueue(recovery.queue)
+          wasQueueEmptyRef.current = recovery.queue.length === 0
           setIsStale(true)
           setError(errorMessage)
           addLog(
@@ -137,8 +145,8 @@ export function usePlaylistData(username?: string) {
       clearInterval(pollingIntervalRef.current)
     }
 
-    // Poll every 10 seconds as fallback
-    const POLL_INTERVAL = 10000
+    // Poll every 30 seconds as fallback - reduces API calls significantly
+    const POLL_INTERVAL = 30000
 
     pollingIntervalRef.current = setInterval(async () => {
       // Only poll if real-time is not connected or if it's been more than 30 seconds since last update
@@ -269,24 +277,8 @@ export function usePlaylistData(username?: string) {
     ]
   )
 
-  // Listen for queueManager updates
-  useEffect(() => {
-    const checkQueueManagerUpdates = (): void => {
-      const queueManagerQueue = queueManager.getQueue()
-      const currentQueueIds = queue.map((item) => item.id).sort()
-      const queueManagerIds = queueManagerQueue.map((item) => item.id).sort()
-
-      // If queueManager has different data, update our state
-      if (JSON.stringify(currentQueueIds) !== JSON.stringify(queueManagerIds)) {
-        setQueue(queueManagerQueue)
-      }
-    }
-
-    // Check for updates every second
-    const interval = setInterval(checkQueueManagerUpdates, 1000)
-
-    return () => clearInterval(interval)
-  }, [queue, addLog])
+  // Queue manager updates are handled via real-time subscriptions and polling
+  // Removed 1-second interval check to reduce unnecessary CPU usage
 
   // Initial setup
   useEffect(() => {

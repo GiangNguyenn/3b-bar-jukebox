@@ -51,16 +51,35 @@ function setCachedArtwork(trackId: string, url: string | null): void {
   }
 }
 
-export function useTrackArtwork(spotifyTrackId: string | null): TrackArtwork {
+export function useTrackArtwork(
+  spotifyTrackId: string | null,
+  options?: {
+    initialUrl?: string | null
+    enabled?: boolean
+  }
+): TrackArtwork {
+  const { initialUrl, enabled = true } = options ?? {}
   const [artwork, setArtwork] = useState<TrackArtwork>({
-    url: null,
+    url: initialUrl ?? null,
     isLoading: false,
     error: null
   })
 
   useEffect(() => {
-    if (!spotifyTrackId) {
-      setArtwork({ url: null, isLoading: false, error: null })
+    if (!spotifyTrackId || !enabled) {
+      setArtwork({
+        url: initialUrl ?? null,
+        isLoading: false,
+        error: null
+      })
+      return
+    }
+
+    // If we have an initial URL, use it and don't fetch
+    if (initialUrl) {
+      setArtwork({ url: initialUrl, isLoading: false, error: null })
+      // Cache it for future use
+      setCachedArtwork(spotifyTrackId, initialUrl)
       return
     }
 
@@ -110,7 +129,7 @@ export function useTrackArtwork(spotifyTrackId: string | null): TrackArtwork {
     }
 
     void fetchArtwork()
-  }, [spotifyTrackId])
+  }, [spotifyTrackId, enabled, initialUrl])
 
   return artwork
 }

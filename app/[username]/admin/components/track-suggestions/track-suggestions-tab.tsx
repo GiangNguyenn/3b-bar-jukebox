@@ -15,7 +15,10 @@ import {
   type LastSuggestedTrackInfo
 } from '@/shared/types/trackSuggestions'
 import { useTrackSuggestions } from './hooks/useTrackSuggestions'
-import { type Genre } from '@/shared/constants/trackSuggestion'
+import {
+  type Genre,
+  ALL_SPOTIFY_GENRES
+} from '@/shared/constants/trackSuggestion'
 
 interface TrackSuggestionsTabProps {
   onStateChange: (state: TrackSuggestionsState) => void
@@ -160,7 +163,7 @@ export function TrackSuggestionsTab({
         error instanceof Error ? error : new Error('Unknown error')
       )
     }
-  }, [updateState, addLog])
+  }, [addLog])
 
   useEffect(() => {
     // Initial fetch
@@ -243,7 +246,13 @@ export function TrackSuggestionsTab({
       <div className='grid gap-6 md:grid-cols-2'>
         <div className='space-y-6'>
           <GenresSelector
-            selectedGenres={state.genres as Genre[]}
+            selectedGenres={
+              // Filter out invalid genres to ensure type safety
+              // Only include genres that are in the valid ALL_SPOTIFY_GENRES list
+              state.genres.filter((g): g is Genre =>
+                ALL_SPOTIFY_GENRES.includes(g as Genre)
+              )
+            }
             onGenresChange={setGenres}
           />
           <YearRangeSelector

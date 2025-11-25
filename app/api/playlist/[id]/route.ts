@@ -7,6 +7,9 @@ import type { JukeboxQueueItem } from '@/shared/types/queue'
 
 const logger = createModuleLogger('API Playlist')
 
+// Add caching for GET requests - 15 seconds matches our polling interval
+export const revalidate = 15
+
 export async function GET(
   request: Request,
   { params }: { params: { id: string } }
@@ -51,6 +54,7 @@ export async function GET(
         .eq('profile_id', profile.id)
         .order('votes', { ascending: false })
         .order('queued_at', { ascending: true })
+        .limit(100) // Limit to top 100 tracks by votes to reduce response size and Vercel usage
         .returns<JukeboxQueueItem[]>(),
       undefined,
       `Fetch jukebox queue for profileId: ${profile.id}`
@@ -72,7 +76,13 @@ export async function GET(
       )
     }
 
-    return NextResponse.json(data)
+    // Add caching headers to reduce API calls
+    const response = NextResponse.json(data)
+    response.headers.set(
+      'Cache-Control',
+      'public, s-maxage=15, stale-while-revalidate=30'
+    )
+    return response
   } catch (error) {
     logger(
       'ERROR',

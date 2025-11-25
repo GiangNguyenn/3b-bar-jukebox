@@ -43,10 +43,10 @@ export function useConnectionHealth(): ConnectionStatus {
     // Initial check
     void updateConnectionStatus()
 
-    // Set up periodic connection test (every 30 seconds)
+    // Set up periodic connection test (every 60 seconds - reduced frequency)
     const connectionTestInterval = setInterval(() => {
       void updateConnectionStatus()
-    }, 30000)
+    }, 60000)
 
     return () => {
       clearInterval(connectionTestInterval)

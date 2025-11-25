@@ -10,7 +10,7 @@ interface UseNowPlayingTrackOptions {
 export function useNowPlayingTrack({
   token,
   enabled = true,
-  refetchInterval = 30000
+  refetchInterval = 60000 // Default to 60 seconds - reduces API calls significantly
 }: UseNowPlayingTrackOptions = {}) {
   const [data, setData] = useState<SpotifyPlaybackState | null>(null)
   const [error, setError] = useState<string | null>(null)

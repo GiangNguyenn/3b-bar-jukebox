@@ -73,9 +73,8 @@ export function useUserToken(): UserTokenHookResult {
             setError('Invalid error response from server')
             setIsJukeboxOffline(response.status >= 500)
             setToken(null)
-          } finally {
-            setLoading(false)
           }
+          // Don't set loading here - outer finally block will handle it
           return
         }
 

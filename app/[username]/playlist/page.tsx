@@ -70,7 +70,7 @@ export default function PlaylistPage(): JSX.Element {
   const { data: currentlyPlaying } = useNowPlayingTrack({
     token: null, // Don't use user token for public pages
     enabled: true, // Always enabled for public pages
-    refetchInterval: 5000 // Poll every 5 seconds for more responsive updates
+    refetchInterval: 20000 // Poll every 20 seconds - reduces API calls while maintaining reasonable responsiveness
   })
 
   // Manage welcome message timing

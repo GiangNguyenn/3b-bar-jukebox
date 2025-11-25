@@ -7,6 +7,9 @@ import { refreshTokenWithRetry } from '@/recovery/tokenRecovery'
 
 const logger = createModuleLogger('API Track Artwork')
 
+// Add caching - artwork URLs rarely change, cache for 24 hours
+export const revalidate = 86400 // 24 hours in seconds
+
 interface UserProfile {
   id: string
   spotify_access_token: string | null
@@ -165,9 +168,10 @@ export async function GET(
         .from('profiles')
         .update({
           spotify_access_token: refreshResult.accessToken,
-          spotify_token_expires_at: refreshResult.expiresIn
-            ? Math.floor(Date.now() / 1000) + refreshResult.expiresIn
-            : null
+          spotify_token_expires_at:
+            refreshResult.expiresIn !== undefined
+              ? Math.floor(Date.now() / 1000) + refreshResult.expiresIn
+              : null
         })
         .eq('id', userProfile.id)
 
@@ -198,7 +202,7 @@ export async function GET(
     )
 
     // Fetch track details from Spotify API
-    const response = await fetch(
+    const spotifyResponse = await fetch(
       `https://api.spotify.com/v1/tracks/${trackId}`,
       {
         headers: {
@@ -209,30 +213,30 @@ export async function GET(
 
     logger(
       'INFO',
-      `Track artwork API: Spotify API response status: ${response.status}`
+      `Track artwork API: Spotify API response status: ${spotifyResponse.status}`
     )
 
-    if (!response.ok) {
-      const errorText = await response.text()
+    if (!spotifyResponse.ok) {
+      const errorText = await spotifyResponse.text()
       logger(
         'ERROR',
         `Track artwork API: Spotify API error: ${JSON.stringify({
-          status: response.status,
-          statusText: response.statusText,
+          status: spotifyResponse.status,
+          statusText: spotifyResponse.statusText,
           errorText
         })}`
       )
       return NextResponse.json(
         {
-          error: `Failed to fetch track from Spotify: ${response.status} ${response.statusText}`,
+          error: `Failed to fetch track from Spotify: ${spotifyResponse.status} ${spotifyResponse.statusText}`,
           code: 'SPOTIFY_API_ERROR',
-          status: response.status
+          status: spotifyResponse.status
         },
-        { status: response.status }
+        { status: spotifyResponse.status }
       )
     }
 
-    const trackData = (await response.json()) as {
+    const trackData = (await spotifyResponse.json()) as {
       id: string
       name: string
       album?: {
@@ -252,7 +256,13 @@ export async function GET(
 
     const artworkUrl = trackData.album?.images?.[0]?.url ?? null
 
-    return NextResponse.json({ artworkUrl })
+    // Add caching headers - artwork URLs rarely change
+    const response = NextResponse.json({ artworkUrl })
+    response.headers.set(
+      'Cache-Control',
+      'public, s-maxage=86400, stale-while-revalidate=172800'
+    )
+    return response
   } catch (error) {
     logger(
       'ERROR',

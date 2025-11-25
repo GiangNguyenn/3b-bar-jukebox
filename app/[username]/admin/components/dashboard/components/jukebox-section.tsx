@@ -34,7 +34,7 @@ export function JukeboxSection({
   const { data: currentlyPlaying, isLoading } = useNowPlayingTrack({
     token: null, // Use admin credentials
     enabled: true,
-    refetchInterval: 5000 // Poll every 5 seconds
+    refetchInterval: 20000 // Poll every 20 seconds - reduces API calls while maintaining reasonable responsiveness
   })
 
   const { handlePlayPause, handleSkip, isActuallyPlaying, isSkipLoading } =

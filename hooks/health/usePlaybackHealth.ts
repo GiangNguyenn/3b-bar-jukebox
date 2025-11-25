@@ -75,7 +75,7 @@ export function usePlaybackHealth(): PlaybackStatus {
           error instanceof Error ? error : undefined
         )
       }
-    }, 15000) // Check every 15 seconds
+    }, 60000) // Check every 60 seconds - reduced frequency to lower API usage
 
     return () => clearInterval(intervalId)
   }, [addLog])
