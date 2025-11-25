@@ -707,7 +707,40 @@ class AutoPlayService {
           'WARN',
           '[handleTrackFinished] Playback is not active but queue has tracks – starting next track as fallback'
         )
-        await this.playNextTrack(safeNextTrack, false)
+        try {
+          await this.playNextTrack(safeNextTrack, false)
+        } catch (fallbackError) {
+          logger(
+            'ERROR',
+            `[handleTrackFinished] Fallback playNextTrack failed. Track: ${safeNextTrack.tracks.name}, Queue ID: ${safeNextTrack.id}`,
+            undefined,
+            fallbackError as Error
+          )
+          // Retry with next track if available
+          const nextNextTrack = this.queueManager.getNextTrack()
+          if (nextNextTrack) {
+            logger(
+              'INFO',
+              `[handleTrackFinished] Attempting alternative track after fallback failure: ${nextNextTrack.tracks.name} (${nextNextTrack.tracks.spotify_track_id}), Queue ID: ${nextNextTrack.id}`
+            )
+            try {
+              await this.playNextTrack(nextNextTrack, false)
+            } catch (retryError) {
+              logger(
+                'ERROR',
+                `[handleTrackFinished] Alternative track attempt also failed. Track: ${nextNextTrack.tracks.name}, Queue ID: ${nextNextTrack.id}`,
+                undefined,
+                retryError as Error
+              )
+              // Log but don't throw - allow outer catch to handle if needed
+            }
+          } else {
+            logger(
+              'WARN',
+              '[handleTrackFinished] No alternative track available after fallback failure'
+            )
+          }
+        }
       }
 
       // Check if next track was started predictively
@@ -1834,16 +1867,14 @@ class AutoPlayService {
 
     if (!transferred) {
       logger(
-        'ERROR',
-        `[playNextTrack] Failed to transfer playback to app device: ${this.deviceId} after all retry attempts. Cannot play next track. Track: ${track.tracks.name}, Queue ID: ${track.id}, Total transfer errors: ${transferErrors.length}`,
+        'WARN',
+        `[playNextTrack] Failed to transfer playback to app device: ${this.deviceId} after all retry attempts. Attempting playback anyway as last resort. Track: ${track.tracks.name}, Queue ID: ${track.id}, Total transfer errors: ${transferErrors.length}`,
         undefined,
         transferErrors[transferErrors.length - 1]
       )
-      // Reset predictive state on error
-      if (isPredictive) {
-        this.resetPredictiveState()
-      }
-      return
+      // Don't return early - attempt playback anyway as last resort
+      // Device might be active but transfer API is having issues
+      // If playback fails, error recovery in catch block will handle it
     }
 
     // Defensive check: verify we're not about to play a track that's already playing
@@ -1864,8 +1895,49 @@ class AutoPlayService {
       ) {
         logger(
           'WARN',
-          `[playNextTrack] Track ${track.tracks.name} (${track.tracks.spotify_track_id}) is already playing. Skipping playback to prevent duplicate.`
+          `[playNextTrack] Track ${track.tracks.name} (${track.tracks.spotify_track_id}) is already playing. Removing from queue and attempting next track.`
         )
+        // Remove duplicate track from queue and try next track
+        try {
+          await this.queueManager.markAsPlayed(track.id)
+          logger(
+            'INFO',
+            `[playNextTrack] Removed duplicate track from queue: ${track.id}`
+          )
+        } catch (error) {
+          logger(
+            'ERROR',
+            `[playNextTrack] Failed to remove duplicate track from queue. Track: ${track.tracks.name}, Queue ID: ${track.id}`,
+            undefined,
+            error as Error
+          )
+        }
+
+        // Attempt to play the next track instead of returning early
+        const nextTrack = this.queueManager.getNextTrack()
+        if (nextTrack) {
+          logger(
+            'INFO',
+            `[playNextTrack] Attempting to play next track after duplicate detection: ${nextTrack.tracks.name} (${nextTrack.tracks.spotify_track_id}), Queue ID: ${nextTrack.id}`
+          )
+          try {
+            await this.playNextTrack(nextTrack, false)
+            return // Success - exit early
+          } catch (error) {
+            logger(
+              'ERROR',
+              `[playNextTrack] Failed to play next track after duplicate detection. Track: ${nextTrack.tracks.name}, Queue ID: ${nextTrack.id}`,
+              undefined,
+              error as Error
+            )
+            // Error recovery in catch block will handle further attempts
+          }
+        } else {
+          logger(
+            'WARN',
+            '[playNextTrack] No next track available after duplicate detection'
+          )
+        }
         return
       }
     } catch (apiError) {
@@ -1902,13 +1974,90 @@ class AutoPlayService {
 
       this.onNextTrackStarted?.(track)
     } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : String(error)
       logger(
         'ERROR',
         `[playNextTrack] Failed to play next track. Track: ${track.tracks.name} (${track.tracks.spotify_track_id}), Queue ID: ${track.id}, Device: ${this.deviceId}, Mode: ${isPredictive ? 'predictive' : 'reactive'}`,
         undefined,
         error as Error
       )
-      // Reset predictive state on error
+
+      // Check if error is transient (network, timeout) vs permanent (restriction violated)
+      const isTransientError =
+        errorMessage.includes('network') ||
+        errorMessage.includes('timeout') ||
+        errorMessage.includes('ECONNRESET') ||
+        errorMessage.includes('ETIMEDOUT')
+
+      // For transient errors, attempt one retry before giving up
+      if (isTransientError) {
+        logger(
+          'WARN',
+          `[playNextTrack] Transient error detected, attempting retry for track: ${track.tracks.name}`
+        )
+        try {
+          await new Promise((resolve) => setTimeout(resolve, 1000)) // Wait 1s before retry
+          await sendApiRequest({
+            path: 'me/player/play',
+            method: 'PUT',
+            body: {
+              device_id: this.deviceId,
+              uris: [`spotify:track:${track.tracks.spotify_track_id}`]
+            }
+          })
+          logger(
+            'INFO',
+            `[playNextTrack] Retry successful for track: ${track.tracks.name}`
+          )
+          this.onNextTrackStarted?.(track)
+          return // Success - exit early
+        } catch (retryError) {
+          logger(
+            'ERROR',
+            `[playNextTrack] Retry also failed for track: ${track.tracks.name}`,
+            undefined,
+            retryError as Error
+          )
+          // Continue with error recovery below
+        }
+      }
+
+      // Error recovery: attempt to remove problematic track and try next track
+      try {
+        await this.queueManager.markAsPlayed(track.id)
+        logger(
+          'INFO',
+          `[playNextTrack] Removed problematic track from queue: ${track.id}`
+        )
+
+        // Try to play the next track in queue
+        const nextTrack = this.queueManager.getNextTrack()
+        if (nextTrack) {
+          logger(
+            'INFO',
+            `[playNextTrack] Attempting to play next track after error recovery: ${nextTrack.tracks.name} (${nextTrack.tracks.spotify_track_id}), Queue ID: ${nextTrack.id}`
+          )
+          // Recursively attempt to play next track (non-predictive mode)
+          await this.playNextTrack(nextTrack, false)
+          // If successful, don't reset predictive state
+          return
+        } else {
+          logger(
+            'WARN',
+            '[playNextTrack] No next track available after error recovery'
+          )
+        }
+      } catch (recoveryError) {
+        logger(
+          'ERROR',
+          `[playNextTrack] Error recovery failed. Track: ${track.tracks.name}, Queue ID: ${track.id}`,
+          undefined,
+          recoveryError as Error
+        )
+      }
+
+      // Only reset predictive state if no recovery was possible
       if (isPredictive) {
         this.resetPredictiveState()
       }

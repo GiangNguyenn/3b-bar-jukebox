@@ -196,7 +196,20 @@ class PlayerLifecycleService {
     return false
   }
 
-  private async playNextTrack(track: JukeboxQueueItem): Promise<void> {
+  private async playNextTrack(
+    track: JukeboxQueueItem,
+    recursionDepth: number = 0
+  ): Promise<void> {
+    // Prevent infinite recursion - limit depth to queue size (safety limit: 50)
+    const MAX_RECURSION_DEPTH = 50
+    if (recursionDepth >= MAX_RECURSION_DEPTH) {
+      this.log(
+        'ERROR',
+        `[playNextTrack] Maximum recursion depth (${MAX_RECURSION_DEPTH}) reached. Stopping recursive attempts to prevent stack overflow. Track: ${track.tracks.name}, Queue ID: ${track.id}`
+      )
+      return
+    }
+
     if (!this.deviceId) {
       this.log(
         'ERROR',
@@ -324,8 +337,49 @@ class PlayerLifecycleService {
       ) {
         this.log(
           'WARN',
-          `Track ${track.tracks.name} (${track.tracks.spotify_track_id}) is already playing. Skipping playback to prevent duplicate.`
+          `Track ${track.tracks.name} (${track.tracks.spotify_track_id}) is already playing. Removing from queue and attempting next track.`
         )
+        // Remove duplicate track from queue and try next track
+        try {
+          await queueManager.markAsPlayed(track.id)
+          this.log(
+            'INFO',
+            `[playNextTrack] Removed duplicate track from queue: ${track.id}`
+          )
+        } catch (error) {
+          this.log(
+            'ERROR',
+            `[playNextTrack] Failed to remove duplicate track from queue. Track: ${track.tracks.name}, Queue ID: ${track.id}`,
+            error
+          )
+        }
+
+        // Attempt to play the next track instead of returning early
+        const nextTrack = queueManager.getNextTrack()
+        if (nextTrack) {
+          this.log(
+            'INFO',
+            `[playNextTrack] Attempting to play next track after duplicate detection: ${nextTrack.tracks.name} (${nextTrack.tracks.spotify_track_id})`
+          )
+          try {
+            await this.playNextTrack(nextTrack, recursionDepth + 1)
+          } catch (error) {
+            this.log(
+              'ERROR',
+              `[playNextTrack] Failed to play next track after duplicate detection. Track: ${nextTrack.tracks.name}, Queue ID: ${nextTrack.id}`,
+              error
+            )
+            // Continue attempting remaining tracks
+            const nextNextTrack = queueManager.getNextTrack()
+            if (nextNextTrack && recursionDepth + 1 < MAX_RECURSION_DEPTH) {
+              this.log(
+                'INFO',
+                `[playNextTrack] Attempting alternative track after error: ${nextNextTrack.tracks.name}`
+              )
+              await this.playNextTrack(nextNextTrack, recursionDepth + 2)
+            }
+          }
+        }
         return
       }
     } catch (apiError) {
@@ -372,9 +426,40 @@ class PlayerLifecycleService {
       if (nextTrack) {
         this.log(
           'INFO',
-          `[playNextTrack] Attempting to play next track in queue: ${nextTrack.tracks.name} (${nextTrack.tracks.spotify_track_id})`
+          `[playNextTrack] Attempting to play next track in queue: ${nextTrack.tracks.name} (${nextTrack.tracks.spotify_track_id}), Recursion depth: ${recursionDepth + 1}`
         )
-        await this.playNextTrack(nextTrack)
+        try {
+          await this.playNextTrack(nextTrack, recursionDepth + 1)
+        } catch (error) {
+          this.log(
+            'ERROR',
+            `[playNextTrack] Recursive call failed. Track: ${nextTrack.tracks.name}, Queue ID: ${nextTrack.id}, Recursion depth: ${recursionDepth + 1}`,
+            error
+          )
+          // Attempt to continue with next track if available
+          const nextNextTrack = queueManager.getNextTrack()
+          if (nextNextTrack && recursionDepth + 2 < MAX_RECURSION_DEPTH) {
+            this.log(
+              'INFO',
+              `[playNextTrack] Attempting alternative track after recursive failure: ${nextNextTrack.tracks.name} (${nextNextTrack.tracks.spotify_track_id})`
+            )
+            try {
+              await this.playNextTrack(nextNextTrack, recursionDepth + 2)
+            } catch (retryError) {
+              this.log(
+                'ERROR',
+                `[playNextTrack] Alternative track attempt also failed. Track: ${nextNextTrack.tracks.name}, Queue ID: ${nextNextTrack.id}`,
+                retryError
+              )
+              // Log but don't throw - allow caller to handle
+            }
+          } else {
+            this.log(
+              'WARN',
+              '[playNextTrack] No more tracks available or recursion limit reached after recursive failure'
+            )
+          }
+        }
       } else {
         this.log(
           'WARN',
