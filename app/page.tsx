@@ -318,6 +318,23 @@ export default function Home(): JSX.Element {
             </a>
           </div>
         </div>
+
+        {/* Custom App Development Message */}
+        <div className='bg-gray-900/50 py-12'>
+          <div className='mx-auto max-w-4xl px-4 text-center sm:px-6 lg:px-8'>
+            <p className='text-lg text-gray-300'>
+              Need a custom app like this developed? Contact{' '}
+              <a
+                href='https://www.offshoresoftware.dev/'
+                target='_blank'
+                rel='noopener noreferrer'
+                className='text-green-400 underline transition-colors hover:text-green-300'
+              >
+                offshoresoftware.dev
+              </a>
+            </p>
+          </div>
+        </div>
       </div>
     )
   }
