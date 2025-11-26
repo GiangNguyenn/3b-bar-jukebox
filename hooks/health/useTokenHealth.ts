@@ -109,6 +109,11 @@ export function useTokenHealth(): TokenHealthStatus {
             safeUpdateStatus({ status: 'valid', expiringSoon: false })
           }
         } catch (parseError) {
+          safeUpdateStatus(
+            { status: 'error', expiringSoon: false },
+            'ERROR',
+            'Failed to parse token health response'
+          )
           if (!abortController.signal.aborted) {
             addLog(
               'ERROR',
@@ -116,7 +121,6 @@ export function useTokenHealth(): TokenHealthStatus {
               'TokenHealth',
               parseError instanceof Error ? parseError : undefined
             )
-            setTokenStatus({ status: 'error', expiringSoon: false })
           }
         }
       } catch (error) {
