@@ -26,6 +26,7 @@ interface TokenResponse {
 
 interface AdminProfile {
   id: string
+  display_name: string | null
   spotify_access_token: string | null
   spotify_refresh_token: string | null
   spotify_token_expires_at: number | null
@@ -74,14 +75,38 @@ export async function GET(): Promise<
       }
     )
 
-    // Get admin profile from database
-    const { data: adminProfile, error: profileError } = await supabase
+    // Get admin profile from database - try '3B' first, then fallback to first profile
+    let adminProfile: AdminProfile | null = null
+    let profileError: unknown = null
+
+    // First, try to find profile with '3B' in display_name (admin profile)
+    const { data: adminProfile3B, error: error3B } = await supabase
       .from('profiles')
       .select(
-        'id, spotify_access_token, spotify_refresh_token, spotify_token_expires_at'
+        'id, display_name, spotify_access_token, spotify_refresh_token, spotify_token_expires_at'
       )
-      .limit(1)
+      .ilike('display_name', '3B')
       .single()
+
+    if (!error3B && adminProfile3B) {
+      adminProfile = adminProfile3B as AdminProfile
+    } else {
+      // Fallback: try to get first profile if '3B' profile not found
+      const { data: fallbackProfile, error: fallbackError } = await supabase
+        .from('profiles')
+        .select(
+          'id, display_name, spotify_access_token, spotify_refresh_token, spotify_token_expires_at'
+        )
+        .limit(1)
+        .single()
+
+      if (!fallbackError && fallbackProfile) {
+        adminProfile = fallbackProfile as AdminProfile
+        profileError = null
+      } else {
+        profileError = fallbackError || error3B
+      }
+    }
 
     if (profileError || !adminProfile) {
       logger(
@@ -92,7 +117,7 @@ export async function GET(): Promise<
       )
       return NextResponse.json(
         {
-          error: 'Failed to get admin credentials',
+          error: "Admin profile '3B' not found or database error occurred",
           code: 'ADMIN_PROFILE_ERROR',
           status: 500
         },
@@ -101,15 +126,28 @@ export async function GET(): Promise<
     }
 
     // Type guard to ensure adminProfile has required fields
-    const typedProfile = adminProfile as AdminProfile
-    if (
-      !typedProfile.spotify_access_token ||
-      !typedProfile.spotify_refresh_token ||
-      typedProfile.spotify_token_expires_at === null
-    ) {
+    const missingFields: string[] = []
+    if (!adminProfile.spotify_access_token) {
+      missingFields.push('spotify_access_token')
+    }
+    if (!adminProfile.spotify_refresh_token) {
+      missingFields.push('spotify_refresh_token')
+    }
+    if (adminProfile.spotify_token_expires_at === null) {
+      missingFields.push('spotify_token_expires_at')
+    }
+
+    if (missingFields.length > 0) {
+      const profileInfo = `Profile ID: ${adminProfile.id}, Display Name: ${adminProfile.display_name ?? 'null'}`
+      logger(
+        'ERROR',
+        `Invalid admin profile data - missing fields: ${missingFields.join(', ')}. ${profileInfo}`,
+        undefined,
+        undefined
+      )
       return NextResponse.json(
         {
-          error: 'Invalid admin profile data',
+          error: `Invalid admin profile data: missing required fields (${missingFields.join(', ')}). Profile: ${adminProfile.display_name ?? 'unknown'} (ID: ${adminProfile.id})`,
           code: 'INVALID_PROFILE_DATA',
           status: 500
         },
@@ -117,8 +155,24 @@ export async function GET(): Promise<
       )
     }
 
-    // Check if token needs refresh
-    const tokenExpiresAt = typedProfile.spotify_token_expires_at
+    // At this point, we've validated all required fields are present
+    // Extract non-null values for TypeScript
+    const tokenExpiresAt = adminProfile.spotify_token_expires_at
+    const accessToken = adminProfile.spotify_access_token
+    const refreshToken = adminProfile.spotify_refresh_token
+
+    // Additional runtime check (should never fail due to validation above)
+    if (!accessToken || !refreshToken || tokenExpiresAt === null) {
+      return NextResponse.json(
+        {
+          error: 'Invalid admin profile data',
+          code: 'INVALID_ADMIN_PROFILE',
+          status: 500
+        },
+        { status: 500 }
+      )
+    }
+
     const now = Math.floor(Date.now() / 1000)
 
     if (tokenExpiresAt <= now) {
@@ -137,7 +191,7 @@ export async function GET(): Promise<
 
       // Use recovery module for token refresh with retry logic
       const refreshResult = await refreshTokenWithRetry(
-        typedProfile.spotify_refresh_token,
+        refreshToken,
         SPOTIFY_CLIENT_ID,
         SPOTIFY_CLIENT_SECRET
       )
@@ -168,7 +222,7 @@ export async function GET(): Promise<
           accessToken: refreshResult.accessToken,
           refreshToken: refreshResult.refreshToken,
           expiresIn: refreshResult.expiresIn,
-          currentRefreshToken: typedProfile.spotify_refresh_token
+          currentRefreshToken: refreshToken
         }
       )
 
@@ -204,15 +258,15 @@ export async function GET(): Promise<
       return NextResponse.json({
         access_token: refreshResult.accessToken,
         refresh_token:
-          refreshResult.refreshToken ?? typedProfile.spotify_refresh_token,
+          refreshResult.refreshToken ?? refreshToken,
         expires_at: expiresAt
       })
     }
 
     // Token is still valid, return it
     return NextResponse.json({
-      access_token: typedProfile.spotify_access_token,
-      refresh_token: typedProfile.spotify_refresh_token,
+      access_token: accessToken,
+      refresh_token: refreshToken,
       expires_at: tokenExpiresAt
     })
   } catch (error) {
