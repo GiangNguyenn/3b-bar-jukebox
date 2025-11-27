@@ -1,5 +1,4 @@
 import { useMemo } from 'react'
-import { useConsoleLogsContext } from './ConsoleLogsProvider'
 import { useSpotifyPlayerStore } from './useSpotifyPlayer'
 import {
   useTokenHealth,
@@ -15,9 +14,88 @@ import {
   FailureMetrics
 } from '@/shared/types/health'
 import { queueManager } from '@/services/queueManager'
+import {
+  isValidErrorTimestamp,
+  isValidSuccessTimestamp
+} from '@/shared/utils/timestampValidation'
+import type { SpotifyPlaybackState } from '@/shared/types/spotify'
+
+/**
+ * Builds playback details from playback state
+ */
+function buildPlaybackDetails(
+  playbackState: SpotifyPlaybackState | null,
+  playbackHealth: 'playing' | 'paused' | 'stopped' | 'error' | 'unknown' | 'stalled'
+): PlaybackDetails | undefined {
+  if (!playbackState) {
+    return undefined
+  }
+
+  return {
+    currentTrack: playbackState.item
+      ? {
+          id: playbackState.item.id,
+          name: playbackState.item.name,
+          artist: playbackState.item.artists.map((a) => a.name).join(', '),
+          uri: playbackState.item.uri
+        }
+      : undefined,
+    progress: playbackState.progress_ms ?? undefined,
+    duration: playbackState.item?.duration_ms ?? undefined,
+    isPlaying: playbackState.is_playing ?? false,
+    isStalled: playbackHealth === 'stalled',
+    lastProgressUpdate: playbackState.timestamp
+      ? Date.now() - (playbackState.timestamp ?? 0)
+      : undefined
+  }
+}
+
+/**
+ * Builds queue state from queue manager
+ */
+function buildQueueState(): QueueState {
+  const queue = queueManager.getQueue()
+  const nextTrack = queueManager.getNextTrack()
+
+  return {
+    nextTrack: nextTrack
+      ? {
+          id: nextTrack.tracks.spotify_track_id,
+          name: nextTrack.tracks.name,
+          artist: nextTrack.tracks.artist,
+          queueId: nextTrack.id
+        }
+      : undefined,
+    queueLength: queue.length,
+    isEmpty: queue.length === 0,
+    hasNextTrack: nextTrack !== undefined
+  }
+}
+
+/**
+ * Builds failure metrics from player state
+ */
+function buildFailureMetrics(
+  consecutiveFailures: number,
+  playerStatus: string,
+  lastError: string | undefined,
+  lastStatusChange: number | undefined
+): FailureMetrics {
+  const hasValidError = isValidErrorTimestamp(lastError, lastStatusChange)
+  const hasValidSuccess = isValidSuccessTimestamp(
+    playerStatus,
+    lastError,
+    lastStatusChange
+  )
+
+  return {
+    consecutiveFailures,
+    lastFailureTimestamp: hasValidError ? lastStatusChange : undefined,
+    lastSuccessfulOperation: hasValidSuccess ? lastStatusChange : undefined
+  }
+}
 
 export function useSpotifyHealthMonitor(): HealthStatus {
-  const { addLog } = useConsoleLogsContext()
   const {
     deviceId,
     status: playerStatus,
@@ -36,70 +114,7 @@ export function useSpotifyHealthMonitor(): HealthStatus {
 
   // Map the new health status to the enhanced interface structure
   const healthStatus = useMemo((): HealthStatus => {
-    // Build playback details
-    const playbackDetails: PlaybackDetails | undefined = playbackState
-      ? {
-          currentTrack: playbackState.item
-            ? {
-                id: playbackState.item.id,
-                name: playbackState.item.name,
-                artist: playbackState.item.artists
-                  .map((a) => a.name)
-                  .join(', '),
-                uri: playbackState.item.uri
-              }
-            : undefined,
-          progress: playbackState.progress_ms ?? undefined,
-          duration: playbackState.item?.duration_ms ?? undefined,
-          isPlaying: playbackState.is_playing ?? false,
-          isStalled: playbackHealth === 'stalled',
-          lastProgressUpdate: playbackState.timestamp
-            ? Date.now() - (playbackState.timestamp ?? 0)
-            : undefined
-        }
-      : undefined
-
-    // Build queue state
-    const queue = queueManager.getQueue()
-
-    // getNextTrack() now automatically excludes the currently playing track
-    const nextTrack = queueManager.getNextTrack()
-
-    const queueState: QueueState = {
-      nextTrack: nextTrack
-        ? {
-            id: nextTrack.tracks.spotify_track_id,
-            name: nextTrack.tracks.name,
-            artist: nextTrack.tracks.artist,
-            queueId: nextTrack.id
-          }
-        : undefined,
-      queueLength: queue.length,
-      isEmpty: queue.length === 0,
-      hasNextTrack: nextTrack !== undefined
-    }
-
-    // Build failure metrics
-    // Check lastError separately - don't rely on lastStatusChange being truthy (it's a timestamp, may be 0)
-    const hasValidErrorTimestamp =
-      lastError !== undefined &&
-      lastStatusChange !== undefined &&
-      lastStatusChange > 0
-    const hasValidSuccessTimestamp =
-      playerStatus === 'ready' &&
-      !lastError &&
-      lastStatusChange !== undefined &&
-      lastStatusChange > 0
-
-    const failureMetrics: FailureMetrics = {
-      consecutiveFailures,
-      lastFailureTimestamp: hasValidErrorTimestamp
-        ? lastStatusChange
-        : undefined,
-      lastSuccessfulOperation: hasValidSuccessTimestamp
-        ? lastStatusChange
-        : undefined
-    }
+    const hasValidError = isValidErrorTimestamp(lastError, lastStatusChange)
 
     return {
       deviceId,
@@ -110,11 +125,16 @@ export function useSpotifyHealthMonitor(): HealthStatus {
       connection: connectionHealth,
       // Diagnostic fields
       lastError,
-      lastErrorTimestamp: hasValidErrorTimestamp ? lastStatusChange : undefined,
+      lastErrorTimestamp: hasValidError ? lastStatusChange : undefined,
       recentEvents: recentEvents.length > 0 ? recentEvents : undefined,
-      playbackDetails,
-      queueState,
-      failureMetrics
+      playbackDetails: buildPlaybackDetails(playbackState, playbackHealth),
+      queueState: buildQueueState(),
+      failureMetrics: buildFailureMetrics(
+        consecutiveFailures,
+        playerStatus,
+        lastError,
+        lastStatusChange
+      )
     }
   }, [
     deviceId,
