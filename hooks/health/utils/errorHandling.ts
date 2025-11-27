@@ -31,12 +31,7 @@ export function handleHealthError(
   }
 
   // Log other errors
-  logger(
-    'ERROR',
-    message,
-    context,
-    error instanceof Error ? error : undefined
-  )
+  logger('ERROR', message, context, error instanceof Error ? error : undefined)
 }
 
 /**
@@ -61,4 +56,3 @@ export function createSafeErrorHandler(
     handleHealthError(error, logger, context, message)
   }
 }
-

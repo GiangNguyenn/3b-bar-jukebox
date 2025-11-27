@@ -17,12 +17,11 @@ export function QueueInformationSection({
     return null
   }
 
-  const severity =
-    healthStatus.queueState.isEmpty
+  const severity = healthStatus.queueState.isEmpty
+    ? 'warning'
+    : !healthStatus.queueState.hasNextTrack
       ? 'warning'
-      : !healthStatus.queueState.hasNextTrack
-        ? 'warning'
-        : 'info'
+      : 'info'
 
   return (
     <CollapsibleSection
@@ -66,4 +65,3 @@ export function QueueInformationSection({
     </CollapsibleSection>
   )
 }
-

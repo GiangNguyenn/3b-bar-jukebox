@@ -64,4 +64,3 @@ export function useHealthInterval(
     }
   }, [enabled, interval, initialDelay])
 }
-

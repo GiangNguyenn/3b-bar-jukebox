@@ -18,12 +18,11 @@ export function PlaybackStateSection({
     return null
   }
 
-  const severity =
-    healthStatus.playbackDetails.isStalled
-      ? 'error'
-      : !healthStatus.playbackDetails.isPlaying
-        ? 'warning'
-        : 'info'
+  const severity = healthStatus.playbackDetails.isStalled
+    ? 'error'
+    : !healthStatus.playbackDetails.isPlaying
+      ? 'warning'
+      : 'info'
 
   return (
     <CollapsibleSection
@@ -66,4 +65,3 @@ export function PlaybackStateSection({
     </CollapsibleSection>
   )
 }
-

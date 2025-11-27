@@ -58,7 +58,7 @@ export function CriticalIssuesSection({
           <p className='mt-1 text-xs text-red-300/70'>
             Last update:{' '}
             {formatRelativeTime(
-              Date.now() - healthStatus.playbackDetails.lastProgressUpdate
+              healthStatus.playbackDetails.lastProgressUpdate
             )}
           </p>
         ) : undefined
@@ -100,4 +100,3 @@ export function CriticalIssuesSection({
     </CollapsibleSection>
   )
 }
-

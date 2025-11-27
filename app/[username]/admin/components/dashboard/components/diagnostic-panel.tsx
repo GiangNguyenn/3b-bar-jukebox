@@ -51,7 +51,6 @@ export function DiagnosticPanel({
     [hasErrors, hasWarnings]
   )
 
-
   const handleCopyDiagnostics = useCallback(async (): Promise<void> => {
     try {
       const diagnosticsText = formatDiagnosticsForClipboard(

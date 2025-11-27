@@ -66,7 +66,11 @@ export function useTokenHealth(): TokenHealthStatus {
             expiringSoon: false
           })
           if (!isAborted()) {
-            addLog('ERROR', 'Invalid token health response format', 'TokenHealth')
+            addLog(
+              'ERROR',
+              'Invalid token health response format',
+              'TokenHealth'
+            )
           }
           return
         }

@@ -32,10 +32,7 @@ export function SystemStatusSection({
           value={playerStatus ?? (isReady ? 'ready' : 'initializing')}
         />
         <StatusField label='Device Status' value={healthStatus.device} />
-        <StatusField
-          label='Playback Status'
-          value={healthStatus.playback}
-        />
+        <StatusField label='Playback Status' value={healthStatus.playback} />
         <StatusField
           label='Token Status'
           value={
@@ -60,4 +57,3 @@ export function SystemStatusSection({
     </CollapsibleSection>
   )
 }
-

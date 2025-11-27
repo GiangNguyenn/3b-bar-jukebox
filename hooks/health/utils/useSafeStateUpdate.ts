@@ -48,4 +48,3 @@ export function useHealthAbortController(): {
     isAborted: () => abortControllerRef.current?.signal.aborted ?? false
   }
 }
-

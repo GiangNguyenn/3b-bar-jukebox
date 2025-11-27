@@ -25,7 +25,13 @@ import type { SpotifyPlaybackState } from '@/shared/types/spotify'
  */
 function buildPlaybackDetails(
   playbackState: SpotifyPlaybackState | null,
-  playbackHealth: 'playing' | 'paused' | 'stopped' | 'error' | 'unknown' | 'stalled'
+  playbackHealth:
+    | 'playing'
+    | 'paused'
+    | 'stopped'
+    | 'error'
+    | 'unknown'
+    | 'stalled'
 ): PlaybackDetails | undefined {
   if (!playbackState) {
     return undefined
@@ -44,9 +50,7 @@ function buildPlaybackDetails(
     duration: playbackState.item?.duration_ms ?? undefined,
     isPlaying: playbackState.is_playing ?? false,
     isStalled: playbackHealth === 'stalled',
-    lastProgressUpdate: playbackState.timestamp
-      ? Date.now() - (playbackState.timestamp ?? 0)
-      : undefined
+    lastProgressUpdate: playbackState.timestamp ?? undefined
   }
 }
 

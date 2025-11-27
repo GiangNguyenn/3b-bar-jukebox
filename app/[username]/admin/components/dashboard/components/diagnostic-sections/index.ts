@@ -7,4 +7,3 @@ export { PlaybackStateSection } from './PlaybackStateSection'
 export { QueueInformationSection } from './QueueInformationSection'
 export { RecentEventsSection } from './RecentEventsSection'
 export { TechnicalDetailsSection } from './TechnicalDetailsSection'
-

@@ -38,4 +38,3 @@ export function isValidSuccessTimestamp(
     lastStatusChange > 0
   )
 }
-

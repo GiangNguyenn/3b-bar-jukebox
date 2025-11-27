@@ -29,7 +29,10 @@ export function RecentEventsSection({
         {healthStatus.recentEvents.map((event) => (
           <div
             key={`${event.timestamp}-${event.type}`}
-            className={cn('rounded border p-2', getSeverityStyles(event.severity ?? 'info'))}
+            className={cn(
+              'rounded border p-2',
+              getSeverityStyles(event.severity ?? 'info')
+            )}
           >
             <div className='flex items-start justify-between'>
               <div className='flex-1'>
@@ -74,4 +77,3 @@ export function RecentEventsSection({
     </CollapsibleSection>
   )
 }
-
