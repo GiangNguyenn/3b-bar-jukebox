@@ -23,6 +23,24 @@ import {
   CopyIcon
 } from './diagnostic-components'
 
+// Helper to format relative time (milliseconds ago) directly
+function formatRelativeTimeFromMs(msAgo: number): string {
+  const seconds = Math.floor(msAgo / 1000)
+  const minutes = Math.floor(seconds / 60)
+  const hours = Math.floor(minutes / 60)
+
+  if (seconds < 60) {
+    return `${seconds}s ago`
+  }
+  if (minutes < 60) {
+    return `${minutes}m ago`
+  }
+  if (hours < 24) {
+    return `${hours}h ago`
+  }
+  return new Date(Date.now() - msAgo).toLocaleString()
+}
+
 interface DiagnosticPanelProps {
   healthStatus: HealthStatus
   isReady: boolean
@@ -144,8 +162,8 @@ export function DiagnosticPanel({
         children: healthStatus.playbackDetails?.lastProgressUpdate ? (
           <p className='mt-1 text-xs text-red-300/70'>
             Last update:{' '}
-            {formatRelativeTime(
-              Date.now() - healthStatus.playbackDetails.lastProgressUpdate
+            {formatRelativeTimeFromMs(
+              healthStatus.playbackDetails.lastProgressUpdate
             )}
           </p>
         ) : undefined
@@ -189,7 +207,9 @@ export function DiagnosticPanel({
         headerActions={
           <button
             type='button'
-            onClick={handleCopyDiagnostics}
+            onClick={() => {
+              void handleCopyDiagnostics()
+            }}
             className='text-white flex items-center gap-2 rounded-lg border border-gray-700 bg-gray-800/50 px-3 py-2 text-sm font-medium transition-colors hover:border-gray-600 hover:bg-gray-700'
             title='Copy all diagnostics to clipboard'
           >

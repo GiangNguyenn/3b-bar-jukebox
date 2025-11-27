@@ -148,7 +148,6 @@ export function usePlaybackHealth(): PlaybackStatus {
         if (
           userIntentRef.current === 'playing' &&
           newStatus !== 'playing' &&
-          newStatus !== 'unknown' &&
           !isRecoveringRef.current &&
           shouldAttemptRecovery(
             lastRecoveryAttemptRef.current,

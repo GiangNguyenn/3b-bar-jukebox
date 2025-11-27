@@ -871,8 +871,7 @@ class PlayerLifecycleService {
         this.log(
           'ERROR',
           'Failed to get token before player initialization',
-          'PlayerLifecycle',
-          tokenError instanceof Error ? tokenError : undefined
+          tokenError
         )
         onStatusChange(
           'error',
@@ -900,8 +899,7 @@ class PlayerLifecycleService {
               this.log(
                 'ERROR',
                 'Error getting token from token manager in getOAuthToken callback',
-                'PlayerLifecycle',
-                error instanceof Error ? error : undefined
+                error
               )
               throw error
             })
@@ -965,7 +963,6 @@ class PlayerLifecycleService {
           this.log(
             'ERROR',
             `Failed to initialize player: ${message}. Context: SDK=${sdkAvailable}, Token=${!!token}, TokenLength=${token?.length ?? 0}`,
-            'PlayerLifecycle',
             new Error(JSON.stringify(errorDetails, null, 2))
           )
         })
