@@ -8,7 +8,12 @@ import {
   usePlaybackHealth
 } from './health'
 import { useDiagnosticEvents } from './useDiagnosticEvents'
-import { HealthStatus, PlaybackDetails, QueueState, FailureMetrics } from '@/shared/types/health'
+import {
+  HealthStatus,
+  PlaybackDetails,
+  QueueState,
+  FailureMetrics
+} from '@/shared/types/health'
 import { queueManager } from '@/services/queueManager'
 
 export function useSpotifyHealthMonitor(): HealthStatus {
@@ -21,7 +26,7 @@ export function useSpotifyHealthMonitor(): HealthStatus {
     consecutiveFailures,
     playbackState
   } = useSpotifyPlayerStore()
-  
+
   // Use focused health hooks
   const tokenHealth = useTokenHealth()
   const deviceHealth = useDeviceHealth(deviceId)
@@ -56,10 +61,10 @@ export function useSpotifyHealthMonitor(): HealthStatus {
 
     // Build queue state
     const queue = queueManager.getQueue()
-    
+
     // getNextTrack() now automatically excludes the currently playing track
     const nextTrack = queueManager.getNextTrack()
-    
+
     const queueState: QueueState = {
       nextTrack: nextTrack
         ? {
@@ -80,9 +85,7 @@ export function useSpotifyHealthMonitor(): HealthStatus {
       lastFailureTimestamp:
         lastError && lastStatusChange ? lastStatusChange : undefined,
       lastSuccessfulOperation:
-        playerStatus === 'ready' && !lastError
-          ? lastStatusChange
-          : undefined
+        playerStatus === 'ready' && !lastError ? lastStatusChange : undefined
     }
 
     return {

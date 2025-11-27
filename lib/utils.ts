@@ -46,7 +46,10 @@ export function formatRelativeTime(timestamp: number): string {
   return new Date(timestamp).toLocaleString()
 }
 
-export function formatDuration(ms: number | undefined, fallback = 'N/A'): string {
+export function formatDuration(
+  ms: number | undefined,
+  fallback = 'N/A'
+): string {
   if (!ms) return fallback
   const totalSeconds = Math.floor(ms / 1000)
   const minutes = Math.floor(totalSeconds / 60)

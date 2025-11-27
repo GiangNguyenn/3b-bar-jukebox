@@ -257,8 +257,7 @@ export async function GET(): Promise<
 
       return NextResponse.json({
         access_token: refreshResult.accessToken,
-        refresh_token:
-          refreshResult.refreshToken ?? refreshToken,
+        refresh_token: refreshResult.refreshToken ?? refreshToken,
         expires_at: expiresAt
       })
     }

@@ -2,7 +2,10 @@
 
 import { useState, useMemo, useCallback } from 'react'
 import type { HealthStatus } from '@/shared/types/health'
-import { useSpotifyPlayerStore, type PlayerStatus } from '@/hooks/useSpotifyPlayer'
+import {
+  useSpotifyPlayerStore,
+  type PlayerStatus
+} from '@/hooks/useSpotifyPlayer'
 import { cn, formatDuration, formatRelativeTime } from '@/lib/utils'
 import { showToast } from '@/lib/toast'
 import {
@@ -13,7 +16,12 @@ import {
   formatEventType,
   formatDiagnosticsForClipboard
 } from './diagnostic-utils'
-import { ErrorBox, StatusField, ChevronIcon, CopyIcon } from './diagnostic-components'
+import {
+  ErrorBox,
+  StatusField,
+  ChevronIcon,
+  CopyIcon
+} from './diagnostic-components'
 
 interface DiagnosticPanelProps {
   healthStatus: HealthStatus
@@ -49,21 +57,27 @@ function CollapsibleSection({
   const severityColor = severityColors[severity]
 
   return (
-    <div className={cn('rounded-lg border bg-gray-900/50', severityColor, className)}>
+    <div
+      className={cn(
+        'rounded-lg border bg-gray-900/50',
+        severityColor,
+        className
+      )}
+    >
       <div className='flex items-center gap-2 px-4 py-3'>
         <button
           type='button'
           onClick={() => setIsExpanded(!isExpanded)}
           className='flex flex-1 items-center justify-between text-left transition-colors hover:bg-gray-800/50'
         >
-          <span className='text-sm font-semibold text-white'>{title}</span>
+          <span className='text-white text-sm font-semibold'>{title}</span>
           <ChevronIcon expanded={isExpanded} />
         </button>
         {headerActions && (
           <div onClick={(e) => e.stopPropagation()}>{headerActions}</div>
         )}
       </div>
-      {isExpanded && <div className='px-4 pb-4 space-y-2'>{children}</div>}
+      {isExpanded && <div className='space-y-2 px-4 pb-4'>{children}</div>}
     </div>
   )
 }
@@ -76,10 +90,7 @@ export function DiagnosticPanel({
 }: DiagnosticPanelProps): JSX.Element {
   const { status: currentPlayerStatus } = useSpotifyPlayerStore()
 
-  const hasErrors = useMemo(
-    () => hasErrorStatus(healthStatus),
-    [healthStatus]
-  )
+  const hasErrors = useMemo(() => hasErrorStatus(healthStatus), [healthStatus])
 
   const hasWarnings = useMemo(
     () => hasWarningStatus(healthStatus),
@@ -179,7 +190,7 @@ export function DiagnosticPanel({
           <button
             type='button'
             onClick={handleCopyDiagnostics}
-            className='flex items-center gap-2 rounded-lg border border-gray-700 bg-gray-800/50 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-gray-700 hover:border-gray-600'
+            className='text-white flex items-center gap-2 rounded-lg border border-gray-700 bg-gray-800/50 px-3 py-2 text-sm font-medium transition-colors hover:border-gray-600 hover:bg-gray-700'
             title='Copy all diagnostics to clipboard'
           >
             <CopyIcon className='h-4 w-4' />
@@ -233,15 +244,12 @@ export function DiagnosticPanel({
                   </>
                 }
               />
-              <StatusField
-                label='Connection'
-                value={healthStatus.connection}
-              />
+              <StatusField label='Connection' value={healthStatus.connection} />
               {healthStatus.deviceId && (
                 <StatusField
                   label='Device ID'
                   value={
-                    <span className='text-xs font-mono text-gray-300'>
+                    <span className='font-mono text-xs text-gray-300'>
                       {healthStatus.deviceId.slice(0, 20)}...
                     </span>
                   }
@@ -267,7 +275,7 @@ export function DiagnosticPanel({
                 <div className='space-y-2'>
                   <div>
                     <p className='text-xs text-gray-400'>Current Track</p>
-                    <p className='text-sm font-medium text-white'>
+                    <p className='text-white text-sm font-medium'>
                       {healthStatus.playbackDetails.currentTrack.name}
                     </p>
                     <p className='text-xs text-gray-300'>
@@ -286,14 +294,17 @@ export function DiagnosticPanel({
                           {healthStatus.playbackDetails.isPlaying
                             ? 'Playing'
                             : 'Paused'}
-                          {healthStatus.playbackDetails.isStalled && ' (Stalled)'}
+                          {healthStatus.playbackDetails.isStalled &&
+                            ' (Stalled)'}
                         </>
                       }
                     />
                   </div>
                 </div>
               ) : (
-                <p className='text-sm text-gray-400'>No track currently playing</p>
+                <p className='text-sm text-gray-400'>
+                  No track currently playing
+                </p>
               )}
             </CollapsibleSection>
           )}
@@ -331,7 +342,7 @@ export function DiagnosticPanel({
                 {healthStatus.queueState.nextTrack ? (
                   <div className='rounded border border-gray-700 bg-gray-800/50 p-3'>
                     <p className='text-xs text-gray-400'>Next Track</p>
-                    <p className='text-sm font-medium text-white'>
+                    <p className='text-white text-sm font-medium'>
                       {healthStatus.queueState.nextTrack.name}
                     </p>
                     <p className='text-xs text-gray-300'>
@@ -350,60 +361,67 @@ export function DiagnosticPanel({
           )}
 
           {/* Recent Events Timeline */}
-          {healthStatus.recentEvents && healthStatus.recentEvents.length > 0 && (
-            <CollapsibleSection
-              title='Recent Events'
-              defaultExpanded={hasErrors}
-              severity={hasErrors ? 'error' : 'info'}
-            >
-              <div className='space-y-2 max-h-64 overflow-y-auto'>
-                {healthStatus.recentEvents.map((event) => (
-                  <div
-                    key={`${event.timestamp}-${event.type}`}
-                    className={cn('rounded border p-2', getSeverityStyles(event.severity ?? 'info'))}
-                  >
-                    <div className='flex items-start justify-between'>
-                      <div className='flex-1'>
-                        <div className='flex items-center gap-2'>
-                          <span className='text-xs font-medium text-gray-400'>
-                            {formatEventType(event.type)}
-                          </span>
-                          {event.severity && (
-                            <span
-                              className={cn(
-                                'text-xs px-1.5 py-0.5 rounded',
-                                event.severity === 'error'
-                                  ? 'bg-red-500/20 text-red-200'
-                                  : event.severity === 'warning'
-                                    ? 'bg-yellow-500/20 text-yellow-200'
-                                    : 'bg-blue-500/20 text-blue-200'
-                              )}
-                            >
-                              {event.severity}
+          {healthStatus.recentEvents &&
+            healthStatus.recentEvents.length > 0 && (
+              <CollapsibleSection
+                title='Recent Events'
+                defaultExpanded={hasErrors}
+                severity={hasErrors ? 'error' : 'info'}
+              >
+                <div className='max-h-64 space-y-2 overflow-y-auto'>
+                  {healthStatus.recentEvents.map((event) => (
+                    <div
+                      key={`${event.timestamp}-${event.type}`}
+                      className={cn(
+                        'rounded border p-2',
+                        getSeverityStyles(event.severity ?? 'info')
+                      )}
+                    >
+                      <div className='flex items-start justify-between'>
+                        <div className='flex-1'>
+                          <div className='flex items-center gap-2'>
+                            <span className='text-xs font-medium text-gray-400'>
+                              {formatEventType(event.type)}
                             </span>
-                          )}
+                            {event.severity && (
+                              <span
+                                className={cn(
+                                  'rounded px-1.5 py-0.5 text-xs',
+                                  event.severity === 'error'
+                                    ? 'bg-red-500/20 text-red-200'
+                                    : event.severity === 'warning'
+                                      ? 'bg-yellow-500/20 text-yellow-200'
+                                      : 'bg-blue-500/20 text-blue-200'
+                                )}
+                              >
+                                {event.severity}
+                              </span>
+                            )}
+                          </div>
+                          <p className='text-white mt-1 text-sm'>
+                            {event.message}
+                          </p>
+                          {event.details &&
+                            Object.keys(event.details).length > 0 && (
+                              <details className='mt-2'>
+                                <summary className='cursor-pointer text-xs text-gray-400'>
+                                  Details
+                                </summary>
+                                <pre className='mt-1 overflow-x-auto text-xs text-gray-300'>
+                                  {JSON.stringify(event.details, null, 2)}
+                                </pre>
+                              </details>
+                            )}
                         </div>
-                        <p className='mt-1 text-sm text-white'>{event.message}</p>
-                        {event.details && Object.keys(event.details).length > 0 && (
-                          <details className='mt-2'>
-                            <summary className='text-xs text-gray-400 cursor-pointer'>
-                              Details
-                            </summary>
-                            <pre className='mt-1 text-xs text-gray-300 overflow-x-auto'>
-                              {JSON.stringify(event.details, null, 2)}
-                            </pre>
-                          </details>
-                        )}
+                        <span className='ml-2 whitespace-nowrap text-xs text-gray-500'>
+                          {formatRelativeTime(event.timestamp)}
+                        </span>
                       </div>
-                      <span className='ml-2 text-xs text-gray-500 whitespace-nowrap'>
-                        {formatRelativeTime(event.timestamp)}
-                      </span>
                     </div>
-                  </div>
-                ))}
-              </div>
-            </CollapsibleSection>
-          )}
+                  ))}
+                </div>
+              </CollapsibleSection>
+            )}
 
           {/* Technical Details */}
           <CollapsibleSection
@@ -446,7 +464,7 @@ export function DiagnosticPanel({
               {healthStatus.deviceId && (
                 <div>
                   <p className='text-xs text-gray-400'>Full Device ID</p>
-                  <p className='text-xs font-mono text-gray-300 break-all'>
+                  <p className='break-all font-mono text-xs text-gray-300'>
                     {healthStatus.deviceId}
                   </p>
                 </div>

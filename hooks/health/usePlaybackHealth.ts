@@ -3,7 +3,10 @@ import { useConsoleLogsContext } from '../ConsoleLogsProvider'
 import { usePlaybackIntentStore } from '../usePlaybackIntent'
 import { SpotifyPlaybackState } from '@/shared/types/spotify'
 import { sendApiRequest } from '@/shared/api'
-import { attemptPlaybackRecovery, shouldAttemptRecovery } from '@/recovery/playbackRecovery'
+import {
+  attemptPlaybackRecovery,
+  shouldAttemptRecovery
+} from '@/recovery/playbackRecovery'
 import { useDeviceHealth } from './useDeviceHealth'
 import { useSpotifyPlayerStore } from '../useSpotifyPlayer'
 

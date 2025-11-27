@@ -57,7 +57,9 @@ function formatSystemStatus(
 ): string[] {
   const lines: string[] = []
   lines.push('--- SYSTEM STATUS ---')
-  lines.push(`Player Status: ${playerStatus ?? (isReady ? 'ready' : 'initializing')}`)
+  lines.push(
+    `Player Status: ${playerStatus ?? (isReady ? 'ready' : 'initializing')}`
+  )
   lines.push(`Device Status: ${healthStatus.device}`)
   lines.push(`Playback Status: ${healthStatus.playback}`)
   lines.push(
@@ -85,7 +87,9 @@ function formatCriticalIssues(healthStatus: HealthStatus): string[] {
   if (healthStatus.lastError) {
     lines.push(`Last Error: ${healthStatus.lastError}`)
     if (healthStatus.lastErrorTimestamp) {
-      lines.push(`Error Timestamp: ${formatAbsoluteTime(healthStatus.lastErrorTimestamp)}`)
+      lines.push(
+        `Error Timestamp: ${formatAbsoluteTime(healthStatus.lastErrorTimestamp)}`
+      )
     }
   }
   if (healthStatus.device === 'error') {
@@ -127,10 +131,14 @@ function formatPlaybackDetails(healthStatus: HealthStatus): string[] {
     lines.push('Current Track: No track currently playing')
   }
   if (healthStatus.playbackDetails.progress !== undefined) {
-    lines.push(`Progress: ${formatDuration(healthStatus.playbackDetails.progress)}`)
+    lines.push(
+      `Progress: ${formatDuration(healthStatus.playbackDetails.progress)}`
+    )
   }
   if (healthStatus.playbackDetails.duration !== undefined) {
-    lines.push(`Duration: ${formatDuration(healthStatus.playbackDetails.duration)}`)
+    lines.push(
+      `Duration: ${formatDuration(healthStatus.playbackDetails.duration)}`
+    )
   }
   lines.push(`Is Playing: ${healthStatus.playbackDetails.isPlaying}`)
   if (healthStatus.playbackDetails.isStalled) {
@@ -153,7 +161,9 @@ function formatQueueState(healthStatus: HealthStatus): string[] {
     lines.push(`Next Track: ${healthStatus.queueState.nextTrack.name}`)
     lines.push(`Next Track Artist: ${healthStatus.queueState.nextTrack.artist}`)
     lines.push(`Next Track ID: ${healthStatus.queueState.nextTrack.id}`)
-    lines.push(`Next Track Queue ID: ${healthStatus.queueState.nextTrack.queueId}`)
+    lines.push(
+      `Next Track Queue ID: ${healthStatus.queueState.nextTrack.queueId}`
+    )
   } else {
     lines.push('Next Track: No next track in queue')
   }
@@ -250,4 +260,3 @@ export function formatDiagnosticsForClipboard(
 
   return lines.join('\n')
 }
-

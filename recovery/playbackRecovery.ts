@@ -1,5 +1,8 @@
 import { createModuleLogger } from '@/shared/utils/logger'
-import { categorizeNetworkError, isNetworkError } from '@/shared/utils/networkErrorDetection'
+import {
+  categorizeNetworkError,
+  isNetworkError
+} from '@/shared/utils/networkErrorDetection'
 import { queueManager } from '@/services/queueManager'
 import { SpotifyApiService } from '@/services/spotifyApi'
 import { spotifyPlayerStore } from '@/hooks/useSpotifyPlayer'
@@ -8,10 +11,7 @@ import { transferPlaybackToDevice } from '@/services/deviceManagement/deviceTran
 import { buildTrackUri } from '@/shared/utils/spotifyUri'
 import type { SpotifyPlaybackState } from '@/shared/types/spotify'
 import type { JukeboxQueueItem } from '@/shared/types/queue'
-import type {
-  RecoveryStrategy,
-  RecoveryResult
-} from '@/types/playbackRecovery'
+import type { RecoveryStrategy, RecoveryResult } from '@/types/playbackRecovery'
 
 const logger = createModuleLogger('PlaybackRecovery')
 
@@ -92,8 +92,7 @@ async function resumeCurrentTrack(
       error: new Error('Resume playback returned success: false')
     }
   } catch (error) {
-    const errorMessage =
-      error instanceof Error ? error.message : String(error)
+    const errorMessage = error instanceof Error ? error.message : String(error)
     logger(
       'ERROR',
       `Failed to resume current track: ${errorMessage}`,
@@ -113,7 +112,11 @@ async function resumeCurrentTrack(
 async function playNextTrackFromQueue(
   deviceId: string | null,
   skipCount: number = 0
-): Promise<{ success: boolean; error?: Error; skippedTrack?: JukeboxQueueItem }> {
+): Promise<{
+  success: boolean
+  error?: Error
+  skippedTrack?: JukeboxQueueItem
+}> {
   if (!deviceId) {
     return {
       success: false,
@@ -145,9 +148,7 @@ async function playNextTrackFromQueue(
     if (!transferred) {
       return {
         success: false,
-        error: new Error(
-          `Failed to transfer playback to device: ${deviceId}`
-        )
+        error: new Error(`Failed to transfer playback to device: ${deviceId}`)
       }
     }
 
@@ -177,8 +178,7 @@ async function playNextTrackFromQueue(
 
     return { success: true, skippedTrack: nextTrack }
   } catch (error) {
-    const errorMessage =
-      error instanceof Error ? error.message : String(error)
+    const errorMessage = error instanceof Error ? error.message : String(error)
 
     // Handle "Restriction violated" errors by removing the problematic track
     if (
@@ -203,7 +203,10 @@ async function playNextTrackFromQueue(
         )
         return {
           success: false,
-          error: markError instanceof Error ? markError : new Error(String(markError))
+          error:
+            markError instanceof Error
+              ? markError
+              : new Error(String(markError))
         }
       }
     }
@@ -229,7 +232,12 @@ async function playNextTrackFromQueue(
 export async function attemptPlaybackRecovery(
   currentPlaybackState: SpotifyPlaybackState | null,
   consecutiveFailures: number,
-  addLog?: (level: 'INFO' | 'WARN' | 'ERROR', message: string, context?: string, error?: Error) => void
+  addLog?: (
+    level: 'INFO' | 'WARN' | 'ERROR',
+    message: string,
+    context?: string,
+    error?: Error
+  ) => void
 ): Promise<RecoveryResult> {
   const deviceId = spotifyPlayerStore.getState().deviceId
 
@@ -245,7 +253,8 @@ export async function attemptPlaybackRecovery(
       strategy: 'none',
       error,
       consecutiveFailures: consecutiveFailures + 1,
-      nextAttemptAllowedAt: Date.now() + calculateCooldown(consecutiveFailures + 1)
+      nextAttemptAllowedAt:
+        Date.now() + calculateCooldown(consecutiveFailures + 1)
     }
   }
 
@@ -261,9 +270,17 @@ export async function attemptPlaybackRecovery(
     if (isNetworkError(error)) {
       networkError = error instanceof Error ? error : new Error(String(error))
       const categorized = categorizeNetworkError(error)
-      logger('WARN', `Network error detected, skipping recovery: ${categorized.message}`)
+      logger(
+        'WARN',
+        `Network error detected, skipping recovery: ${categorized.message}`
+      )
       if (addLog) {
-        addLog('WARN', `Network error detected, skipping recovery: ${categorized.message}`, 'PlaybackRecovery', networkError)
+        addLog(
+          'WARN',
+          `Network error detected, skipping recovery: ${categorized.message}`,
+          'PlaybackRecovery',
+          networkError
+        )
       }
       return {
         success: false,
@@ -301,20 +318,32 @@ export async function attemptPlaybackRecovery(
     // If resume failed due to network error, don't try next strategy
     if (resumeResult.error && isNetworkError(resumeResult.error)) {
       const categorized = categorizeNetworkError(resumeResult.error)
-      logger('WARN', `Network error during resume, skipping next strategy: ${categorized.message}`)
+      logger(
+        'WARN',
+        `Network error during resume, skipping next strategy: ${categorized.message}`
+      )
       if (addLog) {
-        addLog('WARN', `Network error during resume: ${categorized.message}`, 'PlaybackRecovery', resumeResult.error)
+        addLog(
+          'WARN',
+          `Network error during resume: ${categorized.message}`,
+          'PlaybackRecovery',
+          resumeResult.error
+        )
       }
       return {
         success: false,
         strategy: 'resume_current',
         error: resumeResult.error,
         consecutiveFailures: consecutiveFailures + 1,
-        nextAttemptAllowedAt: Date.now() + calculateCooldown(consecutiveFailures + 1)
+        nextAttemptAllowedAt:
+          Date.now() + calculateCooldown(consecutiveFailures + 1)
       }
     }
 
-    logger('WARN', 'Resume current track failed, trying next strategy: play_next')
+    logger(
+      'WARN',
+      'Resume current track failed, trying next strategy: play_next'
+    )
   }
 
   // Strategy 2: Try to play next track from queue
@@ -342,14 +371,20 @@ export async function attemptPlaybackRecovery(
     const categorized = categorizeNetworkError(playNextResult.error)
     logger('WARN', `Network error during play next: ${categorized.message}`)
     if (addLog) {
-      addLog('WARN', `Network error during play next: ${categorized.message}`, 'PlaybackRecovery', playNextResult.error)
+      addLog(
+        'WARN',
+        `Network error during play next: ${categorized.message}`,
+        'PlaybackRecovery',
+        playNextResult.error
+      )
     }
     return {
       success: false,
       strategy: 'play_next',
       error: playNextResult.error,
       consecutiveFailures: consecutiveFailures + 1,
-      nextAttemptAllowedAt: Date.now() + calculateCooldown(consecutiveFailures + 1)
+      nextAttemptAllowedAt:
+        Date.now() + calculateCooldown(consecutiveFailures + 1)
     }
   }
 
@@ -397,4 +432,3 @@ export async function attemptPlaybackRecovery(
     nextAttemptAllowedAt
   }
 }
-

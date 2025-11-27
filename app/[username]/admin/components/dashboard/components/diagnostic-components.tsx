@@ -44,7 +44,7 @@ export function StatusField({
   return (
     <div className={className}>
       <p className='text-xs text-gray-400'>{label}</p>
-      <p className='text-sm font-medium text-white'>{value}</p>
+      <p className='text-white text-sm font-medium'>{value}</p>
     </div>
   )
 }
@@ -96,4 +96,3 @@ export function CopyIcon({ className }: { className?: string }): JSX.Element {
     </svg>
   )
 }
-

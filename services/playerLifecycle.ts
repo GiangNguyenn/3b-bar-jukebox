@@ -287,7 +287,9 @@ class PlayerLifecycleService {
         )
         this.currentQueueTrack = currentTrack
         // Update queue manager with currently playing track so getNextTrack() excludes it
-        queueManager.setCurrentlyPlayingTrack(currentTrack.tracks.spotify_track_id)
+        queueManager.setCurrentlyPlayingTrack(
+          currentTrack.tracks.spotify_track_id
+        )
         return
       }
 
@@ -582,7 +584,7 @@ class PlayerLifecycleService {
     if (currentSpotifyTrack && !state.paused) {
       // Update queue manager with currently playing track so getNextTrack() excludes it
       queueManager.setCurrentlyPlayingTrack(currentSpotifyTrack.id)
-      
+
       const queue = queueManager.getQueue()
       const matchingQueueItem = queue.find(
         (item) => item.tracks.spotify_track_id === currentSpotifyTrack.id
@@ -861,7 +863,10 @@ class PlayerLifecycleService {
           onStatusChange('error', 'Initialization error: No token available')
           throw new Error('No token available for player initialization')
         }
-        this.log('INFO', `Token retrieved successfully (length: ${tokenCheck.length})`)
+        this.log(
+          'INFO',
+          `Token retrieved successfully (length: ${tokenCheck.length})`
+        )
       } catch (tokenError) {
         this.log(
           'ERROR',
@@ -883,7 +888,10 @@ class PlayerLifecycleService {
             .getToken()
             .then((token) => {
               if (!token) {
-                this.log('ERROR', 'Token manager returned null token in getOAuthToken callback')
+                this.log(
+                  'ERROR',
+                  'Token manager returned null token in getOAuthToken callback'
+                )
                 throw new Error('Token is null')
               }
               cb(token)
@@ -940,17 +948,20 @@ class PlayerLifecycleService {
         // Get additional context for better diagnostics
         const sdkAvailable = typeof window.Spotify !== 'undefined'
         const tokenCheck = tokenManager.getToken().catch(() => null)
-        
+
         void tokenCheck.then((token) => {
           const errorDetails = {
             sdkMessage: message,
             sdkAvailable,
             hasToken: !!token,
             tokenLength: token?.length ?? 0,
-            userAgent: typeof navigator !== 'undefined' ? navigator.userAgent : 'unknown',
+            userAgent:
+              typeof navigator !== 'undefined'
+                ? navigator.userAgent
+                : 'unknown',
             timestamp: new Date().toISOString()
           }
-          
+
           this.log(
             'ERROR',
             `Failed to initialize player: ${message}. Context: SDK=${sdkAvailable}, Token=${!!token}, TokenLength=${token?.length ?? 0}`,
@@ -958,7 +969,7 @@ class PlayerLifecycleService {
             new Error(JSON.stringify(errorDetails, null, 2))
           )
         })
-        
+
         onStatusChange(
           'error',
           `Initialization error: ${message}. Check console for details.`

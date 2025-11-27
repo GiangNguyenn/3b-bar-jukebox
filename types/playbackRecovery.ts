@@ -22,4 +22,3 @@ export type PlaybackRecoveryState =
   | { type: 'recovering'; strategy: RecoveryStrategy; attempt: number }
   | { type: 'cooldown'; until: number }
   | { type: 'failed'; error: Error; consecutiveFailures: number }
-

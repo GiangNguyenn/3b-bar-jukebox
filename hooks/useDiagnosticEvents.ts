@@ -74,15 +74,10 @@ export function useDiagnosticEvents(): DiagnosticEvent[] {
   // Track errors
   useEffect(() => {
     if (lastError) {
-      addEvent(
-        'error',
-        lastError,
-        'error',
-        {
-          status,
-          timestamp: lastStatusChange
-        }
-      )
+      addEvent('error', lastError, 'error', {
+        status,
+        timestamp: lastStatusChange
+      })
     }
   }, [lastError, status, lastStatusChange, addEvent])
 
@@ -133,9 +128,13 @@ export function useDiagnosticEvents(): DiagnosticEvent[] {
         (log) =>
           (log.level === 'ERROR' || log.level === 'WARN') &&
           log.context &&
-          ['PlaybackHealth', 'PlaybackRecovery', 'DeviceHealth', 'TokenHealth', 'SpotifyPlayer'].includes(
-            log.context
-          )
+          [
+            'PlaybackHealth',
+            'PlaybackRecovery',
+            'DeviceHealth',
+            'TokenHealth',
+            'SpotifyPlayer'
+          ].includes(log.context)
       )
       .slice(0, 5) // Only process most recent 5
 
@@ -178,4 +177,3 @@ export function useDiagnosticEvents(): DiagnosticEvent[] {
 
   return events
 }
-
