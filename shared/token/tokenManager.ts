@@ -224,18 +224,16 @@ class TokenManager {
           if (tryPublic.ok) {
             try {
               const publicDataRaw = await tryPublic.json()
-              // Public endpoint may return expires_at instead of expires_in
+              // Public endpoint returns expires_in (seconds remaining)
               const healthParseResult =
                 safeParseTokenHealthResponse(publicDataRaw)
               if (healthParseResult.success) {
                 const publicData = healthParseResult.data
                 const accessToken = publicData.access_token
                 if (accessToken) {
-                  // Calculate expiry from expires_at if available, otherwise use expires_in
+                  // Calculate expiry from expires_in (seconds remaining)
                   let expiresAtMs: number
-                  if (publicData.expires_at) {
-                    expiresAtMs = publicData.expires_at * 1000
-                  } else if (publicData.expires_in) {
+                  if (publicData.expires_in) {
                     expiresAtMs = Date.now() + publicData.expires_in * 1000
                   } else if (publicData.expiresIn) {
                     expiresAtMs = Date.now() + publicData.expiresIn * 1000
