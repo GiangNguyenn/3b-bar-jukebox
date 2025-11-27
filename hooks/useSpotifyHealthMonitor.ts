@@ -80,12 +80,19 @@ export function useSpotifyHealthMonitor(): HealthStatus {
     }
 
     // Build failure metrics
+    // Check lastError separately - don't rely on lastStatusChange being truthy (it's a timestamp, may be 0)
+    const hasValidErrorTimestamp =
+      lastError !== undefined && lastStatusChange !== undefined && lastStatusChange > 0
+    const hasValidSuccessTimestamp =
+      playerStatus === 'ready' &&
+      !lastError &&
+      lastStatusChange !== undefined &&
+      lastStatusChange > 0
+
     const failureMetrics: FailureMetrics = {
       consecutiveFailures,
-      lastFailureTimestamp:
-        lastError && lastStatusChange ? lastStatusChange : undefined,
-      lastSuccessfulOperation:
-        playerStatus === 'ready' && !lastError ? lastStatusChange : undefined
+      lastFailureTimestamp: hasValidErrorTimestamp ? lastStatusChange : undefined,
+      lastSuccessfulOperation: hasValidSuccessTimestamp ? lastStatusChange : undefined
     }
 
     return {
@@ -97,7 +104,7 @@ export function useSpotifyHealthMonitor(): HealthStatus {
       connection: connectionHealth,
       // Diagnostic fields
       lastError,
-      lastErrorTimestamp: lastError ? lastStatusChange : undefined,
+      lastErrorTimestamp: hasValidErrorTimestamp ? lastStatusChange : undefined,
       recentEvents: recentEvents.length > 0 ? recentEvents : undefined,
       playbackDetails,
       queueState,
