@@ -21,7 +21,7 @@ interface ErrorResponse {
 interface TokenResponse {
   access_token: string
   refresh_token: string
-  expires_at: number
+  expires_in: number
 }
 
 interface AdminProfile {
@@ -247,26 +247,28 @@ export async function GET(): Promise<
         )
       }
 
-      // Calculate expires_at - use refreshResult.expiresIn if available
+      // Calculate expires_in (seconds remaining) - use refreshResult.expiresIn if available
       // If expiresIn is undefined, use a safe default (3600 seconds = 1 hour)
       // Don't use tokenExpiresAt as fallback since it's already expired
-      const expiresAt =
-        refreshResult.expiresIn !== undefined
-          ? Math.floor(Date.now() / 1000) + refreshResult.expiresIn
-          : Math.floor(Date.now() / 1000) + 3600 // Default to 1 hour if expiresIn is not provided
+      const expiresIn = refreshResult.expiresIn ?? 3600 // Default to 1 hour if expiresIn is not provided
 
       return NextResponse.json({
         access_token: refreshResult.accessToken,
         refresh_token: refreshResult.refreshToken ?? refreshToken,
-        expires_at: expiresAt
+        expires_in: expiresIn
       })
     }
 
-    // Token is still valid, return it
+    // Token is still valid, calculate expires_in (seconds remaining)
+    const expiresIn = Math.max(
+      0,
+      tokenExpiresAt - Math.floor(Date.now() / 1000)
+    )
+
     return NextResponse.json({
       access_token: accessToken,
       refresh_token: refreshToken,
-      expires_at: tokenExpiresAt
+      expires_in: expiresIn
     })
   } catch (error) {
     // Check if it's a network error that might be recoverable
