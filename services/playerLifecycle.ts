@@ -286,6 +286,10 @@ class PlayerLifecycleService {
           `[playNextTrack] Successfully started playback of track: ${currentTrack.tracks.name} (${currentTrack.tracks.spotify_track_id})`
         )
         this.currentQueueTrack = currentTrack
+        // Update queue manager with currently playing track so getNextTrack() excludes it
+        queueManager.setCurrentlyPlayingTrack(
+          currentTrack.tracks.spotify_track_id
+        )
         return
       }
 
@@ -455,6 +459,7 @@ class PlayerLifecycleService {
   ): Promise<JukeboxQueueItem | null> {
     this.checkAndAutoFillQueue()
 
+    // Get next track - getNextTrack() automatically excludes the currently playing track
     const nextTrack = queueManager.getNextTrack()
 
     if (!nextTrack) {
@@ -462,6 +467,7 @@ class PlayerLifecycleService {
     }
 
     // Use utility function to ensure track is not a duplicate
+    // (shouldn't be needed with excludeTrackId, but keep as safety check)
     const validTrack = await ensureTrackNotDuplicate(
       nextTrack,
       finishedTrackId,
@@ -536,6 +542,9 @@ class PlayerLifecycleService {
       currentTrackName
     )
 
+    // Clear currently playing track before finding next one
+    queueManager.setCurrentlyPlayingTrack(null)
+
     // Find next valid track (handles duplicate detection)
     const nextTrack = await this.findNextValidTrack(currentSpotifyTrackId)
 
@@ -573,6 +582,9 @@ class PlayerLifecycleService {
     }
 
     if (currentSpotifyTrack && !state.paused) {
+      // Update queue manager with currently playing track so getNextTrack() excludes it
+      queueManager.setCurrentlyPlayingTrack(currentSpotifyTrack.id)
+
       const queue = queueManager.getQueue()
       const matchingQueueItem = queue.find(
         (item) => item.tracks.spotify_track_id === currentSpotifyTrack.id
@@ -593,6 +605,9 @@ class PlayerLifecycleService {
         const firstInQueue = queue[0]
         this.currentQueueTrack = firstInQueue
       }
+    } else if (!currentSpotifyTrack || state.paused) {
+      // Clear currently playing track when paused or no track
+      queueManager.setCurrentlyPlayingTrack(null)
     }
   }
 
@@ -839,14 +854,53 @@ class PlayerLifecycleService {
 
       onStatusChange('initializing')
 
+      // Verify token is available before creating player
+      let tokenCheck: string | null = null
+      try {
+        tokenCheck = await tokenManager.getToken()
+        if (!tokenCheck) {
+          this.log('ERROR', 'Token manager returned null token')
+          onStatusChange('error', 'Initialization error: No token available')
+          throw new Error('No token available for player initialization')
+        }
+        this.log(
+          'INFO',
+          `Token retrieved successfully (length: ${tokenCheck.length})`
+        )
+      } catch (tokenError) {
+        this.log(
+          'ERROR',
+          'Failed to get token before player initialization',
+          tokenError
+        )
+        onStatusChange(
+          'error',
+          `Initialization error: Token retrieval failed - ${tokenError instanceof Error ? tokenError.message : 'Unknown error'}`
+        )
+        throw tokenError
+      }
+
       const player = new window.Spotify.Player({
         name: 'Jukebox Player',
         getOAuthToken: (cb) => {
           tokenManager
             .getToken()
-            .then((token) => cb(token))
+            .then((token) => {
+              if (!token) {
+                this.log(
+                  'ERROR',
+                  'Token manager returned null token in getOAuthToken callback'
+                )
+                throw new Error('Token is null')
+              }
+              cb(token)
+            })
             .catch((error) => {
-              this.log('ERROR', 'Error getting token from token manager', error)
+              this.log(
+                'ERROR',
+                'Error getting token from token manager in getOAuthToken callback',
+                error
+              )
               throw error
             })
         },
@@ -889,8 +943,34 @@ class PlayerLifecycleService {
       })
 
       player.addListener('initialization_error', ({ message }) => {
-        this.log('ERROR', `Failed to initialize: ${message}`)
-        onStatusChange('error', `Initialization error: ${message}`)
+        // Get additional context for better diagnostics
+        const sdkAvailable = typeof window.Spotify !== 'undefined'
+        const tokenCheck = tokenManager.getToken().catch(() => null)
+
+        void tokenCheck.then((token) => {
+          const errorDetails = {
+            sdkMessage: message,
+            sdkAvailable,
+            hasToken: !!token,
+            tokenLength: token?.length ?? 0,
+            userAgent:
+              typeof navigator !== 'undefined'
+                ? navigator.userAgent
+                : 'unknown',
+            timestamp: new Date().toISOString()
+          }
+
+          this.log(
+            'ERROR',
+            `Failed to initialize player: ${message}. Context: SDK=${sdkAvailable}, Token=${!!token}, TokenLength=${token?.length ?? 0}`,
+            new Error(JSON.stringify(errorDetails, null, 2))
+          )
+        })
+
+        onStatusChange(
+          'error',
+          `Initialization error: ${message}. Check console for details.`
+        )
       })
 
       player.addListener('authentication_error', ({ message }) => {

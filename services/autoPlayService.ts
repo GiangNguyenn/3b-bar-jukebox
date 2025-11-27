@@ -401,6 +401,7 @@ class AutoPlayService {
       }
 
       // Get next track from queue (now potentially refreshed)
+      // getNextTrack() automatically excludes the currently playing track
       const nextTrack = this.queueManager.getNextTrack()
 
       if (!nextTrack) {
@@ -408,7 +409,7 @@ class AutoPlayService {
         return null
       }
 
-      // Validate that next track is different from current
+      // Validate that next track is different from current (shouldn't happen with excludeTrackId, but keep as safety check)
       if (nextTrack.tracks.spotify_track_id === currentTrackId) {
         logger(
           'WARN',
@@ -433,6 +434,7 @@ class AutoPlayService {
             }
           }
           // Get the next track again (should be different now)
+          // getNextTrack() automatically excludes the currently playing track
           const nextTrackAfterRemoval = this.queueManager.getNextTrack()
           if (
             nextTrackAfterRemoval &&
@@ -741,10 +743,12 @@ class AutoPlayService {
       // if playback has stopped but there is a next track available,
       // proactively start it. This complements PlayerLifecycle's
       // SDK-driven handling and ensures we don't stall after transitions.
+      // getNextTrack() automatically excludes the currently playing track
       const safeNextTrack = this.queueManager.getNextTrack()
       const latestPlaybackState = await this.getCurrentPlaybackState()
 
       // Additional safety check: ensure next track is not the same as the finished track
+      // (shouldn't happen with excludeTrackId, but keep as safety check)
       if (safeNextTrack && safeNextTrack.tracks.spotify_track_id === trackId) {
         logger(
           'WARN',
@@ -765,6 +769,7 @@ class AutoPlayService {
           )
         }
         // Get the next track again after removing duplicate
+        // getNextTrack() automatically excludes the currently playing track
         const nextTrackAfterRemoval = this.queueManager.getNextTrack()
         if (
           nextTrackAfterRemoval &&
@@ -2061,6 +2066,9 @@ class AutoPlayService {
         'INFO',
         `[playNextTrack] Successfully started playback of track: ${track.tracks.name} (${track.tracks.spotify_track_id}), Queue ID: ${track.id}`
       )
+
+      // Update queue manager with currently playing track so getNextTrack() excludes it
+      this.queueManager.setCurrentlyPlayingTrack(track.tracks.spotify_track_id)
 
       this.onNextTrackStarted?.(track)
     } catch (error) {

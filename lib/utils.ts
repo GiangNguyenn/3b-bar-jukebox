@@ -26,3 +26,37 @@ export function formatDate(timestamp: number): string {
     return 'Invalid date'
   }
 }
+
+export function formatRelativeTime(timestamp: number): string {
+  const now = Date.now()
+  const diff = now - timestamp
+  const seconds = Math.floor(diff / 1000)
+  const minutes = Math.floor(seconds / 60)
+  const hours = Math.floor(minutes / 60)
+
+  if (seconds < 60) {
+    return `${seconds}s ago`
+  }
+  if (minutes < 60) {
+    return `${minutes}m ago`
+  }
+  if (hours < 24) {
+    return `${hours}h ago`
+  }
+  return new Date(timestamp).toLocaleString()
+}
+
+export function formatDuration(
+  ms: number | undefined,
+  fallback = 'N/A'
+): string {
+  if (ms === undefined || ms === null) return fallback
+  const totalSeconds = Math.floor(ms / 1000)
+  const minutes = Math.floor(totalSeconds / 60)
+  const seconds = totalSeconds % 60
+  return `${minutes}:${seconds.toString().padStart(2, '0')}`
+}
+
+export function formatAbsoluteTime(timestamp: number): string {
+  return new Date(timestamp).toISOString()
+}

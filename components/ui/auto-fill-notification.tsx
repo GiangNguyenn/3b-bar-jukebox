@@ -2,13 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import Image from 'next/image'
-
-function formatDuration(ms: number | undefined): string {
-  if (!ms) return '--:--'
-  const minutes = Math.floor(ms / 60000)
-  const seconds = Math.floor((ms % 60000) / 1000)
-  return `${minutes}:${seconds.toString().padStart(2, '0')}`
-}
+import { formatDuration } from '@/lib/utils'
 
 interface AutoFillNotificationData {
   trackName: string
@@ -164,7 +158,7 @@ export function AutoFillNotification(): JSX.Element | null {
                           d='M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z'
                         />
                       </svg>
-                      {formatDuration(notification.durationMs)}
+                      {formatDuration(notification.durationMs, '--:--')}
                     </span>
                   ) : null}
                   {notification.popularity !== undefined ? (

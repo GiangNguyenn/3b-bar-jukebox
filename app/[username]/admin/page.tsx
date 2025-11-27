@@ -10,7 +10,7 @@ import { useConsoleLogsContext } from '@/hooks/ConsoleLogsProvider'
 import { usePlaylistData } from '@/hooks/usePlaylistData'
 import { useTrackSuggestions } from './components/track-suggestions/hooks/useTrackSuggestions'
 import { useSpotifyHealthMonitor } from '@/hooks/useSpotifyHealthMonitor'
-import { HealthStatusSection } from './components/dashboard/health-status-section'
+import { DiagnosticPanel } from './components/dashboard/components/diagnostic-panel'
 import { JukeboxSection } from './components/dashboard/components/jukebox-section'
 import { TrackSuggestionsTab } from './components/track-suggestions/track-suggestions-tab'
 import { PlaylistDisplay } from './components/playlist/playlist-display'
@@ -411,13 +411,14 @@ export default function AdminPage(): JSX.Element {
               </button>
             </div>
 
-            <HealthStatusSection
+            <JukeboxSection />
+
+            <DiagnosticPanel
               healthStatus={healthStatus}
               isReady={isReady}
               playerStatus={playerStatus}
+              className='mt-8'
             />
-
-            <JukeboxSection className='mt-8' />
           </TabsContent>
 
           <TabsContent value='settings'>

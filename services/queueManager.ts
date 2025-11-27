@@ -5,6 +5,8 @@ class QueueManager {
   private static instance: QueueManager
   // Track IDs currently being deleted to prevent race conditions with queue refreshes
   private pendingDeletes: Set<string> = new Set()
+  // Track the currently playing track ID to exclude it from getNextTrack()
+  private currentlyPlayingTrackId: string | null = null
 
   private constructor() {}
 
@@ -23,8 +25,31 @@ class QueueManager {
   }
 
   public getNextTrack(): JukeboxQueueItem | undefined {
-    // queue[0] is the highest priority next track to play (ordered by votes DESC, queued_at ASC)
-    return this.queue.length > 0 ? this.queue[0] : undefined
+    // Always exclude the currently playing track to return the actual next scheduled track
+    const availableTracks = this.currentlyPlayingTrackId
+      ? this.queue.filter(
+          (track) =>
+            track.tracks.spotify_track_id !== this.currentlyPlayingTrackId
+        )
+      : this.queue
+
+    // Return the highest priority next track to play (ordered by votes DESC, queued_at ASC)
+    return availableTracks.length > 0 ? availableTracks[0] : undefined
+  }
+
+  /**
+   * Set the currently playing track ID.
+   * This should be called when a track starts playing to ensure getNextTrack() excludes it.
+   */
+  public setCurrentlyPlayingTrack(trackId: string | null): void {
+    this.currentlyPlayingTrackId = trackId
+  }
+
+  /**
+   * Get the currently playing track ID.
+   */
+  public getCurrentlyPlayingTrack(): string | null {
+    return this.currentlyPlayingTrackId
   }
 
   public getTrackAfterNext(): JukeboxQueueItem | undefined {
