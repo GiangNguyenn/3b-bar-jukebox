@@ -205,7 +205,8 @@ export async function POST(
         const artistId = result.track.artists[0].id
         const artistResponse = await sendApiRequest<{ genres: string[] }>({
           path: `artists/${artistId}`,
-          method: 'GET'
+          method: 'GET',
+          useAppToken: true // Use app token for server-side operations - no user session context available
         })
         artistGenres = artistResponse.genres || []
       }
