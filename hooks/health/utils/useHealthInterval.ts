@@ -24,6 +24,7 @@ export function useHealthInterval(
   const callbackRef = useRef(callback)
   const intervalRef = useRef<NodeJS.Timeout | null>(null)
   const timeoutRef = useRef<NodeJS.Timeout | null>(null)
+  const isRunningRef = useRef(false)
 
   // Keep callback ref up to date
   useEffect(() => {
@@ -35,21 +36,37 @@ export function useHealthInterval(
       return
     }
 
-    const runCallback = (): void => {
-      void callbackRef.current()
+    const runCallback = async (): Promise<void> => {
+      // Prevent overlapping executions
+      if (isRunningRef.current) {
+        return
+      }
+      isRunningRef.current = true
+      try {
+        await callbackRef.current()
+      } catch (error) {
+        // Errors are handled by the callback itself, but we catch to prevent unhandled rejections
+        console.error('Error in health interval callback:', error)
+      } finally {
+        isRunningRef.current = false
+      }
     }
 
     // Initial delay if specified
     if (initialDelay > 0) {
       timeoutRef.current = setTimeout(() => {
-        runCallback()
+        void runCallback()
         // Start interval after initial execution
-        intervalRef.current = setInterval(runCallback, interval)
+        intervalRef.current = setInterval(() => {
+          void runCallback()
+        }, interval)
       }, initialDelay)
     } else {
       // Run immediately, then set up interval
-      runCallback()
-      intervalRef.current = setInterval(runCallback, interval)
+      void runCallback()
+      intervalRef.current = setInterval(() => {
+        void runCallback()
+      }, interval)
     }
 
     return () => {
@@ -61,6 +78,7 @@ export function useHealthInterval(
         clearInterval(intervalRef.current)
         intervalRef.current = null
       }
+      isRunningRef.current = false
     }
   }, [enabled, interval, initialDelay])
 }

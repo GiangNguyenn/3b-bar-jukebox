@@ -120,6 +120,12 @@ export function TrackSuggestionsTab({
   const isInitialMount = useRef(true)
   const lastFetchTimeRef = useRef<number>(0)
   const prevStateRef = useRef(state)
+  const addLogRef = useRef(addLog)
+
+  // Keep addLog ref up to date without causing callback recreation
+  useEffect(() => {
+    addLogRef.current = addLog
+  }, [addLog])
 
   // Call onStateChange only when state actually changes
   useEffect(() => {
@@ -156,14 +162,14 @@ export function TrackSuggestionsTab({
         lastTrackUriRef.current = data.track?.uri ?? null
       }
     } catch (error: unknown) {
-      addLog(
+      addLogRef.current(
         'ERROR',
         'Error fetching last suggested track',
         'TrackSuggestionsTab',
         error instanceof Error ? error : new Error('Unknown error')
       )
     }
-  }, [addLog])
+  }, [])
 
   useEffect(() => {
     // Initial fetch
