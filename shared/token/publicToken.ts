@@ -3,7 +3,7 @@ import { getBaseUrl } from '@/shared/utils/domain'
 export interface PublicTokenResponse {
   access_token: string
   refresh_token: string
-  expires_at: number
+  expires_in: number
 }
 
 export interface ErrorResponse {

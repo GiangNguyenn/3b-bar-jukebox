@@ -1,5 +1,6 @@
 'use client'
 
+import { useState } from 'react'
 import { formatRelativeTime } from '@/lib/utils'
 import { cn } from '@/lib/utils'
 
@@ -94,5 +95,57 @@ export function CopyIcon({ className }: { className?: string }): JSX.Element {
         d='M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z'
       />
     </svg>
+  )
+}
+
+interface CollapsibleSectionProps {
+  title: string
+  children: React.ReactNode
+  defaultExpanded?: boolean
+  severity?: 'info' | 'warning' | 'error'
+  className?: string
+  headerActions?: React.ReactNode
+}
+
+const severityColors = {
+  error: 'border-red-500',
+  warning: 'border-yellow-500',
+  info: 'border-gray-800'
+} as const
+
+export function CollapsibleSection({
+  title,
+  children,
+  defaultExpanded = false,
+  severity = 'info',
+  className,
+  headerActions
+}: CollapsibleSectionProps): JSX.Element {
+  const [isExpanded, setIsExpanded] = useState(defaultExpanded)
+  const severityColor = severityColors[severity]
+
+  return (
+    <div
+      className={cn(
+        'rounded-lg border bg-gray-900/50',
+        severityColor,
+        className
+      )}
+    >
+      <div className='flex items-center gap-2 px-4 py-3'>
+        <button
+          type='button'
+          onClick={() => setIsExpanded(!isExpanded)}
+          className='flex flex-1 items-center justify-between text-left transition-colors hover:bg-gray-800/50'
+        >
+          <span className='text-white text-sm font-semibold'>{title}</span>
+          <ChevronIcon expanded={isExpanded} />
+        </button>
+        {headerActions && (
+          <div onClick={(e) => e.stopPropagation()}>{headerActions}</div>
+        )}
+      </div>
+      {isExpanded && <div className='space-y-2 px-4 pb-4'>{children}</div>}
+    </div>
   )
 }
