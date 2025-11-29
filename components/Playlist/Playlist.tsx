@@ -13,6 +13,8 @@ interface PlaylistProps {
   extractError: Error | null
   onVote: (queueId: string, direction: 'up' | 'down') => void
   isRefreshing?: boolean
+  pendingVotes?: Record<string, boolean>
+  highlightSpotifyTrackId?: string | null
   primaryColor?: string
   textColor?: string
   secondaryColor?: string
@@ -30,6 +32,8 @@ export default function Playlist({
   extractError,
   onVote,
   isRefreshing = false,
+  pendingVotes,
+  highlightSpotifyTrackId,
   primaryColor,
   textColor,
   secondaryColor,
@@ -82,6 +86,13 @@ export default function Playlist({
                   votes={item.votes}
                   queueId={item.id}
                   onVote={onVote}
+                  isVoting={pendingVotes ? !!pendingVotes[item.id] : false}
+                  isHighlighted={
+                    !!(
+                      highlightSpotifyTrackId &&
+                      item.tracks.spotify_track_id === highlightSpotifyTrackId
+                    )
+                  }
                   isPlaying={
                     !!(
                       currentlyPlaying?.item?.id &&
