@@ -1803,6 +1803,25 @@ class AutoPlayService {
     // Returns null to indicate no track is currently locked
     return null
   }
+
+  private resetPredictiveState(): void {
+    // Reset last playback state to force a fresh check on next poll
+    // This prevents stale track preparation after state changes (e.g., seeking)
+    this.lastPlaybackState = null
+    this.lastTrackId = null
+    logger('INFO', '[resetPredictiveState] Reset predictive state - forcing fresh playback check')
+  }
+
+  public resetAfterSeek(): void {
+    // Reset predictive state after seeking to prevent stale track preparation
+    // This will also immediately prepare next track if we seeked to near the end
+    this.resetPredictiveState()
+    
+    // Trigger an immediate playback state check to re-evaluate position
+    if (this.isRunning) {
+      void this.checkPlaybackState()
+    }
+  }
 }
 
 // Singleton instance

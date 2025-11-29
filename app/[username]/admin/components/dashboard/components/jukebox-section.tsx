@@ -121,7 +121,6 @@ export function JukeboxSection({
 
       // Reset predictive state after seeking to prevent stale track preparation
       // This will also immediately prepare next track if we seeked to near the end
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-call
       void getAutoPlayService().resetAfterSeek()
     } catch (error) {
       addLog(
