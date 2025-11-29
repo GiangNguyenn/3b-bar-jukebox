@@ -234,17 +234,10 @@ export async function attemptPlaybackRecovery(
   const nextTrack = queueManager.getNextTrack()
 
   if (!nextTrack) {
-    const noTrackError = new Error(
-      'No tracks available in queue for recovery'
-    )
+    const noTrackError = new Error('No tracks available in queue for recovery')
     logger('WARN', noTrackError.message)
     if (addLog) {
-      addLog(
-        'WARN',
-        noTrackError.message,
-        'PlaybackRecovery',
-        noTrackError
-      )
+      addLog('WARN', noTrackError.message, 'PlaybackRecovery', noTrackError)
     }
     return {
       success: false,
@@ -273,7 +266,8 @@ export async function attemptPlaybackRecovery(
       consecutiveFailures: 0
     }
   } catch (error) {
-    const errorInstance = error instanceof Error ? error : new Error(String(error))
+    const errorInstance =
+      error instanceof Error ? error : new Error(String(error))
 
     // If play next failed due to network error, return early with cooldown
     if (isNetworkError(errorInstance)) {
