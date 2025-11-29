@@ -145,6 +145,9 @@ export default function PlaylistPage(): JSX.Element {
   const [lastAddedTrack, setLastAddedTrack] = useState<TrackDetails | null>(
     null
   )
+  const [pendingVoteIds, setPendingVoteIds] = useState<Record<string, boolean>>(
+    {}
+  )
 
   const handleAddTrack = useCallback(
     async (track: TrackDetails): Promise<void> => {
@@ -173,7 +176,7 @@ export default function PlaylistPage(): JSX.Element {
       }
 
       // Optimistically add the track to the queue
-      if (optimisticUpdate && queue) {
+      if (optimisticUpdate) {
         optimisticUpdate((currentQueue) => [optimisticItem, ...currentQueue])
       }
 
@@ -194,7 +197,7 @@ export default function PlaylistPage(): JSX.Element {
         // so we don't need to call refreshQueue() here
       } catch (error: unknown) {
         // Remove the optimistic item on error
-        if (optimisticUpdate && queue) {
+        if (optimisticUpdate) {
           optimisticUpdate((currentQueue) =>
             currentQueue.filter((item) => item.id !== optimisticItem.id)
           )
@@ -210,7 +213,7 @@ export default function PlaylistPage(): JSX.Element {
         setVoteFeedback({ message: errorMessage, variant: 'warning' })
       }
     },
-    [username, optimisticUpdate, queue]
+    [username, optimisticUpdate]
   )
 
   const handleVote = useCallback(
@@ -224,10 +227,19 @@ export default function PlaylistPage(): JSX.Element {
         return
       }
 
+      // Set localStorage flag immediately to prevent rapid clicks
+      // This must happen synchronously before any async operations
+      localStorage.setItem(VOTE_STORAGE_KEY, 'true')
+
+      setPendingVoteIds((prev) => ({
+        ...prev,
+        [queueId]: true
+      }))
+
       // Optimistic update - update vote count immediately
-      if (optimisticUpdate && queue) {
-        optimisticUpdate((currentQueue) =>
-          currentQueue.map((item) =>
+      if (optimisticUpdate) {
+        optimisticUpdate((currentQueue) => {
+          const updatedQueue = currentQueue.map((item) =>
             item.id === queueId
               ? {
                   ...item,
@@ -235,7 +247,16 @@ export default function PlaylistPage(): JSX.Element {
                 }
               : item
           )
-        )
+
+          return updatedQueue.sort((a, b) => {
+            if (b.votes !== a.votes) return b.votes - a.votes
+
+            const aTime = new Date(a.queued_at).getTime()
+            const bTime = new Date(b.queued_at).getTime()
+
+            return aTime - bTime
+          })
+        })
       }
 
       try {
@@ -246,13 +267,38 @@ export default function PlaylistPage(): JSX.Element {
           body: { queueId, voteDirection }
         })
 
-        localStorage.setItem(VOTE_STORAGE_KEY, 'true')
         setVoteFeedback({ message: 'Vote recorded!', variant: 'success' })
 
         // Real-time subscription will handle the update, but we can trigger a refresh
         // to ensure we have the latest data
         void refreshQueue()
       } catch (error: unknown) {
+        // Remove localStorage flag on error so user can retry
+        localStorage.removeItem(VOTE_STORAGE_KEY)
+
+        // Revert optimistic update on error
+        if (optimisticUpdate) {
+          optimisticUpdate((currentQueue) => {
+            const updatedQueue = currentQueue.map((item) =>
+              item.id === queueId
+                ? {
+                    ...item,
+                    votes: item.votes + (voteDirection === 'up' ? -1 : 1)
+                  }
+                : item
+            )
+
+            return updatedQueue.sort((a, b) => {
+              if (b.votes !== a.votes) return b.votes - a.votes
+
+              const aTime = new Date(a.queued_at).getTime()
+              const bTime = new Date(b.queued_at).getTime()
+
+              return aTime - bTime
+            })
+          })
+        }
+
         // If optimistic update was used, the real-time subscription will correct the state
         const errorMessage =
           error instanceof ApiError || error instanceof Error
@@ -264,9 +310,15 @@ export default function PlaylistPage(): JSX.Element {
           variant: 'warning'
         })
         handleApiError(error, 'VoteError')
+      } finally {
+        setPendingVoteIds((prev) => {
+          return Object.fromEntries(
+            Object.entries(prev).filter(([key]) => key !== queueId)
+          )
+        })
       }
     },
-    [refreshQueue, optimisticUpdate, queue]
+    [refreshQueue, optimisticUpdate]
   )
 
   // Type guard for error with message
@@ -469,6 +521,8 @@ export default function PlaylistPage(): JSX.Element {
                 void handleVote(queueId, voteDirection)
               }}
               isRefreshing={isPlaylistRefreshing}
+              pendingVotes={pendingVoteIds}
+              highlightSpotifyTrackId={lastAddedTrack?.id ?? null}
               primaryColor={settings?.primary_color ?? undefined}
               textColor={settings?.text_color ?? '#000000'}
               secondaryColor={settings?.secondary_color ?? '#6b7280'}

@@ -1095,6 +1095,29 @@ class PlayerLifecycleService {
     return this.playerRef
   }
 
+  /**
+   * Public helper to play the next track from the current jukebox queue.
+   * This is used by user-initiated actions (e.g. admin skip) so that
+   * all track-to-track transitions still flow through the same internal
+   * playNextTrack logic and device management.
+   */
+  async playNextFromQueue(): Promise<void> {
+    this.log(
+      'INFO',
+      '[playNextFromQueue] Requested to play next track from queue'
+    )
+    const nextTrack = queueManager.getNextTrack()
+    if (!nextTrack) {
+      this.log(
+        'WARN',
+        '[playNextFromQueue] Skip requested but no next track is available in queue'
+      )
+      return
+    }
+
+    await this.playNextTrack(nextTrack)
+  }
+
   async reloadSDK(): Promise<void> {
     this.playerRef = null
 

@@ -6,6 +6,7 @@ import { useConsoleLogsContext } from '@/hooks/ConsoleLogsProvider'
 import { SpotifyApiService } from '@/services/spotifyApi'
 import { type SpotifyPlaybackState } from '@/shared/types/spotify'
 import { queueManager } from '@/services/queueManager'
+import { playerLifecycleService } from '@/services/playerLifecycle'
 import { sendApiRequest } from '@/shared/api'
 
 export function usePlaybackControls(): {
@@ -148,44 +149,19 @@ export function usePlaybackControls(): {
         )
       }
 
-      // Get the next track from the queue after removing the current track
-      // After markAsPlayed, the current track is removed from the queue
-      // The queue shifts and queue[0] becomes the next highest priority track
-      // getNextTrack() returns queue[0], which is the correct next track to play
-      const nextTrack = queueManager.getNextTrack()
-
-      if (nextTrack) {
-        // Next track found - play it
-        const trackUri = `spotify:track:${nextTrack.tracks.spotify_track_id}`
-
-        try {
-          await sendApiRequest({
-            path: 'me/player/play',
-            method: 'PUT',
-            body: {
-              device_id: deviceId,
-              uris: [trackUri]
-            }
-          })
-
-          addLog(
-            'INFO',
-            `Now playing next track: ${nextTrack.tracks.name}`,
-            'Playback'
-          )
-        } catch (error) {
-          addLog(
-            'ERROR',
-            `Failed to play next track: ${nextTrack.tracks.name}`,
-            'Playback',
-            error instanceof Error ? error : undefined
-          )
-          // If playing next track fails, pause playback
-          const spotifyApi = SpotifyApiService.getInstance()
-          await spotifyApi.pausePlayback(deviceId)
-        }
-      } else {
-        // Pause playback since there are no more tracks
+      // Delegate track-to-track transition to playerLifecycleService so that
+      // all playback starts flow through the same device management and
+      // duplicate protection logic used for natural track finishes.
+      try {
+        await playerLifecycleService.playNextFromQueue()
+      } catch (error) {
+        addLog(
+          'ERROR',
+          'Failed to play next track after skip',
+          'Playback',
+          error instanceof Error ? error : undefined
+        )
+        // On error, fall back to pausing playback to avoid a stuck state.
         const spotifyApi = SpotifyApiService.getInstance()
         await spotifyApi.pausePlayback(deviceId)
       }

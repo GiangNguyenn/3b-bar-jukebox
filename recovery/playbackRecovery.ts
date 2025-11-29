@@ -9,6 +9,7 @@ import { spotifyPlayerStore } from '@/hooks/useSpotifyPlayer'
 import { sendApiRequest } from '@/shared/api'
 import { transferPlaybackToDevice } from '@/services/deviceManagement/deviceTransfer'
 import { buildTrackUri } from '@/shared/utils/spotifyUri'
+import { playerLifecycleService } from '@/services/playerLifecycle'
 import type { SpotifyPlaybackState } from '@/shared/types/spotify'
 import type { JukeboxQueueItem } from '@/shared/types/queue'
 import type { RecoveryStrategy, RecoveryResult } from '@/types/playbackRecovery'
@@ -99,125 +100,6 @@ async function resumeCurrentTrack(
       undefined,
       error instanceof Error ? error : undefined
     )
-    return {
-      success: false,
-      error: error instanceof Error ? error : new Error(String(error))
-    }
-  }
-}
-
-/**
- * Attempts to play the next track from the queue
- */
-async function playNextTrackFromQueue(
-  deviceId: string | null,
-  skipCount: number = 0
-): Promise<{
-  success: boolean
-  error?: Error
-  skippedTrack?: JukeboxQueueItem
-}> {
-  if (!deviceId) {
-    return {
-      success: false,
-      error: new Error('No device ID available for recovery')
-    }
-  }
-
-  if (skipCount >= MAX_TRACK_SKIPS) {
-    return {
-      success: false,
-      error: new Error(
-        `Maximum track skips (${MAX_TRACK_SKIPS}) reached during recovery`
-      )
-    }
-  }
-
-  const nextTrack = queueManager.getNextTrack()
-
-  if (!nextTrack) {
-    return {
-      success: false,
-      error: new Error('No tracks available in queue for recovery')
-    }
-  }
-
-  try {
-    // Transfer playback to device first
-    const transferred = await transferPlaybackToDevice(deviceId)
-    if (!transferred) {
-      return {
-        success: false,
-        error: new Error(`Failed to transfer playback to device: ${deviceId}`)
-      }
-    }
-
-    const trackUri = buildTrackUri(nextTrack.tracks.spotify_track_id)
-
-    logger(
-      'INFO',
-      `Attempting to play next track from queue: ${nextTrack.tracks.name} (${nextTrack.tracks.spotify_track_id}), Queue ID: ${nextTrack.id}`
-    )
-
-    await sendApiRequest({
-      path: 'me/player/play',
-      method: 'PUT',
-      body: {
-        device_id: deviceId,
-        uris: [trackUri]
-      }
-    })
-
-    // Update queue manager with currently playing track
-    queueManager.setCurrentlyPlayingTrack(nextTrack.tracks.spotify_track_id)
-
-    logger(
-      'INFO',
-      `Successfully started playback of next track: ${nextTrack.tracks.name}`
-    )
-
-    return { success: true, skippedTrack: nextTrack }
-  } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : String(error)
-
-    // Handle "Restriction violated" errors by removing the problematic track
-    if (
-      error instanceof Error &&
-      errorMessage.includes('Restriction violated')
-    ) {
-      logger(
-        'WARN',
-        `Restriction violated for track: ${nextTrack.tracks.name} (ID: ${nextTrack.id}), removing from queue`
-      )
-
-      try {
-        await queueManager.markAsPlayed(nextTrack.id)
-        // Try next track recursively
-        return playNextTrackFromQueue(deviceId, skipCount + 1)
-      } catch (markError) {
-        logger(
-          'ERROR',
-          `Failed to remove problematic track: ${markError instanceof Error ? markError.message : String(markError)}`,
-          undefined,
-          markError instanceof Error ? markError : undefined
-        )
-        return {
-          success: false,
-          error:
-            markError instanceof Error
-              ? markError
-              : new Error(String(markError))
-        }
-      }
-    }
-
-    logger(
-      'ERROR',
-      `Failed to play next track: ${errorMessage}`,
-      undefined,
-      error instanceof Error ? error : undefined
-    )
-
     return {
       success: false,
       error: error instanceof Error ? error : new Error(String(error))
@@ -346,89 +228,117 @@ export async function attemptPlaybackRecovery(
     )
   }
 
-  // Strategy 2: Try to play next track from queue
+  // Strategy 2: Try to play next track from queue via PlayerLifecycleService
   logger('INFO', 'Attempting recovery strategy: play_next')
-  const playNextResult = await playNextTrackFromQueue(deviceId)
 
-  if (playNextResult.success) {
-    if (addLog) {
-      const trackName = playNextResult.skippedTrack?.tracks.name || 'unknown'
-      addLog(
-        'INFO',
-        `Playback recovery successful: playing next track ${trackName}`,
-        'PlaybackRecovery'
-      )
-    }
-    return {
-      success: true,
-      strategy: 'play_next',
-      consecutiveFailures: 0
-    }
-  }
+  const nextTrack = queueManager.getNextTrack()
 
-  // If play next failed due to network error, return early
-  if (playNextResult.error && isNetworkError(playNextResult.error)) {
-    const categorized = categorizeNetworkError(playNextResult.error)
-    logger('WARN', `Network error during play next: ${categorized.message}`)
+  if (!nextTrack) {
+    const noTrackError = new Error('No tracks available in queue for recovery')
+    logger('WARN', noTrackError.message)
     if (addLog) {
-      addLog(
-        'WARN',
-        `Network error during play next: ${categorized.message}`,
-        'PlaybackRecovery',
-        playNextResult.error
-      )
+      addLog('WARN', noTrackError.message, 'PlaybackRecovery', noTrackError)
     }
     return {
       success: false,
       strategy: 'play_next',
-      error: playNextResult.error,
+      error: noTrackError,
       consecutiveFailures: consecutiveFailures + 1,
       nextAttemptAllowedAt:
         Date.now() + calculateCooldown(consecutiveFailures + 1)
     }
   }
 
-  // All strategies failed
-  const newConsecutiveFailures = consecutiveFailures + 1
-  const cooldown = calculateCooldown(newConsecutiveFailures)
-  const nextAttemptAllowedAt = Date.now() + cooldown
+  try {
+    await playerLifecycleService.playNextFromQueue()
 
-  logger(
-    'ERROR',
-    `All recovery strategies failed. Consecutive failures: ${newConsecutiveFailures}/${MAX_CONSECUTIVE_FAILURES}. Next attempt allowed at: ${new Date(nextAttemptAllowedAt).toISOString()}`,
-    undefined,
-    playNextResult.error
-  )
-
-  if (addLog) {
-    addLog(
-      'ERROR',
-      `Playback recovery failed after all strategies. Consecutive failures: ${newConsecutiveFailures}`,
-      'PlaybackRecovery',
-      playNextResult.error
-    )
-  }
-
-  // If max consecutive failures reached, stop auto-recovery
-  if (newConsecutiveFailures >= MAX_CONSECUTIVE_FAILURES) {
-    logger(
-      'ERROR',
-      `Maximum consecutive failures (${MAX_CONSECUTIVE_FAILURES}) reached. Auto-recovery disabled. Manual intervention required.`
-    )
     if (addLog) {
       addLog(
-        'ERROR',
-        `Maximum consecutive failures (${MAX_CONSECUTIVE_FAILURES}) reached. Auto-recovery disabled.`,
+        'INFO',
+        `Playback recovery successful: playing next track ${nextTrack.tracks.name}`,
         'PlaybackRecovery'
       )
     }
-  }
 
-  return {
-    success: false,
-    strategy: 'play_next',
-    error: playNextResult.error,
-    consecutiveFailures: newConsecutiveFailures,
-    nextAttemptAllowedAt
+    return {
+      success: true,
+      strategy: 'play_next',
+      consecutiveFailures: 0
+    }
+  } catch (error) {
+    const errorInstance =
+      error instanceof Error ? error : new Error(String(error))
+
+    // If play next failed due to network error, return early with cooldown
+    if (isNetworkError(errorInstance)) {
+      const categorized = categorizeNetworkError(errorInstance)
+      logger('WARN', `Network error during play next: ${categorized.message}`)
+      if (addLog) {
+        addLog(
+          'WARN',
+          `Network error during play next: ${categorized.message}`,
+          'PlaybackRecovery',
+          errorInstance
+        )
+      }
+      return {
+        success: false,
+        strategy: 'play_next',
+        error: errorInstance,
+        consecutiveFailures: consecutiveFailures + 1,
+        nextAttemptAllowedAt:
+          Date.now() + calculateCooldown(consecutiveFailures + 1)
+      }
+    }
+
+    logger(
+      'ERROR',
+      `Failed to play next track via PlayerLifecycleService: ${errorInstance.message}`,
+      undefined,
+      errorInstance
+    )
+
+    const newConsecutiveFailures = consecutiveFailures + 1
+    const cooldown = calculateCooldown(newConsecutiveFailures)
+    const nextAttemptAllowedAt = Date.now() + cooldown
+
+    logger(
+      'ERROR',
+      `All recovery strategies failed. Consecutive failures: ${newConsecutiveFailures}/${MAX_CONSECUTIVE_FAILURES}. Next attempt allowed at: ${new Date(nextAttemptAllowedAt).toISOString()}`,
+      undefined,
+      errorInstance
+    )
+
+    if (addLog) {
+      addLog(
+        'ERROR',
+        `Playback recovery failed after all strategies. Consecutive failures: ${newConsecutiveFailures}`,
+        'PlaybackRecovery',
+        errorInstance
+      )
+    }
+
+    // If max consecutive failures reached, stop auto-recovery
+    if (newConsecutiveFailures >= MAX_CONSECUTIVE_FAILURES) {
+      logger(
+        'ERROR',
+        `Maximum consecutive failures (${MAX_CONSECUTIVE_FAILURES}) reached. Auto-recovery disabled. Manual intervention required.`
+      )
+      if (addLog) {
+        addLog(
+          'ERROR',
+          `Maximum consecutive failures (${MAX_CONSECUTIVE_FAILURES}) reached. Auto-recovery disabled.`,
+          'PlaybackRecovery'
+        )
+      }
+    }
+
+    return {
+      success: false,
+      strategy: 'play_next',
+      error: errorInstance,
+      consecutiveFailures: newConsecutiveFailures,
+      nextAttemptAllowedAt
+    }
   }
 }

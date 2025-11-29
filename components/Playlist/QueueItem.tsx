@@ -9,6 +9,8 @@ interface IQueueItemProps {
   queueId: string
   onVote: (queueId: string, direction: 'up' | 'down') => void
   isPlaying?: boolean
+  isVoting?: boolean
+  isHighlighted?: boolean
   textColor?: string
   secondaryColor?: string
   accentColor2?: string
@@ -21,6 +23,8 @@ const QueueItem: React.FC<IQueueItemProps> = ({
   queueId,
   onVote,
   isPlaying = false,
+  isVoting = false,
+  isHighlighted = false,
   textColor = '#000000',
   secondaryColor = '#6b7280',
   accentColor2 = '#6b7280',
@@ -71,7 +75,13 @@ const QueueItem: React.FC<IQueueItemProps> = ({
   return (
     <div
       ref={itemRef}
-      className={`flex items-center space-x-4 py-2 ${isPlaying ? 'border-l-4 border-green-500 bg-green-100' : ''}`}
+      className={`flex items-center space-x-4 py-2 ${
+        isPlaying
+          ? 'border-l-4 border-green-500 bg-green-100'
+          : isHighlighted
+            ? 'border-l-4 border-yellow-500 bg-yellow-100'
+            : ''
+      }`}
       data-track-id={track.tracks.id}
     >
       <div className='relative h-12 w-12 flex-shrink-0'>
@@ -125,7 +135,8 @@ const QueueItem: React.FC<IQueueItemProps> = ({
       </div>
       <div className='flex items-center space-x-2'>
         <button
-          className='rounded p-1'
+          className='rounded p-1 disabled:cursor-not-allowed disabled:opacity-50'
+          disabled={isVoting}
           style={{
             color: accentColor2,
             backgroundColor: 'transparent',
@@ -139,24 +150,28 @@ const QueueItem: React.FC<IQueueItemProps> = ({
           }}
           onClick={() => onVote(queueId, 'up')}
         >
-          {/* Placeholder for upvote icon */}
-          <svg
-            className='h-5 w-5'
-            fill='none'
-            stroke='currentColor'
-            viewBox='0 0 24 24'
-          >
-            <path
-              strokeLinecap='round'
-              strokeLinejoin='round'
-              strokeWidth={2}
-              d='M5 15l7-7 7 7'
-            />
-          </svg>
+          {isVoting ? (
+            <div className='h-4 w-4 animate-spin rounded-full border-2 border-gray-300 border-t-gray-600'></div>
+          ) : (
+            <svg
+              className='h-5 w-5'
+              fill='none'
+              stroke='currentColor'
+              viewBox='0 0 24 24'
+            >
+              <path
+                strokeLinecap='round'
+                strokeLinejoin='round'
+                strokeWidth={2}
+                d='M5 15l7-7 7 7'
+              />
+            </svg>
+          )}
         </button>
         <span className='text-sm font-semibold text-gray-700'>{votes}</span>
         <button
-          className='rounded p-1'
+          className='rounded p-1 disabled:cursor-not-allowed disabled:opacity-50'
+          disabled={isVoting}
           style={{
             color: accentColor2,
             backgroundColor: 'transparent',
@@ -170,20 +185,23 @@ const QueueItem: React.FC<IQueueItemProps> = ({
           }}
           onClick={() => onVote(queueId, 'down')}
         >
-          {/* Placeholder for downvote icon */}
-          <svg
-            className='h-5 w-5'
-            fill='none'
-            stroke='currentColor'
-            viewBox='0 0 24 24'
-          >
-            <path
-              strokeLinecap='round'
-              strokeLinejoin='round'
-              strokeWidth={2}
-              d='M19 9l-7 7-7-7'
-            />
-          </svg>
+          {isVoting ? (
+            <div className='h-4 w-4 animate-spin rounded-full border-2 border-gray-300 border-t-gray-600'></div>
+          ) : (
+            <svg
+              className='h-5 w-5'
+              fill='none'
+              stroke='currentColor'
+              viewBox='0 0 24 24'
+            >
+              <path
+                strokeLinecap='round'
+                strokeLinejoin='round'
+                strokeWidth={2}
+                d='M19 9l-7 7-7-7'
+              />
+            </svg>
+          )}
         </button>
       </div>
     </div>
