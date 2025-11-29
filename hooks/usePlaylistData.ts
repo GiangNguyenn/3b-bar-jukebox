@@ -97,20 +97,21 @@ export function usePlaylistData(username?: string) {
               // to ensure proper ordering, especially for newly added tracks
               const sortedQueue = sortQueueByPriority(mergedQueue)
 
-              // Update queueManager
+              // Update queueManager and use its queue as the source of truth
+              // This ensures the playlist page matches exactly what the player sees
               queueManager.updateQueue(sortedQueue)
-
-              return sortedQueue
+              return queueManager.getQueue()
             }
 
             // No optimistic items, just use fetched data
             queueManager.updateQueue(queueData)
-            return queueData
+            return queueManager.getQueue()
           })
         } else {
           // Initial load, no optimistic items to preserve
-          setQueue(queueData)
           queueManager.updateQueue(queueData)
+          // Use queueManager's queue as the source of truth
+          setQueue(queueManager.getQueue())
         }
 
         // Track if queue was empty
@@ -385,9 +386,9 @@ export function usePlaylistData(username?: string) {
     (updater: (currentQueue: JukeboxQueueItem[]) => JukeboxQueueItem[]) => {
       setQueue((prevQueue) => {
         const newQueue = updater(prevQueue)
-        // Also update queueManager
+        // Update queueManager and use its queue as the source of truth
         queueManager.updateQueue(newQueue)
-        return newQueue
+        return queueManager.getQueue()
       })
     },
     []
@@ -398,8 +399,11 @@ export function usePlaylistData(username?: string) {
     await fetchQueue(true) // Background refresh
   }, [fetchQueue])
 
+  // Return queue state which is now synced with queueManager
+  // This ensures the playlist page displays the exact same queue order as playback
+  // The queueManager is the single source of truth used by the player
   return {
-    data: queue,
+    data: queue, // React state is synced from queueManager, so it matches exactly what the player sees
     isLoading,
     isRefreshing,
     error,
