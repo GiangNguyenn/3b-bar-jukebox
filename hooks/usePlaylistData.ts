@@ -30,6 +30,7 @@ export function usePlaylistData(username?: string) {
   const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null)
   const lastPollTimeRef = useRef<number>(0)
   const wasQueueEmptyRef = useRef<boolean>(true)
+  const realtimeFetchTimeoutRef = useRef<NodeJS.Timeout | null>(null)
 
   // Fetch queue data from API
   const fetchQueue = useCallback(
@@ -67,10 +68,45 @@ export function usePlaylistData(username?: string) {
 
         // Type assertion: if response.ok is true, data should be JukeboxQueueItem[]
         const queueData = data as JukeboxQueueItem[]
-        setQueue(queueData)
 
-        // Update queueManager with the fetched data
-        queueManager.updateQueue(queueData)
+        // When doing a background refresh, preserve optimistic items that haven't been replaced yet
+        if (isBackgroundRefresh) {
+          setQueue((prevQueue) => {
+            // Find optimistic items (those with temp IDs starting with "temp-")
+            const optimisticItems = prevQueue.filter((item) =>
+              item.id.startsWith('temp-')
+            )
+
+            // If we have optimistic items, merge them with fetched data
+            if (optimisticItems.length > 0) {
+              // Get spotify track IDs from fetched data
+              const fetchedTrackIds = new Set(
+                queueData.map((item) => item.tracks.spotify_track_id)
+              )
+
+              // Keep optimistic items that aren't yet in the fetched data
+              const pendingOptimisticItems = optimisticItems.filter(
+                (item) => !fetchedTrackIds.has(item.tracks.spotify_track_id)
+              )
+
+              // Merge: fetched data + pending optimistic items
+              const mergedQueue = [...queueData, ...pendingOptimisticItems]
+
+              // Update queueManager
+              queueManager.updateQueue(mergedQueue)
+
+              return mergedQueue
+            }
+
+            // No optimistic items, just use fetched data
+            queueManager.updateQueue(queueData)
+            return queueData
+          })
+        } else {
+          // Initial load, no optimistic items to preserve
+          setQueue(queueData)
+          queueManager.updateQueue(queueData)
+        }
 
         // Track if queue was empty
         wasQueueEmptyRef.current = queueData.length === 0
@@ -231,8 +267,18 @@ export function usePlaylistData(username?: string) {
               filter: `profile_id=eq.${profileId}`
             },
             (payload) => {
-              // Refresh queue data when database changes (background refresh)
-              void fetchQueue(true)
+              // Clear any pending timeout to debounce rapid changes
+              if (realtimeFetchTimeoutRef.current) {
+                clearTimeout(realtimeFetchTimeoutRef.current)
+              }
+
+              // Add a small delay before fetching to ensure the database transaction
+              // is fully committed and visible. This prevents race conditions where
+              // the fetch happens before the new track appears in query results.
+              realtimeFetchTimeoutRef.current = setTimeout(() => {
+                void fetchQueue(true)
+                realtimeFetchTimeoutRef.current = null
+              }, 500) // 500ms delay to allow transaction commit
             }
           )
           .subscribe((status) => {
@@ -312,6 +358,10 @@ export function usePlaylistData(username?: string) {
       if (subscriptionRef.current) {
         void supabase.removeChannel(subscriptionRef.current)
         subscriptionRef.current = null
+      }
+      if (realtimeFetchTimeoutRef.current) {
+        clearTimeout(realtimeFetchTimeoutRef.current)
+        realtimeFetchTimeoutRef.current = null
       }
       stopPolling()
     }
