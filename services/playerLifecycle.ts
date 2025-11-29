@@ -1102,6 +1102,10 @@ class PlayerLifecycleService {
    * playNextTrack logic and device management.
    */
   async playNextFromQueue(): Promise<void> {
+    this.log(
+      'INFO',
+      '[playNextFromQueue] Requested to play next track from queue'
+    )
     const nextTrack = queueManager.getNextTrack()
     if (!nextTrack) {
       this.log(

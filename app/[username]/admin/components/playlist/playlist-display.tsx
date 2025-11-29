@@ -15,6 +15,7 @@ import { JukeboxQueueItem } from '@/shared/types/queue'
 import { useConsoleLogsContext } from '@/hooks/ConsoleLogsProvider'
 import { useDebouncedCallback } from 'use-debounce'
 import { PlaylistImportModal } from './playlist-import-modal'
+import { queueManager } from '@/services/queueManager'
 
 interface PlaybackState {
   item?: {
@@ -181,6 +182,8 @@ export function PlaylistDisplay({
     )
   }
 
+  const nextQueueTrack = queueManager.getNextTrack()
+
   return (
     <div className='space-y-4'>
       <PlaylistImportModal
@@ -236,21 +239,12 @@ export function PlaylistDisplay({
               const isLockedTrack =
                 lockedTrackId === item.tracks.spotify_track_id
 
-              // Determine if this is the next track to play
-              // Queue is already sorted by votes DESC, queued_at ASC from database
-              // (see api/playlist/[id]/route.ts lines 41-42)
-              // So the first non-playing track is the next track
-              let isNextTrack = false
-              if (!isCurrentlyPlaying && !isLockedTrack) {
-                const availableTracks = queue.filter(
-                  (track) =>
-                    playbackState?.item?.id !== track.tracks.spotify_track_id
-                )
-                // First available track is next (already properly sorted)
-                isNextTrack =
-                  availableTracks.length > 0 &&
-                  item.id === availableTracks[0].id
-              }
+              // Determine if this is the next track to play using the canonical
+              // queueManager selection logic so UI stays in sync with playback.
+              const isNextTrack =
+                !isCurrentlyPlaying &&
+                !isLockedTrack &&
+                nextQueueTrack?.id === item.id
 
               return (
                 <tr
