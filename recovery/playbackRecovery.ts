@@ -298,57 +298,47 @@ export async function attemptPlaybackRecovery(
       errorInstance
     )
 
+    const newConsecutiveFailures = consecutiveFailures + 1
+    const cooldown = calculateCooldown(newConsecutiveFailures)
+    const nextAttemptAllowedAt = Date.now() + cooldown
+
+    logger(
+      'ERROR',
+      `All recovery strategies failed. Consecutive failures: ${newConsecutiveFailures}/${MAX_CONSECUTIVE_FAILURES}. Next attempt allowed at: ${new Date(nextAttemptAllowedAt).toISOString()}`,
+      undefined,
+      errorInstance
+    )
+
+    if (addLog) {
+      addLog(
+        'ERROR',
+        `Playback recovery failed after all strategies. Consecutive failures: ${newConsecutiveFailures}`,
+        'PlaybackRecovery',
+        errorInstance
+      )
+    }
+
+    // If max consecutive failures reached, stop auto-recovery
+    if (newConsecutiveFailures >= MAX_CONSECUTIVE_FAILURES) {
+      logger(
+        'ERROR',
+        `Maximum consecutive failures (${MAX_CONSECUTIVE_FAILURES}) reached. Auto-recovery disabled. Manual intervention required.`
+      )
+      if (addLog) {
+        addLog(
+          'ERROR',
+          `Maximum consecutive failures (${MAX_CONSECUTIVE_FAILURES}) reached. Auto-recovery disabled.`,
+          'PlaybackRecovery'
+        )
+      }
+    }
+
     return {
       success: false,
       strategy: 'play_next',
       error: errorInstance,
-      consecutiveFailures: consecutiveFailures + 1,
-      nextAttemptAllowedAt:
-        Date.now() + calculateCooldown(consecutiveFailures + 1)
+      consecutiveFailures: newConsecutiveFailures,
+      nextAttemptAllowedAt
     }
-  }
-
-  // All strategies failed
-  const newConsecutiveFailures = consecutiveFailures + 1
-  const cooldown = calculateCooldown(newConsecutiveFailures)
-  const nextAttemptAllowedAt = Date.now() + cooldown
-
-  logger(
-    'ERROR',
-    `All recovery strategies failed. Consecutive failures: ${newConsecutiveFailures}/${MAX_CONSECUTIVE_FAILURES}. Next attempt allowed at: ${new Date(nextAttemptAllowedAt).toISOString()}`,
-    undefined,
-    playNextResult.error
-  )
-
-  if (addLog) {
-    addLog(
-      'ERROR',
-      `Playback recovery failed after all strategies. Consecutive failures: ${newConsecutiveFailures}`,
-      'PlaybackRecovery',
-      playNextResult.error
-    )
-  }
-
-  // If max consecutive failures reached, stop auto-recovery
-  if (newConsecutiveFailures >= MAX_CONSECUTIVE_FAILURES) {
-    logger(
-      'ERROR',
-      `Maximum consecutive failures (${MAX_CONSECUTIVE_FAILURES}) reached. Auto-recovery disabled. Manual intervention required.`
-    )
-    if (addLog) {
-      addLog(
-        'ERROR',
-        `Maximum consecutive failures (${MAX_CONSECUTIVE_FAILURES}) reached. Auto-recovery disabled.`,
-        'PlaybackRecovery'
-      )
-    }
-  }
-
-  return {
-    success: false,
-    strategy: 'play_next',
-    error: playNextResult.error,
-    consecutiveFailures: newConsecutiveFailures,
-    nextAttemptAllowedAt
   }
 }

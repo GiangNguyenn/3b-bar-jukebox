@@ -312,8 +312,9 @@ export default function PlaylistPage(): JSX.Element {
         handleApiError(error, 'VoteError')
       } finally {
         setPendingVoteIds((prev) => {
-          const { [queueId]: _, ...rest } = prev
-          return rest
+          return Object.fromEntries(
+            Object.entries(prev).filter(([key]) => key !== queueId)
+          )
         })
       }
     },

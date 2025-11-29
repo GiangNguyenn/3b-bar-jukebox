@@ -17,6 +17,8 @@ import {
 } from '@/shared/types/trackSuggestions'
 import { TrackDuplicateDetector } from '@/shared/utils/trackDuplicateDetector'
 import { playerLifecycleService } from '@/services/playerLifecycle'
+import { transferPlaybackToDevice } from '@/services/deviceManagement'
+import { buildTrackUri } from '@/shared/utils/spotifyUri'
 
 const logger = createModuleLogger('AutoPlayService')
 
@@ -1809,14 +1811,17 @@ class AutoPlayService {
     // This prevents stale track preparation after state changes (e.g., seeking)
     this.lastPlaybackState = null
     this.lastTrackId = null
-    logger('INFO', '[resetPredictiveState] Reset predictive state - forcing fresh playback check')
+    logger(
+      'INFO',
+      '[resetPredictiveState] Reset predictive state - forcing fresh playback check'
+    )
   }
 
   public resetAfterSeek(): void {
     // Reset predictive state after seeking to prevent stale track preparation
     // This will also immediately prepare next track if we seeked to near the end
     this.resetPredictiveState()
-    
+
     // Trigger an immediate playback state check to re-evaluate position
     if (this.isRunning) {
       void this.checkPlaybackState()
