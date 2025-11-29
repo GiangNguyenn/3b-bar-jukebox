@@ -11,6 +11,7 @@ import {
   categorizeQueueError,
   logQueueRecovery
 } from '@/recovery/queueRecovery'
+import { sortQueueByPriority } from '@/shared/utils/queueSort'
 
 export function usePlaylistData(username?: string) {
   const [queue, setQueue] = useState<JukeboxQueueItem[]>([])
@@ -92,10 +93,14 @@ export function usePlaylistData(username?: string) {
               // Merge: fetched data + pending optimistic items
               const mergedQueue = [...queueData, ...pendingOptimisticItems]
 
-              // Update queueManager
-              queueManager.updateQueue(mergedQueue)
+              // Sort the merged queue by priority (votes DESC, queued_at ASC)
+              // to ensure proper ordering, especially for newly added tracks
+              const sortedQueue = sortQueueByPriority(mergedQueue)
 
-              return mergedQueue
+              // Update queueManager
+              queueManager.updateQueue(sortedQueue)
+
+              return sortedQueue
             }
 
             // No optimistic items, just use fetched data

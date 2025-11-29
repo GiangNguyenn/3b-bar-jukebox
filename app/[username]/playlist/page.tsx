@@ -18,6 +18,7 @@ import { AutoFillNotification } from '@/components/ui/auto-fill-notification'
 import { usePublicBranding } from '@/hooks/usePublicBranding'
 import { sendApiRequest } from '@/shared/api'
 import { ApiError } from '@/shared/api'
+import { sortQueueByPriority } from '@/shared/utils/queueSort'
 
 type VoteFeedback = {
   message: string
@@ -175,9 +176,13 @@ export default function PlaylistPage(): JSX.Element {
         }
       }
 
-      // Optimistically add the track to the queue
+      // Optimistically add the track to the queue and sort by priority
       if (optimisticUpdate) {
-        optimisticUpdate((currentQueue) => [optimisticItem, ...currentQueue])
+        optimisticUpdate((currentQueue) => {
+          const queueWithNewTrack = [optimisticItem, ...currentQueue]
+          // Sort by votes DESC, queued_at ASC to match API ordering
+          return sortQueueByPriority(queueWithNewTrack)
+        })
       }
 
       try {
@@ -219,6 +224,8 @@ export default function PlaylistPage(): JSX.Element {
   const handleVote = useCallback(
     async (queueId: string, voteDirection: 'up' | 'down'): Promise<void> => {
       const VOTE_STORAGE_KEY = `vote_${queueId}`
+
+      // Check if user has already voted on this track
       if (localStorage.getItem(VOTE_STORAGE_KEY)) {
         setVoteFeedback({
           message: 'You have already voted for this track.',
@@ -227,14 +234,22 @@ export default function PlaylistPage(): JSX.Element {
         return
       }
 
-      // Set localStorage flag immediately to prevent rapid clicks
-      // This must happen synchronously before any async operations
-      localStorage.setItem(VOTE_STORAGE_KEY, 'true')
+      // Set pending vote flag and check if already pending (prevents concurrent requests)
+      let isAlreadyPending = false
+      setPendingVoteIds((prev) => {
+        if (prev[queueId]) {
+          isAlreadyPending = true
+          return prev
+        }
+        return {
+          ...prev,
+          [queueId]: true
+        }
+      })
 
-      setPendingVoteIds((prev) => ({
-        ...prev,
-        [queueId]: true
-      }))
+      if (isAlreadyPending) {
+        return
+      }
 
       // Optimistic update - update vote count immediately
       if (optimisticUpdate) {
@@ -248,14 +263,7 @@ export default function PlaylistPage(): JSX.Element {
               : item
           )
 
-          return updatedQueue.sort((a, b) => {
-            if (b.votes !== a.votes) return b.votes - a.votes
-
-            const aTime = new Date(a.queued_at).getTime()
-            const bTime = new Date(b.queued_at).getTime()
-
-            return aTime - bTime
-          })
+          return sortQueueByPriority(updatedQueue)
         })
       }
 
@@ -267,15 +275,14 @@ export default function PlaylistPage(): JSX.Element {
           body: { queueId, voteDirection }
         })
 
+        // Set localStorage flag only after successful vote to prevent double-voting
+        localStorage.setItem(VOTE_STORAGE_KEY, 'true')
         setVoteFeedback({ message: 'Vote recorded!', variant: 'success' })
 
         // Real-time subscription will handle the update, but we can trigger a refresh
         // to ensure we have the latest data
         void refreshQueue()
       } catch (error: unknown) {
-        // Remove localStorage flag on error so user can retry
-        localStorage.removeItem(VOTE_STORAGE_KEY)
-
         // Revert optimistic update on error
         if (optimisticUpdate) {
           optimisticUpdate((currentQueue) => {
