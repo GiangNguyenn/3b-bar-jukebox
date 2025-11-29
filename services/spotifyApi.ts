@@ -7,7 +7,6 @@ import {
 import { sendApiRequest } from '@/shared/api'
 import { handleOperationError } from '@/shared/utils/errorHandling'
 import { showToast } from '@/lib/toast'
-import { queueManager } from '@/services/queueManager'
 import { spotifyPlayerStore } from '@/hooks/useSpotifyPlayer'
 import { transferPlaybackToDevice } from '@/services/deviceManagement/deviceTransfer'
 
@@ -166,10 +165,13 @@ export class SpotifyApiService implements SpotifyApiClient {
   }> {
     return handleOperationError(async () => {
       try {
-        // Always use the app's device ID - never fallback to other devices
+        // Always use the app's device ID - never fallback to other devices.
+        // ResumePlayback is now responsible only for resuming the current
+        // Spotify context on the app's device, not for selecting the next
+        // track from the jukebox queue. Track-to-track transitions are
+        // handled by playerLifecycleService via SDK events.
         let deviceId = targetDeviceId
         if (!deviceId) {
-          // Get the app's device ID from the store
           const appDeviceId = spotifyPlayerStore.getState().deviceId
           deviceId = appDeviceId ?? undefined
           if (!deviceId) {
@@ -179,7 +181,7 @@ export class SpotifyApiService implements SpotifyApiClient {
           }
         }
 
-        // Always transfer playback to the app's device before playing
+        // Ensure playback is routed to the app device before resuming.
         const transferred = await transferPlaybackToDevice(deviceId)
         if (!transferred) {
           throw new Error(
@@ -187,84 +189,29 @@ export class SpotifyApiService implements SpotifyApiClient {
           )
         }
 
-        // Get the next track from our database queue
-        const nextTrack = queueManager.getNextTrack()
+        // Resume the current Spotify context on the app device. We do not
+        // pass URIs here so that Spotify continues from the existing
+        // context (current track/queue). Position is optional.
+        const body =
+          typeof position_ms === 'number' ? { position_ms } : undefined
 
-        if (nextTrack) {
-          const trackUri = `spotify:track:${nextTrack.tracks.spotify_track_id}`
+        await this.apiClient({
+          path: `me/player/play?device_id=${deviceId}`,
+          method: 'PUT',
+          body,
+          retryConfig: this.retryConfig
+        })
 
-          try {
-            // Play the next track from our database queue
-            await this.apiClient({
-              path: `me/player/play?device_id=${deviceId}`,
-              method: 'PUT',
-              body: {
-                uris: [trackUri],
-                position_ms: position_ms
-              },
-              retryConfig: this.retryConfig
-            })
-
-            showToast('Playback resumed', 'success')
-            return {
-              success: true,
-              resumedFrom: {
-                trackUri: trackUri,
-                position: position_ms || 0
-              }
-            }
-          } catch (error) {
-            // Handle "Restriction violated" errors by removing the problematic track and trying the next one
-            if (
-              error instanceof Error &&
-              error.message.includes('Restriction violated')
-            ) {
-              if (addLog) {
-                addLog(
-                  'WARN',
-                  `Restriction violated for track: ${nextTrack.tracks.name} (ID: ${nextTrack.id})`,
-                  'SpotifyApi'
-                )
-              }
-
-              // Remove the problematic track from the queue
-              await queueManager.markAsPlayed(nextTrack.id)
-
-              // Try to get the next track and play it
-              const nextNextTrack = queueManager.getNextTrack()
-              if (nextNextTrack) {
-                // Recursively call resumePlayback to try the next track
-                return this.resumePlayback(position_ms, targetDeviceId)
-              } else {
-                if (addLog) {
-                  addLog(
-                    'WARN',
-                    'No more tracks available after removing problematic track',
-                    'SpotifyApi'
-                  )
+        showToast('Playback resumed', 'success')
+        return {
+          success: true,
+          resumedFrom:
+            typeof position_ms === 'number'
+              ? {
+                  trackUri: '',
+                  position: position_ms
                 }
-                showToast('No tracks available', 'info')
-                return { success: true }
-              }
-            } else {
-              // Re-throw other errors
-              throw error
-            }
-          }
-        } else {
-          if (addLog) {
-            addLog(
-              'WARN',
-              'No tracks available in database queue for resume',
-              'SpotifyApi'
-            )
-          }
-
-          // If no tracks in queue, just ensure device is active
-          showToast('No tracks in queue', 'info')
-          return {
-            success: true
-          }
+              : undefined
         }
       } catch (error) {
         if (addLog) {

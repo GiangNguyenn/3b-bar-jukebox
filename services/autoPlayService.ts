@@ -245,6 +245,32 @@ class AutoPlayService {
           'INFO',
           '[checkPlaybackState] No current playback state available'
         )
+
+        // Proactive safety net: if the service is initialized, auto-play is
+        // enabled, and there are tracks waiting in the jukebox queue, try to
+        // start the next track. This specifically targets cases where a track
+        // has been queued (e.g. from the public playlist page) but no Spotify
+        // playback context is currently active.
+        if (this.isInitialized && this.username && !this.isAutoPlayDisabled) {
+          const nextTrack = this.queueManager.getNextTrack()
+          if (nextTrack) {
+            logger(
+              'INFO',
+              '[checkPlaybackState] No playback state but queue has tracks – starting next track as fallback'
+            )
+            try {
+              await this.playNextTrack(nextTrack, false)
+            } catch (error) {
+              logger(
+                'ERROR',
+                '[checkPlaybackState] Failed to start next track from fallback',
+                undefined,
+                error as Error
+              )
+            }
+          }
+        }
+
         return
       }
 
@@ -329,36 +355,14 @@ class AutoPlayService {
   }
 
   private shouldPrepareNextTrack(currentState: SpotifyPlaybackState): boolean {
-    // Edge case: Don't prepare if playback is paused
-    if (!currentState.item || !currentState.is_playing) {
-      return false
-    }
-
-    // Don't prepare if already prepared or preparing
-    if (this.nextTrackPrepared || this.isPreparingNextTrack) {
-      return false
-    }
-
-    // Edge case: Don't prepare if auto-play is disabled
-    if (this.isAutoPlayDisabled) {
-      return false
-    }
-
-    // Edge case: Check if there's a next track available
-    const nextTrack = this.queueManager.getNextTrack()
-    if (!nextTrack) {
-      return false
-    }
-
-    const progress = currentState.progress_ms || 0
-    const duration = currentState.item.duration_ms || 0
-    const timeRemaining = duration - progress
-
-    // Check if we're within the prepare threshold
-    return (
-      timeRemaining > 0 &&
-      timeRemaining <= PLAYER_LIFECYCLE_CONFIG.TRACK_PREPARE_THRESHOLD_MS
-    )
+    // DISABLED: Predictive track start is disabled to prevent race conditions
+    // with PlayerLifecycleService which handles track transitions via SDK events.
+    // Both services were calling playNextTrack() independently, causing device
+    // transfer conflicts that resulted in audio not playing through the SDK device.
+    // PlayerLifecycleService is now the sole handler for track transitions.
+    // Use currentState to avoid unused-parameter warnings while keeping signature.
+    void currentState
+    return false
   }
 
   private async prepareNextTrack(
@@ -497,35 +501,11 @@ class AutoPlayService {
   }
 
   private shouldStartNextTrack(currentState: SpotifyPlaybackState): boolean {
-    // Edge case: Don't start if playback is paused
-    if (!currentState.item || !currentState.is_playing) {
-      return false
-    }
-
-    // Don't start if already started
-    if (this.nextTrackStarted) {
-      return false
-    }
-
-    // Only start if we've prepared a track
-    if (!this.nextTrackPrepared || !this.preparedTrackId) {
-      return false
-    }
-
-    // Edge case: Don't start if auto-play is disabled
-    if (this.isAutoPlayDisabled) {
-      return false
-    }
-
-    const progress = currentState.progress_ms || 0
-    const duration = currentState.item.duration_ms || 0
-    const timeRemaining = duration - progress
-
-    // Check if we're within the start threshold
-    return (
-      timeRemaining > 0 &&
-      timeRemaining <= PLAYER_LIFECYCLE_CONFIG.TRACK_START_THRESHOLD_MS
-    )
+    // DISABLED: Predictive track start is disabled to prevent race conditions
+    // with PlayerLifecycleService. That service is responsible for starting
+    // the next track based on SDK player_state_changed events.
+    void currentState
+    return false
   }
 
   private async startNextTrackPredictively(): Promise<void> {
@@ -739,128 +719,14 @@ class AutoPlayService {
       // Check if queue is getting low and trigger auto-fill if needed
       await this.checkAndAutoFillQueue()
 
-      // After updating the queue, perform a safety check:
-      // if playback has stopped but there is a next track available,
-      // proactively start it. This complements PlayerLifecycle's
-      // SDK-driven handling and ensures we don't stall after transitions.
-      // getNextTrack() automatically excludes the currently playing track
-      const safeNextTrack = this.queueManager.getNextTrack()
-      const latestPlaybackState = await this.getCurrentPlaybackState()
+      // At this point AutoPlayService has updated queue state and ensured
+      // auto-fill runs when needed. Playback transitions themselves are
+      // handled by PlayerLifecycleService via SDK events, so we no longer
+      // attempt to start the next track from here. This avoids race
+      // conditions where both services try to control playback.
 
-      // Additional safety check: ensure next track is not the same as the finished track
-      // (shouldn't happen with excludeTrackId, but keep as safety check)
-      if (safeNextTrack && safeNextTrack.tracks.spotify_track_id === trackId) {
-        logger(
-          'WARN',
-          `[handleTrackFinished] Next track is the same as finished track (${trackId}), removing duplicate before playing`
-        )
-        try {
-          await this.queueManager.markAsPlayed(safeNextTrack.id)
-          await new Promise((resolve) => setTimeout(resolve, 200))
-          if (this.username) {
-            await this.refreshQueueFromAPI()
-          }
-        } catch (error) {
-          logger(
-            'ERROR',
-            '[handleTrackFinished] Failed to remove duplicate track before safety check',
-            undefined,
-            error as Error
-          )
-        }
-        // Get the next track again after removing duplicate
-        // getNextTrack() automatically excludes the currently playing track
-        const nextTrackAfterRemoval = this.queueManager.getNextTrack()
-        if (
-          nextTrackAfterRemoval &&
-          nextTrackAfterRemoval.tracks.spotify_track_id !== trackId &&
-          (!latestPlaybackState || latestPlaybackState.is_playing === false)
-        ) {
-          logger(
-            'INFO',
-            `[handleTrackFinished] Playing next track after duplicate removal: ${nextTrackAfterRemoval.tracks.name}`
-          )
-          try {
-            await this.playNextTrack(nextTrackAfterRemoval, false)
-          } catch (fallbackError) {
-            logger(
-              'ERROR',
-              `[handleTrackFinished] Fallback playNextTrack failed after duplicate removal`,
-              undefined,
-              fallbackError as Error
-            )
-          }
-        }
-        return
-      }
-
-      if (
-        safeNextTrack &&
-        (!latestPlaybackState || latestPlaybackState.is_playing === false)
-      ) {
-        logger(
-          'WARN',
-          '[handleTrackFinished] Playback is not active but queue has tracks – starting next track as fallback'
-        )
-        try {
-          await this.playNextTrack(safeNextTrack, false)
-        } catch (fallbackError) {
-          logger(
-            'ERROR',
-            `[handleTrackFinished] Fallback playNextTrack failed. Track: ${safeNextTrack.tracks.name}, Queue ID: ${safeNextTrack.id}`,
-            undefined,
-            fallbackError as Error
-          )
-          // Retry with next track if available
-          const nextNextTrack = this.queueManager.getNextTrack()
-          if (nextNextTrack) {
-            logger(
-              'INFO',
-              `[handleTrackFinished] Attempting alternative track after fallback failure: ${nextNextTrack.tracks.name} (${nextNextTrack.tracks.spotify_track_id}), Queue ID: ${nextNextTrack.id}`
-            )
-            try {
-              await this.playNextTrack(nextNextTrack, false)
-            } catch (retryError) {
-              logger(
-                'ERROR',
-                `[handleTrackFinished] Alternative track attempt also failed. Track: ${nextNextTrack.tracks.name}, Queue ID: ${nextNextTrack.id}`,
-                undefined,
-                retryError as Error
-              )
-              // Log but don't throw - allow outer catch to handle if needed
-            }
-          } else {
-            logger(
-              'WARN',
-              '[handleTrackFinished] No alternative track available after fallback failure'
-            )
-          }
-        }
-      }
-
-      // Check if next track was started predictively
-      if (this.nextTrackStarted && !this.predictiveFailed) {
-        logger(
-          'INFO',
-          '[handleTrackFinished] Next track already started predictively'
-        )
-        // We don't early-return here so that predictive state is always
-        // reset in the shared cleanup path at the end of this method.
-      }
-
-      // If predictive start failed or didn't trigger, PlayerLifecycle will handle
-      // reactive playback. AutoPlayService no longer needs to play tracks reactively.
-      if (this.predictiveFailed) {
-        logger(
-          'INFO',
-          '[handleTrackFinished] Predictive start failed, PlayerLifecycle will handle reactive playback'
-        )
-        // Again, avoid early returns so that predictive flags are cleared
-        // consistently in the final cleanup section below.
-      }
-
-      // Check if queue is empty
-      const nextTrack = this.queueManager.getNextTrack()
+      // Check if queue is empty after removals/auto-fill
+      const nextTrack = this.queueManager.getQueue()[0]
       if (!nextTrack) {
         this.onQueueEmpty?.()
       }
