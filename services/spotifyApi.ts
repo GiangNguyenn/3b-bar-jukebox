@@ -2,13 +2,45 @@ import {
   SpotifyPlaylistItem,
   SpotifyPlaybackState,
   SpotifyPlayerQueue,
-  TrackItem
+  TrackItem,
+  SpotifyArtist,
+  TrackDetails
 } from '@/shared/types/spotify'
 import { sendApiRequest } from '@/shared/api'
 import { handleOperationError } from '@/shared/utils/errorHandling'
 import { showToast } from '@/lib/toast'
-import { spotifyPlayerStore } from '@/hooks/useSpotifyPlayer'
 import { transferPlaybackToDevice } from '@/services/deviceManagement/deviceTransfer'
+
+// Define minimal interface for player store to avoid importing client-side code
+interface PlayerStore {
+  getState: () => {
+    deviceId: string | null
+  }
+}
+
+// Lazy load the player store only when needed (client-side only)
+// Returns null in server-side contexts (API routes)
+let playerStoreCache: PlayerStore | null = null
+function getPlayerStore(): PlayerStore | null {
+  // Check if we're in a server environment
+  if (typeof window === 'undefined') {
+    return null
+  }
+  
+  if (!playerStoreCache) {
+    try {
+      // This will only execute in client-side code
+      // Using dynamic require with webpack ignore comment to prevent Next.js from analyzing the import at build time
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const playerStoreModule = require('@/hooks/useSpotifyPlayer')
+      playerStoreCache = playerStoreModule.spotifyPlayerStore
+    } catch {
+      // If require fails (shouldn't happen in client, but safe fallback)
+      return null
+    }
+  }
+  return playerStoreCache
+}
 
 // Add logging context
 let addLog: (
@@ -172,7 +204,13 @@ export class SpotifyApiService implements SpotifyApiClient {
         // handled by playerLifecycleService via SDK events.
         let deviceId = targetDeviceId
         if (!deviceId) {
-          const appDeviceId = spotifyPlayerStore.getState().deviceId
+          const store = getPlayerStore()
+          if (!store) {
+            throw new Error(
+              'Player store is not available. This method can only be called from client-side code.'
+            )
+          }
+          const appDeviceId = store.getState().deviceId
           deviceId = appDeviceId ?? undefined
           if (!deviceId) {
             throw new Error(
@@ -232,7 +270,13 @@ export class SpotifyApiService implements SpotifyApiClient {
   private async ensureAppDevice(): Promise<string> {
     try {
       // Only use the app's device ID from the store - never fallback to other devices
-      const appDeviceId = spotifyPlayerStore.getState().deviceId
+      const store = getPlayerStore()
+      if (!store) {
+        throw new Error(
+          'Player store is not available. This method can only be called from client-side code.'
+        )
+      }
+      const appDeviceId = store.getState().deviceId
 
       if (!appDeviceId) {
         throw new Error(
@@ -318,9 +362,37 @@ export class SpotifyApiService implements SpotifyApiClient {
     )
   }
 
+  /**
+   * Fetches the top tracks for a given artist.
+   * Returns TrackDetails so the result can be passed directly into
+   * existing playlist/queue APIs that expect this shape.
+   */
+  async getArtistTopTracks(artistId: string): Promise<TrackDetails[]> {
+    return handleOperationError(
+      async () => {
+        const response = await this.apiClient<{ tracks: TrackDetails[] }>({
+          path: `artists/${artistId}/top-tracks?market=from_token`,
+          useAppToken: true,
+          retryConfig: this.retryConfig
+        })
+        return response.tracks
+      },
+      'SpotifyApi.getArtistTopTracks'
+    )
+  }
+
   async seekToPosition(position_ms: number, deviceId?: string): Promise<void> {
     // Always require the app's device ID - never fallback
-    const appDeviceId = deviceId || spotifyPlayerStore.getState().deviceId
+    let appDeviceId = deviceId
+    if (!appDeviceId) {
+      const store = getPlayerStore()
+      if (!store) {
+        throw new Error(
+          'Player store is not available. This method can only be called from client-side code.'
+        )
+      }
+      appDeviceId = store.getState().deviceId || undefined
+    }
 
     if (!appDeviceId) {
       throw new Error(

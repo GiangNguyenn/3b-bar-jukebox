@@ -207,16 +207,18 @@ export const sendApiRequest = async <T>({
         }
 
         // Log errors that won't be retried (or if retry failed)
+        const errorMessage =
+          errorData.error?.message || `API error: ${response.status}`
         if (apiLogger) {
           apiLogger(
             'ERROR',
-            `[API Error] ${method}: ${url} - Status: ${response.status}`,
+            `[API Error] ${method}: ${url} - Status: ${response.status} - ${errorMessage}`,
             'API',
             errorData
           )
         } else {
           console.error(
-            `[API Error] ${method}: ${url} - Status: ${response.status}`,
+            `[API Error] ${method}: ${url} - Status: ${response.status} - ${errorMessage}`,
             errorData
           )
         }
@@ -233,9 +235,6 @@ export const sendApiRequest = async <T>({
           await new Promise((resolve) => setTimeout(resolve, retryAfter * 1000))
           return makeRequest(retryCount + 1)
         }
-
-        const errorMessage =
-          errorData.error.message || `API error: ${response.status}`
 
         // Check if this is a premium-related error and redirect accordingly
         if (typeof window !== 'undefined') {
