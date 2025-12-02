@@ -37,7 +37,7 @@ export function GameBoard({
           </p>
           {currentTrack ? (
             <>
-              <h2 className='mt-2 text-2xl font-bold text-white'>
+              <h2 className='text-white mt-2 text-2xl font-bold'>
                 {currentTrack.name}
               </h2>
               <p className='mt-1 text-sm text-gray-300'>
@@ -107,5 +107,3 @@ export function GameBoard({
     </div>
   )
 }
-
-

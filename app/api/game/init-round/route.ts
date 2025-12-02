@@ -2,7 +2,12 @@ import { NextRequest, NextResponse } from 'next/server'
 import { cookies } from 'next/headers'
 import { createServerClient } from '@supabase/ssr'
 import type { Database } from '@/types/supabase'
-import { getRelatedArtistsForGame, getGameOptionTracks, chooseTargetArtists, getCurrentArtistId } from '@/services/gameService'
+import {
+  getRelatedArtistsForGame,
+  getGameOptionTracks,
+  chooseTargetArtists,
+  getCurrentArtistId
+} from '@/services/gameService'
 import type { SpotifyPlaybackState } from '@/shared/types/spotify'
 import { queryWithRetry } from '@/lib/supabase'
 import { refreshTokenWithRetry } from '@/recovery/tokenRecovery'
@@ -15,7 +20,9 @@ import { updateTokenInDatabase } from '@/recovery/tokenDatabaseUpdate'
  */
 export async function POST(request: NextRequest) {
   try {
-    const body = await request.json() as { playbackState: SpotifyPlaybackState }
+    const body = (await request.json()) as {
+      playbackState: SpotifyPlaybackState
+    }
     const { playbackState } = body
 
     if (!playbackState) {
@@ -85,7 +92,11 @@ export async function POST(request: NextRequest) {
     const now = Math.floor(Date.now() / 1000)
     let accessToken = adminProfile.spotify_access_token
 
-    if (tokenExpiresAt && tokenExpiresAt <= now && adminProfile.spotify_refresh_token) {
+    if (
+      tokenExpiresAt &&
+      tokenExpiresAt <= now &&
+      adminProfile.spotify_refresh_token
+    ) {
       const SPOTIFY_CLIENT_ID = process.env.SPOTIFY_CLIENT_ID
       const SPOTIFY_CLIENT_SECRET = process.env.SPOTIFY_CLIENT_SECRET
 
@@ -112,26 +123,28 @@ export async function POST(request: NextRequest) {
       accessToken = refreshResult.accessToken
 
       // Update token in database
-      await updateTokenInDatabase(
-        supabase,
-        adminProfile.id,
-        {
-          accessToken: refreshResult.accessToken,
-          refreshToken: refreshResult.refreshToken,
-          expiresIn: refreshResult.expiresIn,
-          currentRefreshToken: adminProfile.spotify_refresh_token
-        }
-      )
+      await updateTokenInDatabase(supabase, adminProfile.id, {
+        accessToken: refreshResult.accessToken,
+        refreshToken: refreshResult.refreshToken,
+        expiresIn: refreshResult.expiresIn,
+        currentRefreshToken: adminProfile.spotify_refresh_token
+      })
     }
 
     const artistId = getCurrentArtistId(playbackState)
     if (!artistId || artistId.trim() === '') {
-      console.error('[API] /api/game/init-round: No artist ID found in playback state', {
-        hasItem: !!playbackState.item,
-        itemId: playbackState.item?.id,
-        itemName: playbackState.item?.name,
-        artists: playbackState.item?.artists?.map(a => ({ id: a.id, name: a.name }))
-      })
+      console.error(
+        '[API] /api/game/init-round: No artist ID found in playback state',
+        {
+          hasItem: !!playbackState.item,
+          itemId: playbackState.item?.id,
+          itemName: playbackState.item?.name,
+          artists: playbackState.item?.artists?.map((a) => ({
+            id: a.id,
+            name: a.name
+          }))
+        }
+      )
       return NextResponse.json(
         { error: 'No primary artist found for the current track' },
         { status: 400 }
@@ -142,7 +155,9 @@ export async function POST(request: NextRequest) {
       artistId,
       artistIdLength: artistId.length,
       trackName: playbackState.item?.name,
-      trackArtists: playbackState.item?.artists?.map(a => ({ name: a.name, id: a.id })).join(', '),
+      trackArtists: playbackState.item?.artists
+        ?.map((a) => ({ name: a.name, id: a.id }))
+        .join(', '),
       allArtists: JSON.stringify(playbackState.item?.artists, null, 2)
     })
 
@@ -160,40 +175,57 @@ export async function POST(request: NextRequest) {
     }
 
     // Fetch related artists for game options using admin user token
-    console.log('[API] /api/game/init-round: Using admin token for related artists', {
-      hasToken: !!accessToken,
-      tokenLength: accessToken?.length,
-      tokenPrefix: accessToken?.substring(0, 20) + '...'
-    })
+    console.log(
+      '[API] /api/game/init-round: Using admin token for related artists',
+      {
+        hasToken: !!accessToken,
+        tokenLength: accessToken?.length,
+        tokenPrefix: accessToken?.substring(0, 20) + '...'
+      }
+    )
     let relatedArtists: Awaited<ReturnType<typeof getRelatedArtistsForGame>>
     try {
       relatedArtists = await getRelatedArtistsForGame(artistId, accessToken)
     } catch (error) {
-      console.error('[API] /api/game/init-round: Error fetching related artists:', {
-        artistId,
-        error: error instanceof Error ? error.message : String(error),
-        errorType: error?.constructor?.name,
-        fullError: error
-      })
+      console.error(
+        '[API] /api/game/init-round: Error fetching related artists:',
+        {
+          artistId,
+          error: error instanceof Error ? error.message : String(error),
+          errorType: error?.constructor?.name,
+          fullError: error
+        }
+      )
       // If we can't get related artists, return an error but with more context
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+      const errorMessage =
+        error instanceof Error ? error.message : 'Unknown error'
       return NextResponse.json(
-        { 
-          error: `Unable to fetch related artists for artist "${playbackState.item?.artists?.[0]?.name || artistId}": ${errorMessage}. The artist may not exist or may not have related artists in Spotify's database.` 
+        {
+          error: `Unable to fetch related artists for artist "${playbackState.item?.artists?.[0]?.name || artistId}": ${errorMessage}. The artist may not exist or may not have related artists in Spotify's database.`
         },
         { status: 404 }
       )
     }
 
     if (!relatedArtists.length) {
-      console.error('[API] /api/game/init-round: No related artists found for artistId:', artistId)
+      console.error(
+        '[API] /api/game/init-round: No related artists found for artistId:',
+        artistId
+      )
       return NextResponse.json(
-        { error: 'Unable to find related artists for this track. The artist may not have related artists in Spotify\'s database.' },
+        {
+          error:
+            "Unable to find related artists for this track. The artist may not have related artists in Spotify's database."
+        },
         { status: 404 }
       )
     }
 
-    console.log('[API] /api/game/init-round: Found', relatedArtists.length, 'related artists')
+    console.log(
+      '[API] /api/game/init-round: Found',
+      relatedArtists.length,
+      'related artists'
+    )
 
     // Choose target artists from curated list
     const targetArtists = chooseTargetArtists()
@@ -201,7 +233,11 @@ export async function POST(request: NextRequest) {
     // Get game option tracks using admin user token
     const optionTracks = await getGameOptionTracks(relatedArtists, accessToken)
 
-    console.log('[API] /api/game/init-round: Successfully initialized round with', optionTracks.length, 'option tracks')
+    console.log(
+      '[API] /api/game/init-round: Successfully initialized round with',
+      optionTracks.length,
+      'option tracks'
+    )
 
     return NextResponse.json({
       targetArtists,
@@ -220,11 +256,7 @@ export async function POST(request: NextRequest) {
         : typeof error === 'object' && error !== null && 'error' in error
           ? String(error.error)
           : 'Failed to initialize game round'
-    
-    return NextResponse.json(
-      { error: errorMessage },
-      { status: 500 }
-    )
+
+    return NextResponse.json({ error: errorMessage }, { status: 500 })
   }
 }
-

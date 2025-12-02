@@ -26,22 +26,20 @@ export function GameOptionNode({
           onSelect(option)
         }
       }}
-      className={`flex h-full w-full flex-col items-start justify-between rounded-xl border px-3 py-2 text-left transition
-        ${
-          disabled
-            ? 'border-gray-700 bg-gray-900/40 opacity-60 cursor-not-allowed'
-            : isQueued
-              ? 'border-green-400 bg-gray-900/80 shadow-[0_0_0_1px_rgba(74,222,128,0.6)]'
-              : 'border-gray-700 bg-gray-900/70 hover:border-green-400 hover:bg-gray-900'
-        }`}
+      className={`flex h-full w-full flex-col items-start justify-between rounded-xl border px-3 py-2 text-left transition ${
+        disabled
+          ? 'cursor-not-allowed border-gray-700 bg-gray-900/40 opacity-60'
+          : isQueued
+            ? 'border-green-400 bg-gray-900/80 shadow-[0_0_0_1px_rgba(74,222,128,0.6)]'
+            : 'border-gray-700 bg-gray-900/70 hover:border-green-400 hover:bg-gray-900'
+      }`}
     >
       <div>
-        <p className='line-clamp-2 text-sm font-semibold text-white'>
+        <p className='text-white line-clamp-2 text-sm font-semibold'>
           {track.name}
         </p>
         <p className='mt-1 text-xs text-gray-400'>
-          {artist.name}{' '}
-          <span className='text-gray-600'>•</span>{' '}
+          {artist.name} <span className='text-gray-600'>•</span>{' '}
           {track.album?.name ?? 'Unknown album'}
         </p>
       </div>
@@ -61,5 +59,3 @@ export function GameOptionNode({
     </button>
   )
 }
-
-

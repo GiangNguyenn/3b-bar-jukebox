@@ -3,7 +3,11 @@
 import type { JSX } from 'react'
 import { useState, Fragment } from 'react'
 import { Combobox, Transition } from '@headlessui/react'
-import { CheckIcon, ChevronUpDownIcon, XMarkIcon } from '@heroicons/react/20/solid'
+import {
+  CheckIcon,
+  ChevronUpDownIcon,
+  XMarkIcon
+} from '@heroicons/react/20/solid'
 import type { TargetArtist } from '@/services/gameService'
 import { POPULAR_TARGET_ARTISTS } from '@/services/gameService'
 
@@ -53,16 +57,16 @@ export function ArtistSelectionModal({
       />
 
       {/* Modal */}
-      <div className='relative z-50 w-full max-w-md transform transition-all pointer-events-auto'>
+      <div className='pointer-events-auto relative z-50 w-full max-w-md transform transition-all'>
         <div className='rounded-2xl border border-gray-700 bg-gray-900 shadow-2xl'>
           {/* Header */}
           <div className='flex items-center justify-between border-b border-gray-800 px-6 py-4'>
-            <h2 className='text-xl font-bold text-white'>
+            <h2 className='text-white text-xl font-bold'>
               Select Target Artist for {playerLabel}
             </h2>
             <button
               onClick={onClose}
-              className='rounded-lg p-1 text-gray-400 transition-colors hover:bg-gray-800 hover:text-white'
+              className='hover:text-white rounded-lg p-1 text-gray-400 transition-colors hover:bg-gray-800'
               aria-label='Close'
             >
               <XMarkIcon className='h-5 w-5' />
@@ -75,7 +79,7 @@ export function ArtistSelectionModal({
               <div className='relative'>
                 <div className='relative w-full cursor-default overflow-hidden rounded-lg border border-gray-700 bg-gray-800 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-green-500 focus-visible:ring-offset-2 focus-visible:ring-offset-gray-900 sm:text-sm'>
                   <Combobox.Input
-                    className='w-full border-none bg-transparent py-2 pl-3 pr-10 text-sm leading-5 text-white placeholder-gray-400 focus:ring-0'
+                    className='text-white w-full border-none bg-transparent py-2 pl-3 pr-10 text-sm leading-5 placeholder-gray-400 focus:ring-0'
                     onChange={(event) => setQuery(event.target.value)}
                     displayValue={() => query}
                     placeholder='Search artists...'
@@ -128,7 +132,10 @@ export function ArtistSelectionModal({
                                     active ? 'text-green-300' : 'text-green-400'
                                   }`}
                                 >
-                                  <CheckIcon className='h-5 w-5' aria-hidden='true' />
+                                  <CheckIcon
+                                    className='h-5 w-5'
+                                    aria-hidden='true'
+                                  />
                                 </span>
                               ) : null}
                             </>
@@ -164,4 +171,3 @@ export function ArtistSelectionModal({
     </div>
   )
 }
-

@@ -44,7 +44,7 @@ export default function GamePage(): JSX.Element {
   }
 
   return (
-    <div className='min-h-screen bg-gradient-to-b from-black via-gray-950 to-black text-white'>
+    <div className='text-white min-h-screen bg-gradient-to-b from-black via-gray-950 to-black'>
       <div className='mx-auto flex max-w-6xl flex-col gap-4 px-4 py-4'>
         <header className='flex flex-col gap-3 md:flex-row md:items-center md:justify-between'>
           <div>
@@ -114,5 +114,3 @@ export default function GamePage(): JSX.Element {
     </div>
   )
 }
-
-

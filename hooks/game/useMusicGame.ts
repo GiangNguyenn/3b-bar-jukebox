@@ -303,17 +303,17 @@ export function useMusicGame({
       if (!target || !target.name) {
         return false
       }
-      
+
       const normalizedTargetName = normalizeArtistName(target.name)
       const hasMatch = trackArtistNames.has(normalizedTargetName)
-      
+
       if (hasMatch) {
         scoringPlayers.push({
           playerId: player.id,
           artistName: target.name
         })
       }
-      
+
       return hasMatch
     })
 
@@ -354,7 +354,7 @@ export function useMusicGame({
       // Show animation for the first scoring player (or both if they both scored)
       setScoringPlayer(scoringPlayers[0])
       scoreAnimationCompleteRef.current = false
-      
+
       // Don't continue game until animation completes
       return
     }
@@ -362,7 +362,8 @@ export function useMusicGame({
     // No score - continue immediately
     // Only switch players if this was a player-selected track
     if (wasPlayerSelected) {
-      const nextPlayerId: PlayerId = activePlayerId === 'player1' ? 'player2' : 'player1'
+      const nextPlayerId: PlayerId =
+        activePlayerId === 'player1' ? 'player2' : 'player1'
       setActivePlayerId(nextPlayerId)
     }
 
@@ -428,13 +429,14 @@ export function useMusicGame({
   const onScoreAnimationComplete = useCallback(() => {
     setScoringPlayer(null)
     scoreAnimationCompleteRef.current = true
-    
+
     // Now continue with game logic
     if (nowPlaying) {
-      const nextPlayerId: PlayerId = activePlayerId === 'player1' ? 'player2' : 'player1'
+      const nextPlayerId: PlayerId =
+        activePlayerId === 'player1' ? 'player2' : 'player1'
       setActivePlayerId(nextPlayerId)
       void refreshOptions(nowPlaying)
-      
+
       // Refresh target artists after scoring
       refreshTargetArtists()
     }
@@ -484,5 +486,3 @@ export function useMusicGame({
     resetGame
   }
 }
-
-

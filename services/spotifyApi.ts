@@ -26,7 +26,7 @@ function getPlayerStore(): PlayerStore | null {
   if (typeof window === 'undefined') {
     return null
   }
-  
+
   if (!playerStoreCache) {
     try {
       // This will only execute in client-side code
@@ -368,17 +368,14 @@ export class SpotifyApiService implements SpotifyApiClient {
    * existing playlist/queue APIs that expect this shape.
    */
   async getArtistTopTracks(artistId: string): Promise<TrackDetails[]> {
-    return handleOperationError(
-      async () => {
-        const response = await this.apiClient<{ tracks: TrackDetails[] }>({
-          path: `artists/${artistId}/top-tracks?market=from_token`,
-          useAppToken: true,
-          retryConfig: this.retryConfig
-        })
-        return response.tracks
-      },
-      'SpotifyApi.getArtistTopTracks'
-    )
+    return handleOperationError(async () => {
+      const response = await this.apiClient<{ tracks: TrackDetails[] }>({
+        path: `artists/${artistId}/top-tracks?market=from_token`,
+        useAppToken: true,
+        retryConfig: this.retryConfig
+      })
+      return response.tracks
+    }, 'SpotifyApi.getArtistTopTracks')
   }
 
   async seekToPosition(position_ms: number, deviceId?: string): Promise<void> {

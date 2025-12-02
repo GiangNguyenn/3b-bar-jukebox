@@ -69,7 +69,7 @@ export const POPULAR_TARGET_ARTISTS: TargetArtist[] = [
   { name: 'Summer Walker' },
   { name: 'Giveon' },
   { name: 'Lauryn Hill' },
-  { name: 'D\'Angelo' },
+  { name: "D'Angelo" },
 
   // Rock & Classic Rock
   { name: 'The Beatles' },
@@ -78,7 +78,7 @@ export const POPULAR_TARGET_ARTISTS: TargetArtist[] = [
   { name: 'AC/DC' },
   { name: 'Led Zeppelin' },
   { name: 'Pink Floyd' },
-  { name: 'Guns N\' Roses' },
+  { name: "Guns N' Roses" },
   { name: 'David Bowie' },
   { name: 'Coldplay' },
   { name: 'Foo Fighters' },
@@ -203,7 +203,7 @@ export const POPULAR_TARGET_ARTISTS: TargetArtist[] = [
   { name: 'Zac Brown Band' },
   { name: 'Miranda Lambert' },
   { name: 'Maren Morris' },
-  { name: 'Kane Brown' },
+  { name: 'Kane Brown' }
 ]
 
 /**
@@ -302,5 +302,3 @@ export async function getGameOptionTracks(
 
   return options
 }
-
-

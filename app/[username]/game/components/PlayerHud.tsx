@@ -51,9 +51,9 @@ export function PlayerHud({
           <span className='text-sm font-semibold uppercase tracking-wide text-gray-400'>
             {label}
           </span>
-          <span className='text-xs font-mono text-gray-500'>
+          <span className='font-mono text-xs text-gray-500'>
             Score:{' '}
-            <span className='text-lg font-bold text-white' aria-label='Score'>
+            <span className='text-white text-lg font-bold' aria-label='Score'>
               {score}
             </span>
           </span>
@@ -65,7 +65,7 @@ export function PlayerHud({
             disabled={!onTargetArtistChange}
             className={`truncate text-left text-base font-semibold transition-colors ${
               onTargetArtistChange
-                ? 'cursor-pointer hover:text-green-400 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 focus:ring-offset-gray-900 rounded px-1 -mx-1'
+                ? '-mx-1 cursor-pointer rounded px-1 hover:text-green-400 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 focus:ring-offset-gray-900'
                 : 'cursor-default'
             } ${textColor}`}
             aria-label={`Change target artist for ${label}`}
@@ -95,5 +95,3 @@ export function PlayerHud({
     </>
   )
 }
-
-
