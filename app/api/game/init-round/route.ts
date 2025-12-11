@@ -177,7 +177,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         `Init-round timed out at handler guard after ${elapsed}ms`,
         'POST'
       )
-      const fallback = buildTinyFallback(playbackState)
+      const fallback = await buildTinyFallback(playbackState)
       const fallbackResponse = NextResponse.json(fallback)
       fallbackResponse.headers.set('Cache-Control', 'private, max-age=5')
       initRoundCache.set(cacheKey, {
