@@ -176,7 +176,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         `Init-round timed out at handler guard after ${elapsed}ms`,
         'POST'
       )
-      const fallback = await buildTinyFallback(playbackState)
+      const fallback = buildTinyFallback(playbackState)
       const fallbackResponse = NextResponse.json(fallback)
       fallbackResponse.headers.set('Cache-Control', 'private, max-age=5')
       initRoundCache.set(cacheKey, {
@@ -398,7 +398,7 @@ function buildCacheKey(
   ].join('|')
 }
 
-async function buildTinyFallback(playbackState: SpotifyPlaybackState): Promise<{
+function buildTinyFallback(playbackState: SpotifyPlaybackState): {
   targetArtists: unknown[]
   optionTracks: unknown[]
   playerTargets: PlayerTargetsMap
@@ -412,7 +412,7 @@ async function buildTinyFallback(playbackState: SpotifyPlaybackState): Promise<{
   roundNumber?: number
   turnNumber?: number
   currentPlayerId?: 'player1' | 'player2'
-}> {
+} {
   const seedTrackId = playbackState.item?.id ?? 'unknown'
   logger(
     'WARN',
