@@ -170,21 +170,20 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     const raced = await Promise.race([enginePromise, timeoutPromise])
 
     if ('timeout' in raced) {
+      const elapsed = Date.now() - handlerStart
       logger(
         'WARN',
-        `Init-round timed out at handler guard after ${
-          Date.now() - handlerStart
-        }ms`,
+        `Init-round timed out at handler guard after ${elapsed}ms`,
         'POST'
       )
-      const response = NextResponse.json(
-        {
-          error: 'Engine is still preparing options. Please retry shortly.'
-        },
-        { status: 503 }
-      )
-      response.headers.set('Retry-After', '3')
-      return response
+      const fallback = await buildTinyFallback(playbackState)
+      const fallbackResponse = NextResponse.json(fallback)
+      fallbackResponse.headers.set('Cache-Control', 'private, max-age=5')
+      initRoundCache.set(cacheKey, {
+        expiresAt: Date.now() + 5_000,
+        response: fallback
+      })
+      return fallbackResponse
     }
 
     const engineResponse = raced.res
@@ -397,6 +396,47 @@ function buildCacheKey(
     t1?.id ?? t1?.name ?? 'p1-none',
     t2?.id ?? t2?.name ?? 'p2-none'
   ].join('|')
+}
+
+async function buildTinyFallback(
+  playbackState: SpotifyPlaybackState
+): Promise<{
+  targetArtists: unknown[]
+  optionTracks: unknown[]
+  playerTargets: PlayerTargetsMap
+  gravities: PlayerGravityMap
+  explorationPhase: string
+  ogDrift: number
+  candidatePoolSize: number
+  hardConvergenceActive: boolean
+  vicinity: { triggered: boolean; playerId?: 'player1' | 'player2' }
+  debugInfo?: unknown
+  roundNumber?: number
+  turnNumber?: number
+  currentPlayerId?: 'player1' | 'player2'
+}> {
+  const seedTrackId = playbackState.item?.id ?? 'unknown'
+  logger(
+    'WARN',
+    `Returning tiny fallback for seed track ${seedTrackId}`,
+    'fallback'
+  )
+
+  return {
+    targetArtists: [],
+    optionTracks: [],
+    playerTargets: { player1: null, player2: null },
+    gravities: {
+      player1: DEFAULT_PLAYER_GRAVITY,
+      player2: DEFAULT_PLAYER_GRAVITY
+    },
+    explorationPhase: 'low',
+    ogDrift: 0,
+    candidatePoolSize: 0,
+    hardConvergenceActive: false,
+    vicinity: { triggered: false },
+    debugInfo: { fallback: true, reason: 'handler_timeout' }
+  }
 }
 
 function ensureTargets(incoming?: Partial<PlayerTargetsMap>): PlayerTargetsMap {
