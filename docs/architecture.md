@@ -10,7 +10,7 @@ This document outlines the architecture of the JM Bar Jukebox, a web application
 - **Language:** [TypeScript](https://www.typescriptlang.org/)
 - **Authentication:** [NextAuth.js](https://next-auth.js.org/) with Spotify as the OAuth provider.
 - **Backend & Database:** [Supabase](https://supabase.com/) (PostgreSQL)
-- **Error Monitoring:** [@sentry/nextjs](https://sentry.io/)
+- **Error Monitoring:** None (Sentry removed)
 - **Schema Validation:** [Zod](https://zod.dev/)
 - **External Services:**
   - [Spotify Web API](https://developer.spotify.com/documentation/web-api/)

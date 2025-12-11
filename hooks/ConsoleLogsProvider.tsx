@@ -10,7 +10,6 @@ import {
   useRef,
   useMemo
 } from 'react'
-import * as Sentry from '@sentry/nextjs'
 import { initializeLoggers, setLogger } from '@/shared/utils/logger'
 
 export type LogLevel = 'LOG' | 'INFO' | 'WARN' | 'ERROR'
@@ -36,7 +35,6 @@ interface ConsoleLogsContextType {
 interface ConsoleLogsProviderProps {
   maxLogs?: number
   enableConsoleOverride?: boolean
-  enableSentry?: boolean
   rateLimit?: number
   maxMessageLength?: number
 }
@@ -51,12 +49,10 @@ export function ConsoleLogsProvider({
   children,
   maxLogs = DEFAULT_MAX_LOGS,
   enableConsoleOverride = false,
-  enableSentry = true,
   rateLimit = DEFAULT_RATE_LIMIT,
   maxMessageLength = DEFAULT_MAX_MESSAGE_LENGTH
 }: ConsoleLogsProviderProps & { children: ReactNode }) {
   const [logs, setLogs] = useState<LogEntry[]>([])
-  const loggerRef = useRef(Sentry.logger)
   const isConsoleOverridden = useRef(false)
   const setLogsRef = useRef(setLogs)
   const lastLogTime = useRef(0)
@@ -74,23 +70,6 @@ export function ConsoleLogsProvider({
       return message
     },
     [maxMessageLength]
-  )
-
-  const logToSentry = useCallback(
-    (level: LogLevel, message: string, context?: string, error?: Error) => {
-      if (!enableSentry) return
-
-      try {
-        if (level === 'ERROR') {
-          loggerRef.current.error(message, { context, error })
-        } else if (level === 'WARN') {
-          loggerRef.current.warn(message, { context, error })
-        }
-      } catch (e) {
-        console.error('Failed to log to Sentry:', e)
-      }
-    },
-    [enableSentry]
   )
 
   const addLog = useCallback(
@@ -134,10 +113,8 @@ export function ConsoleLogsProvider({
           console.error(...consoleArgs)
           break
       }
-
-      logToSentry(level, sanitizedMessage, context, error)
     },
-    [rateLimit, validateMessage, logToSentry, maxLogs]
+    [rateLimit, validateMessage, maxLogs]
   )
 
   useEffect(() => {

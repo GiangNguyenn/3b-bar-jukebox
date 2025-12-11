@@ -23,8 +23,6 @@
     "@heroicons/react": "^2.2.0",
     "@radix-ui/react-tabs": "^1.1.4",
     "@react-aria/utils": "3.27.0",
-    "@sentry/integrations": "^7.114.0",
-    "@sentry/nextjs": "^9.24.0",
     "@supabase/ssr": "^0.6.1",
     "@supabase/supabase-js": "^2.49.10",
     "@types/qrcode": "^1.5.5",
