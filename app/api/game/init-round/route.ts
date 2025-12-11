@@ -137,7 +137,10 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     }
 
     const engineStartTime = Date.now()
-    const engineResponse = await runDualGravityEngine(enginePayload, accessToken)
+    const engineResponse = await runDualGravityEngine(
+      enginePayload,
+      accessToken
+    )
 
     const engineDuration = Date.now() - engineStartTime
     logger(
@@ -286,14 +289,14 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       currentPlayerId
     })
 
-      // Add cache headers to reduce redundant DGS engine runs
-      response.headers.set(
-        'Cache-Control',
-        'public, s-maxage=30, stale-while-revalidate=60'
-      )
+    // Add cache headers to reduce redundant DGS engine runs
+    response.headers.set(
+      'Cache-Control',
+      'public, s-maxage=30, stale-while-revalidate=60'
+    )
 
-      return response
-    } catch (error) {
+    return response
+  } catch (error) {
     const errorDetails =
       error instanceof Error
         ? {
