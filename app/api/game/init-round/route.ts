@@ -137,50 +137,14 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     }
 
     const engineStartTime = Date.now()
-    let engineResponse
-    try {
-      engineResponse = await runDualGravityEngine(enginePayload, accessToken)
-      const engineDuration = Date.now() - engineStartTime
-      logger(
-        'INFO',
-        `DGS engine completed in ${engineDuration}ms | Options: ${engineResponse.optionTracks.length} | Pool: ${engineResponse.candidatePoolSize}`,
-        'POST'
-      )
-    } catch (engineError) {
-      const errorDetails =
-        engineError instanceof Error
-          ? {
-              message: engineError.message,
-              stack: engineError.stack,
-              name: engineError.name
-            }
-          : { message: String(engineError) }
+    const engineResponse = await runDualGravityEngine(enginePayload, accessToken)
 
-      logger(
-        'ERROR',
-        `DGS engine execution failed: ${errorDetails.message}`,
-        'engine',
-        engineError instanceof Error ? engineError : undefined
-      )
-
-      if (engineError instanceof Error && engineError.stack) {
-        logger('ERROR', `Error stack: ${engineError.stack}`, 'engine')
-      }
-
-      const engineErrorMessage =
-        engineError instanceof Error
-          ? engineError.message
-          : 'Failed to generate game options'
-
-      return NextResponse.json(
-        {
-          error: engineErrorMessage,
-          details:
-            process.env.NODE_ENV === 'development' ? errorDetails : undefined
-        },
-        { status: 500 }
-      )
-    }
+    const engineDuration = Date.now() - engineStartTime
+    logger(
+      'INFO',
+      `DGS engine completed in ${engineDuration}ms | Options: ${engineResponse.optionTracks.length} | Pool: ${engineResponse.candidatePoolSize}`,
+      'POST'
+    )
 
     if (
       !engineResponse.optionTracks ||
@@ -322,14 +286,14 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       currentPlayerId
     })
 
-    // Add cache headers to reduce redundant DGS engine runs
-    response.headers.set(
-      'Cache-Control',
-      'public, s-maxage=30, stale-while-revalidate=60'
-    )
+      // Add cache headers to reduce redundant DGS engine runs
+      response.headers.set(
+        'Cache-Control',
+        'public, s-maxage=30, stale-while-revalidate=60'
+      )
 
-    return response
-  } catch (error) {
+      return response
+    } catch (error) {
     const errorDetails =
       error instanceof Error
         ? {

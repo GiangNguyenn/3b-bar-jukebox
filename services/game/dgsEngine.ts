@@ -1403,9 +1403,9 @@ async function buildCandidatePool({
     addedArtists: number
   }
 }> {
-  // Track start time to avoid timeout (client has 90s timeout)
+  // Track start time to avoid timeout (Vercel has ~25s timeout)
   const startTime = Date.now()
-  const MAX_BUILD_TIME_MS = 50000 // 50 seconds - leave buffer for scoring/processing
+  const MAX_BUILD_TIME_MS = 20000 // 20 seconds - leave buffer for scoring/processing
 
   // Get related artists using unified music service (Mem -> Graph -> Spotify)
   // MusicService handles all the hybrid logic internally and tracks metrics
