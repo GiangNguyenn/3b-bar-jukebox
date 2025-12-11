@@ -20,13 +20,15 @@ const nextConfig = {
     serverComponentsExternalPackages: []
   },
   // Vercel-specific configuration
-  ...(process.env.VERCEL ? {
-    functions: {
-      'app/api/game/init-round/route.ts': {
-        maxDuration: 30 // 30 seconds for Pro plan
+  ...(process.env.VERCEL
+    ? {
+        functions: {
+          'app/api/game/init-round/route.ts': {
+            maxDuration: 30 // 30 seconds for Pro plan
+          }
+        }
       }
-    }
-  } : {})
+    : {})
   // async rewrites() {
   //   return [
   //     {

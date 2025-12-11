@@ -71,6 +71,13 @@ import { getExplorationPhase } from './gameRules'
 
 const logger = createModuleLogger('DgsEngine')
 
+// Hard deadline (ms) to ensure engine completes well under serverless timeout
+const HARD_DEADLINE_MS = 22000
+
+function hasExceededDeadline(startTime: number): boolean {
+  return Date.now() - startTime > HARD_DEADLINE_MS
+}
+
 // Shuffle array in place using Fisher-Yates algorithm
 function shuffleArray<T>(array: T[]): T[] {
   const shuffled = [...array] // Create a copy to avoid mutating the original
@@ -1407,6 +1414,59 @@ async function buildCandidatePool({
   const startTime = Date.now()
   const MAX_BUILD_TIME_MS = 20000 // 20 seconds - leave buffer for scoring/processing
 
+  const quickDbFallback = async (
+    reason: string
+  ): Promise<{
+    pool: CandidateSeed[]
+    dbFallback: {
+      used: boolean
+      addedTracks: number
+      addedArtists: number
+      reason?: string
+    }
+  }> => {
+    logger(
+      'WARN',
+      `Deadline reached (${reason}). Using quick DB fallback with minimal candidates.`,
+      'buildCandidatePool'
+    )
+
+    const excludeIds = new Set<string>([currentTrackId, ...playedTrackIds])
+    const existingArtistNames = new Set<string>()
+    const dbResult = await fetchRandomTracksFromDb({
+      neededArtists: 6,
+      existingArtistNames,
+      excludeSpotifyTrackIds: excludeIds,
+      tracksPerArtist: 1
+    })
+
+    const fallbackMap = new Map<string, CandidateSeed>()
+    dbResult.tracks.forEach((track) => {
+      registerCandidate(
+        track,
+        'embedding',
+        fallbackMap,
+        playedTrackIds,
+        currentArtistId
+      )
+    })
+
+    const pool = Array.from(fallbackMap.values()).slice(0, MAX_CANDIDATE_POOL)
+    return {
+      pool,
+      dbFallback: {
+        used: true,
+        addedTracks: pool.length,
+        addedArtists: dbResult.uniqueArtistsAdded ?? pool.length,
+        reason: 'deadline'
+      }
+    }
+  }
+
+  if (hasExceededDeadline(startTime)) {
+    return quickDbFallback('pre-related-artists')
+  }
+
   // Get related artists using unified music service (Mem -> Graph -> Spotify)
   // MusicService handles all the hybrid logic internally and tracks metrics
   const { data: relatedArtists } = await musicService.getRelatedArtists(
@@ -1415,6 +1475,10 @@ async function buildCandidatePool({
     statisticsTracker
   )
   const candidateMap = new Map<string, CandidateSeed>()
+
+  if (hasExceededDeadline(startTime)) {
+    return quickDbFallback('post-related-artists')
+  }
 
   // Track source diversity during collection
   const sourceDiversityTracker = {
@@ -1534,6 +1598,9 @@ async function buildCandidatePool({
   ) {
     // Check elapsed time - bail out early if taking too long
     const elapsed = Date.now() - startTime
+    if (hasExceededDeadline(startTime)) {
+      return quickDbFallback('related-artist-loop')
+    }
     if (elapsed > MAX_BUILD_TIME_MS * 0.3) {
       // 30% of budget (18 seconds)
       logger(
@@ -1866,6 +1933,10 @@ async function buildCandidatePool({
       'WARN',
       `Skipping multi-level traversal to avoid timeout (${(currentElapsed / 1000).toFixed(1)}s elapsed). Jumping to database fallback.`
     )
+  }
+
+  if (hasExceededDeadline(startTime)) {
+    return quickDbFallback('pre-db-fallback')
   }
 
   // Strategy 4: Database fallback to guarantee a healthy pool size
