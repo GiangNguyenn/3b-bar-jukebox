@@ -162,7 +162,7 @@ export async function POST(
       // Use recovery module for token refresh with retry logic
       // We already checked that spotify_refresh_token is not null above
       const refreshResult = await refreshTokenWithRetry(
-        profile.spotify_refresh_token as string,
+        profile.spotify_refresh_token,
         SPOTIFY_CLIENT_ID,
         SPOTIFY_CLIENT_SECRET
       )
@@ -197,7 +197,7 @@ export async function POST(
           accessToken: refreshResult.accessToken,
           refreshToken: refreshResult.refreshToken,
           expiresIn: refreshResult.expiresIn,
-          currentRefreshToken: profile.spotify_refresh_token as string
+          currentRefreshToken: profile.spotify_refresh_token
         }
       )
 

@@ -46,7 +46,10 @@ export async function DELETE(request: Request): Promise<NextResponse> {
 
     // Get the request body
     // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-    const { trackId } = await request.json()
+    const body = await request.json()
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+    const trackId =
+      typeof body?.trackId === 'string' ? (body.trackId as string) : null
 
     if (!trackId) {
       logger('ERROR', 'No track ID provided')

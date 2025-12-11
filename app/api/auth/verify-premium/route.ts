@@ -78,7 +78,7 @@ export async function GET(
 
     // If premium status was verified recently (within 24 hours), return cached result
     if (profile?.premium_verified_at && !forceRefresh) {
-      const verifiedAt = new Date(profile.premium_verified_at as string)
+      const verifiedAt = new Date(profile.premium_verified_at)
       const now = new Date()
       const hoursSinceVerification =
         (now.getTime() - verifiedAt.getTime()) / (1000 * 60 * 60)

@@ -313,34 +313,38 @@ const useTopArtists = (
         // Aggregate data by artist
         rawData.forEach((item) => {
           // Handle the case where tracks is an array from the inner join
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
           const trackData = Array.isArray(item.tracks)
             ? item.tracks[0]
             : item.tracks
           if (!trackData) return
 
-          // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access
           const artist = trackData.artist
-          // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access
           const trackName = trackData.name
           const count = item.count
 
-          // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
-          if (!artistMap.has(artist)) {
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+          if (artist?.name) {
             // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
-            artistMap.set(artist, {
-              total_count: 0,
-              tracks: new Set(),
-              track_counts: new Map()
-            })
-          }
+            if (!artistMap.has(artist)) {
+              // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
+              artistMap.set(artist, {
+                total_count: 0,
+                tracks: new Set(),
+                track_counts: new Map()
+              })
+            }
 
-          // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
-          const artistData = artistMap.get(artist)!
-          artistData.total_count += count
-          // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
-          artistData.tracks.add(trackName)
-          // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
-          artistData.track_counts.set(trackName, count)
+            // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
+            const artistData = artistMap.get(artist)!
+            artistData.total_count += count
+            // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
+            artistData.tracks.add(trackName)
+            // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
+            artistData.track_counts.set(trackName, count)
+          }
         })
 
         // Convert to array and sort by total count
@@ -465,14 +469,15 @@ const useTopGenres = (
         // Aggregate data by genre
         rawData.forEach((item) => {
           // Handle the case where tracks is an array from the inner join
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
           const trackData = Array.isArray(item.tracks)
             ? item.tracks[0]
             : item.tracks
           if (!trackData) return
 
-          // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access
           const genre = trackData.genre
-          // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access
           const trackName = trackData.name
           const count = item.count
 
