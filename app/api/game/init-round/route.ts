@@ -11,6 +11,7 @@ import {
 import { runDualGravityEngine } from '@/services/game/dgsEngine'
 import { getAdminToken } from '@/services/game/adminAuth'
 import { createModuleLogger } from '@/shared/utils/logger'
+import { fetchRandomTracksFromDb } from '@/services/game/dgsDb'
 
 const logger = createModuleLogger('ApiGameInitRound')
 const HANDLER_TIMEOUT_MS = 9000
@@ -335,6 +336,10 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     }
 
     const response = NextResponse.json(responseBody)
+    response.headers.set(
+      'X-Init-Round-Elapsed',
+      String(Date.now() - handlerStart)
+    )
 
     // Add cache headers to reduce redundant DGS engine runs
     response.headers.set(
@@ -398,7 +403,9 @@ function buildCacheKey(
   ].join('|')
 }
 
-function buildTinyFallback(playbackState: SpotifyPlaybackState): {
+async function buildTinyFallback(
+  playbackState: SpotifyPlaybackState
+): Promise<{
   targetArtists: unknown[]
   optionTracks: unknown[]
   playerTargets: PlayerTargetsMap
@@ -412,7 +419,7 @@ function buildTinyFallback(playbackState: SpotifyPlaybackState): {
   roundNumber?: number
   turnNumber?: number
   currentPlayerId?: 'player1' | 'player2'
-} {
+}> {
   const seedTrackId = playbackState.item?.id ?? 'unknown'
   logger(
     'WARN',
@@ -420,9 +427,27 @@ function buildTinyFallback(playbackState: SpotifyPlaybackState): {
     'fallback'
   )
 
+  // Try a very small DB fetch for a few random tracks; timeout quickly
+  const excludeIds = new Set<string>([seedTrackId].filter(Boolean))
+  const fetchPromise = fetchRandomTracksFromDb({
+    neededArtists: 4,
+    existingArtistNames: new Set<string>(),
+    excludeSpotifyTrackIds: excludeIds,
+    tracksPerArtist: 1
+  })
+  const timedResult = await Promise.race([
+    fetchPromise,
+    new Promise<null>((resolve) => setTimeout(() => resolve(null), 300))
+  ])
+  const optionTracks =
+    timedResult?.tracks?.slice(0, 6).map((track) => ({
+      track,
+      source: 'fallback'
+    })) ?? []
+
   return {
     targetArtists: [],
-    optionTracks: [],
+    optionTracks,
     playerTargets: { player1: null, player2: null },
     gravities: {
       player1: DEFAULT_PLAYER_GRAVITY,
