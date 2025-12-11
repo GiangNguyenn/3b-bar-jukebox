@@ -80,7 +80,7 @@ export async function fetchRandomTracksFromDb({
   )
 
   // Fetch more rows than we need so we can filter by uniqueness and exclusions
-  const fetchLimit = Math.min(neededArtists * 5, 1000) // Increased multiplier since we're filtering more
+  const fetchLimit = Math.min(neededArtists * 2, 200) // Keep DB pull small for latency
 
   logger(
     'INFO',
@@ -634,7 +634,7 @@ export async function fetchTracksCloserToTarget({
     }
 
     // Query tracks - fetch more than needed since we'll filter by profiled artists
-    const fetchLimit = limit * 5 // Increased multiplier since we're filtering more
+    const fetchLimit = Math.min(limit * 2, 200) // limit DB load for latency
 
     const { data, error } = await queryWithRetry<DbTrackRow[]>(
       supabase
@@ -834,7 +834,7 @@ export async function fetchTracksFurtherFromTarget({
     }
 
     // Query tracks - fetch more than needed since we'll filter by profiled artists
-    const fetchLimit = limit * 5 // Increased multiplier since we're filtering more
+    const fetchLimit = Math.min(limit * 2, 200) // limit DB load for latency
 
     const { data, error } = await queryWithRetry<DbTrackRow[]>(
       supabase

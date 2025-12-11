@@ -16,9 +16,7 @@ import {
   getCachedRelatedArtists,
   upsertRelatedArtists,
   batchUpsertArtistProfiles,
-  upsertArtistProfile,
-  batchGetTopTracksFromDb,
-  upsertTopTracks
+  batchGetTopTracksFromDb
 } from './dgsCache'
 import {
   CandidateTrackMetrics,
@@ -72,7 +70,8 @@ import { getExplorationPhase } from './gameRules'
 const logger = createModuleLogger('DgsEngine')
 
 // Hard deadline (ms) to ensure engine completes well under serverless timeout
-const HARD_DEADLINE_MS = 22000
+// Keep well under hobby/serverless limits
+const HARD_DEADLINE_MS = 9000
 
 function hasExceededDeadline(startTime: number): boolean {
   return Date.now() - startTime > HARD_DEADLINE_MS
@@ -1410,9 +1409,9 @@ async function buildCandidatePool({
     addedArtists: number
   }
 }> {
-  // Track start time to avoid timeout (Vercel has ~25s timeout)
+  // Track start time to avoid timeout (Hobby ~10s budget)
   const startTime = Date.now()
-  const MAX_BUILD_TIME_MS = 20000 // 20 seconds - leave buffer for scoring/processing
+  const MAX_BUILD_TIME_MS = 8500 // leave buffer for scoring/processing
 
   const quickDbFallback = async (
     reason: string
@@ -1601,8 +1600,8 @@ async function buildCandidatePool({
     if (hasExceededDeadline(startTime)) {
       return quickDbFallback('related-artist-loop')
     }
-    if (elapsed > MAX_BUILD_TIME_MS * 0.3) {
-      // 30% of budget (18 seconds)
+    if (elapsed > MAX_BUILD_TIME_MS * 0.35) {
+      // 35% of budget
       logger(
         'WARN',
         `Stopping related artist fetch early due to time constraint (${(elapsed / 1000).toFixed(1)}s elapsed). Will use DB fallback for remainder.`
@@ -1624,7 +1623,7 @@ async function buildCandidatePool({
       currentArtistId,
       tracksPerArtist: 2,
       statisticsTracker,
-      deadline: startTime + MAX_BUILD_TIME_MS * 0.4 // aggressive deadline for related artist fetch (20s)
+      deadline: startTime + MAX_BUILD_TIME_MS * 0.5 // aggressive deadline
     })
     const afterSize = candidateMap.size
     const added = afterSize - beforeSize
@@ -1661,7 +1660,7 @@ async function buildCandidatePool({
 
   // Check elapsed time to avoid timeout (skip expensive operations if > 30s)
   const elapsedTime = Date.now() - startTime
-  const skipExpensiveOperations = elapsedTime > MAX_BUILD_TIME_MS * 0.5
+  const skipExpensiveOperations = elapsedTime > MAX_BUILD_TIME_MS * 0.45
   if (skipExpensiveOperations) {
     logger(
       'WARN',
@@ -1700,7 +1699,7 @@ async function buildCandidatePool({
         genres: seedGenres,
         minPopularity: 15,
         maxPopularity: 100,
-        limit: Math.max(neededArtists * 2, neededTracks, 80), // Fetch enough to supplement both artists and tracks
+        limit: Math.max(neededArtists * 1.2, neededTracks, 50), // Fetch enough to supplement both artists and tracks
         excludeSpotifyTrackIds: excludeIds
       })
 
@@ -1746,7 +1745,7 @@ async function buildCandidatePool({
         `fetchRandomTracksFromDb (${neededArtists} artists needed)`,
         () =>
           fetchRandomTracksFromDb({
-            neededArtists,
+            neededArtists: Math.min(neededArtists, 30),
             existingArtistNames,
             excludeSpotifyTrackIds: excludeIds
           })
@@ -1957,14 +1956,18 @@ async function buildCandidatePool({
   }
 
   // Database fallback with optimized settings (indexes added for performance)
-  const DB_FALLBACK_THRESHOLD = 90 // Back to MIN_UNIQUE_ARTISTS for balance
-  const DB_FALLBACK_MULTIPLIER = 1.5 // Reduced from 3 to minimize query size
+  const DB_FALLBACK_THRESHOLD = 60 // reduce scope for faster fallback
+  const DB_FALLBACK_MULTIPLIER = 1.2 // minimize query size
 
   // Use fallback if we don't have enough artists OR enough tracks
   if (
     uniqueArtists < DB_FALLBACK_THRESHOLD ||
     totalTracks < MIN_CANDIDATE_POOL
   ) {
+    const elapsedBeforeFallback = Date.now() - startTime
+    if (elapsedBeforeFallback > MAX_BUILD_TIME_MS * 0.85) {
+      return quickDbFallback('db-fallback-time-budget')
+    }
     const reason =
       uniqueArtists < DB_FALLBACK_THRESHOLD
         ? `Unique artists (${uniqueArtists}) below threshold (${DB_FALLBACK_THRESHOLD})`
@@ -1972,8 +1975,9 @@ async function buildCandidatePool({
     logger('WARN', `${reason}. Using database fallback.`)
 
     // Calculate needed artists and tracks
-    const neededArtists = Math.ceil(
-      (DB_FALLBACK_THRESHOLD - uniqueArtists) * DB_FALLBACK_MULTIPLIER
+    const neededArtists = Math.max(
+      0,
+      Math.ceil((DB_FALLBACK_THRESHOLD - uniqueArtists) * DB_FALLBACK_MULTIPLIER)
     )
     const neededTracks = Math.max(0, MIN_CANDIDATE_POOL - totalTracks)
     // fetchRandomTracksFromDb can return multiple tracks per artist (default 2), so calculate artists needed
@@ -2000,10 +2004,10 @@ async function buildCandidatePool({
       `fetchRandomTracksFromDb - main fallback (${totalNeeded} artists, ${neededTracks} tracks needed)`,
       () =>
         fetchRandomTracksFromDb({
-          neededArtists: totalNeeded,
+          neededArtists: Math.min(totalNeeded, 40),
           existingArtistNames,
           excludeSpotifyTrackIds: excludeIds,
-          tracksPerArtist: 2 // Match the tracksPerArtist used in addRelatedArtistTracks
+          tracksPerArtist: 1 // reduce per-artist tracks to shrink response
         })
     )
 
