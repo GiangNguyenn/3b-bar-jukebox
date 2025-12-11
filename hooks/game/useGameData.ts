@@ -113,8 +113,7 @@ export function useGameData({
     ) => {
       if (!playbackState) return
 
-      // Clear options immediately to show loading state
-      setOptions([])
+      // Keep existing options while loading to avoid flicker during selection
       setIsBusy(true)
       setError(null)
 
@@ -218,21 +217,6 @@ export function useGameData({
             : 'Failed to refresh related songs.'
         console.error('[useGameData] Error:', gameError)
         setError(message)
-
-        // On error, keep empty options or previous?
-        // Original code: "Don't clear options on error - keep showing previous options"
-        // But we called setOptions([]) at the start.
-        // Original code: "Only clear if there were no options to begin with"
-        // Wait, original: `setOptions([])` was also called at start.
-        // Ah, original said: "Clear options immediately... " then in catch: "Don't clear options on error... if options.length === 0 { setOptions([]) }"
-        // This implies `setOptions([])` at start CLEARED them. So the catch block comment was contradictory or meant "if we hadn't cleared them at start".
-        // Actually, the original code DID clear them at start: `setOptions([])`. So the catch block logic `if (options.length === 0)` refers to the state variable... which at that point IS empty because of the setState call?
-        // No, setState is async. In the function scope `options` refers to the closure value (previous options).
-        // So passing `[]` at start makes the UI blank.
-        // If error, we might want to restore them?
-        // But `options` in closure is the OLD list.
-        // Let's just create empty list on error for now to match strict behavior, or we can improve UX later.
-        setOptions([])
       } finally {
         setIsBusy(false)
       }
