@@ -1977,7 +1977,9 @@ async function buildCandidatePool({
     // Calculate needed artists and tracks
     const neededArtists = Math.max(
       0,
-      Math.ceil((DB_FALLBACK_THRESHOLD - uniqueArtists) * DB_FALLBACK_MULTIPLIER)
+      Math.ceil(
+        (DB_FALLBACK_THRESHOLD - uniqueArtists) * DB_FALLBACK_MULTIPLIER
+      )
     )
     const neededTracks = Math.max(0, MIN_CANDIDATE_POOL - totalTracks)
     // fetchRandomTracksFromDb can return multiple tracks per artist (default 2), so calculate artists needed
