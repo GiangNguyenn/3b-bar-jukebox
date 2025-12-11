@@ -11,7 +11,7 @@ import {
 import { runDualGravityEngine } from '@/services/game/dgsEngine'
 import { getAdminToken } from '@/services/game/adminAuth'
 import { createModuleLogger } from '@/shared/utils/logger'
-import { fetchRandomTracksFromDb } from '@/services/game/dgsDb'
+import { fetchAbsoluteRandomTracks } from '@/services/game/dgsDb'
 
 const logger = createModuleLogger('ApiGameInitRound')
 const HANDLER_TIMEOUT_MS = 9000
@@ -157,7 +157,9 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     const cached = initRoundCache.get(cacheKey)
     if (cached && cached.expiresAt > Date.now()) {
       logger('INFO', 'Serving init-round from cache', 'cache')
-      return NextResponse.json(cached.response)
+      const resp = NextResponse.json(cached.response)
+      resp.headers.set('X-Init-Round-Path', 'cache')
+      return resp
     }
 
     const engineStartTime = Date.now()
@@ -179,6 +181,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       )
       const fallback = await buildTinyFallback(playbackState)
       const fallbackResponse = NextResponse.json(fallback)
+      fallbackResponse.headers.set('X-Init-Round-Path', 'fallback')
+      fallbackResponse.headers.set('X-Init-Round-Elapsed', String(elapsed))
       fallbackResponse.headers.set('Cache-Control', 'private, max-age=5')
       initRoundCache.set(cacheKey, {
         expiresAt: Date.now() + 5_000,
@@ -340,6 +344,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       'X-Init-Round-Elapsed',
       String(Date.now() - handlerStart)
     )
+    response.headers.set('X-Init-Round-Path', 'engine')
 
     // Add cache headers to reduce redundant DGS engine runs
     response.headers.set(
@@ -427,20 +432,17 @@ async function buildTinyFallback(playbackState: SpotifyPlaybackState): Promise<{
 
   // Try a very small DB fetch for a few random tracks; timeout quickly
   const excludeIds = new Set<string>([seedTrackId].filter(Boolean))
-  const fetchPromise = fetchRandomTracksFromDb({
-    neededArtists: 4,
-    existingArtistNames: new Set<string>(),
-    excludeSpotifyTrackIds: excludeIds,
-    tracksPerArtist: 1
-  })
+  const fetchPromise = fetchAbsoluteRandomTracks(8, excludeIds)
   const timedResult = await Promise.race([
     fetchPromise,
     new Promise<null>((resolve) => setTimeout(() => resolve(null), 300))
   ])
   const optionTracks =
-    timedResult?.tracks?.slice(0, 6).map((track) => ({
+    timedResult?.slice(0, 6).map((track) => ({
       track,
-      source: 'fallback'
+      source: 'fallback',
+      metrics: {},
+      vicinity: { triggered: false }
     })) ?? []
 
   return {

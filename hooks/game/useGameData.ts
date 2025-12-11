@@ -25,6 +25,13 @@ interface InitRoundResponse {
   debugInfo?: DgsDebugInfo
 }
 
+interface PrepSeedResponse {
+  jobId: string
+  status: 'ready' | 'warming'
+  expiresAt?: number
+  payload?: InitRoundResponse
+}
+
 interface UseGameDataProps {
   activePlayerId: PlayerId
   players: Array<{ id: PlayerId; targetArtist: TargetArtist | null }>
@@ -42,6 +49,7 @@ interface UseGameDataProps {
 interface UseGameDataResult {
   options: DgsOptionTrack[]
   isBusy: boolean
+  loadingStage: { stage: string; progress: number } | null
   error: string | null
   candidatePoolSize: number
   vicinity: { triggered: boolean; playerId?: PlayerId }
@@ -75,6 +83,10 @@ export function useGameData({
 }: UseGameDataProps): UseGameDataResult {
   const [options, setOptions] = useState<DgsOptionTrack[]>([])
   const [isBusy, setIsBusy] = useState(false)
+  const [loadingStage, setLoadingStage] = useState<{
+    stage: string
+    progress: number
+  } | null>(null)
   const [error, setError] = useState<string | null>(null)
 
   // Server-side calculated stats
@@ -137,6 +149,7 @@ export function useGameData({
 
       // Keep existing options while loading to avoid flicker during selection
       setIsBusy(true)
+      setLoadingStage({ stage: 'Starting prep…', progress: 10 })
       setError(null)
 
       try {
@@ -156,53 +169,121 @@ export function useGameData({
         const sentRoundNumber = Math.max(1, Math.floor(roundTurn))
         const sentTurnNumber = Math.max(1, Math.floor(turnCounter))
 
-        const timeoutDuration = sentRoundNumber <= 3 ? 120000 : 60000
-        const controller = new AbortController()
-        const timeoutId = setTimeout(() => {
-          controller.abort()
-        }, timeoutDuration)
-
-        let response: InitRoundResponse | { error: string }
+        // Step 1: kick off prep-seed (fire-and-forget-ish, but wait for response)
+        let prepJobId: string | undefined
         try {
-          response = await sendApiRequest<
-            InitRoundResponse | { error: string }
-          >({
-            path: '/game/init-round',
+          const prepRes = await fetch('/api/game/prep-seed', {
             method: 'POST',
-            isLocalApi: true,
-            config: { signal: controller.signal },
-            body: {
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
               playbackState,
               roundNumber: sentRoundNumber,
               turnNumber: sentTurnNumber,
               currentPlayerId: effectiveActivePlayerId,
               playerTargets: requestTargets,
               playerGravities: effectiveGravities,
-              playedTrackIds: overridePlayedTrackIds ?? playedTrackIds,
-              lastSelection: lastSelectionPayload
-            }
+              playedTrackIds: overridePlayedTrackIds ?? playedTrackIds
+            })
           })
-          clearTimeout(timeoutId)
-        } catch (error) {
-          clearTimeout(timeoutId)
-          const errorMessage =
-            error instanceof Error ? error.message : String(error)
-
-          if (
-            (error instanceof Error && error.name === 'AbortError') ||
-            errorMessage.includes('aborted')
-          ) {
-            const timeoutSeconds = Math.floor(timeoutDuration / 1000)
-            throw new Error(
-              `Request timed out after ${timeoutSeconds} seconds. The game engine is still building the music database.`
-            )
+          const prepJson = (await prepRes.json()) as PrepSeedResponse
+          prepJobId = prepJson.jobId
+          console.info(
+            '[useGameData] prep-seed status=%s jobId=%s',
+            prepJson.status,
+            prepJobId
+          )
+          if (prepJson.status === 'ready') {
+            setLoadingStage({ stage: 'Prep ready', progress: 60 })
+            if (prepJson.payload) {
+              // If prep already returned payload, use it directly
+              const response = prepJson.payload
+              lastCompletedSelectionRef.current = null
+              if (!skipTargetUpdate) {
+                onTargetsUpdate(
+                  response.playerTargets ?? { player1: null, player2: null },
+                  response.targetArtists
+                )
+              }
+              if (response.gravities) {
+                onGravitiesUpdate(response.gravities)
+              }
+              setCandidatePoolSize(response.candidatePoolSize ?? 0)
+              setVicinity(response.vicinity ?? { triggered: false })
+              setDebugInfo(response.debugInfo)
+              const excludedIds = new Set<string>(
+                [playbackState.item?.id ?? '', ...playedTrackIds].filter(
+                  Boolean
+                )
+              )
+              const filteredOptions = response.optionTracks.filter(
+                (opt) => opt.track && !excludedIds.has(opt.track.id)
+              )
+              setOptions(filteredOptions)
+              triggerLazyUpdateTick()
+              setLoadingStage({ stage: 'Ready', progress: 100 })
+              setIsBusy(false)
+              return
+            }
+          } else {
+            setLoadingStage({ stage: 'Prep warming…', progress: 40 })
           }
-          throw error
+        } catch (prepError) {
+          console.error('[useGameData] prep-seed failed', prepError)
         }
 
-        if ('error' in response) {
-          throw new Error(response.error)
+        // Step 2: fetch options (poll if warming)
+        const fetchOptions = async (): Promise<
+          { warming: true } | { warming: false; data: InitRoundResponse }
+        > => {
+          setLoadingStage(
+            (prev) => prev ?? { stage: 'Fetching options…', progress: 60 }
+          )
+          const res = await fetch('/api/game/options', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              playbackState,
+              currentPlayerId: effectiveActivePlayerId,
+              playerTargets: requestTargets,
+              jobId: prepJobId,
+              payload: undefined
+            })
+          })
+
+          if (res.status === 202) {
+            console.info('[useGameData] options warming jobId=%s', prepJobId)
+            setLoadingStage({ stage: 'Warming up…', progress: 70 })
+            return { warming: true }
+          }
+          if (!res.ok) {
+            const text = await res.text()
+            throw new Error(text || 'Failed to fetch options')
+          }
+          setLoadingStage({ stage: 'Scoring options…', progress: 90 })
+          const data = (await res.json()) as InitRoundResponse
+          return { warming: false, data }
         }
+
+        let optionsResult: InitRoundResponse | null = null
+        const maxAttempts = 8
+        for (let attempt = 0; attempt < maxAttempts; attempt++) {
+          const result = await fetchOptions()
+          if (!result.warming) {
+            optionsResult = result.data
+            break
+          }
+          setLoadingStage({ stage: 'Warming up…', progress: 75 })
+          await new Promise((resolve) => setTimeout(resolve, 300))
+        }
+
+        if (!optionsResult) {
+          setLoadingStage({ stage: 'Still warming…', progress: 75 })
+          setError('Engine is warming up, retrying shortly.')
+          setIsBusy(false)
+          return
+        }
+
+        const response = optionsResult
 
         // Success - clear pending selection metadata
         lastCompletedSelectionRef.current = null
@@ -233,6 +314,8 @@ export function useGameData({
 
         setOptions(filteredOptions)
         triggerLazyUpdateTick()
+        setLoadingStage({ stage: 'Ready', progress: 100 })
+        setError(null)
       } catch (gameError) {
         const message =
           gameError instanceof Error
@@ -242,6 +325,7 @@ export function useGameData({
         setError(message)
       } finally {
         setIsBusy(false)
+        setLoadingStage(null)
       }
     },
     [
@@ -260,6 +344,7 @@ export function useGameData({
   return {
     options,
     isBusy,
+    loadingStage,
     error,
     candidatePoolSize,
     vicinity,
