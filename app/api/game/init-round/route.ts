@@ -1,29 +1,81 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { cookies } from 'next/headers'
-import { createServerClient } from '@supabase/ssr'
-import type { Database } from '@/types/supabase'
-import {
-  getRelatedArtistsForGame,
-  getGameOptionTracks,
-  chooseTargetArtists,
-  getCurrentArtistId
-} from '@/services/gameService'
+import { z } from 'zod'
 import type { SpotifyPlaybackState } from '@/shared/types/spotify'
-import { queryWithRetry } from '@/lib/supabase'
-import { refreshTokenWithRetry } from '@/recovery/tokenRecovery'
-import { updateTokenInDatabase } from '@/recovery/tokenDatabaseUpdate'
+import { getCurrentArtistId } from '@/services/gameService'
+import {
+  DEFAULT_PLAYER_GRAVITY,
+  type DualGravityRequest,
+  type PlayerGravityMap,
+  type PlayerTargetsMap
+} from '@/services/game/dgsTypes'
+import { runDualGravityEngine } from '@/services/game/dgsEngine'
+import { getAdminToken } from '@/services/game/adminAuth'
+import { createModuleLogger } from '@/shared/utils/logger'
+
+const logger = createModuleLogger('ApiGameInitRound')
+
+// Add caching to reduce redundant DGS engine runs for same track
+export const revalidate = 30 // 30-second cache
+
+const targetArtistSchema = z.object({
+  id: z.string().optional(),
+  name: z.string().min(1)
+})
+
+const requestSchema = z.object({
+  playbackState: z.record(z.any()),
+  roundNumber: z.number().int().min(1).optional(), // No max limit - continuous play
+  turnNumber: z.number().int().min(1).optional(),
+  currentPlayerId: z.enum(['player1', 'player2']).optional(),
+  playerTargets: z
+    .object({
+      player1: targetArtistSchema.nullable().optional(),
+      player2: targetArtistSchema.nullable().optional()
+    })
+    .partial()
+    .optional(),
+  playerGravities: z
+    .object({
+      player1: z.number().optional(),
+      player2: z.number().optional()
+    })
+    .optional(),
+  playedTrackIds: z.array(z.string()).optional(),
+  lastSelection: z
+    .object({
+      trackId: z.string(),
+      playerId: z.enum(['player1', 'player2']),
+      previousTrackId: z.string().nullable().optional(),
+      selectionCategory: z.enum(['closer', 'neutral', 'further']).optional()
+    })
+    .nullable()
+    .optional()
+})
 
 /**
  * POST /api/game/init-round
  * Server-side endpoint to initialize a game round
  * Returns target artists and game option tracks based on the current playing track
  */
-export async function POST(request: NextRequest) {
+export async function POST(request: NextRequest): Promise<NextResponse> {
   try {
-    const body = (await request.json()) as {
-      playbackState: SpotifyPlaybackState
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+    const body = await request.json()
+    const parsed = requestSchema.safeParse(body)
+
+    if (!parsed.success) {
+      logger(
+        'WARN',
+        'Invalid request payload for game init round',
+        'validation'
+      )
+      return NextResponse.json(
+        { error: 'Invalid request payload', details: parsed.error.format() },
+        { status: 400 }
+      )
     }
-    const { playbackState } = body
+
+    const playbackState = parsed.data.playbackState as SpotifyPlaybackState
 
     if (!playbackState) {
       return NextResponse.json(
@@ -32,231 +84,310 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Get admin profile for Spotify API access (same pattern as playlist route)
-    const cookieStore = cookies()
-    const supabase = createServerClient<Database>(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-      {
-        cookies: {
-          getAll() {
-            return cookieStore.getAll()
-          },
-          setAll(cookiesToSet) {
-            try {
-              cookiesToSet.forEach(({ name, value, options }) =>
-                cookieStore.set(name, value, options)
-              )
-            } catch {
-              // The `setAll` method was called from a Server Component.
-              // This can be ignored if you have middleware refreshing
-              // user sessions.
-            }
-          }
-        }
-      }
-    )
+    // Get admin profile for Spotify API access
+    const accessToken = await getAdminToken()
 
-    const adminResult = await queryWithRetry<{
-      id: string
-      spotify_access_token: string | null
-      spotify_refresh_token: string | null
-      spotify_token_expires_at: number | null
-    }>(
-      supabase
-        .from('profiles')
-        .select(
-          'id, spotify_access_token, spotify_refresh_token, spotify_token_expires_at'
-        )
-        .ilike('display_name', '3B')
-        .single(),
-      undefined,
-      'Fetch admin profile for Spotify API access'
-    )
-
-    const adminProfile = adminResult.data
-    const adminError = adminResult.error
-
-    if (adminError || !adminProfile?.spotify_access_token) {
-      console.error('[API] /api/game/init-round: Failed to get admin token', {
-        error: adminError
-      })
+    if (!accessToken) {
       return NextResponse.json(
         { error: 'Failed to get admin credentials for Spotify API' },
         { status: 500 }
       )
     }
 
-    // Check if token needs refresh
-    const tokenExpiresAt = adminProfile.spotify_token_expires_at
-    const now = Math.floor(Date.now() / 1000)
-    let accessToken = adminProfile.spotify_access_token
-
-    if (
-      tokenExpiresAt &&
-      tokenExpiresAt <= now &&
-      adminProfile.spotify_refresh_token
-    ) {
-      const SPOTIFY_CLIENT_ID = process.env.SPOTIFY_CLIENT_ID
-      const SPOTIFY_CLIENT_SECRET = process.env.SPOTIFY_CLIENT_SECRET
-
-      if (!SPOTIFY_CLIENT_ID || !SPOTIFY_CLIENT_SECRET) {
-        return NextResponse.json(
-          { error: 'Server configuration error' },
-          { status: 500 }
-        )
-      }
-
-      const refreshResult = await refreshTokenWithRetry(
-        adminProfile.spotify_refresh_token,
-        SPOTIFY_CLIENT_ID,
-        SPOTIFY_CLIENT_SECRET
-      )
-
-      if (!refreshResult.success || !refreshResult.accessToken) {
-        return NextResponse.json(
-          { error: 'Failed to refresh admin token' },
-          { status: 500 }
-        )
-      }
-
-      accessToken = refreshResult.accessToken
-
-      // Update token in database
-      await updateTokenInDatabase(supabase, adminProfile.id, {
-        accessToken: refreshResult.accessToken,
-        refreshToken: refreshResult.refreshToken,
-        expiresIn: refreshResult.expiresIn,
-        currentRefreshToken: adminProfile.spotify_refresh_token
-      })
-    }
-
     const artistId = getCurrentArtistId(playbackState)
     if (!artistId || artistId.trim() === '') {
-      console.error(
-        '[API] /api/game/init-round: No artist ID found in playback state',
-        {
-          hasItem: !!playbackState.item,
-          itemId: playbackState.item?.id,
-          itemName: playbackState.item?.name,
-          artists: playbackState.item?.artists?.map((a) => ({
-            id: a.id,
-            name: a.name
-          }))
-        }
-      )
+      logger('WARN', 'No artist ID found in playback state', 'validation')
       return NextResponse.json(
         { error: 'No primary artist found for the current track' },
         { status: 400 }
       )
     }
 
-    console.log('[API] /api/game/init-round: Fetching related artists', {
-      artistId,
-      artistIdLength: artistId.length,
-      trackName: playbackState.item?.name,
-      trackArtists: playbackState.item?.artists
-        ?.map((a) => ({ name: a.name, id: a.id }))
-        .join(', '),
-      allArtists: JSON.stringify(playbackState.item?.artists, null, 2)
-    })
-
-    // Validate artist ID format (Spotify IDs are alphanumeric, typically 22 characters)
     if (!/^[a-zA-Z0-9]+$/.test(artistId)) {
-      console.error('[API] /api/game/init-round: Invalid artist ID format', {
-        artistId,
-        length: artistId.length,
-        trackName: playbackState.item?.name
-      })
+      logger('WARN', `Invalid artist ID format: ${artistId}`, 'validation')
       return NextResponse.json(
         { error: `Invalid artist ID format: ${artistId}` },
         { status: 400 }
       )
     }
 
-    // Fetch related artists for game options using admin user token
-    console.log(
-      '[API] /api/game/init-round: Using admin token for related artists',
-      {
-        hasToken: !!accessToken,
-        tokenLength: accessToken?.length,
-        tokenPrefix: accessToken?.substring(0, 20) + '...'
-      }
+    const normalizedTargets = ensureTargets(parsed.data.playerTargets)
+    const normalizedGravities = ensureGravities(parsed.data.playerGravities)
+    const roundNumber = clampRound(parsed.data.roundNumber)
+    const turnNumber = parsed.data.turnNumber ?? 1
+    const currentPlayerId = parsed.data.currentPlayerId ?? 'player1'
+    const playedTrackIds = parsed.data.playedTrackIds ?? []
+
+    // Log request details for diagnostics
+    logger(
+      'INFO',
+      `Init round request: Round=${roundNumber} Turn=${turnNumber} Track=${playbackState.item?.name} Artist=${playbackState.item?.artists?.[0]?.name} P1Target=${normalizedTargets.player1?.name} P2Target=${normalizedTargets.player2?.name}`,
+      'POST'
     )
-    let relatedArtists: Awaited<ReturnType<typeof getRelatedArtistsForGame>>
+
+    const enginePayload: DualGravityRequest = {
+      playbackState,
+      roundNumber,
+      turnNumber,
+      currentPlayerId,
+      playerTargets: normalizedTargets,
+      playerGravities: normalizedGravities,
+      playedTrackIds,
+      lastSelection: parsed.data.lastSelection ?? null
+    }
+
+    const engineStartTime = Date.now()
+    let engineResponse
     try {
-      relatedArtists = await getRelatedArtistsForGame(artistId, accessToken)
-    } catch (error) {
-      console.error(
-        '[API] /api/game/init-round: Error fetching related artists:',
-        {
-          artistId,
-          error: error instanceof Error ? error.message : String(error),
-          errorType: error?.constructor?.name,
-          fullError: error
-        }
+      engineResponse = await runDualGravityEngine(enginePayload, accessToken)
+      const engineDuration = Date.now() - engineStartTime
+      logger(
+        'INFO',
+        `DGS engine completed in ${engineDuration}ms | Options: ${engineResponse.optionTracks.length} | Pool: ${engineResponse.candidatePoolSize}`,
+        'POST'
       )
-      // If we can't get related artists, return an error but with more context
-      const errorMessage =
-        error instanceof Error ? error.message : 'Unknown error'
+    } catch (engineError) {
+      const errorDetails =
+        engineError instanceof Error
+          ? {
+              message: engineError.message,
+              stack: engineError.stack,
+              name: engineError.name
+            }
+          : { message: String(engineError) }
+
+      logger(
+        'ERROR',
+        `DGS engine execution failed: ${errorDetails.message}`,
+        'engine',
+        engineError instanceof Error ? engineError : undefined
+      )
+
+      if (engineError instanceof Error && engineError.stack) {
+        logger('ERROR', `Error stack: ${engineError.stack}`, 'engine')
+      }
+
+      const engineErrorMessage =
+        engineError instanceof Error
+          ? engineError.message
+          : 'Failed to generate game options'
+
       return NextResponse.json(
         {
-          error: `Unable to fetch related artists for artist "${playbackState.item?.artists?.[0]?.name || artistId}": ${errorMessage}. The artist may not exist or may not have related artists in Spotify's database.`
+          error: engineErrorMessage,
+          details:
+            process.env.NODE_ENV === 'development' ? errorDetails : undefined
         },
-        { status: 404 }
+        { status: 500 }
       )
     }
 
-    if (!relatedArtists.length) {
-      console.error(
-        '[API] /api/game/init-round: No related artists found for artistId:',
-        artistId
+    if (
+      !engineResponse.optionTracks ||
+      engineResponse.optionTracks.length === 0
+    ) {
+      logger(
+        'WARN',
+        'DGS engine returned empty option tracks',
+        'engine',
+        undefined
       )
       return NextResponse.json(
         {
           error:
-            "Unable to find related artists for this track. The artist may not have related artists in Spotify's database."
+            'No related tracks available. Please try again with a different track.'
         },
         { status: 404 }
       )
     }
 
-    console.log(
-      '[API] /api/game/init-round: Found',
-      relatedArtists.length,
-      'related artists'
-    )
+    // Build playerTargets map from enriched targetArtists (which include genres)
+    // The targetArtists array is ordered as [player1, player2] from the DGS engine
+    // We'll try both array index and name/ID matching for robustness
+    const normalizeName = (name: string): string => name.trim().toLowerCase()
 
-    // Choose target artists from curated list
-    const targetArtists = chooseTargetArtists()
+    const enrichedPlayerTargets: PlayerTargetsMap = {
+      player1: (() => {
+        const player1Target = normalizedTargets.player1
+        if (!player1Target?.name) return null
 
-    // Get game option tracks using admin user token
-    const optionTracks = await getGameOptionTracks(relatedArtists, accessToken)
+        // First try: use array index (targetArtists[0] should be player1)
+        if (engineResponse.targetArtists.length > 0) {
+          const indexMatch = engineResponse.targetArtists[0]
+          if (indexMatch?.name) {
+            const nameMatch =
+              normalizeName(indexMatch.name) ===
+              normalizeName(player1Target.name)
+            const idMatch =
+              indexMatch.id &&
+              player1Target.id &&
+              indexMatch.id === player1Target.id
 
-    console.log(
-      '[API] /api/game/init-round: Successfully initialized round with',
-      optionTracks.length,
-      'option tracks'
-    )
+            if (nameMatch || idMatch) {
+              return indexMatch
+            }
+          }
+        }
 
-    return NextResponse.json({
-      targetArtists,
-      optionTracks
+        // Fallback: search all enriched artists
+        const enriched = engineResponse.targetArtists.find((artist) => {
+          if (!artist?.name) return false
+          const nameMatch =
+            normalizeName(artist.name) === normalizeName(player1Target.name)
+          const idMatch =
+            artist.id && player1Target.id && artist.id === player1Target.id
+          return nameMatch || idMatch
+        })
+
+        if (enriched) {
+          if (!enriched.genre) {
+            logger(
+              'WARN',
+              `[Player1] Found enriched target but no genre: ${enriched.name}`
+            )
+          }
+          return enriched
+        }
+
+        logger(
+          'WARN',
+          `[Player1] No enriched match found for: ${player1Target.name}`
+        )
+        return normalizedTargets.player1
+      })(),
+      player2: (() => {
+        const player2Target = normalizedTargets.player2
+        if (!player2Target?.name) return null
+
+        // First try: use array index (targetArtists[1] should be player2, or [0] if only one exists)
+        const indexToTry = engineResponse.targetArtists.length === 2 ? 1 : 0
+        if (engineResponse.targetArtists.length > indexToTry) {
+          const indexMatch = engineResponse.targetArtists[indexToTry]
+          if (indexMatch?.name) {
+            const nameMatch =
+              normalizeName(indexMatch.name) ===
+              normalizeName(player2Target.name)
+            const idMatch =
+              indexMatch.id &&
+              player2Target.id &&
+              indexMatch.id === player2Target.id
+
+            if (nameMatch || idMatch) {
+              return indexMatch
+            }
+          }
+        }
+
+        // Fallback: search all enriched artists
+        const enriched = engineResponse.targetArtists.find((artist) => {
+          if (!artist?.name) return false
+          const nameMatch =
+            normalizeName(artist.name) === normalizeName(player2Target.name)
+          const idMatch =
+            artist.id && player2Target.id && artist.id === player2Target.id
+          return nameMatch || idMatch
+        })
+
+        if (enriched) {
+          if (!enriched.genre) {
+            logger(
+              'WARN',
+              `[Player2] Found enriched target but no genre: ${enriched.name}`
+            )
+          }
+          return enriched
+        }
+
+        logger(
+          'WARN',
+          `[Player2] No enriched match found for: ${player2Target.name}`
+        )
+        return normalizedTargets.player2
+      })()
+    }
+
+    const response = NextResponse.json({
+      targetArtists: engineResponse.targetArtists,
+      optionTracks: engineResponse.optionTracks,
+      playerTargets: enrichedPlayerTargets,
+      gravities: engineResponse.updatedGravities,
+      explorationPhase: engineResponse.explorationPhase,
+      ogDrift: engineResponse.ogDrift,
+      candidatePoolSize: engineResponse.candidatePoolSize,
+      hardConvergenceActive: engineResponse.hardConvergenceActive,
+      vicinity: engineResponse.vicinity,
+      debugInfo: engineResponse.debugInfo,
+      roundNumber,
+      turnNumber,
+      currentPlayerId
     })
+
+    // Add cache headers to reduce redundant DGS engine runs
+    response.headers.set(
+      'Cache-Control',
+      'public, s-maxage=30, stale-while-revalidate=60'
+    )
+
+    return response
   } catch (error) {
-    console.error('[API] /api/game/init-round error:', error)
-    console.error('[API] /api/game/init-round error details:', {
-      message: error instanceof Error ? error.message : String(error),
-      stack: error instanceof Error ? error.stack : undefined,
-      name: error instanceof Error ? error.name : undefined
-    })
-    const errorMessage =
+    const errorDetails =
       error instanceof Error
-        ? error.message
-        : typeof error === 'object' && error !== null && 'error' in error
-          ? String(error.error)
-          : 'Failed to initialize game round'
+        ? {
+            message: error.message,
+            stack: error.stack,
+            name: error.name
+          }
+        : { message: String(error) }
 
-    return NextResponse.json({ error: errorMessage }, { status: 500 })
+    logger(
+      'ERROR',
+      `Failed to initialize DGS round: ${errorDetails.message}`,
+      'handler',
+      error instanceof Error ? error : undefined
+    )
+
+    if (error instanceof Error && error.stack) {
+      logger('ERROR', `Error stack: ${error.stack}`, 'handler')
+    }
+
+    const errorMessage =
+      error instanceof Error ? error.message : 'Failed to initialize game round'
+
+    return NextResponse.json(
+      {
+        error: errorMessage,
+        details:
+          process.env.NODE_ENV === 'development' ? errorDetails : undefined
+      },
+      { status: 500 }
+    )
   }
+}
+
+function ensureTargets(incoming?: Partial<PlayerTargetsMap>): PlayerTargetsMap {
+  // Target artists are now managed by the UI via database
+  // If not provided, leave as null - they will be set by players in the UI
+  const normalized: PlayerTargetsMap = {
+    player1: incoming?.player1 ?? null,
+    player2: incoming?.player2 ?? null
+  }
+
+  return normalized
+}
+
+function ensureGravities(
+  incoming?: Partial<PlayerGravityMap>
+): PlayerGravityMap {
+  return {
+    player1: incoming?.player1 ?? DEFAULT_PLAYER_GRAVITY,
+    player2: incoming?.player2 ?? DEFAULT_PLAYER_GRAVITY
+  }
+}
+
+function clampRound(round?: number): number {
+  if (!round || Number.isNaN(round)) {
+    return 1
+  }
+  // No max limit - allow continuous play
+  return Math.max(round, 1)
 }

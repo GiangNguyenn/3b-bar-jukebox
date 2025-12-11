@@ -9,7 +9,6 @@ import {
   XMarkIcon
 } from '@heroicons/react/20/solid'
 import type { TargetArtist } from '@/services/gameService'
-import { POPULAR_TARGET_ARTISTS } from '@/services/gameService'
 
 interface ArtistSelectionModalProps {
   isOpen: boolean
@@ -17,6 +16,7 @@ interface ArtistSelectionModalProps {
   currentArtist: TargetArtist | null
   onSelect: (artist: TargetArtist) => void
   playerLabel: string
+  artists: TargetArtist[]
 }
 
 export function ArtistSelectionModal({
@@ -24,7 +24,8 @@ export function ArtistSelectionModal({
   onClose,
   currentArtist,
   onSelect,
-  playerLabel
+  playerLabel,
+  artists
 }: ArtistSelectionModalProps): JSX.Element | null {
   const [query, setQuery] = useState('')
 
@@ -34,8 +35,8 @@ export function ArtistSelectionModal({
 
   const filteredArtists =
     query === ''
-      ? POPULAR_TARGET_ARTISTS
-      : POPULAR_TARGET_ARTISTS.filter((artist) =>
+      ? artists
+      : artists.filter((artist) =>
           artist.name.toLowerCase().includes(query.toLowerCase())
         )
 
@@ -162,8 +163,8 @@ export function ArtistSelectionModal({
           {/* Instructions */}
           <div className='px-6 py-3'>
             <p className='text-xs text-gray-500'>
-              Search and select a new target artist. You'll score a point when a
-              song by this artist plays.
+              Search and select a new target artist. You&apos;ll score a point
+              when a song by this artist plays.
             </p>
           </div>
         </div>

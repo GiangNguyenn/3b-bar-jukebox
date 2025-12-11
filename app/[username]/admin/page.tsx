@@ -32,6 +32,8 @@ import { useSubscription } from '@/hooks/useSubscription'
 import { useGetProfile } from '@/hooks/useGetProfile'
 import { startFreshAuthentication } from '@/shared/utils/authCleanup'
 import { ArrowRightOnRectangleIcon } from '@heroicons/react/24/outline'
+import { Copy, Check, QrCode } from 'lucide-react'
+import { QRCodeComponent } from '@/components/ui'
 
 // Autoplay helper removed
 
@@ -53,6 +55,8 @@ export default function AdminPage(): JSX.Element {
     | 'branding'
     | 'subscription'
   >('dashboard')
+  const [copied, setCopied] = useState(false)
+  const [showQRCode, setShowQRCode] = useState(false)
 
   const initializationAttemptedRef = useRef(false)
 
@@ -61,6 +65,29 @@ export default function AdminPage(): JSX.Element {
   const router = useRouter()
   const username = params?.username as string | undefined
   const { isReady, status: playerStatus, deviceId } = useSpotifyPlayerStore()
+
+  const openAdminPath = (path: string): void => {
+    if (!username) return
+    window.open(`/${username}/${path}`, '_blank')
+  }
+
+  const handleCopyLink = async (): Promise<void> => {
+    if (username) {
+      const jukeboxUrl = `${window.location.origin}/${username}/playlist`
+      try {
+        await navigator.clipboard.writeText(jukeboxUrl)
+        setCopied(true)
+        setTimeout(() => setCopied(false), 2000)
+      } catch (error) {
+        addLog(
+          'ERROR',
+          'Failed to copy link to clipboard',
+          'AdminPage',
+          error instanceof Error ? error : undefined
+        )
+      }
+    }
+  }
 
   // Set up navigation callback for player lifecycle
   const handleNavigate = useCallback(
@@ -390,6 +417,102 @@ export default function AdminPage(): JSX.Element {
               />
             )}
 
+            <JukeboxSection />
+
+            <div className='mb-6 space-y-3 rounded-lg border border-gray-800 bg-gray-900/50 p-4'>
+              <h3 className='text-white text-lg font-semibold'>Launch Views</h3>
+              <p className='text-sm text-gray-400'>
+                Quickly open the game, display, or jukebox in new tabs.
+              </p>
+              <div className='flex flex-col gap-3 sm:flex-row'>
+                <button
+                  type='button'
+                  onClick={() => openAdminPath('game')}
+                  disabled={!username}
+                  className='text-white w-full rounded-lg bg-green-600 px-4 py-3 text-sm font-semibold transition-colors hover:bg-green-700 disabled:cursor-not-allowed disabled:opacity-50'
+                >
+                  Open Game
+                </button>
+                <button
+                  type='button'
+                  onClick={() => openAdminPath('display')}
+                  disabled={!username}
+                  className='text-white w-full rounded-lg bg-blue-600 px-4 py-3 text-sm font-semibold transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50'
+                >
+                  Open Display
+                </button>
+                <button
+                  type='button'
+                  onClick={() => openAdminPath('playlist')}
+                  disabled={!username}
+                  className='text-white w-full rounded-lg bg-purple-600 px-4 py-3 text-sm font-semibold transition-colors hover:bg-purple-700 disabled:cursor-not-allowed disabled:opacity-50'
+                >
+                  Open Jukebox
+                </button>
+              </div>
+
+              {/* Public Jukebox Link with QR Code */}
+              {username && (
+                <div className='mt-4 space-y-2 border-t border-gray-700 pt-4'>
+                  <div className='flex items-center justify-between rounded-lg border border-gray-700 bg-gray-800/50 px-3 py-2'>
+                    <span className='flex-1 truncate text-sm text-gray-300'>
+                      {`${window.location.origin}/${username}/playlist`}
+                    </span>
+                    <div className='flex items-center gap-1'>
+                      <button
+                        type='button'
+                        onClick={(): void => {
+                          setShowQRCode(!showQRCode)
+                        }}
+                        className='hover:text-white flex-shrink-0 rounded p-1 text-gray-400 transition-colors hover:bg-gray-700'
+                        title='Show/hide QR code'
+                      >
+                        <QrCode className='h-4 w-4' />
+                      </button>
+                      <button
+                        type='button'
+                        onClick={(): void => {
+                          void handleCopyLink()
+                        }}
+                        className='hover:text-white flex-shrink-0 rounded p-1 text-gray-400 transition-colors hover:bg-gray-700'
+                        title='Copy link to clipboard'
+                      >
+                        {copied ? (
+                          <Check className='h-4 w-4 text-green-500' />
+                        ) : (
+                          <Copy className='h-4 w-4' />
+                        )}
+                      </button>
+                    </div>
+                  </div>
+                  <p className='text-center text-xs text-gray-400'>
+                    {copied
+                      ? 'Link copied!'
+                      : 'Public jukebox page - share with guests (no Spotify account required)'}
+                  </p>
+
+                  {/* QR Code Section */}
+                  {showQRCode && (
+                    <div className='mt-4 rounded-lg border border-gray-700 bg-gray-800/50 p-4'>
+                      <div className='mb-3 text-center'>
+                        <h4 className='text-white text-sm font-medium'>
+                          QR Code
+                        </h4>
+                        <p className='text-xs text-gray-400'>
+                          Scan to open the jukebox page
+                        </p>
+                      </div>
+                      <QRCodeComponent
+                        url={`${window.location.origin}/${username}/playlist`}
+                        size={180}
+                        className='mx-auto'
+                      />
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
             <div className='mb-6 flex items-center justify-between rounded-lg border border-gray-800 bg-gray-900/50 p-4'>
               <div>
                 <h3 className='text-lg font-semibold'>Account</h3>
@@ -410,8 +533,6 @@ export default function AdminPage(): JSX.Element {
                 {isSigningOut ? 'Signing Out...' : 'Sign Out & Re-authenticate'}
               </button>
             </div>
-
-            <JukeboxSection />
 
             <DiagnosticPanel
               healthStatus={healthStatus}

@@ -1,6 +1,8 @@
 import { SpotifyErrorResponse } from './types/spotify'
 import { getLogger } from './utils/logger'
 import { cache } from './utils/cache'
+import type { ApiStatisticsTracker } from '../services/game/apiStatisticsTracker'
+import { categorizeApiCall } from '../services/game/apiStatisticsTracker'
 
 export interface ApiErrorOptions {
   status?: number
@@ -51,6 +53,7 @@ interface ApiProps {
   debounceTime?: number
   public?: boolean
   token?: string
+  statisticsTracker?: ApiStatisticsTracker
 }
 
 const SPOTIFY_API_URL =
@@ -70,12 +73,74 @@ const requestCache = new Map<
 
 const requestQueue: Array<() => Promise<any>> = []
 let isProcessingQueue = false
+// Global rate limit tracking
+let globalRateLimitReset = 0
+
+function isRateLimited(): boolean {
+  return Date.now() < globalRateLimitReset
+}
+
+// Proactive Rate Limiter (Token Bucket)
+// Allows burst of requests but throttles sustained load
+export class RateLimitManager {
+  private static readonly MAX_TOKENS = 50 // Max burst size
+  private static readonly REFILL_RATE_MS = 600 // 1 token every 600ms (~100 calls/min)
+
+  private static tokens = RateLimitManager.MAX_TOKENS
+  private static lastRefill = Date.now()
+
+  // Refill tokens based on time elapsed
+  private static refillTokens() {
+    const now = Date.now()
+    const elapsed = now - this.lastRefill
+    const newTokens = Math.floor(elapsed / this.REFILL_RATE_MS)
+
+    if (newTokens > 0) {
+      this.tokens = Math.min(this.MAX_TOKENS, this.tokens + newTokens)
+      this.lastRefill = now
+    }
+  }
+
+  /**
+   * Check if a request can proceed.
+   * @param consume - Whether to consume a token if available.
+   * @returns true if request is allowed, false if rate limited.
+   */
+  public static checkLimit(consume: boolean = true): boolean {
+    this.refillTokens()
+    if (this.tokens >= 1) {
+      if (consume) this.tokens -= 1
+      return true
+    }
+    return false
+  }
+
+  public static get status() {
+    this.refillTokens()
+    return { tokens: this.tokens, max: this.MAX_TOKENS }
+  }
+}
 
 async function processRequestQueue() {
   if (isProcessingQueue) return
   isProcessingQueue = true
 
   while (requestQueue.length > 0) {
+    // Check global rate limit before processing next item
+    if (isRateLimited()) {
+      const waitTime = globalRateLimitReset - Date.now()
+      if (waitTime > 2000) {
+        // If wait is long, pause queue processing
+        // Re-schedule processing after wait time (capped at 5s to check again)
+        const checkDelay = Math.min(waitTime, 5000)
+        setTimeout(() => {
+          isProcessingQueue = false
+          void processRequestQueue()
+        }, checkDelay)
+        return
+      }
+    }
+
     const request = requestQueue.shift()
     if (request) {
       try {
@@ -108,8 +173,24 @@ export const sendApiRequest = async <T>({
   retryConfig = DEFAULT_RETRY_CONFIG,
   useAppToken = false,
   token: providedToken,
-  debounceTime = DEFAULT_DEBOUNCE_TIME
+  debounceTime = DEFAULT_DEBOUNCE_TIME,
+  statisticsTracker
 }: ApiProps): Promise<T> => {
+  // 1. Circuit Breaker: Fail fast if globally rate limited
+  if (!isLocalApi && isRateLimited()) {
+    const waitSeconds = Math.ceil((globalRateLimitReset - Date.now()) / 1000)
+    console.warn(
+      `[API] Global rate limit active. Blocking request to ${path}. Reset in ${waitSeconds}s`
+    )
+    throw new ApiError(
+      `Global rate limit active. Try again in ${waitSeconds}s`,
+      {
+        status: 429,
+        retryAfter: waitSeconds
+      }
+    )
+  }
+
   const cacheKey = `${method}:${path}:${JSON.stringify(body)}`
   const now = Date.now()
 
@@ -140,6 +221,14 @@ export const sendApiRequest = async <T>({
           )
         }
         headers['Authorization'] = `Bearer ${token}`
+      }
+
+      // Track API calls using the statistics tracker
+      if (statisticsTracker && !isLocalApi) {
+        const operationType = categorizeApiCall(path)
+        if (operationType) {
+          statisticsTracker.recordApiCall(operationType)
+        }
       }
 
       const response = await fetch(url, {
@@ -207,8 +296,18 @@ export const sendApiRequest = async <T>({
         }
 
         // Log errors that won't be retried (or if retry failed)
-        const errorMessage =
-          errorData.error?.message || `API error: ${response.status}`
+        // Handle both { error: "string" } and { error: { message: "string" } } formats
+        let errorMessage = `API error: ${response.status}`
+        if (errorData) {
+          const anyError = errorData as any
+          if (typeof anyError.error === 'string') {
+            errorMessage = anyError.error
+          } else if (anyError.error?.message) {
+            errorMessage = anyError.error.message
+          } else if (anyError.message) {
+            errorMessage = anyError.message
+          }
+        }
         if (apiLogger) {
           apiLogger(
             'ERROR',
@@ -226,14 +325,34 @@ export const sendApiRequest = async <T>({
         if (response.status === 429) {
           const retryAfter =
             parseInt(response.headers.get('Retry-After') || '0', 10) || 5
+
+          // Set global circuit breaker
+          globalRateLimitReset = Date.now() + retryAfter * 1000
+
           const log = await getLogger()
           log(
             'ERROR',
-            `Spotify API rate limit hit. Waiting for ${retryAfter} seconds before retrying.`,
+            `Spotify API rate limit hit. Global block until ${new Date(globalRateLimitReset).toISOString()} (${retryAfter}s).`,
             'RateLimit'
           )
-          await new Promise((resolve) => setTimeout(resolve, retryAfter * 1000))
-          return makeRequest(retryCount + 1)
+
+          // If retry is short (< 10s), we can wait and retry
+          // Otherwise, fail the request to release resources and let the circuit breaker handle subsequent calls
+          if (retryAfter <= 10) {
+            await new Promise((resolve) =>
+              setTimeout(resolve, retryAfter * 1000)
+            )
+            return makeRequest(retryCount + 1)
+          } else {
+            throw new ApiError(
+              `Rate limit reached. Retry after ${retryAfter}s`,
+              {
+                status: 429,
+                retryAfter,
+                headers: response.headers
+              }
+            )
+          }
         }
 
         // Check if this is a premium-related error and redirect accordingly

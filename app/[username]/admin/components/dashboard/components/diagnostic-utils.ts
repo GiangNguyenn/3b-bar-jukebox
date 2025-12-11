@@ -206,7 +206,7 @@ function formatTechnicalDetails(
     )
     if (healthStatus.failureMetrics.lastSuccessfulOperation) {
       lines.push(
-        `Last Success: ${formatAbsoluteTime(healthStatus.failureMetrics.lastSuccessfulOperation)}`
+        `Last Recovery: ${formatAbsoluteTime(healthStatus.failureMetrics.lastSuccessfulOperation)}`
       )
     }
     if (healthStatus.failureMetrics.lastFailureTimestamp) {

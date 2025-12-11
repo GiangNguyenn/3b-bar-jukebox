@@ -35,7 +35,7 @@ export function TechnicalDetailsSection({
               </p>
               {healthStatus.failureMetrics.lastSuccessfulOperation && (
                 <p className='text-xs text-gray-300'>
-                  Last Success:{' '}
+                  Last Recovery:{' '}
                   {formatRelativeTime(
                     healthStatus.failureMetrics.lastSuccessfulOperation
                   )}

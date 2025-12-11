@@ -368,6 +368,11 @@ export class SpotifyApiService implements SpotifyApiClient {
    * existing playlist/queue APIs that expect this shape.
    */
   async getArtistTopTracks(artistId: string): Promise<TrackDetails[]> {
+    // Validate artist ID before making API calls
+    if (!artistId || artistId.trim() === '') {
+      throw new Error('Invalid or empty artist ID provided')
+    }
+
     return handleOperationError(async () => {
       const response = await this.apiClient<{ tracks: TrackDetails[] }>({
         path: `artists/${artistId}/top-tracks?market=from_token`,

@@ -15,7 +15,8 @@ import {
   FaPalette,
   FaCrown,
   FaPlay,
-  FaHeadphones
+  FaHeadphones,
+  FaTrophy
 } from 'react-icons/fa'
 
 export default function Home(): JSX.Element {
@@ -94,7 +95,7 @@ export default function Home(): JSX.Element {
               <div className='mb-16'>
                 <a
                   href='/auth/signin'
-                  className='text-white inline-flex transform items-center rounded-lg bg-green-500 px-8 py-4 text-lg font-bold shadow-lg transition-all duration-200 hover:scale-105 hover:bg-green-600'
+                  className='text-white inline-flex transform items-center rounded-lg bg-green-600 px-8 py-4 text-lg font-bold shadow-lg transition-all duration-200 hover:scale-105 hover:bg-green-700'
                 >
                   <FaSpotify className='mr-3 text-xl' />
                   Start Your Jukebox
@@ -209,6 +210,22 @@ export default function Home(): JSX.Element {
                   share your favorite music with friends when hanging out.
                 </p>
               </div>
+
+              {/* Feature 7 */}
+              <div className='rounded-lg border border-gray-700 bg-gray-800/50 p-8 transition-all duration-200 hover:border-green-500'>
+                <div className='mb-4 text-green-400'>
+                  <FaTrophy className='text-4xl' />
+                </div>
+                <h4 className='text-white mb-4 text-xl font-bold'>
+                  Competitive Music Game
+                </h4>
+                <p className='text-gray-300'>
+                  Challenge your friends in our innovative music discovery game.
+                  Compete to get your favorite artists to play using strategic
+                  song selections and intelligent recommendations. The ultimate
+                  test of music knowledge and taste.
+                </p>
+              </div>
             </div>
           </div>
         </div>
@@ -311,7 +328,7 @@ export default function Home(): JSX.Element {
             </p>
             <a
               href='/auth/signin'
-              className='text-white inline-flex transform items-center rounded-lg bg-green-500 px-8 py-4 text-lg font-bold shadow-lg transition-all duration-200 hover:scale-105 hover:bg-green-600'
+              className='text-white inline-flex transform items-center rounded-lg bg-green-600 px-8 py-4 text-lg font-bold shadow-lg transition-all duration-200 hover:scale-105 hover:bg-green-700'
             >
               <FaSpotify className='mr-3 text-xl' />
               Start Your Jukebox Now
@@ -353,7 +370,7 @@ export default function Home(): JSX.Element {
           </p>
           <a
             href='/auth/signin'
-            className='text-white rounded bg-green-500 px-4 py-2 font-bold hover:bg-green-600'
+            className='text-white rounded bg-green-600 px-4 py-2 font-bold hover:bg-green-700'
           >
             Sign In with Spotify
           </a>
@@ -376,7 +393,7 @@ export default function Home(): JSX.Element {
           </p>
           <a
             href='/auth/signin'
-            className='text-white rounded bg-green-500 px-4 py-2 font-bold hover:bg-green-600'
+            className='text-white rounded bg-green-600 px-4 py-2 font-bold hover:bg-green-700'
           >
             Sign In Again
           </a>

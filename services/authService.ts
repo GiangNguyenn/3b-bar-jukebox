@@ -73,7 +73,10 @@ export class AuthService {
     profileData: Partial<Database['public']['Tables']['profiles']['Row']>
   ): Promise<void> {
     // First attempt: try to upsert with the original display_name
-    const { error } = await this.supabase.from('profiles').upsert(profileData)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { error } = await this.supabase
+      .from('profiles')
+      .upsert(profileData as any)
 
     if (error) {
       // Check if it's a unique constraint violation on display_name
@@ -93,9 +96,10 @@ export class AuthService {
           display_name: profileData.spotify_user_id
         }
 
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const { error: fallbackError } = await this.supabase
           .from('profiles')
-          .upsert(fallbackProfileData)
+          .upsert(fallbackProfileData as any)
 
         if (fallbackError) {
           logger(

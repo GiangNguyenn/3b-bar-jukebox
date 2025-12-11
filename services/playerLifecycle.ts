@@ -7,6 +7,7 @@ import {
 import type { LogLevel } from '@/hooks/ConsoleLogsProvider'
 import { SpotifyPlaybackState } from '@/shared/types/spotify'
 import { JukeboxQueueItem } from '@/shared/types/queue'
+import { upsertPlayedTrack } from '@/lib/trackUpsert'
 import { tokenManager } from '@/shared/token/tokenManager'
 import { queueManager } from '@/services/queueManager'
 import { PLAYER_LIFECYCLE_CONFIG } from './playerLifecycleConfig'
@@ -285,6 +286,10 @@ class PlayerLifecycleService {
           'INFO',
           `[playNextTrack] Successfully started playback of track: ${currentTrack.tracks.name} (${currentTrack.tracks.spotify_track_id})`
         )
+
+        // Upsert track metadata to database (fire-and-forget)
+        void upsertPlayedTrack(currentTrack.tracks.spotify_track_id)
+
         this.currentQueueTrack = currentTrack
         // Update queue manager with currently playing track so getNextTrack() excludes it
         queueManager.setCurrentlyPlayingTrack(

@@ -49,7 +49,8 @@ export async function updateTokenInDatabase(
     supabase,
     'profiles',
     async (builder) => {
-      return await builder.update(updateData).eq('id', profileId)
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      return await builder.update(updateData as any).eq('id', profileId)
     },
     undefined, // Use default retry config
     `Update token for profile ${profileId}`

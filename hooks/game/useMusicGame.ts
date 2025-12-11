@@ -2,10 +2,23 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNowPlayingTrack } from '@/hooks/useNowPlayingTrack'
 import type { SpotifyPlaybackState, TrackDetails } from '@/shared/types/spotify'
 import { sendApiRequest } from '@/shared/api'
-import type { GameOptionTrack, TargetArtist } from '@/services/gameService'
-import { chooseTargetArtists } from '@/services/gameService'
+import type { TargetArtist } from '@/services/gameService'
+import {
+  DEFAULT_PLAYER_GRAVITY,
+  type DgsDebugInfo,
+  type DgsOptionTrack,
+  type DgsSelectionMeta,
+  type ExplorationPhase,
+  type PlayerGravityMap,
+  type PlayerId,
+  type PlayerTargetsMap
+} from '@/services/game/dgsTypes'
+import { calculateMoveCategory } from '@/services/game/gameRules'
 
-type PlayerId = 'player1' | 'player2'
+// New Hooks
+import { useGameTimer } from './useGameTimer'
+import { useGameRound } from './useGameRound'
+import { useGameData } from './useGameData'
 
 interface PlayerState {
   id: PlayerId
@@ -28,39 +41,170 @@ interface UseMusicGameResult {
   players: PlayerState[]
   activePlayerId: PlayerId
   phase: GamePhase
-  options: GameOptionTrack[]
+  options: DgsOptionTrack[]
   nowPlaying: SpotifyPlaybackState | null
   isBusy: boolean
   error: string | null
   pendingSelectionTrackId: string | null
   scoringPlayer: ScoringPlayer | null
   onScoreAnimationComplete: () => void
-  handleSelectOption: (option: GameOptionTrack) => void
-  updatePlayerTargetArtist: (playerId: PlayerId, artist: TargetArtist) => void
+  handleSelectOption: (option: DgsOptionTrack) => void
+  updatePlayerTargetArtist: (
+    playerId: PlayerId,
+    artist: TargetArtist,
+    isManual?: boolean
+  ) => void
   resetGame: () => void
+  // DGS Debug Data
+  playerGravities: PlayerGravityMap
+  roundTurn: number
+  turnCounter: number
+  explorationPhase: ExplorationPhase
+  ogDrift: number
+  candidatePoolSize: number
+  hardConvergenceActive: boolean
+  vicinity: { triggered: boolean; playerId?: PlayerId }
+  debugInfo?: DgsDebugInfo
+  // Turn timer
+  turnTimeRemaining: number
+  turnTimerActive: boolean
+  turnExpired: boolean
+  isWaitingForFirstTrack: boolean
+}
+
+const STORAGE_KEY_TARGET_ARTISTS = 'music-game-target-artists'
+
+// Helper to save target artists to localStorage
+function saveTargetArtistsToStorage(targets: PlayerTargetsMap): void {
+  if (typeof window === 'undefined') return
+  try {
+    localStorage.setItem(STORAGE_KEY_TARGET_ARTISTS, JSON.stringify(targets))
+  } catch {
+    // Ignore storage errors
+  }
 }
 
 export function useMusicGame({
   username
 }: UseMusicGameOptions = {}): UseMusicGameResult {
+  // --- Core State ---
   const [players, setPlayers] = useState<PlayerState[]>([
     { id: 'player1', score: 0, targetArtist: null },
     { id: 'player2', score: 0, targetArtist: null }
   ])
   const [activePlayerId, setActivePlayerId] = useState<PlayerId>('player1')
   const [phase, setPhase] = useState<GamePhase>('loading')
-  const [options, setOptions] = useState<GameOptionTrack[]>([])
-  const [error, setError] = useState<string | null>(null)
-  const [isBusy, setIsBusy] = useState(false)
+  const [playerGravities, setPlayerGravities] = useState<PlayerGravityMap>({
+    player1: DEFAULT_PLAYER_GRAVITY,
+    player2: DEFAULT_PLAYER_GRAVITY
+  })
+
+  // Selection / Scoring State
   const [pendingSelectionTrackId, setPendingSelectionTrackId] = useState<
     string | null
   >(null)
   const [playedTrackIds, setPlayedTrackIds] = useState<string[]>([])
   const [scoringPlayer, setScoringPlayer] = useState<ScoringPlayer | null>(null)
-  const hasInitializedRef = useRef(false)
   const scoreAnimationCompleteRef = useRef(false)
-  const lastTrackIdRef = useRef<string | null>(null)
+  const isManualTargetChangeRef = useRef(false)
 
+  // Initialization State
+  const hasInitializedRef = useRef(false)
+  const lastTrackIdRef = useRef<string | null>(null)
+  const [isWaitingForFirstTrack, setIsWaitingForFirstTrack] = useState(false)
+
+  // Optimistic UI updates refs
+  const gravityUpdateTrackIdRef = useRef<string | null>(null)
+  const pendingSelectionMetaRef = useRef<DgsSelectionMeta | null>(null)
+
+  // --- Composed Hooks ---
+
+  const {
+    roundTurn,
+    turnCounter,
+    explorationPhase,
+    ogDrift,
+    hardConvergenceActive,
+    incrementTurn,
+    reset: resetRound,
+    roundTurnRef,
+    turnCounterRef
+  } = useGameRound()
+
+  const {
+    timeRemaining: turnTimeRemaining,
+    isExpired: turnExpired,
+    reset: resetTimer
+  } = useGameTimer({
+    isActive: phase === 'selecting' && !pendingSelectionTrackId
+  })
+
+  // Callback to update local gravities from data hook
+  const handleGravitiesUpdate = useCallback(
+    (newGravities: PlayerGravityMap) => {
+      setPlayerGravities(newGravities)
+    },
+    []
+  )
+
+  // Callback to update targets from data hook or manual
+  const applyPlayerTargets = useCallback(
+    (targets?: PlayerTargetsMap, fallback?: TargetArtist[]) => {
+      if (!targets && !fallback) {
+        return
+      }
+      const fallbackTargets = fallback ?? []
+      setPlayers((prev) =>
+        prev.map((player, index) => ({
+          ...player,
+          targetArtist:
+            targets?.[player.id] ??
+            fallbackTargets[index] ??
+            player.targetArtist
+        }))
+      )
+    },
+    []
+  )
+
+  const {
+    options,
+    isBusy,
+    error: dataError, // Renamed to avoid confusion with overall error state
+    candidatePoolSize,
+    vicinity,
+    debugInfo,
+    refreshOptions,
+    lastSeedTrackIdRef,
+    lastCompletedSelectionRef,
+    clearOptions
+  } = useGameData({
+    activePlayerId,
+    players,
+    playedTrackIds,
+    playerGravities,
+    roundTurn,
+    turnCounter,
+    onGravitiesUpdate: handleGravitiesUpdate,
+    onTargetsUpdate: applyPlayerTargets
+  })
+
+  // Local error state (merges data error + logic errors)
+  const [localError, setLocalError] = useState<string | null>(null)
+  const error = localError || dataError
+
+  // --- Side Effects ---
+
+  // Persist target artists
+  useEffect(() => {
+    const targets: PlayerTargetsMap = {
+      player1: players.find((p) => p.id === 'player1')?.targetArtist ?? null,
+      player2: players.find((p) => p.id === 'player2')?.targetArtist ?? null
+    }
+    saveTargetArtistsToStorage(targets)
+  }, [players])
+
+  // Poll Now Playing
   const {
     data: nowPlaying,
     error: nowPlayingError,
@@ -68,329 +212,353 @@ export function useMusicGame({
   } = useNowPlayingTrack({
     token: null,
     enabled: true,
-    refetchInterval: 8000
+    refetchInterval: 15000
   })
 
-  const refreshTargetArtists = useCallback(() => {
-    // Always assign new random target artists (overwrites any manual selections)
-    const newTargets = chooseTargetArtists()
+  // --- Game Flow Logic ---
 
+  const updatePlayerTargetArtist = useCallback(
+    (playerId: PlayerId, artist: TargetArtist, isManual = false) => {
+      setPlayers((prev) =>
+        prev.map((p) =>
+          p.id === playerId ? { ...p, targetArtist: artist } : p
+        )
+      )
+
+      if (isManual) {
+        isManualTargetChangeRef.current = true
+        resetRound()
+        setPlayerGravities({
+          player1: DEFAULT_PLAYER_GRAVITY,
+          player2: DEFAULT_PLAYER_GRAVITY
+        })
+        clearOptions()
+
+        // Slight delay to allow state to settle before refreshing options
+        // We pass the new target immediately to refreshOptions via override
+        const overrideTargets = {
+          player1:
+            players.find((p) => p.id === 'player1')?.targetArtist ?? null,
+          player2:
+            players.find((p) => p.id === 'player2')?.targetArtist ?? null,
+          [playerId]: artist // Ensure the newest change is included
+        }
+
+        // If we have a playing track, refresh options for the new target
+        if (nowPlaying) {
+          void refreshOptions(nowPlaying, overrideTargets, true) // skipTargetUpdate=true to keep our manual change
+          isManualTargetChangeRef.current = false
+        }
+      }
+    },
+    [players, resetRound, clearOptions, nowPlaying, refreshOptions]
+  )
+
+  const resetGame = useCallback(() => {
+    resetRound()
+    setPlayerGravities({
+      player1: DEFAULT_PLAYER_GRAVITY,
+      player2: DEFAULT_PLAYER_GRAVITY
+    })
     setPlayers((prev) =>
-      prev.map((player, index) => ({
+      prev.map((player) => ({
         ...player,
-        targetArtist: newTargets[index] ?? null
+        targetArtist: null
       }))
     )
-  }, [])
+    lastCompletedSelectionRef.current = null
+    pendingSelectionMetaRef.current = null
+    gravityUpdateTrackIdRef.current = null
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem(STORAGE_KEY_TARGET_ARTISTS)
+    }
+  }, [resetRound])
 
-  const refreshOptions = useCallback(
-    async (playbackState: SpotifyPlaybackState | null) => {
-      if (!playbackState) return
-
-      // Clear options immediately to show loading state
-      setOptions([])
-      setPhase('loading')
-      setIsBusy(true)
-      setError(null)
-
-      try {
-        const response = await sendApiRequest<{
-          targetArtists: TargetArtist[]
-          optionTracks: GameOptionTrack[]
-        }>({
-          path: '/game/init-round',
-          method: 'POST',
-          isLocalApi: true,
-          body: { playbackState }
-        })
-
-        const excludedIds = new Set<string>(
-          [playbackState.item?.id ?? '', ...playedTrackIds].filter(Boolean)
-        )
-
-        const filteredOptions = response.optionTracks.filter(
-          (opt) => opt.track && !excludedIds.has(opt.track.id)
-        )
-
-        setOptions(filteredOptions)
-        setPhase('selecting')
-      } catch (gameError) {
-        const message =
-          gameError instanceof Error
-            ? gameError.message
-            : 'Failed to refresh related songs.'
-        setError(message)
-        setOptions([])
-      } finally {
-        setIsBusy(false)
-      }
-    },
-    [playedTrackIds]
-  )
-
-  const initializeRound = useCallback(
-    async (playbackState: SpotifyPlaybackState | null) => {
-      if (!playbackState) return
-
-      setIsBusy(true)
-      setError(null)
-
-      try {
-        // Call server-side API to initialize the round
-        const response = await sendApiRequest<{
-          targetArtists: TargetArtist[]
-          optionTracks: GameOptionTrack[]
-        }>({
-          path: '/game/init-round',
-          method: 'POST',
-          isLocalApi: true,
-          body: { playbackState }
-        })
-
-        const { targetArtists, optionTracks } = response
-
-        // Update players with new target artists (always assign, even if manually set)
-        setPlayers((prev) =>
-          prev.map((player, index) => ({
-            ...player,
-            targetArtist: targetArtists[index] ?? null
-          }))
-        )
-
-        const excludedIds = new Set<string>(
-          [playbackState.item?.id ?? '', ...playedTrackIds].filter(Boolean)
-        )
-
-        const filteredOptions = optionTracks.filter(
-          (opt) => opt.track && !excludedIds.has(opt.track.id)
-        )
-
-        setOptions(filteredOptions)
-        setPhase('selecting')
-      } catch (gameError) {
-        const message =
-          gameError instanceof Error
-            ? gameError.message
-            : 'Failed to initialize game round.'
-        setError(message)
-        setOptions([])
-        setPhase('loading')
-      } finally {
-        setIsBusy(false)
-      }
-    },
-    [playedTrackIds]
-  )
+  // --- Track Change & Initialization Handling ---
 
   useEffect(() => {
     if (isNowPlayingLoading) {
-      // Only show loading state before the first successful initialization
-      if (!hasInitializedRef.current) {
-        setPhase('loading')
-      }
+      if (!hasInitializedRef.current) setPhase('loading')
       return
     }
 
     if (nowPlayingError) {
-      setError('Unable to load currently playing track.')
-      if (!hasInitializedRef.current) {
+      setLocalError('Unable to load currently playing track.')
+      if (!hasInitializedRef.current) setPhase('loading')
+      return
+    }
+
+    if (!nowPlaying?.item?.artists?.length || !nowPlaying.item.artists[0]?.id) {
+      setLocalError(
+        nowPlaying ? 'Current track info missing.' : 'No track playing.'
+      )
+      if (!hasInitializedRef.current) setPhase('loading')
+      return
+    }
+
+    setLocalError(null)
+
+    // First Load / Track Change Detection
+    if (!hasInitializedRef.current) {
+      if (!lastTrackIdRef.current) {
+        lastTrackIdRef.current = nowPlaying.item.id
         setPhase('loading')
+        setIsWaitingForFirstTrack(true)
+        return
       }
-      return
-    }
-
-    if (!nowPlaying) {
-      setError('No track is currently playing.')
-      if (!hasInitializedRef.current) {
+      if (lastTrackIdRef.current === nowPlaying.item.id) {
         setPhase('loading')
+        setIsWaitingForFirstTrack(true)
+        return
       }
-      return
-    }
+      // Track changed!
+      const p1 = players.find((p) => p.id === 'player1')?.targetArtist
+      const p2 = players.find((p) => p.id === 'player2')?.targetArtist
 
-    // Check if the track has artists before initializing
-    if (!nowPlaying.item?.artists || nowPlaying.item.artists.length === 0) {
-      setError('Current track does not have artist information.')
-      if (!hasInitializedRef.current) {
+      if (!p1?.name || !p2?.name) {
         setPhase('loading')
+        setIsWaitingForFirstTrack(true)
+        return
       }
+
+      // Ready
+      hasInitializedRef.current = true
+      lastTrackIdRef.current = nowPlaying.item.id
+      setIsWaitingForFirstTrack(false)
+      void refreshOptions(nowPlaying)
+      // Phase will be set to 'selecting' when options finish loading
       return
     }
-
-    // Check if the first artist has an ID
-    const artistId = nowPlaying.item.artists[0]?.id
-    if (!artistId) {
-      setError('Current track does not have a valid artist ID.')
-      if (!hasInitializedRef.current) {
-        setPhase('loading')
-      }
-      return
-    }
-
-    setError(null)
-
-    // Only initialize the round once on initial page load
-    if (hasInitializedRef.current) {
-      return
-    }
-
-    hasInitializedRef.current = true
-    void initializeRound(nowPlaying)
   }, [
-    initializeRound,
     isNowPlayingLoading,
     nowPlaying,
     nowPlayingError,
-    pendingSelectionTrackId
+    players,
+    refreshOptions
   ])
 
-  // Check for scoring and refresh options whenever the track changes
-  useEffect(() => {
-    if (!nowPlaying?.item || !hasInitializedRef.current) {
-      return
-    }
+  // Track previous isBusy state to detect when loading completes
+  const previousIsBusyRef = useRef(isBusy)
 
+  // Set phase to 'selecting' and reset timer only when options finish loading
+  useEffect(() => {
+    const wasBusy = previousIsBusyRef.current
+    const justFinishedLoading = wasBusy && !isBusy
+
+    // Update previous busy state
+    previousIsBusyRef.current = isBusy
+
+    if (
+      !isBusy &&
+      hasInitializedRef.current &&
+      nowPlaying &&
+      options.length > 0 &&
+      !scoringPlayer
+    ) {
+      // Set phase to selecting
+      if (phase !== 'selecting') {
+        setPhase('selecting')
+      }
+
+      // Reset timer only when we just finished loading new options
+      if (justFinishedLoading) {
+        resetTimer()
+      }
+    }
+  }, [isBusy, nowPlaying, options.length, scoringPlayer, phase, resetTimer])
+
+  // --- Scoring & Turn Processing ---
+
+  useEffect(() => {
+    if (!nowPlaying?.item || !hasInitializedRef.current) return
     const nowPlayingId = nowPlaying.item.id
 
-    // Skip if this is the same track we already processed
-    if (nowPlayingId === lastTrackIdRef.current) {
+    // Dedup processing
+    if (
+      nowPlayingId === lastTrackIdRef.current &&
+      !isManualTargetChangeRef.current
+    )
       return
-    }
+    if (isManualTargetChangeRef.current) return
 
-    // Update last track ID
     lastTrackIdRef.current = nowPlayingId
 
-    // Skip if this track was already played (to avoid duplicate processing)
+    // Check if game is in progress (both players have target artists set)
+    const isGameInProgress =
+      players[0]?.targetArtist !== null && players[1]?.targetArtist !== null
+
+    // Calculate next active player ID BEFORE processing (needed for refreshOptions)
+    const nextActivePlayerId: PlayerId =
+      activePlayerId === 'player1' ? 'player2' : 'player1'
+
+    // Switch active player immediately if game is in progress
+    // This ensures refreshOptions uses the correct player for the next turn
+    if (isGameInProgress) {
+      setActivePlayerId(nextActivePlayerId)
+    }
+
+    // Prevent re-processing played tracks, BUT ensure we still refresh options
+    // The original code:
+    /*
+      if (playedTrackIds.includes(nowPlayingId)) {
+          void refreshOptions(nowPlaying)
+          return
+      }
+    */
+    // We should maintain this behavior.
     if (playedTrackIds.includes(nowPlayingId)) {
-      // Still refresh options even if track was already played
-      void refreshOptions(nowPlaying)
+      // Use next active player ID if game is in progress
+      void refreshOptions(
+        nowPlaying,
+        undefined,
+        false,
+        undefined,
+        isGameInProgress ? nextActivePlayerId : undefined
+      )
       return
     }
 
-    // If we were waiting for a specific track but a different one started playing,
-    // clear the pending selection (something went wrong or track was skipped)
+    // Was this selected by a player?
     const wasPlayerSelected = pendingSelectionTrackId === nowPlayingId
+
+    // Clear pending if mismatch (skipped track/error)
     if (pendingSelectionTrackId && !wasPlayerSelected) {
       setPendingSelectionTrackId(null)
+      pendingSelectionMetaRef.current = null
     }
 
-    const targetsById = players.reduce<Record<PlayerId, TargetArtist | null>>(
-      (acc, player) => {
-        acc[player.id] = player.targetArtist ?? null
-        return acc
-      },
-      {
-        player1: null,
-        player2: null
-      }
-    )
-
-    // Get ALL artist names from the currently playing track (normalized for comparison)
+    // Score Check
     const trackArtistNames = new Set(
       nowPlaying.item.artists
-        .map((artist) => artist.name?.trim().toLowerCase())
-        .filter((name): name is string => Boolean(name))
+        .map((a) => a.name?.trim().toLowerCase())
+        .filter(Boolean) as string[]
     )
+    const normalize = (s: string) => s.trim().toLowerCase()
 
-    // Helper function to normalize artist names for comparison
-    const normalizeArtistName = (name: string): string => {
-      return name.trim().toLowerCase()
-    }
-
-    // Find which players scored by checking if their target artist name matches any track artist
     const scoringPlayers: ScoringPlayer[] = []
-    const didAnyScore = players.some((player) => {
-      const target = targetsById[player.id]
-      if (!target || !target.name) {
-        return false
+    let didScore = false
+
+    const newPlayers = players.map((player) => {
+      const target = player.targetArtist
+      if (!target?.name) return player
+
+      if (trackArtistNames.has(normalize(target.name))) {
+        scoringPlayers.push({ playerId: player.id, artistName: target.name })
+        didScore = true
+        return { ...player, score: player.score + 1 }
       }
-
-      const normalizedTargetName = normalizeArtistName(target.name)
-      const hasMatch = trackArtistNames.has(normalizedTargetName)
-
-      if (hasMatch) {
-        scoringPlayers.push({
-          playerId: player.id,
-          artistName: target.name
-        })
-      }
-
-      return hasMatch
+      return player
     })
 
-    // Update scores
-    setPlayers((prev) =>
-      prev.map((player) => {
-        const target = targetsById[player.id]
-        if (!target || !target.name) {
-          return player
-        }
+    if (didScore) {
+      setPlayers(newPlayers)
+    }
 
-        const normalizedTargetName = normalizeArtistName(target.name)
-        const hasMatch = trackArtistNames.has(normalizedTargetName)
-
-        if (!hasMatch) {
-          return player
-        }
-
-        return {
-          ...player,
-          score: player.score + 1
-        }
-      })
-    )
-
-    // Mark the now playing track as played so it never appears as a future option
+    // Mark as played
     setPlayedTrackIds((prev) =>
       prev.includes(nowPlayingId) ? prev : [...prev, nowPlayingId]
     )
 
-    // Clear pending selection if this was the selected track
+    // Update Round/Turn logic if player selected it
     if (wasPlayerSelected) {
       setPendingSelectionTrackId(null)
+
+      const selectionMeta: DgsSelectionMeta =
+        pendingSelectionMetaRef.current &&
+        pendingSelectionMetaRef.current.trackId === nowPlayingId
+          ? pendingSelectionMetaRef.current
+          : {
+              trackId: nowPlayingId,
+              playerId: activePlayerId, // Fallback, likely inaccuracy if pendingSelectionMeta is lost
+              previousTrackId: lastSeedTrackIdRef.current
+            }
+
+      if (gravityUpdateTrackIdRef.current === nowPlayingId) {
+        // Already updated gravity optimistically
+        lastCompletedSelectionRef.current = null
+        gravityUpdateTrackIdRef.current = null
+      } else {
+        lastCompletedSelectionRef.current = selectionMeta
+      }
+
+      pendingSelectionMetaRef.current = null
+
+      // Progress game round
+      incrementTurn(true) // true = continue round
     }
 
-    // If any player scored, show animation and delay continuation
-    if (didAnyScore && scoringPlayers.length > 0) {
-      // Show animation for the first scoring player (or both if they both scored)
+    // Note: Active player switch happens at the top of this effect if game is in progress
+    // This ensures the correct player is used when loading related songs
+
+    // Handle Scoring Animation / Pause
+    if (didScore && scoringPlayers.length > 0) {
       setScoringPlayer(scoringPlayers[0])
       scoreAnimationCompleteRef.current = false
-
-      // Don't continue game until animation completes
+      // Pauses here until animation clears scoringPlayer
       return
     }
 
-    // No score - continue immediately
-    // Only switch players if this was a player-selected track
-    if (wasPlayerSelected) {
-      const nextPlayerId: PlayerId =
-        activePlayerId === 'player1' ? 'player2' : 'player1'
-      setActivePlayerId(nextPlayerId)
-    }
-
-    // Always refresh related songs for the new now-playing track
-    void refreshOptions(nowPlaying)
+    // Set phase to waiting while options load (timer will start when options are ready)
+    setPhase('waiting_for_track')
+    // Use next active player ID if game is in progress to ensure correct target artist is used
+    void refreshOptions(
+      nowPlaying,
+      undefined,
+      false,
+      undefined,
+      isGameInProgress ? nextActivePlayerId : undefined
+    )
   }, [
-    activePlayerId,
     nowPlaying,
     pendingSelectionTrackId,
+    activePlayerId,
     players,
     playedTrackIds,
     refreshOptions,
-    refreshTargetArtists
+    incrementTurn
   ])
 
+  // --- Handlers ---
+
   const handleSelectOption = useCallback(
-    async (option: GameOptionTrack) => {
-      if (!username || !option || phase !== 'selecting') {
+    async (option: DgsOptionTrack) => {
+      if (!username) {
+        setLocalError('Username is required')
         return
       }
+      if (turnExpired) {
+        setLocalError('Time expired!')
+        return
+      }
+      if (!option || phase !== 'selecting') return
 
-      setIsBusy(true)
-      setError(null)
+      setLocalError(null)
+
+      const track = option.track
+
+      const currentPlayerAttraction =
+        activePlayerId === 'player1'
+          ? option.metrics.aAttraction
+          : option.metrics.bAttraction
+      const baseline = option.metrics.currentSongAttraction
+
+      const selectionCategory = calculateMoveCategory(
+        currentPlayerAttraction,
+        baseline
+      )
+
+      // Optimistic Update
+      const meta = {
+        trackId: track.id,
+        playerId: activePlayerId,
+        previousTrackId: lastSeedTrackIdRef.current,
+        selectionCategory
+      }
+      pendingSelectionMetaRef.current = meta
+      setPendingSelectionTrackId(track.id)
 
       try {
-        const track: TrackDetails = option.track
-
+        // Queue track
         await sendApiRequest<void>({
           path: `/playlist/${username}`,
           method: 'POST',
@@ -399,7 +567,7 @@ export function useMusicGame({
             tracks: {
               id: track.id,
               name: track.name,
-              artists: track.artists.map((artist) => ({ name: artist.name })),
+              artists: track.artists.map((a) => ({ name: a.name })),
               album: { name: track.album.name },
               duration_ms: track.duration_ms,
               popularity: track.popularity,
@@ -410,72 +578,87 @@ export function useMusicGame({
           }
         })
 
-        setPendingSelectionTrackId(track.id)
+        // Influence update
+        try {
+          const influenceResponse = await sendApiRequest<{
+            gravities: PlayerGravityMap
+          }>({
+            path: '/game/influence',
+            method: 'POST',
+            isLocalApi: true,
+            body: { playerGravities, lastSelection: meta }
+          })
+          if (influenceResponse.gravities) {
+            setPlayerGravities(influenceResponse.gravities)
+            gravityUpdateTrackIdRef.current = track.id
+          }
+        } catch (e) {
+          console.error('Influence update failed', e)
+        }
+
         setPhase('waiting_for_track')
-      } catch (selectionError) {
-        const message =
-          selectionError instanceof Error
-            ? selectionError.message
-            : 'Failed to queue selected track.'
-        setError(message)
-        setPhase('selecting')
-      } finally {
-        setIsBusy(false)
+      } catch (e) {
+        setLocalError('Failed to queue track')
+        setPendingSelectionTrackId(null)
+        pendingSelectionMetaRef.current = null
       }
     },
-    [phase, username]
+    [
+      username,
+      turnExpired,
+      phase,
+      activePlayerId,
+      playerGravities,
+      lastSeedTrackIdRef
+    ]
   )
 
   const onScoreAnimationComplete = useCallback(() => {
+    const wasScoring = scoringPlayer !== null
     setScoringPlayer(null)
     scoreAnimationCompleteRef.current = true
 
-    // Now continue with game logic
-    if (nowPlaying) {
-      const nextPlayerId: PlayerId =
-        activePlayerId === 'player1' ? 'player2' : 'player1'
-      setActivePlayerId(nextPlayerId)
-      void refreshOptions(nowPlaying)
-
-      // Refresh target artists after scoring
-      refreshTargetArtists()
-    }
-  }, [activePlayerId, nowPlaying, refreshOptions, refreshTargetArtists])
-
-  const updatePlayerTargetArtist = useCallback(
-    (playerId: PlayerId, artist: TargetArtist) => {
+    if (wasScoring) {
+      // Round Reset on score
+      resetRound()
+      // Reset gravities
+      setPlayerGravities({
+        player1: DEFAULT_PLAYER_GRAVITY,
+        player2: DEFAULT_PLAYER_GRAVITY
+      })
+      // Reset target artists to trigger new assignment
       setPlayers((prev) =>
-        prev.map((player) =>
-          player.id === playerId ? { ...player, targetArtist: artist } : player
-        )
+        prev.map((player) => ({
+          ...player,
+          targetArtist: null
+        }))
       )
-    },
-    []
-  )
+      clearOptions()
+      // Active player was already switched when the selection was made
 
-  const resetGame = useCallback(() => {
-    setPlayers([
-      { id: 'player1', score: 0, targetArtist: null },
-      { id: 'player2', score: 0, targetArtist: null }
-    ])
-    setActivePlayerId('player1')
-    setScoringPlayer(null)
-    setOptions([])
-    setError(null)
-    setPendingSelectionTrackId(null)
-    setPhase('loading')
-
-    if (nowPlaying) {
-      void initializeRound(nowPlaying)
+      // Refresh options with clean slate, null target artists, and reset gravities
+      if (nowPlaying) {
+        void refreshOptions(
+          nowPlaying,
+          { player1: null, player2: null },
+          false,
+          [],
+          undefined,
+          {
+            player1: DEFAULT_PLAYER_GRAVITY,
+            player2: DEFAULT_PLAYER_GRAVITY
+          }
+        )
+      }
     }
-  }, [initializeRound, nowPlaying])
+  }, [scoringPlayer, resetRound, clearOptions, nowPlaying, refreshOptions])
 
   return {
     players,
     activePlayerId,
     phase,
     options,
-    nowPlaying: nowPlaying ?? null,
+    nowPlaying,
     isBusy,
     error,
     pendingSelectionTrackId,
@@ -483,6 +666,19 @@ export function useMusicGame({
     onScoreAnimationComplete,
     handleSelectOption,
     updatePlayerTargetArtist,
-    resetGame
+    resetGame,
+    playerGravities,
+    roundTurn,
+    turnCounter,
+    explorationPhase,
+    ogDrift,
+    candidatePoolSize,
+    hardConvergenceActive,
+    vicinity,
+    debugInfo,
+    turnTimeRemaining,
+    turnTimerActive: phase === 'selecting' && !pendingSelectionTrackId,
+    turnExpired,
+    isWaitingForFirstTrack
   }
 }

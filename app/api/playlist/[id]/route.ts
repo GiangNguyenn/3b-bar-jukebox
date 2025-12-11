@@ -170,86 +170,125 @@ export async function POST(
     const { tracks, initialVotes, source } = parsed
     const requestSource = source ?? 'user'
 
-    // Fetch detailed track information from Spotify API to get release date and genre
-    let detailedTrackInfo: {
-      album?: { release_date?: string }
-      artists?: Array<{ id: string; name: string }>
-    } | null = null
-    let artistGenres: string[] = []
+    // Database-first: Check if we already have this track's metadata
+    let releaseYear: number | null = null
+    let genre: string | null = null
 
     try {
-      // Get admin profile for Spotify API access
-      const adminResult = await queryWithRetry<{
-        spotify_access_token: string | null
-        spotify_refresh_token: string | null
-        spotify_token_expires_at: number | null
+      const existingTrackResult = await queryWithRetry<{
+        genre: string | null
+        release_year: number | null
       }>(
         supabase
-          .from('profiles')
-          .select(
-            'spotify_access_token, spotify_refresh_token, spotify_token_expires_at'
-          )
-          .ilike('display_name', '3B')
+          .from('tracks')
+          .select('genre, release_year')
+          .eq('spotify_track_id', tracks.id)
           .single(),
         undefined,
-        'Fetch admin profile for Spotify API access'
+        `Check existing track metadata for: ${tracks.id}`
       )
 
-      const adminProfile = adminResult.data
-      const adminError = adminResult.error
+      const existingTrack = existingTrackResult.data
 
-      if (!adminError && adminProfile?.spotify_access_token) {
-        // First, get track details (includes artist ID but not genres)
-        const trackResponse = await fetch(
-          `https://api.spotify.com/v1/tracks/${tracks.id}`,
-          {
-            headers: {
-              Authorization: `Bearer ${adminProfile.spotify_access_token}`
-            }
-          }
+      if (existingTrack?.genre && existingTrack?.release_year) {
+        // We have complete metadata in DB, use it
+        genre = existingTrack.genre
+        releaseYear = existingTrack.release_year
+        logger('INFO', `Using cached track metadata from DB for ${tracks.name}`)
+      }
+    } catch {
+      // Track not in DB or query failed, will fetch from Spotify
+      logger(
+        'INFO',
+        `Track not in DB or incomplete metadata, will fetch from Spotify`
+      )
+    }
+
+    // Only fetch from Spotify if we don't have genre or release year
+    if (!genre || !releaseYear) {
+      let detailedTrackInfo: {
+        album?: { release_date?: string }
+        artists?: Array<{ id: string; name: string }>
+      } | null = null
+      let artistGenres: string[] = []
+
+      try {
+        // Get admin profile for Spotify API access
+        const adminResult = await queryWithRetry<{
+          spotify_access_token: string | null
+          spotify_refresh_token: string | null
+          spotify_token_expires_at: number | null
+        }>(
+          supabase
+            .from('profiles')
+            .select(
+              'spotify_access_token, spotify_refresh_token, spotify_token_expires_at'
+            )
+            .ilike('display_name', '3B')
+            .single(),
+          undefined,
+          'Fetch admin profile for Spotify API access'
         )
 
-        if (trackResponse.ok) {
-          detailedTrackInfo = (await trackResponse.json()) as {
-            album?: { release_date?: string }
-            artists?: Array<{ id: string; name: string }>
-          }
+        const adminProfile = adminResult.data
+        const adminError = adminResult.error
 
-          // Then, get artist genres if we have an artist ID
-          if (detailedTrackInfo?.artists?.[0]?.id) {
-            const artistId = detailedTrackInfo.artists[0].id
-            const artistResponse = await fetch(
-              `https://api.spotify.com/v1/artists/${artistId}`,
-              {
-                headers: {
-                  Authorization: `Bearer ${adminProfile.spotify_access_token}`
+        if (!adminError && adminProfile?.spotify_access_token) {
+          // First, get track details (includes artist ID but not genres)
+          const trackResponse = await fetch(
+            `https://api.spotify.com/v1/tracks/${tracks.id}`,
+            {
+              headers: {
+                Authorization: `Bearer ${adminProfile.spotify_access_token}`
+              }
+            }
+          )
+
+          if (trackResponse.ok) {
+            detailedTrackInfo = (await trackResponse.json()) as {
+              album?: { release_date?: string }
+              artists?: Array<{ id: string; name: string }>
+            }
+
+            // Then, get artist genres if we have an artist ID
+            if (detailedTrackInfo?.artists?.[0]?.id) {
+              const artistId = detailedTrackInfo.artists[0].id
+              if (artistId && artistId.trim() !== '') {
+                const artistResponse = await fetch(
+                  `https://api.spotify.com/v1/artists/${artistId}`,
+                  {
+                    headers: {
+                      Authorization: `Bearer ${adminProfile.spotify_access_token}`
+                    }
+                  }
+                )
+                if (artistResponse.ok) {
+                  // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+                  const artistData = await artistResponse.json()
+                  artistGenres =
+                    (artistData as { genres?: string[] }).genres ?? []
                 }
               }
-            )
-            if (artistResponse.ok) {
-              // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-              const artistData = await artistResponse.json()
-              artistGenres = (artistData as { genres?: string[] }).genres ?? []
             }
           }
         }
+      } catch (error) {
+        logger(
+          'ERROR',
+          `Playlist API - Error fetching detailed track info`,
+          undefined,
+          error as Error
+        )
+        // Continue without detailed info
       }
-    } catch (error) {
-      logger(
-        'ERROR',
-        `Playlist API - Error fetching detailed track info`,
-        undefined,
-        error as Error
-      )
-      // Continue without detailed info
+
+      // Extract release year and genre from detailed track info only if we didn't get it from DB
+      releaseYear ??= detailedTrackInfo?.album?.release_date
+        ? new Date(detailedTrackInfo.album.release_date).getFullYear()
+        : new Date().getFullYear()
+
+      genre ??= artistGenres[0] ?? null
     }
-
-    // Extract release year and genre from detailed track info
-    const releaseYear = detailedTrackInfo?.album?.release_date
-      ? new Date(detailedTrackInfo.album.release_date).getFullYear()
-      : new Date().getFullYear()
-
-    const genre = artistGenres[0] ?? null
 
     // Safeguard: Validate that the Spotify track ID is not a UUID and is the correct format
 

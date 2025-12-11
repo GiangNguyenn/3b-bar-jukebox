@@ -56,7 +56,7 @@ export class SubscriptionQueryUtils {
       return {
         profile,
         subscription,
-        planType: subscription?.plan_type || 'free',
+        planType: (subscription?.plan_type || 'free') as 'free' | 'premium',
         hasPremiumAccess:
           subscription?.plan_type === 'premium' &&
           subscription?.status === 'active'
