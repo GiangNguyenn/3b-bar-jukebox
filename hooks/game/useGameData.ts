@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback } from 'react'
+import { useState, useRef, useCallback, useEffect } from 'react'
 import type { SpotifyPlaybackState } from '@/shared/types/spotify'
 import { sendApiRequest } from '@/shared/api'
 import type { TargetArtist } from '@/services/gameService'
@@ -86,9 +86,15 @@ export function useGameData({
   const [debugInfo, setDebugInfo] = useState<DgsDebugInfo | undefined>(
     undefined
   )
+  const optionsRef = useRef<DgsOptionTrack[]>([])
+  const lastRequestTrackIdRef = useRef<string | null>(null)
 
   const lastSeedTrackIdRef = useRef<string | null>(null)
   const lastCompletedSelectionRef = useRef<DgsSelectionMeta | null>(null)
+
+  useEffect(() => {
+    optionsRef.current = options
+  }, [options])
 
   // Helper to map current players to targets map
   const getCurrentPlayerTargets = useCallback((): PlayerTargetsMap => {
@@ -112,6 +118,16 @@ export function useGameData({
       overrideGravities?: PlayerGravityMap
     ) => {
       if (!playbackState) return
+
+      const currentTrackId = playbackState.item?.id ?? null
+      const isSameTrackRequest =
+        !overrideTargets &&
+        currentTrackId &&
+        lastRequestTrackIdRef.current === currentTrackId &&
+        optionsRef.current.length > 0
+
+      if (isSameTrackRequest) return
+      lastRequestTrackIdRef.current = currentTrackId
 
       // Keep existing options while loading to avoid flicker during selection
       setIsBusy(true)
