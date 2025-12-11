@@ -398,9 +398,7 @@ function buildCacheKey(
   ].join('|')
 }
 
-async function buildTinyFallback(
-  playbackState: SpotifyPlaybackState
-): Promise<{
+async function buildTinyFallback(playbackState: SpotifyPlaybackState): Promise<{
   targetArtists: unknown[]
   optionTracks: unknown[]
   playerTargets: PlayerTargetsMap
