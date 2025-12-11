@@ -13,6 +13,15 @@ import { getAdminToken } from '@/services/game/adminAuth'
 import { createModuleLogger } from '@/shared/utils/logger'
 
 const logger = createModuleLogger('ApiGameInitRound')
+const HANDLER_TIMEOUT_MS = 9000
+
+type CacheValue = {
+  expiresAt: number
+  response: unknown
+}
+
+// Short-lived in-memory cache to avoid repeat engine runs for same seed/targets
+const initRoundCache = new Map<string, CacheValue>()
 
 // Add caching to reduce redundant DGS engine runs for same track
 export const revalidate = 30 // 30-second cache
@@ -59,6 +68,8 @@ const requestSchema = z.object({
  */
 export async function POST(request: NextRequest): Promise<NextResponse> {
   try {
+    const handlerStart = Date.now()
+
     // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
     const body = await request.json()
     const parsed = requestSchema.safeParse(body)
@@ -136,12 +147,47 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       lastSelection: parsed.data.lastSelection ?? null
     }
 
-    const engineStartTime = Date.now()
-    const engineResponse = await runDualGravityEngine(
-      enginePayload,
-      accessToken
+    const cacheKey = buildCacheKey(
+      playbackState.item?.id ?? '',
+      normalizedTargets,
+      currentPlayerId
     )
 
+    const cached = initRoundCache.get(cacheKey)
+    if (cached && cached.expiresAt > Date.now()) {
+      logger('INFO', 'Serving init-round from cache', 'cache')
+      return NextResponse.json(cached.response)
+    }
+
+    const engineStartTime = Date.now()
+    const timeoutPromise = new Promise<{ timeout: true }>((resolve) => {
+      setTimeout(() => resolve({ timeout: true }), HANDLER_TIMEOUT_MS - 200)
+    })
+    const enginePromise = runDualGravityEngine(enginePayload, accessToken).then(
+      (res) => ({ res })
+    )
+
+    const raced = await Promise.race([enginePromise, timeoutPromise])
+
+    if ('timeout' in raced) {
+      logger(
+        'WARN',
+        `Init-round timed out at handler guard after ${
+          Date.now() - handlerStart
+        }ms`,
+        'POST'
+      )
+      const response = NextResponse.json(
+        {
+          error: 'Engine is still preparing options. Please retry shortly.'
+        },
+        { status: 503 }
+      )
+      response.headers.set('Retry-After', '3')
+      return response
+    }
+
+    const engineResponse = raced.res
     const engineDuration = Date.now() - engineStartTime
     logger(
       'INFO',
@@ -273,7 +319,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       })()
     }
 
-    const response = NextResponse.json({
+    const responseBody = {
       targetArtists: engineResponse.targetArtists,
       optionTracks: engineResponse.optionTracks,
       playerTargets: enrichedPlayerTargets,
@@ -287,13 +333,20 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       roundNumber,
       turnNumber,
       currentPlayerId
-    })
+    }
+
+    const response = NextResponse.json(responseBody)
 
     // Add cache headers to reduce redundant DGS engine runs
     response.headers.set(
       'Cache-Control',
       'public, s-maxage=30, stale-while-revalidate=60'
     )
+
+    initRoundCache.set(cacheKey, {
+      expiresAt: Date.now() + 30_000,
+      response: responseBody
+    })
 
     return response
   } catch (error) {
@@ -329,6 +382,21 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       { status: 500 }
     )
   }
+}
+
+function buildCacheKey(
+  seedTrackId: string,
+  targets: PlayerTargetsMap,
+  currentPlayerId: 'player1' | 'player2'
+): string {
+  const t1 = targets.player1
+  const t2 = targets.player2
+  return [
+    seedTrackId || 'none',
+    currentPlayerId,
+    t1?.id ?? t1?.name ?? 'p1-none',
+    t2?.id ?? t2?.name ?? 'p2-none'
+  ].join('|')
 }
 
 function ensureTargets(incoming?: Partial<PlayerTargetsMap>): PlayerTargetsMap {
