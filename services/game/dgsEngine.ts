@@ -61,9 +61,9 @@ import {
   fetchTracksByGenreFromDb,
   fetchTracksCloserToTarget,
   fetchTracksFurtherFromTarget,
-  upsertTrackDetails,
   getGenreStatistics
 } from './dgsDb'
+import { enqueueLazyUpdate } from './lazyUpdateQueue'
 import { safeBackfillArtistGenres } from './genreBackfill'
 import { safeBackfillTrackDetails } from './trackBackfill'
 import { calculateAvgMaxGenreSimilarity } from './genreGraph'
@@ -1802,8 +1802,12 @@ async function buildCandidatePool({
           50
         )
 
-        // Cache tracks to database
-        void upsertTrackDetails(genreTracks)
+        // Cache tracks to database asynchronously
+        void enqueueLazyUpdate({
+          type: 'track_details',
+          spotifyId: seedArtistId,
+          payload: { tracks: genreTracks }
+        })
 
         const beforeSize = candidateMap.size
         genreTracks.forEach((track) => {
@@ -2345,12 +2349,17 @@ async function addRelatedArtistTracks({
               () => getArtistTopTracksServer(artistId, token, statisticsTracker)
             )
 
-            // Cache to database immediately (fire-and-forget)
-            void upsertTopTracks(
-              artistId,
-              tracks.map((t) => t.id)
-            )
-            void upsertTrackDetails(tracks)
+            // Queue database cache updates (non-blocking)
+            void enqueueLazyUpdate({
+              type: 'artist_top_tracks',
+              spotifyId: artistId,
+              payload: { trackIds: tracks.map((t) => t.id) }
+            })
+            void enqueueLazyUpdate({
+              type: 'track_details',
+              spotifyId: artistId,
+              payload: { tracks }
+            })
 
             // Add to local map
             dbTopTracks.set(artistId, tracks)
@@ -2568,13 +2577,16 @@ async function lookupArtistIdByName(
         'lookupArtistIdByName'
       )
 
-      // Save to artists table (fire-and-forget using existing utility)
-      void upsertArtistProfile({
-        spotify_artist_id: match.id,
-        name: match.name,
-        genres: match.genres ?? [],
-        popularity: match.popularity,
-        follower_count: match.followers?.total
+      // Save to artists table asynchronously via queue
+      void enqueueLazyUpdate({
+        type: 'artist_profile',
+        spotifyId: match.id,
+        payload: {
+          name: match.name,
+          genres: match.genres ?? [],
+          popularity: match.popularity,
+          follower_count: match.followers?.total
+        }
       })
 
       return match.id
@@ -2940,13 +2952,16 @@ async function lookupArtistProfile(
       'lookupArtistProfile'
     )
 
-    // Cache the found artist for future lookups
-    void upsertArtistProfile({
-      spotify_artist_id: match.id,
-      name: match.name,
-      genres: match.genres || [],
-      popularity: match.popularity,
-      follower_count: match.followers?.total
+    // Cache the found artist for future lookups asynchronously
+    void enqueueLazyUpdate({
+      type: 'artist_profile',
+      spotifyId: match.id,
+      payload: {
+        name: match.name,
+        genres: match.genres || [],
+        popularity: match.popularity,
+        follower_count: match.followers?.total
+      }
     })
 
     // If Spotify returned no genres, trigger backfill (especially important for target artists)

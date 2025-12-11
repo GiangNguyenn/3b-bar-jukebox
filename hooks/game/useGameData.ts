@@ -108,6 +108,12 @@ export function useGameData({
     setOptions([])
   }, [])
 
+  const triggerLazyUpdateTick = useCallback(() => {
+    void fetch('/api/game/lazy-update-tick', { method: 'POST' }).catch(() => {
+      // Best-effort: ignore failures to keep gameplay responsive
+    })
+  }, [])
+
   const refreshOptions = useCallback(
     async (
       playbackState: SpotifyPlaybackState | null,
@@ -226,6 +232,7 @@ export function useGameData({
         )
 
         setOptions(filteredOptions)
+        triggerLazyUpdateTick()
       } catch (gameError) {
         const message =
           gameError instanceof Error
@@ -245,7 +252,8 @@ export function useGameData({
       roundTurn,
       turnCounter,
       onGravitiesUpdate,
-      onTargetsUpdate
+      onTargetsUpdate,
+      triggerLazyUpdateTick
     ]
   )
 
