@@ -361,8 +361,7 @@ export function useGameData({
       roundTurn,
       turnCounter,
       onGravitiesUpdate,
-      onTargetsUpdate,
-      triggerLazyUpdateTick
+      onTargetsUpdate
     ]
   )
 

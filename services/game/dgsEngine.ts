@@ -16,7 +16,9 @@ import {
   getCachedRelatedArtists,
   upsertRelatedArtists,
   batchUpsertArtistProfiles,
-  batchGetTopTracksFromDb
+  batchGetTopTracksFromDb,
+  upsertTopTracks,
+  upsertTrackDetails
 } from './dgsCache'
 import {
   CandidateTrackMetrics,
@@ -225,7 +227,8 @@ async function addTargetArtistsToPool({
 
   if (forceTargetInsertion) {
     logger(
-      `Forcing target insertion due to low gravity - P1: ${(playerGravities.player1 ?? 0).toFixed(3)}, P2: ${(playerGravities.player2 ?? 0).toFixed(3)} (threshold: ${NO_GOOD_CHOICES_THRESHOLD})`,
+      'INFO',
+      `Forcing target insertion due to low gravity - P1: ${(Number(playerGravities.player1) ?? 0).toFixed(3)}, P2: ${(Number(playerGravities.player2) ?? 0).toFixed(3)} (threshold: ${NO_GOOD_CHOICES_THRESHOLD})`,
       'addTargetArtistsToPool'
     )
   }
@@ -235,7 +238,8 @@ async function addTargetArtistsToPool({
   }
 
   logger(
-    `Checking target artists for pool addition: P1 gravity=${(playerGravities.player1 ?? 0).toFixed(3)}, P2 gravity=${(playerGravities.player2 ?? 0).toFixed(3)}, Round=${roundNumber}, ForceThreshold=${NO_GOOD_CHOICES_THRESHOLD}${forceTargetInsertion ? ' [FORCED]' : ''}`
+    'INFO',
+    `Checking target artists for pool addition: P1 gravity=${(Number(playerGravities.player1) ?? 0).toFixed(3)}, P2 gravity=${(Number(playerGravities.player2) ?? 0).toFixed(3)}, Round=${roundNumber}, ForceThreshold=${NO_GOOD_CHOICES_THRESHOLD}${forceTargetInsertion ? ' [FORCED]' : ''}`
   )
 
   // Check which target artists are already in the pool

@@ -9,13 +9,14 @@ import { ArtistProfile } from '@/services/game/dgsTypes'
 
 const logger = createModuleLogger('Stage2Candidates')
 
-export async function POST(req: NextRequest) {
+export async function POST(req: NextRequest): Promise<NextResponse> {
   const startTime = Date.now()
   const statisticsTracker = new ApiStatisticsTracker()
 
   try {
-    const body = await req.json()
-    const { artistIds, playedTrackIds, currentArtistId } = body
+    const body = (await req.json()) as unknown
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { artistIds } = body as { artistIds: any[] }
 
     const authHeader = req.headers.get('Authorization')
     if (!authHeader) {
@@ -30,15 +31,18 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Invalid artistIds' }, { status: 400 })
     }
 
+    // Cast to string array safely
+    const safeArtistIds = artistIds.map(String)
+
     logger(
       'INFO',
-      `Stage 2: Fetching candidates for ${artistIds.length} artists`,
+      `Stage 2: Fetching candidates for ${safeArtistIds.length} artists`,
       'POST'
     )
 
     // 1. Fetch Candidates (Tracks)
     const seeds = await fetchTopTracksForArtists(
-      artistIds,
+      safeArtistIds,
       token,
       statisticsTracker // We assume this function uses the tracker we pass? (Need to check strict type match)
     )
@@ -74,7 +78,8 @@ export async function POST(req: NextRequest) {
       }
     })
   } catch (error) {
-    logger('ERROR', `Stage 2 Failed: ${error}`, 'POST')
+    const errorMsg = error instanceof Error ? error.message : String(error)
+    logger('ERROR', `Stage 2 Failed: ${errorMsg}`, 'POST')
     return NextResponse.json(
       { error: error instanceof Error ? error.message : 'Unknown error' },
       { status: 500 }

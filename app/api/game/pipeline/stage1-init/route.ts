@@ -1,11 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 
-import { cookies } from 'next/headers'
 import {
   resolveTargetProfiles,
   getSeedRelatedArtistIds,
   applyGravityUpdates,
-  normalizeGravities,
   ensureTargets,
   resetPerformanceTimings
 } from '@/services/game/dgsEngine'
@@ -13,23 +11,19 @@ import { ApiStatisticsTracker } from '@/services/game/apiStatisticsTracker'
 import { getExplorationPhase, MAX_ROUND_TURNS } from '@/services/game/gameRules'
 import { musicService } from '@/services/musicService'
 import { createModuleLogger } from '@/shared/utils/logger'
-import {
-  DualGravityRequest,
-  DualGravityResponse
-} from '@/services/game/dgsTypes'
+import { DualGravityRequest } from '@/services/game/dgsTypes'
 
 const logger = createModuleLogger('Stage1Init')
 
-export async function POST(req: NextRequest) {
+export async function POST(req: NextRequest): Promise<NextResponse> {
   const startTime = Date.now()
   const statisticsTracker = new ApiStatisticsTracker()
   resetPerformanceTimings() // Global reset if needed, though mostly per-request via tracker
 
   try {
-    const body = await req.json()
+    const body = (await req.json()) as unknown
     const request = body as DualGravityRequest
-    const { roundNumber, playerTargets, playbackState, playerGravities } =
-      request
+    const { roundNumber, playerTargets, playbackState } = request
 
     // Get Admin Token (similar to existing init-round)
     // NOTE: In production we might want to pass this from client or secure it better,
@@ -81,7 +75,7 @@ export async function POST(req: NextRequest) {
     }
 
     const seedArtistId = currentTrack.artists[0].id
-    const seedArtistName = currentTrack.artists[0].name
+    const seedArtistName = currentTrack.artists[0].name // Safe access due to check above? No, artists[0] exists but name? It's typed.
 
     logger('INFO', `Seed: ${seedArtistName} (${seedArtistId})`, 'POST')
 
@@ -94,7 +88,7 @@ export async function POST(req: NextRequest) {
     const updatedGravities = applyGravityUpdates({ request })
 
     // 5. Game Parameters
-    const explorationPhase = getExplorationPhase(roundNumber, updatedGravities)
+    const explorationPhase = getExplorationPhase(roundNumber)
     // OG Drift logic (simplified replicate from engine)
     // Calculate drift based on current track attributes vs targets?
     // For now we can skip complex drift calc or do it if needed.
@@ -126,7 +120,8 @@ export async function POST(req: NextRequest) {
       }
     })
   } catch (error) {
-    logger('ERROR', `Stage 1 Failed: ${error} `, 'POST')
+    const errorMsg = error instanceof Error ? error.message : String(error)
+    logger('ERROR', `Stage 1 Failed: ${errorMsg} `, 'POST')
     return NextResponse.json(
       { error: error instanceof Error ? error.message : 'Unknown error' },
       { status: 500 }

@@ -106,7 +106,9 @@ function ensureTargets(incoming?: {
   player1?: { id?: string; name?: string } | null
   player2?: { id?: string; name?: string } | null
 }): PlayerTargetsMap {
-  const normalize = (val?: { id?: string; name?: string } | null) => {
+  const normalize = (
+    val?: { id?: string; name?: string } | null
+  ): { id?: string; name: string } | null => {
     if (!val?.name && !val?.id) return null
     return { id: val.id, name: val.name ?? 'Unknown' }
   }

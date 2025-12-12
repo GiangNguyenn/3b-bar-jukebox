@@ -988,3 +988,59 @@ export async function batchUpsertArtistProfiles(
     )
   }
 }
+
+/**
+ * Save track details to database cache
+ */
+export async function upsertTrackDetails(
+  tracks: TrackDetails[]
+): Promise<void> {
+  try {
+    if (tracks.length === 0) {
+      return
+    }
+
+    const records = tracks.map((track) => {
+      // Only include fields with valid data
+      const record: any = {
+        spotify_track_id: track.id,
+        name: track.name,
+        duration_ms: track.duration_ms,
+        popularity: track.popularity,
+        artist: track.artists[0]?.name,
+        album: track.album?.name,
+        cached_at: new Date().toISOString()
+      }
+
+      if (track.external_urls?.spotify) {
+        record.spotify_url = track.external_urls.spotify
+      }
+
+      if (track.genre) {
+        record.genre = track.genre
+      }
+
+      return record
+    })
+
+    const { error } = await supabase
+      .from('tracks')
+      .upsert(records, { onConflict: 'spotify_track_id' })
+
+    if (error) {
+      logger(
+        'WARN',
+        `Failed to upsert ${tracks.length} track details`,
+        undefined,
+        error as Error
+      )
+    }
+  } catch (error) {
+    logger(
+      'WARN',
+      `Exception upserting track details`,
+      undefined,
+      error instanceof Error ? error : undefined
+    )
+  }
+}

@@ -1,3 +1,4 @@
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 import { NextRequest, NextResponse } from 'next/server'
 import {
   scoreCandidates,
@@ -9,7 +10,6 @@ import {
   PlayerId,
   PlayerGravityMap,
   DgsOptionTrack,
-  CandidateTrackMetrics,
   ArtistProfile,
   CandidateSeed,
   TargetProfile
@@ -18,24 +18,47 @@ import { TrackDetails } from '@/shared/types/spotify'
 
 const logger = createModuleLogger('Stage3Score')
 
-export async function POST(req: NextRequest) {
+interface Stage3ScoreRequest {
+  seeds: CandidateSeed[]
+  profiles: ArtistProfile[]
+  targetProfiles: Record<PlayerId, TargetProfile | null>
+  playerGravities: PlayerGravityMap
+  currentTrack: TrackDetails | null
+  relatedArtistIds: string[]
+  roundNumber: number
+  currentPlayerId: PlayerId
+  ogDrift?: number
+  hardConvergenceActive?: boolean
+}
+
+export async function POST(req: NextRequest): Promise<NextResponse> {
   const startTime = Date.now()
   const statisticsTracker = new ApiStatisticsTracker()
 
   try {
-    const body = await req.json()
+    const body = (await req.json()) as unknown
+    const request = body as Stage3ScoreRequest
+
+    // Validate essential arrays to prevent runtime errors if body is malformed
+    if (!Array.isArray(request.seeds) || !Array.isArray(request.profiles)) {
+      return NextResponse.json(
+        { error: 'Invalid request body: seeds and profiles must be arrays' },
+        { status: 400 }
+      )
+    }
+
     const {
       seeds,
-      profiles, // Array of ArtistProfile
+      profiles,
       targetProfiles,
       playerGravities,
-      currentTrack, // TrackDetails
-      relatedArtistIds, // from Stage 1 (for current track/seed)
+      currentTrack,
+      relatedArtistIds,
       roundNumber,
       currentPlayerId,
       ogDrift,
       hardConvergenceActive
-    } = body
+    } = request
 
     const authHeader = req.headers.get('Authorization')
     if (!authHeader) {
@@ -50,18 +73,14 @@ export async function POST(req: NextRequest) {
     const artistProfilesMap = new Map<string, ArtistProfile>()
     if (Array.isArray(profiles)) {
       profiles.forEach((p: ArtistProfile) => {
-        if (p && p.id) artistProfilesMap.set(p.id, p)
+        if (p?.id) artistProfilesMap.set(p.id, p)
       })
     }
 
     // Reconstruct ArtistRelationships Map (Optimized: only map Seed -> Related)
     // scoreCandidates primarily needs to know if Candidate is related to Seed/Base
     const artistRelationships = new Map<string, Set<string>>()
-    if (
-      currentTrack &&
-      currentTrack.artists?.[0]?.id &&
-      Array.isArray(relatedArtistIds)
-    ) {
+    if (currentTrack?.artists?.[0]?.id && Array.isArray(relatedArtistIds)) {
       artistRelationships.set(
         currentTrack.artists[0].id,
         new Set(relatedArtistIds)
@@ -72,9 +91,9 @@ export async function POST(req: NextRequest) {
 
     // 1. Score Candidates
     const { metrics, debugInfo: scoringDebug } = await scoreCandidates({
-      candidates: seeds as CandidateSeed[],
-      playerGravities: playerGravities as PlayerGravityMap,
-      targetProfiles: targetProfiles as Record<PlayerId, TargetProfile | null>,
+      candidates: seeds,
+      playerGravities: playerGravities,
+      targetProfiles: targetProfiles,
       artistProfiles: artistProfilesMap,
       artistRelationships,
       currentTrack: currentTrack as TrackDetails,
@@ -98,7 +117,7 @@ export async function POST(req: NextRequest) {
         artistId: currentTrack?.artists?.[0]?.id
       },
       ogDrift: ogDrift ?? 0,
-      hardConvergenceActive: hardConvergenceActive ?? false,
+      hardConvergenceActive: !!hardConvergenceActive,
       roundNumber,
       currentPlayerId,
       token,
@@ -121,7 +140,7 @@ export async function POST(req: NextRequest) {
         // Simple manual mapping if toOptionTrack is not exported
         const [primaryArtist] = metric.track.artists ?? []
         // eslint-disable-next-line @typescript-eslint/no-unused-vars
-        const { track, ...otherMetrics } = metric
+        const { track: _track, ...otherMetrics } = metric
         return {
           track: metric.track,
           artist: primaryArtist ?? {
@@ -150,7 +169,8 @@ export async function POST(req: NextRequest) {
       }
     })
   } catch (error) {
-    logger('ERROR', `Stage 3 Failed: ${error} `, 'POST')
+    const errorMsg = error instanceof Error ? error.message : String(error)
+    logger('ERROR', `Stage 3 Failed: ${errorMsg} `, 'POST')
     return NextResponse.json(
       { error: error instanceof Error ? error.message : 'Unknown error' },
       { status: 500 }
