@@ -117,7 +117,12 @@ export const musicService = {
       })
       return { data: track, source: DataSource.SpotifyAPI }
     } catch (error) {
-      logger('WARN', `Failed to fetch track ${trackId}`, 'getTrack', error as Error)
+      logger(
+        'WARN',
+        `Failed to fetch track ${trackId}`,
+        'getTrack',
+        error as Error
+      )
       return { data: null, source: DataSource.Fallback }
     }
   },

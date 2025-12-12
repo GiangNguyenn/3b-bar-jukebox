@@ -132,7 +132,7 @@ export function useGameData({
   }
 
   // NOTE: Importing types from dgsTypes is safe for client
-  // But define locally if dgsTypes has server imports. 
+  // But define locally if dgsTypes has server imports.
   // We moved strictly data interfaces to dgsTypes, so it should be fine.
 
   const refreshOptions = useCallback(
@@ -155,7 +155,8 @@ export function useGameData({
         lastSeedTrackIdRef.current = playbackState.item?.id ?? null
 
         const requestTargets = overrideTargets ?? getCurrentPlayerTargets()
-        const lastSelectionPayload = lastCompletedSelectionRef.current ?? undefined
+        const lastSelectionPayload =
+          lastCompletedSelectionRef.current ?? undefined
         const effectiveActivePlayerId = overrideActivePlayerId ?? activePlayerId
         const effectiveGravities = overrideGravities ?? playerGravities
         const sentRoundNumber = Math.max(1, Math.floor(roundTurn))
@@ -170,11 +171,13 @@ export function useGameData({
           const token = await tokenManager.getToken()
           if (!token) throw new Error('No access token available')
 
-          const authHeaders = { 'Authorization': `Bearer ${token}` }
+          const authHeaders = { Authorization: `Bearer ${token}` }
 
           // --- STAGE 1: INIT ---
           // Resolves targets, seed, gravities, and candidate pool IDs (related artists)
-          const stage1Res = await sendApiRequest<Stage1Response | { error: string }>({
+          const stage1Res = await sendApiRequest<
+            Stage1Response | { error: string }
+          >({
             path: '/game/pipeline/stage1-init',
             method: 'POST',
             isLocalApi: true,
@@ -195,7 +198,7 @@ export function useGameData({
           if ('error' in stage1Res) throw new Error(stage1Res.error)
 
           // Update State from Stage 1 immediately where possible (e.g. gravities)
-          // But strict update usually happens at end? 
+          // But strict update usually happens at end?
           // Gravities are returned here, so we can update them now or later.
           // Let's hold until success.
 
@@ -224,7 +227,7 @@ export function useGameData({
 
           // Execute chunks in parallel (Promise.all)
           // With limited concurrency if needed, but for < ~50 items, 10 chunks is fine.
-          const chunkPromises = chunks.map(chunk =>
+          const chunkPromises = chunks.map((chunk) =>
             sendApiRequest<Stage2Response | { error: string }>({
               path: '/game/pipeline/stage2-candidates',
               method: 'POST',
@@ -250,7 +253,9 @@ export function useGameData({
 
           // --- STAGE 3: SCORE ---
           // Score candidates and select options
-          const stage3Res = await sendApiRequest<Stage3Response | { error: string }>({
+          const stage3Res = await sendApiRequest<
+            Stage3Response | { error: string }
+          >({
             path: '/game/pipeline/stage3-score',
             method: 'POST',
             isLocalApi: true,
@@ -314,14 +319,13 @@ export function useGameData({
           })
 
           setOptions(stage3Res.optionTracks)
-
         } catch (error) {
           clearTimeout(timeoutId)
           throw error
         }
-
       } catch (gameError) {
-        const message = gameError instanceof Error ? gameError.message : 'Pipeline Error'
+        const message =
+          gameError instanceof Error ? gameError.message : 'Pipeline Error'
         console.error('[useGameData] Pipeline Error:', gameError)
         setError(message)
         setOptions([])

@@ -79,7 +79,7 @@ function shuffleArray<T>(array: T[]): T[] {
   const shuffled = [...array] // Create a copy to avoid mutating the original
   for (let i = shuffled.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1))
-      ;[shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]]
+    ;[shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]]
   }
   return shuffled
 }
@@ -122,8 +122,6 @@ export function resetPerformanceTimings() {
   apiCallTimings.length = 0
 }
 
-
-
 interface GravityComputationContext {
   playerTargets: PlayerTargetsMap
   targetProfiles: Record<PlayerId, TargetProfile | null>
@@ -136,7 +134,9 @@ export async function runDualGravityEngine(
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   token: string
 ): Promise<DualGravityResponse> {
-  throw new Error('DGS Engine: runDualGravityEngine is deprecated. Use the multi-stage pipeline instead.')
+  throw new Error(
+    'DGS Engine: runDualGravityEngine is deprecated. Use the multi-stage pipeline instead.'
+  )
 }
 
 export function ensureTargets(targets: PlayerTargetsMap): PlayerTargetsMap {
@@ -146,7 +146,9 @@ export function ensureTargets(targets: PlayerTargetsMap): PlayerTargetsMap {
   }
 }
 
-export function normalizeGravities(gravities: PlayerGravityMap): PlayerGravityMap {
+export function normalizeGravities(
+  gravities: PlayerGravityMap
+): PlayerGravityMap {
   return {
     player1: clampGravity(gravities.player1 ?? DEFAULT_PLAYER_GRAVITY),
     player2: clampGravity(gravities.player2 ?? DEFAULT_PLAYER_GRAVITY)
@@ -1468,9 +1470,9 @@ async function buildCandidatePool({
       `Current distribution: ${Object.entries(currentDistribution)
         .map(([k, v]) => `${k}=${v}`)
         .join(', ')} | ` +
-      `Target distribution: ${Object.entries(targetCounts)
-        .map(([k, v]) => `${k}=${v}`)
-        .join(', ')}`,
+        `Target distribution: ${Object.entries(targetCounts)
+          .map(([k, v]) => `${k}=${v}`)
+          .join(', ')}`,
       'ensureDiversityBalance'
     )
 
@@ -2753,7 +2755,7 @@ export async function scoreCandidates({
     // For now, we assume no vicinity boost to keep it safe.
 
     // Stub logic replacement (inline to fix type errors):
-    // const vicinityDistances = computeVicinityDistances(...) 
+    // const vicinityDistances = computeVicinityDistances(...)
     // ^ This function signature in stub is causing issues.
 
     const vicinityDistances: Partial<Record<PlayerId, number>> = {
@@ -3553,8 +3555,8 @@ export function applyDiversityConstraints(
   logger(
     'INFO',
     `Attraction distribution (baseline=${baseline.toFixed(3)}, total=${totalCandidates}): ` +
-    `Attraction: min=${attractionStats.min.toFixed(3)}, max=${attractionStats.max.toFixed(3)}, avg=${attractionStats.avg.toFixed(3)}, median=${attractionStats.median.toFixed(3)} | ` +
-    `Diff: min=${diffStats.min.toFixed(3)}, max=${diffStats.max.toFixed(3)}, avg=${diffStats.avg.toFixed(3)}, range=${diffRange.toFixed(3)}${allNegative ? ' | ⚠️ ALL NEGATIVE (no genuine closer options)' : ''}${allPositive ? ' | ⚠️ ALL POSITIVE (no genuine further options)' : ''}`,
+      `Attraction: min=${attractionStats.min.toFixed(3)}, max=${attractionStats.max.toFixed(3)}, avg=${attractionStats.avg.toFixed(3)}, median=${attractionStats.median.toFixed(3)} | ` +
+      `Diff: min=${diffStats.min.toFixed(3)}, max=${diffStats.max.toFixed(3)}, avg=${diffStats.avg.toFixed(3)}, range=${diffRange.toFixed(3)}${allNegative ? ' | ⚠️ ALL NEGATIVE (no genuine closer options)' : ''}${allPositive ? ' | ⚠️ ALL POSITIVE (no genuine further options)' : ''}`,
     'applyDiversityConstraints'
   )
 
@@ -4269,9 +4271,9 @@ export function applyDiversityConstraints(
     logger(
       'WARN',
       `Diversity validation: Did not achieve perfect 3-3-3 balance. Actual: Closer=${actualCloser} | Neutral=${actualNeutral} | Further=${actualFurther}. ` +
-      `Category sizes: Closer=${closerSelected.length} | Neutral=${neutralSelected.length} | Further=${furtherSelected.length}. ` +
-      `Total candidates: ${sortedFilteredMetrics.length}. ` +
-      `This may indicate insufficient diversity in candidate pool.`,
+        `Category sizes: Closer=${closerSelected.length} | Neutral=${neutralSelected.length} | Further=${furtherSelected.length}. ` +
+        `Total candidates: ${sortedFilteredMetrics.length}. ` +
+        `This may indicate insufficient diversity in candidate pool.`,
       'applyDiversityConstraints'
     )
   } else {
@@ -4413,7 +4415,10 @@ export async function getSeedRelatedArtistIds(
   seedArtistId: string,
   token: string
 ): Promise<string[]> {
-  const { data: related } = await musicService.getRelatedArtists(seedArtistId, token)
+  const { data: related } = await musicService.getRelatedArtists(
+    seedArtistId,
+    token
+  )
   return related.map((a) => a.id)
 }
 
@@ -4439,26 +4444,31 @@ export async function fetchTopTracksForArtists(
     const MAX_MISSING_TO_FETCH = 5
     const artistsToFetch = missingArtistIds.slice(0, MAX_MISSING_TO_FETCH)
 
-    await Promise.all(artistsToFetch.map(async (artistId) => {
-      try {
-        const tracks = await timeApiCall(
-          `getArtistTopTracksServer (${artistId})`,
-          () => getArtistTopTracksServer(artistId, token, statisticsTracker)
-        )
-        void upsertTopTracks(artistId, tracks.map(t => t.id))
-        void upsertTrackDetails(tracks)
-        dbTopTracks.set(artistId, tracks)
-      } catch (e) {
-        // ignore
-      }
-    }))
+    await Promise.all(
+      artistsToFetch.map(async (artistId) => {
+        try {
+          const tracks = await timeApiCall(
+            `getArtistTopTracksServer (${artistId})`,
+            () => getArtistTopTracksServer(artistId, token, statisticsTracker)
+          )
+          void upsertTopTracks(
+            artistId,
+            tracks.map((t) => t.id)
+          )
+          void upsertTrackDetails(tracks)
+          dbTopTracks.set(artistId, tracks)
+        } catch (e) {
+          // ignore
+        }
+      })
+    )
   }
 
   // 4. Build seeds
   dbTopTracks.forEach((tracks, artistId) => {
     // Only if requested
     if (artistIdsSet.has(artistId)) {
-      tracks.slice(0, 1).forEach(track => {
+      tracks.slice(0, 1).forEach((track) => {
         if (track.is_playable) {
           seeds.push({ track, source: 'related_top_tracks' })
         }
