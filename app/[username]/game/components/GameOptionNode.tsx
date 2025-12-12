@@ -102,8 +102,7 @@ export function GameOptionNode({
         {/* Artist - Hidden in Hard mode */}
         {difficulty !== 'hard' && (
           <p className='text-sm text-gray-400'>
-            {artist.name}
-            {/* Album - Only visible in Easy mode */}
+            {artist?.name ?? track.artists?.[0]?.name ?? 'Unknown artist'}
             {difficulty === 'easy' && (
               <>
                 <span className='text-gray-600'> • </span>

@@ -11,8 +11,18 @@ import {
 import { runDualGravityEngine } from '@/services/game/dgsEngine'
 import { getAdminToken } from '@/services/game/adminAuth'
 import { createModuleLogger } from '@/shared/utils/logger'
+import { fetchAbsoluteRandomTracks } from '@/services/game/dgsDb'
 
 const logger = createModuleLogger('ApiGameInitRound')
+const HANDLER_TIMEOUT_MS = 9000
+
+type CacheValue = {
+  expiresAt: number
+  response: unknown
+}
+
+// Short-lived in-memory cache to avoid repeat engine runs for same seed/targets
+const initRoundCache = new Map<string, CacheValue>()
 
 // Add caching to reduce redundant DGS engine runs for same track
 export const revalidate = 30 // 30-second cache
@@ -59,6 +69,8 @@ const requestSchema = z.object({
  */
 export async function POST(request: NextRequest): Promise<NextResponse> {
   try {
+    const handlerStart = Date.now()
+
     // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
     const body = await request.json()
     const parsed = requestSchema.safeParse(body)
@@ -136,51 +148,56 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       lastSelection: parsed.data.lastSelection ?? null
     }
 
+    const cacheKey = buildCacheKey(
+      playbackState.item?.id ?? '',
+      normalizedTargets,
+      currentPlayerId
+    )
+
+    const cached = initRoundCache.get(cacheKey)
+    if (cached && cached.expiresAt > Date.now()) {
+      logger('INFO', 'Serving init-round from cache', 'cache')
+      const resp = NextResponse.json(cached.response)
+      resp.headers.set('X-Init-Round-Path', 'cache')
+      return resp
+    }
+
     const engineStartTime = Date.now()
-    let engineResponse
-    try {
-      engineResponse = await runDualGravityEngine(enginePayload, accessToken)
-      const engineDuration = Date.now() - engineStartTime
+    const timeoutPromise = new Promise<{ timeout: true }>((resolve) => {
+      setTimeout(() => resolve({ timeout: true }), HANDLER_TIMEOUT_MS - 200)
+    })
+    const enginePromise = runDualGravityEngine(enginePayload, accessToken).then(
+      (res) => ({ res })
+    )
+
+    const raced = await Promise.race([enginePromise, timeoutPromise])
+
+    if ('timeout' in raced) {
+      const elapsed = Date.now() - handlerStart
       logger(
-        'INFO',
-        `DGS engine completed in ${engineDuration}ms | Options: ${engineResponse.optionTracks.length} | Pool: ${engineResponse.candidatePoolSize}`,
+        'WARN',
+        `Init-round timed out at handler guard after ${elapsed}ms`,
         'POST'
       )
-    } catch (engineError) {
-      const errorDetails =
-        engineError instanceof Error
-          ? {
-              message: engineError.message,
-              stack: engineError.stack,
-              name: engineError.name
-            }
-          : { message: String(engineError) }
-
-      logger(
-        'ERROR',
-        `DGS engine execution failed: ${errorDetails.message}`,
-        'engine',
-        engineError instanceof Error ? engineError : undefined
-      )
-
-      if (engineError instanceof Error && engineError.stack) {
-        logger('ERROR', `Error stack: ${engineError.stack}`, 'engine')
-      }
-
-      const engineErrorMessage =
-        engineError instanceof Error
-          ? engineError.message
-          : 'Failed to generate game options'
-
-      return NextResponse.json(
-        {
-          error: engineErrorMessage,
-          details:
-            process.env.NODE_ENV === 'development' ? errorDetails : undefined
-        },
-        { status: 500 }
-      )
+      const fallback = await buildTinyFallback(playbackState)
+      const fallbackResponse = NextResponse.json(fallback)
+      fallbackResponse.headers.set('X-Init-Round-Path', 'fallback')
+      fallbackResponse.headers.set('X-Init-Round-Elapsed', String(elapsed))
+      fallbackResponse.headers.set('Cache-Control', 'private, max-age=5')
+      initRoundCache.set(cacheKey, {
+        expiresAt: Date.now() + 5_000,
+        response: fallback
+      })
+      return fallbackResponse
     }
+
+    const engineResponse = raced.res
+    const engineDuration = Date.now() - engineStartTime
+    logger(
+      'INFO',
+      `DGS engine completed in ${engineDuration}ms | Options: ${engineResponse.optionTracks.length} | Pool: ${engineResponse.candidatePoolSize}`,
+      'POST'
+    )
 
     if (
       !engineResponse.optionTracks ||
@@ -306,7 +323,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       })()
     }
 
-    const response = NextResponse.json({
+    const responseBody = {
       targetArtists: engineResponse.targetArtists,
       optionTracks: engineResponse.optionTracks,
       playerTargets: enrichedPlayerTargets,
@@ -320,13 +337,25 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       roundNumber,
       turnNumber,
       currentPlayerId
-    })
+    }
+
+    const response = NextResponse.json(responseBody)
+    response.headers.set(
+      'X-Init-Round-Elapsed',
+      String(Date.now() - handlerStart)
+    )
+    response.headers.set('X-Init-Round-Path', 'engine')
 
     // Add cache headers to reduce redundant DGS engine runs
     response.headers.set(
       'Cache-Control',
       'public, s-maxage=30, stale-while-revalidate=60'
     )
+
+    initRoundCache.set(cacheKey, {
+      expiresAt: Date.now() + 30_000,
+      response: responseBody
+    })
 
     return response
   } catch (error) {
@@ -361,6 +390,75 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       },
       { status: 500 }
     )
+  }
+}
+
+function buildCacheKey(
+  seedTrackId: string,
+  targets: PlayerTargetsMap,
+  currentPlayerId: 'player1' | 'player2'
+): string {
+  const t1 = targets.player1
+  const t2 = targets.player2
+  return [
+    seedTrackId || 'none',
+    currentPlayerId,
+    t1?.id ?? t1?.name ?? 'p1-none',
+    t2?.id ?? t2?.name ?? 'p2-none'
+  ].join('|')
+}
+
+async function buildTinyFallback(playbackState: SpotifyPlaybackState): Promise<{
+  targetArtists: unknown[]
+  optionTracks: unknown[]
+  playerTargets: PlayerTargetsMap
+  gravities: PlayerGravityMap
+  explorationPhase: string
+  ogDrift: number
+  candidatePoolSize: number
+  hardConvergenceActive: boolean
+  vicinity: { triggered: boolean; playerId?: 'player1' | 'player2' }
+  debugInfo?: unknown
+  roundNumber?: number
+  turnNumber?: number
+  currentPlayerId?: 'player1' | 'player2'
+}> {
+  const seedTrackId = playbackState.item?.id ?? 'unknown'
+  logger(
+    'WARN',
+    `Returning tiny fallback for seed track ${seedTrackId}`,
+    'fallback'
+  )
+
+  // Try a very small DB fetch for a few random tracks; timeout quickly
+  const excludeIds = new Set<string>([seedTrackId].filter(Boolean))
+  const fetchPromise = fetchAbsoluteRandomTracks(8, excludeIds)
+  const timedResult = await Promise.race([
+    fetchPromise,
+    new Promise<null>((resolve) => setTimeout(() => resolve(null), 300))
+  ])
+  const optionTracks =
+    timedResult?.slice(0, 6).map((track) => ({
+      track,
+      source: 'fallback',
+      metrics: {},
+      vicinity: { triggered: false }
+    })) ?? []
+
+  return {
+    targetArtists: [],
+    optionTracks,
+    playerTargets: { player1: null, player2: null },
+    gravities: {
+      player1: DEFAULT_PLAYER_GRAVITY,
+      player2: DEFAULT_PLAYER_GRAVITY
+    },
+    explorationPhase: 'low',
+    ogDrift: 0,
+    candidatePoolSize: 0,
+    hardConvergenceActive: false,
+    vicinity: { triggered: false },
+    debugInfo: { fallback: true, reason: 'handler_timeout' }
   }
 }
 

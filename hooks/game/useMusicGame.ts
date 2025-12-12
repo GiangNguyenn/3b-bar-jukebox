@@ -44,6 +44,7 @@ interface UseMusicGameResult {
   options: DgsOptionTrack[]
   nowPlaying: SpotifyPlaybackState | null
   isBusy: boolean
+  loadingStage: { stage: string; progress: number } | null
   error: string | null
   pendingSelectionTrackId: string | null
   scoringPlayer: ScoringPlayer | null
@@ -170,6 +171,7 @@ export function useMusicGame({
   const {
     options,
     isBusy,
+    loadingStage,
     error: dataError, // Renamed to avoid confusion with overall error state
     candidatePoolSize,
     vicinity,
@@ -660,6 +662,7 @@ export function useMusicGame({
     options,
     nowPlaying,
     isBusy,
+    loadingStage,
     error,
     pendingSelectionTrackId,
     scoringPlayer,

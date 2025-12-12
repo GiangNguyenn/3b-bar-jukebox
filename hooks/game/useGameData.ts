@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback } from 'react'
+import { useState, useRef, useCallback, useEffect } from 'react'
 import type { SpotifyPlaybackState } from '@/shared/types/spotify'
 import { sendApiRequest } from '@/shared/api'
 import { tokenManager } from '@/shared/token/tokenManager'
@@ -29,6 +29,13 @@ interface InitRoundResponse {
   debugInfo?: DgsDebugInfo
 }
 
+interface PrepSeedResponse {
+  jobId: string
+  status: 'ready' | 'warming'
+  expiresAt?: number
+  payload?: InitRoundResponse
+}
+
 interface UseGameDataProps {
   activePlayerId: PlayerId
   players: Array<{ id: PlayerId; targetArtist: TargetArtist | null }>
@@ -46,6 +53,7 @@ interface UseGameDataProps {
 interface UseGameDataResult {
   options: DgsOptionTrack[]
   isBusy: boolean
+  loadingStage: { stage: string; progress: number } | null
   error: string | null
   candidatePoolSize: number
   vicinity: { triggered: boolean; playerId?: PlayerId }
@@ -79,6 +87,10 @@ export function useGameData({
 }: UseGameDataProps): UseGameDataResult {
   const [options, setOptions] = useState<DgsOptionTrack[]>([])
   const [isBusy, setIsBusy] = useState(false)
+  const [loadingStage, setLoadingStage] = useState<{
+    stage: string
+    progress: number
+  } | null>(null)
   const [error, setError] = useState<string | null>(null)
 
   // Server-side calculated stats
@@ -90,9 +102,15 @@ export function useGameData({
   const [debugInfo, setDebugInfo] = useState<DgsDebugInfo | undefined>(
     undefined
   )
+  const optionsRef = useRef<DgsOptionTrack[]>([])
+  const lastRequestTrackIdRef = useRef<string | null>(null)
 
   const lastSeedTrackIdRef = useRef<string | null>(null)
   const lastCompletedSelectionRef = useRef<DgsSelectionMeta | null>(null)
+
+  useEffect(() => {
+    optionsRef.current = options
+  }, [options])
 
   // Helper to map current players to targets map
   const getCurrentPlayerTargets = useCallback((): PlayerTargetsMap => {
@@ -148,6 +166,7 @@ export function useGameData({
 
       setOptions([])
       setIsBusy(true)
+      setLoadingStage({ stage: 'Starting prep…', progress: 10 })
       setError(null)
 
       try {
@@ -331,6 +350,7 @@ export function useGameData({
         setOptions([])
       } finally {
         setIsBusy(false)
+        setLoadingStage(null)
       }
     },
     [
@@ -341,13 +361,15 @@ export function useGameData({
       roundTurn,
       turnCounter,
       onGravitiesUpdate,
-      onTargetsUpdate
+      onTargetsUpdate,
+      triggerLazyUpdateTick
     ]
   )
 
   return {
     options,
     isBusy,
+    loadingStage,
     error,
     candidatePoolSize,
     vicinity,

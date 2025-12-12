@@ -40,6 +40,7 @@ export default function GamePage(): JSX.Element {
     options,
     nowPlaying,
     isBusy,
+    loadingStage,
     error,
     pendingSelectionTrackId,
     scoringPlayer,
@@ -211,7 +212,12 @@ export default function GamePage(): JSX.Element {
           onPlayerNameChange={handlePlayerNameChange}
         />
 
-        {isBusy && <LoadingProgressBar />}
+        {isBusy && (
+          <LoadingProgressBar
+            progress={loadingStage?.progress ?? 10}
+            stage={loadingStage?.stage ?? 'Loading…'}
+          />
+        )}
       </div>
 
       <ScoreAnimation
