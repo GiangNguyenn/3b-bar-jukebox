@@ -103,6 +103,26 @@ export const musicService = {
   },
 
   /**
+   * Get Track
+   */
+  async getTrack(
+    trackId: string,
+    token: string
+  ): Promise<DataResponse<TrackDetails | null>> {
+    try {
+      const track = await sendApiRequest<TrackDetails>({
+        path: `/tracks/${trackId}`,
+        method: 'GET',
+        token
+      })
+      return { data: track, source: DataSource.SpotifyAPI }
+    } catch (error) {
+      logger('WARN', `Failed to fetch track ${trackId}`, 'getTrack', error as Error)
+      return { data: null, source: DataSource.Fallback }
+    }
+  },
+
+  /**
    * Get Artist Top Tracks
    */
   getTopTracks: async (

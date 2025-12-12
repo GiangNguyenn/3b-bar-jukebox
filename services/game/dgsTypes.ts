@@ -307,3 +307,24 @@ export interface DualGravityResponse {
 
 export const DEFAULT_PLAYER_GRAVITY = 0.32
 export const MAX_ARTIST_REPETITIONS = 2
+
+export interface CandidateSeed {
+  track: TrackDetails
+  source: CandidateSource
+}
+
+export interface ArtistProfile {
+  id: string
+  name: string
+  genres: string[]
+  popularity?: number
+  followers?: number
+}
+
+export interface TargetProfile {
+  artist: TargetArtist
+  spotifyId?: string
+  genres: string[]
+  popularity?: number
+  followers?: number
+}

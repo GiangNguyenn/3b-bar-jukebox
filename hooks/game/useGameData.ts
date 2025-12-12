@@ -1,6 +1,7 @@
 import { useState, useRef, useCallback } from 'react'
 import type { SpotifyPlaybackState } from '@/shared/types/spotify'
 import { sendApiRequest } from '@/shared/api'
+import { tokenManager } from '@/shared/token/tokenManager'
 import type { TargetArtist } from '@/services/gameService'
 import type {
   DgsOptionTrack,
@@ -8,7 +9,10 @@ import type {
   PlayerGravityMap,
   PlayerTargetsMap,
   PlayerId,
-  DgsSelectionMeta
+  DgsSelectionMeta,
+  TargetProfile,
+  CandidateSeed,
+  ArtistProfile
 } from '@/services/game/dgsTypes'
 
 // Types for API response
@@ -102,6 +106,35 @@ export function useGameData({
     setOptions([])
   }, [])
 
+  // Pipeline Helper Types
+  interface Stage1Response {
+    targetProfiles: Record<PlayerId, TargetProfile | null>
+    seedArtistId: string
+    seedArtistName: string
+    currentTrack: any // TrackDetails
+    relatedArtistIds: string[]
+    updatedGravities: PlayerGravityMap
+    explorationPhase: any // ExplorationPhase
+    hardConvergenceActive: boolean
+    ogDrift: number
+    debug: DgsDebugInfo
+  }
+
+  interface Stage2Response {
+    seeds: CandidateSeed[]
+    profiles: ArtistProfile[]
+    debug: any
+  }
+
+  interface Stage3Response {
+    optionTracks: DgsOptionTrack[]
+    debug: any
+  }
+
+  // NOTE: Importing types from dgsTypes is safe for client
+  // But define locally if dgsTypes has server imports. 
+  // We moved strictly data interfaces to dgsTypes, so it should be fine.
+
   const refreshOptions = useCallback(
     async (
       playbackState: SpotifyPlaybackState | null,
@@ -113,42 +146,39 @@ export function useGameData({
     ) => {
       if (!playbackState) return
 
-      // Clear options immediately to show loading state
       setOptions([])
       setIsBusy(true)
       setError(null)
 
       try {
+        const startTime = Date.now()
         lastSeedTrackIdRef.current = playbackState.item?.id ?? null
 
-        // Use override targets if provided, otherwise use current players
         const requestTargets = overrideTargets ?? getCurrentPlayerTargets()
-        const lastSelectionPayload =
-          lastCompletedSelectionRef.current ?? undefined
-
-        // Use override active player ID if provided, otherwise use current activePlayerId
+        const lastSelectionPayload = lastCompletedSelectionRef.current ?? undefined
         const effectiveActivePlayerId = overrideActivePlayerId ?? activePlayerId
-        // Use override gravities if provided, otherwise use current playerGravities
         const effectiveGravities = overrideGravities ?? playerGravities
-
-        // Ensure we send valid numbers
         const sentRoundNumber = Math.max(1, Math.floor(roundTurn))
         const sentTurnNumber = Math.max(1, Math.floor(turnCounter))
 
-        const timeoutDuration = sentRoundNumber <= 3 ? 120000 : 60000
+        const timeoutDuration = 120000 // Total timeout
         const controller = new AbortController()
-        const timeoutId = setTimeout(() => {
-          controller.abort()
-        }, timeoutDuration)
+        const timeoutId = setTimeout(() => controller.abort(), timeoutDuration)
 
-        let response: InitRoundResponse | { error: string }
         try {
-          response = await sendApiRequest<
-            InitRoundResponse | { error: string }
-          >({
-            path: '/game/init-round',
+          // Get token for requests
+          const token = await tokenManager.getToken()
+          if (!token) throw new Error('No access token available')
+
+          const authHeaders = { 'Authorization': `Bearer ${token}` }
+
+          // --- STAGE 1: INIT ---
+          // Resolves targets, seed, gravities, and candidate pool IDs (related artists)
+          const stage1Res = await sendApiRequest<Stage1Response | { error: string }>({
+            path: '/game/pipeline/stage1-init',
             method: 'POST',
             isLocalApi: true,
+            extraHeaders: authHeaders,
             config: { signal: controller.signal },
             body: {
               playbackState,
@@ -161,77 +191,139 @@ export function useGameData({
               lastSelection: lastSelectionPayload
             }
           })
+
+          if ('error' in stage1Res) throw new Error(stage1Res.error)
+
+          // Update State from Stage 1 immediately where possible (e.g. gravities)
+          // But strict update usually happens at end? 
+          // Gravities are returned here, so we can update them now or later.
+          // Let's hold until success.
+
+          const {
+            targetProfiles,
+            relatedArtistIds,
+            currentTrack,
+            updatedGravities,
+            // eslint-disable-next-line @typescript-eslint/no-unused-vars
+            seedArtistId,
+            ogDrift,
+            hardConvergenceActive
+          } = stage1Res
+
+          // --- STAGE 2: CANDIDATES (Parallel) ---
+          // Fetch candidates for the related artists in chunks
+          const CHUNK_SIZE = 5
+          const allSeeds: CandidateSeed[] = []
+          const allProfiles: ArtistProfile[] = []
+
+          // Split IDs into chunks
+          const chunks: string[][] = []
+          for (let i = 0; i < relatedArtistIds.length; i += CHUNK_SIZE) {
+            chunks.push(relatedArtistIds.slice(i, i + CHUNK_SIZE))
+          }
+
+          // Execute chunks in parallel (Promise.all)
+          // With limited concurrency if needed, but for < ~50 items, 10 chunks is fine.
+          const chunkPromises = chunks.map(chunk =>
+            sendApiRequest<Stage2Response | { error: string }>({
+              path: '/game/pipeline/stage2-candidates',
+              method: 'POST',
+              isLocalApi: true,
+              extraHeaders: authHeaders,
+              config: { signal: controller.signal },
+              body: {
+                artistIds: chunk,
+                playedTrackIds: overridePlayedTrackIds ?? playedTrackIds,
+                currentArtistId: currentTrack.artists?.[0]?.id
+              }
+            })
+          )
+
+          const stage2Results = await Promise.all(chunkPromises)
+
+          // Aggregate results
+          for (const res of stage2Results) {
+            if ('error' in res) throw new Error(res.error)
+            if (res.seeds) allSeeds.push(...res.seeds)
+            if (res.profiles) allProfiles.push(...res.profiles)
+          }
+
+          // --- STAGE 3: SCORE ---
+          // Score candidates and select options
+          const stage3Res = await sendApiRequest<Stage3Response | { error: string }>({
+            path: '/game/pipeline/stage3-score',
+            method: 'POST',
+            isLocalApi: true,
+            extraHeaders: authHeaders,
+            config: { signal: controller.signal },
+            body: {
+              seeds: allSeeds,
+              profiles: allProfiles, // Pass enriched profiles
+              targetProfiles,
+              playerGravities: updatedGravities, // Use updated gravities from Stage 1
+              currentTrack,
+              relatedArtistIds, // Pass original list for relationship mapping if needed
+              roundNumber: sentRoundNumber,
+              currentPlayerId: effectiveActivePlayerId,
+              ogDrift,
+              hardConvergenceActive
+            }
+          })
+
+          if ('error' in stage3Res) throw new Error(stage3Res.error)
+
           clearTimeout(timeoutId)
+
+          // --- FINAL UPDATE ---
+          lastCompletedSelectionRef.current = null
+
+          if (!skipTargetUpdate) {
+            // Reconstruct old response shape for targets logic?
+            // Stage 1 returned targetProfiles.
+            // We need to map targetProfiles back to simple TargetArtist list if needed?
+            // The hook uses explicit `onTargetsUpdate`.
+            // `targetProfiles` is { [id]: TargetProfile }.
+            // We can extract TargetArtist from TargetProfile.artist.
+            const t1 = targetProfiles['player1']?.artist ?? null
+            const t2 = targetProfiles['player2']?.artist ?? null
+
+            // Wait, `onTargetsUpdate` expects `PlayerTargetsMap` (TargetArtist | null) AND fallback list?
+            // Stage 1 resolves "safeTargets".
+            // We can construct the map.
+            const newTargetsMap: PlayerTargetsMap = {
+              player1: t1,
+              player2: t2
+            }
+            // Fallback list (just array of artists)
+            const fallbackList: TargetArtist[] = []
+            if (t1) fallbackList.push(t1)
+            if (t2) fallbackList.push(t2)
+
+            onTargetsUpdate(newTargetsMap, fallbackList)
+          }
+
+          if (updatedGravities) {
+            onGravitiesUpdate(updatedGravities)
+          }
+
+          setCandidatePoolSize(allSeeds.length) // or from stage 3 stats
+          setVicinity({ triggered: false }) // Simplified for now
+          setDebugInfo({
+            ...stage3Res.debug,
+            pipelineExecutionTime: Date.now() - startTime
+          })
+
+          setOptions(stage3Res.optionTracks)
+
         } catch (error) {
           clearTimeout(timeoutId)
-          const errorMessage =
-            error instanceof Error ? error.message : String(error)
-
-          if (
-            (error instanceof Error && error.name === 'AbortError') ||
-            errorMessage.includes('aborted')
-          ) {
-            const timeoutSeconds = Math.floor(timeoutDuration / 1000)
-            throw new Error(
-              `Request timed out after ${timeoutSeconds} seconds. The game engine is still building the music database.`
-            )
-          }
           throw error
         }
 
-        if ('error' in response) {
-          throw new Error(response.error)
-        }
-
-        // Success - clear pending selection metadata
-        lastCompletedSelectionRef.current = null
-
-        // Update state
-        if (!skipTargetUpdate) {
-          onTargetsUpdate(
-            response.playerTargets ?? { player1: null, player2: null },
-            response.targetArtists
-          )
-        }
-
-        if (response.gravities) {
-          onGravitiesUpdate(response.gravities)
-        }
-
-        setCandidatePoolSize(response.candidatePoolSize ?? 0)
-        setVicinity(response.vicinity ?? { triggered: false })
-        setDebugInfo(response.debugInfo)
-
-        // Filter options
-        const excludedIds = new Set<string>(
-          [playbackState.item?.id ?? '', ...playedTrackIds].filter(Boolean)
-        )
-        const filteredOptions = response.optionTracks.filter(
-          (opt) => opt.track && !excludedIds.has(opt.track.id)
-        )
-
-        setOptions(filteredOptions)
       } catch (gameError) {
-        const message =
-          gameError instanceof Error
-            ? gameError.message
-            : 'Failed to refresh related songs.'
-        console.error('[useGameData] Error:', gameError)
+        const message = gameError instanceof Error ? gameError.message : 'Pipeline Error'
+        console.error('[useGameData] Pipeline Error:', gameError)
         setError(message)
-
-        // On error, keep empty options or previous?
-        // Original code: "Don't clear options on error - keep showing previous options"
-        // But we called setOptions([]) at the start.
-        // Original code: "Only clear if there were no options to begin with"
-        // Wait, original: `setOptions([])` was also called at start.
-        // Ah, original said: "Clear options immediately... " then in catch: "Don't clear options on error... if options.length === 0 { setOptions([]) }"
-        // This implies `setOptions([])` at start CLEARED them. So the catch block comment was contradictory or meant "if we hadn't cleared them at start".
-        // Actually, the original code DID clear them at start: `setOptions([])`. So the catch block logic `if (options.length === 0)` refers to the state variable... which at that point IS empty because of the setState call?
-        // No, setState is async. In the function scope `options` refers to the closure value (previous options).
-        // So passing `[]` at start makes the UI blank.
-        // If error, we might want to restore them?
-        // But `options` in closure is the OLD list.
-        // Let's just create empty list on error for now to match strict behavior, or we can improve UX later.
         setOptions([])
       } finally {
         setIsBusy(false)
