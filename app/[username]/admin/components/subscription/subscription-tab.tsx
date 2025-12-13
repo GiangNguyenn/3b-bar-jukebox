@@ -61,7 +61,24 @@ export function SubscriptionTab(): JSX.Element {
       setSubscriptionStatus({
         planType,
         hasPremiumAccess,
-        subscription: subscription ?? undefined
+        subscription: subscription
+          ? {
+              id: subscription.id,
+              plan_type: subscription.plan_type as 'free' | 'premium',
+              payment_type: subscription.payment_type as 'monthly' | 'lifetime',
+              status: subscription.status as
+                | 'active'
+                | 'canceled'
+                | 'canceling'
+                | 'past_due'
+                | 'trialing'
+                | 'incomplete',
+              current_period_end: subscription.current_period_end ?? undefined,
+              stripe_subscription_id:
+                subscription.stripe_subscription_id ?? undefined,
+              stripe_customer_id: subscription.stripe_customer_id ?? undefined
+            }
+          : undefined
       })
       setIsLoading(false)
     }

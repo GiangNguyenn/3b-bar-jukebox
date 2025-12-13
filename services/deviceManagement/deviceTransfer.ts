@@ -27,7 +27,8 @@ export async function transferPlaybackToDevice(
   deviceId: string,
   maxAttempts: number = 3,
   delayBetweenAttempts: number = 1000,
-  skipVerificationOnNetworkError: boolean = true
+  skipVerificationOnNetworkError: boolean = true,
+  shouldPlay: boolean | null = false // Default to false (pause) to maintain legacy behavior
 ): Promise<boolean> {
   if (!deviceId) {
     if (addLog) {
@@ -64,13 +65,20 @@ export async function transferPlaybackToDevice(
 
       // Transfer playback
       try {
+        const body: { device_ids: string[]; play?: boolean } = {
+          device_ids: [deviceId]
+        }
+
+        // Only include play field if shouldPlay is not null
+        // If null, we let Spotify maintain the current playback state
+        if (shouldPlay !== null) {
+          body.play = shouldPlay
+        }
+
         await sendApiRequest({
           path: 'me/player',
           method: 'PUT',
-          body: {
-            device_ids: [deviceId],
-            play: false
-          }
+          body
         })
         transferApiSucceeded = true
 

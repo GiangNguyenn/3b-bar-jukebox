@@ -6,6 +6,7 @@ import { createModuleLogger } from '@/shared/utils/logger'
 import { queryWithRetry } from '@/lib/supabaseQuery'
 import { refreshTokenWithRetry } from '@/recovery/tokenRecovery'
 import { updateTokenInDatabase } from '@/recovery/tokenDatabaseUpdate'
+import { safeBackfillTrackGenre } from '@/services/game/genreBackfill'
 
 // Set up logger for this module
 const logger = createModuleLogger('Search')
@@ -103,6 +104,79 @@ export async function GET(
         }
       }
     )
+
+    // Database-first search: Try Supabase before hitting Spotify API
+    if (type === 'track') {
+      const dbSearchResult = await queryWithRetry<
+        Array<{
+          spotify_track_id: string
+          name: string
+          artist: string
+          album: string
+          popularity: number
+          duration_ms: number
+          spotify_url: string | null
+          genre: string | null
+          release_year: number | null
+        }>
+      >(
+        supabase
+          .from('tracks')
+          .select(
+            'spotify_track_id, name, artist, album, popularity, duration_ms, spotify_url, genre, release_year'
+          )
+          .or(`name.ilike.%${query}%,artist.ilike.%${query}%`)
+          .order('popularity', { ascending: false })
+          .limit(10),
+        undefined,
+        `Database search for query: ${query}`
+      )
+
+      const dbTracks = dbSearchResult.data ?? []
+
+      // If we have enough results from DB, return them without calling Spotify
+      if (dbTracks.length >= 5) {
+        logger(
+          'INFO',
+          `DB search hit: returning ${dbTracks.length} results for query: ${query}`
+        )
+
+        // Queue async backfill for any tracks missing genres
+        dbTracks.forEach((track) => {
+          if (!track.genre && track.artist) {
+            void safeBackfillTrackGenre(
+              track.spotify_track_id,
+              track.artist,
+              track.release_year ?? null,
+              track.popularity ?? null
+            )
+          }
+        })
+
+        // Convert DB results to Spotify API format
+        const formattedTracks = dbTracks.map((track) => ({
+          id: track.spotify_track_id,
+          name: track.name,
+          artists: [{ id: '', name: track.artist }],
+          album: {
+            id: '',
+            name: track.album,
+            images: []
+          },
+          duration_ms: track.duration_ms,
+          popularity: track.popularity,
+          uri: track.spotify_url ?? `spotify:track:${track.spotify_track_id}`,
+          is_playable: true
+        }))
+
+        return NextResponse.json({ tracks: { items: formattedTracks } })
+      }
+
+      logger(
+        'INFO',
+        `DB search returned ${dbTracks.length} results, supplementing with Spotify API`
+      )
+    }
 
     // Get user profile from database - use provided username or fall back to admin
     const displayName = username ?? '3B'

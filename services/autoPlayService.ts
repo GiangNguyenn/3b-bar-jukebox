@@ -57,7 +57,7 @@ class AutoPlayService {
   private isInitialized: boolean = false // Flag to track if the service is properly initialized
 
   constructor(config: AutoPlayServiceConfig = {}) {
-    this.checkInterval = config.checkInterval || 500 // Reduced to 500ms for predictive track start
+    this.checkInterval = config.checkInterval || 1000 // Increased to 1000ms baseline to reduce API calls
     this.deviceId = config.deviceId || null
     this.onTrackFinished = config.onTrackFinished
     this.onNextTrackStarted = config.onNextTrackStarted
@@ -101,17 +101,17 @@ class AutoPlayService {
     const timeRemaining = duration - progress
 
     // Dynamic polling: increase frequency when approaching track end
-    let newInterval = 500 // Default 500ms
+    let newInterval = 1000 // Default 1000ms baseline to reduce API calls
 
     if (timeRemaining <= 10000) {
-      // Last 10 seconds: poll every 100ms for better precision (reduced from 250ms)
+      // Last 10 seconds: poll every 100ms for better precision
       newInterval = 100
     } else if (timeRemaining <= 30000) {
-      // Last 30 seconds: poll every 250ms (reduced from 500ms)
+      // Last 30 seconds: poll every 250ms
       newInterval = 250
     } else {
-      // Rest of the track: poll every 500ms to reduce API calls (reduced from 1000ms)
-      newInterval = 500
+      // Rest of the track: poll every 1000ms to reduce API calls
+      newInterval = 1000
     }
 
     // Update interval if it changed
@@ -1066,18 +1066,20 @@ class AutoPlayService {
               try {
                 if (trackDetails.artists && trackDetails.artists.length > 0) {
                   const artistId = trackDetails.artists[0].id
-                  const artistResponse = await fetch(
-                    `https://api.spotify.com/v1/artists/${artistId}`,
-                    {
-                      headers: {
-                        Authorization: `Bearer ${await this.getAccessToken()}`
+                  if (artistId && artistId.trim() !== '') {
+                    const artistResponse = await fetch(
+                      `https://api.spotify.com/v1/artists/${artistId}`,
+                      {
+                        headers: {
+                          Authorization: `Bearer ${await this.getAccessToken()}`
+                        }
                       }
-                    }
-                  )
+                    )
 
-                  if (artistResponse.ok) {
-                    const artistData = await artistResponse.json()
-                    artistGenres = artistData.genres || []
+                    if (artistResponse.ok) {
+                      const artistData = await artistResponse.json()
+                      artistGenres = artistData.genres || []
+                    }
                   }
                 }
               } catch (genreError) {

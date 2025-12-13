@@ -22,7 +22,9 @@ export async function selectWithRetry<T = unknown>(
 ): Promise<{ data: T | null; error: unknown }> {
   return withRetry(
     async () => {
-      const builder = client.from(table)
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const builder = client.from(table as any)
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
       const query = queryBuilder(builder)
       return await query
     },
@@ -43,7 +45,8 @@ export async function insertWithRetry<T = unknown>(
 ): Promise<{ data: T | null; error: unknown }> {
   return withRetry(
     async () => {
-      return await client.from(table).insert(values)
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      return await client.from(table as any).insert(values)
     },
     retryConfig,
     queryName ?? `INSERT into ${table}`
@@ -64,7 +67,9 @@ export async function updateWithRetry<T = unknown>(
 ): Promise<{ data: T | null; error: unknown }> {
   return withRetry(
     async () => {
-      const builder = client.from(table)
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const builder = client.from(table as any)
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
       const query = queryBuilder(builder)
       return await query
     },
@@ -89,7 +94,8 @@ export async function upsertWithRetry<T = unknown>(
       const upsertOptions = options?.onConflict
         ? { onConflict: options.onConflict }
         : undefined
-      return await client.from(table).upsert(values, upsertOptions)
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      return await client.from(table as any).upsert(values, upsertOptions)
     },
     retryConfig,
     queryName ?? `UPSERT into ${table}`
@@ -110,7 +116,9 @@ export async function deleteWithRetry<T = unknown>(
 ): Promise<{ data: T | null; error: unknown }> {
   return withRetry(
     async () => {
-      const builder = client.from(table)
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const builder = client.from(table as any)
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
       const query = queryBuilder(builder)
       return await query.delete()
     },
@@ -131,7 +139,12 @@ export async function rpcWithRetry<T = unknown>(
 ): Promise<{ data: T | null; error: unknown }> {
   return withRetry(
     async () => {
-      return await client.rpc(functionName, params ?? {})
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const result = await client.rpc(functionName as any, params ?? {})
+      return {
+        data: (result.data as T | null) ?? null,
+        error: result.error
+      }
     },
     retryConfig,
     queryName ?? `RPC ${functionName}`
@@ -147,7 +160,7 @@ export async function queryWithRetry<T = unknown>(
   query: PromiseLike<{ data: T | null; error: unknown }>,
   retryConfig?: RetryConfig,
   queryName?: string
-): Promise<{ data: T | null; error: unknown }> {
+): Promise<{ data: T | null; error: unknown; count?: number | null }> {
   return withRetry(
     async () => {
       return await query

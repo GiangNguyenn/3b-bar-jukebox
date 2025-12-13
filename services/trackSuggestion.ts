@@ -17,6 +17,7 @@ import {
   validateExcludedTrackIds
 } from '@/shared/validations/trackSuggestion'
 import { createModuleLogger } from '@/shared/utils/logger'
+import { safeBackfillTrackGenre } from '@/services/game/genreBackfill'
 
 // Set up logger for this module
 const logger = createModuleLogger('TrackSuggestion')
@@ -363,6 +364,129 @@ export async function findSuggestedTrack(
   const allowExplicit = params?.allowExplicit ?? false
   const maxSongLength = params?.maxSongLength ?? DEFAULT_MAX_SONG_LENGTH_MINUTES
   const maxOffset = params?.maxOffset ?? DEFAULT_MAX_OFFSET
+
+  // Database-first approach: Try fetching from Supabase before hitting Spotify
+  try {
+    const { supabase } = await import('@/lib/supabase')
+    const maxDurationMs = maxSongLength * 60 * 1000
+
+    // Build query for database tracks matching criteria
+    let dbQuery = supabase
+      .from('tracks')
+      .select(
+        'spotify_track_id, name, artist, album, popularity, duration_ms, spotify_url, genre, release_year'
+      )
+      .gte('popularity', minPopularity)
+      .lte('duration_ms', maxDurationMs)
+      .not('spotify_track_id', 'in', `(${allExcludedIds.join(',')})`)
+
+    // Filter by genre if we have specific genres
+    if (genres.length > 0 && genres.length <= 3) {
+      // Use OR condition for multiple genres
+      const genreFilters = genres.map((g) => `genre.ilike.%${g}%`).join(',')
+      dbQuery = dbQuery.or(genreFilters)
+    }
+
+    // Filter by year range
+    if (yearRange) {
+      const [startYear, endYear] = yearRange
+      dbQuery = dbQuery
+        .gte('release_year', startYear)
+        .lte('release_year', endYear)
+    }
+
+    const { data: dbTracks } = await dbQuery
+      .order('popularity', { ascending: false })
+      .limit(50)
+
+    // Queue async backfill for any tracks missing genres
+    dbTracks?.forEach((track) => {
+      if (!track.genre && track.artist) {
+        void safeBackfillTrackGenre(
+          track.spotify_track_id,
+          track.artist,
+          track.release_year ?? null,
+          track.popularity ?? null
+        )
+      }
+    })
+
+    if (dbTracks && dbTracks.length >= 20) {
+      logger(
+        'INFO',
+        `DB pre-filter success: ${dbTracks.length} candidates found, selecting random track`
+      )
+
+      // Convert to TrackDetails format and apply filters
+      const dbTrackDetails: TrackDetails[] = dbTracks.map((track) => ({
+        id: track.spotify_track_id,
+        uri: track.spotify_url ?? `spotify:track:${track.spotify_track_id}`,
+        name: track.name,
+        duration_ms: track.duration_ms,
+        popularity: track.popularity,
+        preview_url: null,
+        is_playable: true,
+        explicit: false, // DB doesn't store explicit flag, assume false
+        album: {
+          name: track.album,
+          images: [],
+          release_date: track.release_year?.toString() ?? ''
+        },
+        artists: [{ id: '', name: track.artist }]
+      }))
+
+      // Select random track from DB results
+      const selectedTrack = selectRandomTrack(
+        dbTrackDetails,
+        allExcludedIds,
+        minPopularity,
+        maxSongLength,
+        allowExplicit
+      )
+
+      if (selectedTrack) {
+        logger(
+          'INFO',
+          `DB-first: Successfully selected track from database: ${selectedTrack.name}`
+        )
+        return {
+          track: selectedTrack,
+          searchDetails: {
+            attempts: 1,
+            totalTracksFound: dbTracks.length,
+            excludedTrackIds: allExcludedIds,
+            minPopularity,
+            genresTried: genres,
+            trackDetails: dbTrackDetails.map((t) => ({
+              name: t.name,
+              popularity: t.popularity,
+              isExcluded: allExcludedIds.includes(t.id),
+              isPlayable: t.is_playable,
+              duration_ms: t.duration_ms,
+              explicit: t.explicit
+            }))
+          }
+        }
+      }
+
+      logger(
+        'INFO',
+        `DB pre-filter found ${dbTracks.length} tracks but none passed final filters, falling back to Spotify`
+      )
+    } else {
+      logger(
+        'INFO',
+        `DB pre-filter returned ${dbTracks?.length ?? 0} tracks (< 20), falling back to Spotify`
+      )
+    }
+  } catch (dbError) {
+    logger(
+      'WARN',
+      `Database pre-filter failed, falling back to Spotify`,
+      undefined,
+      dbError instanceof Error ? dbError : undefined
+    )
+  }
 
   // For specific genres with limited tracks, reduce popularity threshold after some attempts
   const isSpecificGenre =

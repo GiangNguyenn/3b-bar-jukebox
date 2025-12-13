@@ -49,7 +49,7 @@ export async function POST(request: Request): Promise<NextResponse> {
         album: string
         duration_ms: number
         popularity: number
-        spotify_url: string
+        spotify_url: string | null
       }>
     >(
       supabase

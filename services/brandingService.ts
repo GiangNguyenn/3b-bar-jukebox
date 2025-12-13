@@ -98,10 +98,10 @@ export class BrandingService {
       // If updating an existing record, apply defaults to missing fields
       if (existingRecord) {
         const upsertData = {
-          profile_id: profileId,
           ...defaultValues,
           ...existingRecord,
-          ...settings // User updates take precedence
+          ...settings, // User updates take precedence
+          profile_id: profileId // Ensure profile_id is set
         }
 
         const { data, error } = await this.supabase

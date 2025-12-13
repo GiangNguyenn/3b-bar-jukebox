@@ -1,6 +1,4 @@
 'use client'
-
-import { useParams } from 'next/navigation'
 import Image from 'next/image'
 import { useNowPlayingTrack } from '@/hooks/useNowPlayingTrack'
 import { Loading } from '@/components/ui'
@@ -9,8 +7,6 @@ import { useSpotifyPlayerStore } from '@/hooks/useSpotifyPlayer'
 import { sendApiRequest } from '@/shared/api'
 import { useConsoleLogsContext } from '@/hooks/ConsoleLogsProvider'
 import { useState, useRef } from 'react'
-import { Copy, Check, QrCode } from 'lucide-react'
-import { QRCodeComponent } from '@/components/ui'
 import { getAutoPlayService } from '@/services/autoPlayService'
 
 interface JukeboxSectionProps {
@@ -20,13 +16,9 @@ interface JukeboxSectionProps {
 export function JukeboxSection({
   className = ''
 }: JukeboxSectionProps): JSX.Element {
-  const params = useParams()
-  const username = params?.username as string | undefined
   const { deviceId, isReady } = useSpotifyPlayerStore()
   const { addLog } = useConsoleLogsContext()
   const [volume, setVolume] = useState(50)
-  const [copied, setCopied] = useState(false)
-  const [showQRCode, setShowQRCode] = useState(false)
   const [isSeeking, setIsSeeking] = useState(false)
   const [isDragging, setIsDragging] = useState(false)
   const progressBarRef = useRef<HTMLDivElement>(null)
@@ -39,38 +31,6 @@ export function JukeboxSection({
 
   const { handlePlayPause, handleSkip, isActuallyPlaying, isSkipLoading } =
     usePlaybackControls()
-
-  const handleOpenJukebox = (): void => {
-    if (username) {
-      const jukeboxUrl = `/${username}/playlist`
-      window.open(jukeboxUrl, '_blank')
-    }
-  }
-
-  const handleOpenDisplay = (): void => {
-    if (username) {
-      const displayUrl = `/${username}/display`
-      window.open(displayUrl, '_blank')
-    }
-  }
-
-  const handleCopyLink = async (): Promise<void> => {
-    if (username) {
-      const jukeboxUrl = `${window.location.origin}/${username}/playlist`
-      try {
-        await navigator.clipboard.writeText(jukeboxUrl)
-        setCopied(true)
-        setTimeout(() => setCopied(false), 2000)
-      } catch (error) {
-        addLog(
-          'ERROR',
-          'Failed to copy link to clipboard',
-          'JukeboxSection',
-          error instanceof Error ? error : undefined
-        )
-      }
-    }
-  }
 
   const formatTime = (ms: number): string => {
     const seconds = Math.floor(ms / 1000)
@@ -327,83 +287,6 @@ export function JukeboxSection({
             </div>
           </div>
         </div>
-
-        <button
-          type='button'
-          onClick={handleOpenDisplay}
-          disabled={!username}
-          className='text-white w-full rounded-lg bg-blue-600 px-4 py-3 font-medium transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50'
-        >
-          Open Display
-        </button>
-
-        <button
-          type='button'
-          onClick={handleOpenJukebox}
-          disabled={!username}
-          className='text-white w-full rounded-lg bg-purple-600 px-4 py-3 font-medium transition-colors hover:bg-purple-700 disabled:cursor-not-allowed disabled:opacity-50'
-        >
-          Open Jukebox
-        </button>
-
-        {/* Copy Jukebox Link */}
-        {username && (
-          <div className='space-y-2'>
-            <div className='flex items-center justify-between rounded-lg border border-gray-700 bg-gray-800/50 px-3 py-2'>
-              <span className='flex-1 truncate text-sm text-gray-300'>
-                {`${window.location.origin}/${username}/playlist`}
-              </span>
-              <div className='flex items-center gap-1'>
-                <button
-                  type='button'
-                  onClick={(): void => {
-                    setShowQRCode(!showQRCode)
-                  }}
-                  className='hover:text-white flex-shrink-0 rounded p-1 text-gray-400 transition-colors hover:bg-gray-700'
-                  title='Show/hide QR code'
-                >
-                  <QrCode className='h-4 w-4' />
-                </button>
-                <button
-                  type='button'
-                  onClick={(): void => {
-                    void handleCopyLink()
-                  }}
-                  className='hover:text-white flex-shrink-0 rounded p-1 text-gray-400 transition-colors hover:bg-gray-700'
-                  title='Copy link to clipboard'
-                >
-                  {copied ? (
-                    <Check className='h-4 w-4 text-green-500' />
-                  ) : (
-                    <Copy className='h-4 w-4' />
-                  )}
-                </button>
-              </div>
-            </div>
-            <p className='text-center text-xs text-gray-400'>
-              {copied
-                ? 'Link copied!'
-                : 'Public jukebox page - share with guests (no Spotify account required)'}
-            </p>
-
-            {/* QR Code Section */}
-            {showQRCode && (
-              <div className='mt-4 rounded-lg border border-gray-700 bg-gray-800/50 p-4'>
-                <div className='mb-3 text-center'>
-                  <h4 className='text-white text-sm font-medium'>QR Code</h4>
-                  <p className='text-xs text-gray-400'>
-                    Scan to open the jukebox page
-                  </p>
-                </div>
-                <QRCodeComponent
-                  url={`${window.location.origin}/${username}/playlist`}
-                  size={180}
-                  className='mx-auto'
-                />
-              </div>
-            )}
-          </div>
-        )}
       </div>
     </div>
   )

@@ -203,12 +203,14 @@ export async function POST(
     try {
       if (result.track.artists && result.track.artists.length > 0) {
         const artistId = result.track.artists[0].id
-        const artistResponse = await sendApiRequest<{ genres: string[] }>({
-          path: `artists/${artistId}`,
-          method: 'GET',
-          useAppToken: true // Use app token for server-side operations - no user session context available
-        })
-        artistGenres = artistResponse.genres || []
+        if (artistId) {
+          const artistResponse = await sendApiRequest<{ genres: string[] }>({
+            path: `artists/${artistId}`,
+            method: 'GET',
+            useAppToken: true // Use app token for server-side operations - no user session context available
+          })
+          artistGenres = artistResponse.genres || []
+        }
       }
     } catch (error) {
       logger(

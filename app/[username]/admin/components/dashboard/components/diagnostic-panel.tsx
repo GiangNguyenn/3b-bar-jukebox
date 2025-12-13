@@ -71,7 +71,7 @@ export function DiagnosticPanel({
     <div className={cn('space-y-4', className)}>
       <CollapsibleSection
         title='System Diagnostics'
-        defaultExpanded={!hasErrors}
+        defaultExpanded={false}
         severity={overallSeverity}
         headerActions={
           <button
