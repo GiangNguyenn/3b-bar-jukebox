@@ -571,6 +571,16 @@ export async function batchGetArtistProfilesWithCache(
       if (!profile.cached_at || !isCacheFresh(profile.cached_at)) {
         continue
       }
+      // If genres are missing or empty, treat as cache miss to force immediate refresh
+      // This is critical for scoring - we can't use an artist with no genres
+      if (!profile.genres || profile.genres.length === 0) {
+        logger(
+          'WARN',
+          `[Cache Invalidation] Artist "${profile.name}" (${profile.spotify_artist_id}) has empty genres in DB. Forcing Spotify refresh.`
+        )
+        continue // Skip adding to cachedMap, so it gets added to missingIds
+      }
+
       cachedMap.set(profile.spotify_artist_id, {
         spotify_artist_id: profile.spotify_artist_id,
         name: profile.name,
@@ -586,19 +596,6 @@ export async function batchGetArtistProfilesWithCache(
         popularity: profile.popularity ?? undefined,
         followers: profile.follower_count ?? undefined
       })
-
-      // Trigger backfill if genres are missing or empty (for target artists especially)
-      if (!profile.genres || profile.genres.length === 0) {
-        logger(
-          'WARN',
-          `[Target Artist] Triggering genre backfill for "${profile.name}" (${profile.spotify_artist_id}) - genres: ${JSON.stringify(profile.genres)}`
-        )
-        void safeBackfillArtistGenres(
-          profile.spotify_artist_id,
-          profile.name,
-          token
-        )
-      }
     }
   }
 
