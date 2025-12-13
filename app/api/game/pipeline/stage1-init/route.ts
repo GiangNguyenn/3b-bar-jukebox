@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 
 import {
   resolveTargetProfiles,
-  getSeedRelatedArtistIds,
+  getSeedRelatedArtists,
   applyGravityUpdates,
   ensureTargets,
   resetPerformanceTimings
@@ -75,17 +75,130 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     }
 
     const seedArtistId = currentTrack.artists[0].id
-    const seedArtistName = currentTrack.artists[0].name // Safe access due to check above? No, artists[0] exists but name? It's typed.
+    const seedArtistName = currentTrack.artists[0].name
+
+    // CRITICAL: Validate that we have a Spotify ID, not a database UUID
+    // Spotify IDs are base62 (alphanumeric, no dashes), typically 22 chars
+    // Database UUIDs have dashes (e.g., "550e8400-e29b-41d4-a716-446655440000")
+    if (!seedArtistId || seedArtistId.includes('-')) {
+      logger(
+        'ERROR',
+        `Invalid Spotify ID format for seed artist "${seedArtistName}": ${seedArtistId} (looks like database UUID)`,
+        'POST'
+      )
+      return NextResponse.json(
+        {
+          error:
+            'Invalid artist ID - database UUID detected instead of Spotify ID'
+        },
+        { status: 400 }
+      )
+    }
 
     logger('INFO', `Seed: ${seedArtistName} (${seedArtistId})`, 'POST')
 
-    // 3. Get Related Artist IDs (for Stage 2)
-    // We only fetch IDs here. Client will orchestrate fetching tracks (Stage 2)
-    const relatedArtistIds = await getSeedRelatedArtistIds(seedArtistId, token)
-
-    // 4. Update Gravities
-    // This calculates the NEW gravities based on the PREVIOUS selection (passed in request.lastSelection)
+    // 3. Update Gravities (Calculate early to use for seeding logic)
+    // This calculates the NEW gravities based on the PREVIOUS selection
     const updatedGravities = applyGravityUpdates({ request })
+
+    // 4. Get Related Artist IDs (for Stage 2)
+    const activePlayerId = request.currentPlayerId
+    const targetProfile = targetProfiles[activePlayerId]
+    const pGravity = updatedGravities[activePlayerId] || 0
+
+    // Only use target artist if profile was successfully resolved
+    const targetArtistId = targetProfile?.spotifyId
+
+    // Validate target artist ID if present
+    if (targetArtistId?.includes('-')) {
+      logger(
+        'WARN',
+        `Invalid Spotify ID format for target artist: ${targetArtistId} (looks like database UUID) - skipping target seeding`,
+        'POST'
+      )
+    }
+
+    // CHECK GRAVITY ZONES:
+    // < 0.2: Desperation (Fetch)
+    // 0.2 - 0.39: Dead Zone (SKIP)
+    // 0.4 - 0.79: Good Influence (Fetch)
+    // >= 0.8: High Influence (Fetch + Inject later)
+    const isInDeadZone = pGravity >= 0.2 && pGravity < 0.4
+
+    // Fetch seed artists (always)
+    const seedArtists = await getSeedRelatedArtists(seedArtistId, token)
+
+    // Fetch target artists (conditional)
+    let targetArtists: Array<{ id: string; name: string }> = []
+
+    if (targetArtistId && targetProfile?.artist?.name) {
+      if (isInDeadZone) {
+        logger(
+          'INFO',
+          `Dead Zone Active (Gravity ${pGravity.toFixed(2)}): Skipping Target Artist seeding for ${targetProfile.artist.name}`,
+          'POST'
+        )
+      } else {
+        logger(
+          'INFO',
+          `Seeding from Target Artist: ${targetProfile.artist.name} (${targetArtistId}) - Gravity ${pGravity.toFixed(2)}`,
+          'POST'
+        )
+        try {
+          targetArtists = await getSeedRelatedArtists(targetArtistId, token)
+        } catch (error) {
+          logger(
+            'ERROR',
+            `Failed to fetch related artists for target: ${error instanceof Error ? error.message : String(error)}`,
+            'POST'
+          )
+        }
+      }
+    } else {
+      logger(
+        'WARN',
+        `Target artist not resolved for ${activePlayerId}, skipping target-based seeding`,
+        'POST'
+      )
+    }
+
+    // Merge and deduplicate for Stage 2
+    const combinedMap = new Map<string, { id: string; name: string }>()
+    seedArtists.forEach((a) => combinedMap.set(a.id, a))
+    targetArtists.forEach((a) => combinedMap.set(a.id, a))
+
+    // CRITICAL: Target Artist Injection Logic
+    // Per requirements 3.4.2: Target Artist tracks should ONLY be forcibly injected at ≥ 80% gravity
+    // At all other gravity levels, target artist can only appear if it's naturally in related artists
+    const highInfluenceThreshold = 0.8
+    const isHighInfluence = pGravity >= highInfluenceThreshold
+
+    if (targetArtistId && targetProfile?.artist?.name) {
+      if (isHighInfluence) {
+        combinedMap.set(targetArtistId, {
+          id: targetArtistId,
+          name: targetProfile.artist.name
+        })
+        logger(
+          'INFO',
+          `High Influence (Gravity ${pGravity.toFixed(2)} ≥ ${highInfluenceThreshold}): Forcibly injecting target artist: ${targetProfile.artist.name}`,
+          'POST'
+        )
+      } else {
+        logger(
+          'INFO',
+          `Gravity ${pGravity.toFixed(2)} < ${highInfluenceThreshold}: Target artist NOT forcibly injected (${targetProfile.artist.name} can only appear if naturally related)`,
+          'POST'
+        )
+      }
+    }
+
+    const relatedArtistIds = Array.from(combinedMap.keys())
+    logger(
+      'INFO',
+      `Total unique candidate artists: ${relatedArtistIds.length} (${seedArtists.length} from seed, ${targetArtists.length} from target, +1 target itself)`,
+      'POST'
+    )
 
     // 5. Game Parameters
     const explorationPhase = getExplorationPhase(roundNumber)
@@ -104,6 +217,35 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
 
     const executionTime = Date.now() - startTime
 
+    // Self-Healing: Process healing queue during active gameplay
+    // This runs in the background without blocking the response
+    const timeRemaining = 10000 - executionTime // Vercel 10s limit
+
+    if (timeRemaining > 1000) {
+      // Only if we have at least 1s remaining
+      const { processHealingQueue } = await import(
+        '@/services/game/selfHealing'
+      )
+      // Process healing asynchronously (don't await - fire and forget)
+      processHealingQueue(token, 2)
+        .then((results) => {
+          if (results.processed > 0) {
+            logger(
+              'INFO',
+              `Background healing: processed=${results.processed}, succeeded=${results.succeeded}, failed=${results.failed}`,
+              'POST'
+            )
+          }
+        })
+        .catch((error) => {
+          logger(
+            'ERROR',
+            `Background healing failed: ${error instanceof Error ? error.message : String(error)}`,
+            'POST'
+          )
+        })
+    }
+
     return NextResponse.json({
       targetProfiles,
       seedArtistId,
@@ -116,7 +258,12 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       ogDrift,
       debug: {
         executionTime,
-        stats: statisticsTracker.getStatistics()
+        stats: statisticsTracker.getStatistics(),
+        candidatePool: {
+          totalUnique: relatedArtistIds.length,
+          seedArtists,
+          targetArtists
+        }
       }
     })
   } catch (error) {

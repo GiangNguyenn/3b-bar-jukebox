@@ -544,17 +544,51 @@ export async function backfillArtistGenres(
 
     logger(
       'WARN',
-      `[Backfill] ❌ All strategies failed for "${artistName}" (${spotifyArtistId}) - no data to update`
+      `[Backfill] ❌ All strategies failed for "${artistName}" (${spotifyArtistId}) - marking as "unknown"`
     )
-    return null
-  } catch (error) {
+
+    // Mark as "unknown" to prevent infinite retry loops
+    await upsertArtistProfile({
+      spotify_artist_id: spotifyArtistId,
+      name: artistName,
+      genres: ['unknown'],
+      popularity,
+      follower_count: followers
+    })
+
     logger(
       'WARN',
-      `Exception in backfillArtistGenres for ${spotifyArtistId}`,
+      `[Backfill] Set genre to "unknown" for "${artistName}" - will not retry backfill`
+    )
+
+    return ['unknown']
+  } catch (error) {
+    logger(
+      'ERROR',
+      `Exception in backfillArtistGenres for ${spotifyArtistId} - marking as "unknown" to prevent retries`,
       undefined,
       error instanceof Error ? error : undefined
     )
-    return null
+
+    // Even on error, mark as "unknown" to prevent infinite retry loops
+    try {
+      await upsertArtistProfile({
+        spotify_artist_id: spotifyArtistId,
+        name: artistName,
+        genres: ['unknown'],
+        popularity: undefined,
+        follower_count: undefined
+      })
+    } catch (upsertError) {
+      logger(
+        'ERROR',
+        `Failed to mark artist ${artistName} as unknown after error`,
+        undefined,
+        upsertError instanceof Error ? upsertError : undefined
+      )
+    }
+
+    return ['unknown']
   }
 }
 
@@ -905,5 +939,63 @@ export async function safeBackfillArtistGenres(
   } finally {
     activeBackfills--
     ongoingArtistBackfills.delete(key)
+  }
+}
+
+/**
+ * Process a batch of tracks for genre backfilling
+ */
+export async function processGenreBackfillBatch(
+  limit: number,
+  token?: string
+): Promise<number> {
+  try {
+    // Find tracks with missing genres
+    const { data: tracks, error } = await queryWithRetry<
+      Array<{ spotify_track_id: string; name: string; artists: any }>
+    >(
+      supabase
+        .from('tracks')
+        .select('spotify_track_id, name, artists(name)')
+        .is('genre', null)
+        .limit(limit),
+      undefined,
+      'Get tracks for genre backfill batch'
+    )
+
+    if (error || !tracks || tracks.length === 0) {
+      return 0
+    }
+
+    let processed = 0
+    for (const track of tracks) {
+      if (activeBackfills >= MAX_CONCURRENT_BACKFILLS) break
+
+      const artistName = Array.isArray(track.artists)
+        ? track.artists[0]?.name
+        : (track.artists as any)?.name
+
+      if (!artistName) continue
+
+      // Fire and forget (safe wrapper handles state)
+      void safeBackfillTrackGenre(
+        track.spotify_track_id,
+        artistName,
+        null,
+        null,
+        token
+      )
+      processed++
+    }
+
+    return processed
+  } catch (err) {
+    logger(
+      'WARN',
+      'Error in processGenreBackfillBatch',
+      undefined,
+      err as Error
+    )
+    return 0
   }
 }

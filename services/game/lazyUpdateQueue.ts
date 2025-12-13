@@ -4,7 +4,11 @@ import type { TrackDetails } from '@/shared/types/spotify'
 
 const logger = createModuleLogger('LazyUpdateQueue')
 
-type LazyUpdateType = 'artist_profile' | 'artist_top_tracks' | 'track_details'
+type LazyUpdateType =
+  | 'artist_profile'
+  | 'artist_top_tracks'
+  | 'track_details'
+  | 'track_unavailable'
 
 interface LazyUpdatePayload {
   type: LazyUpdateType

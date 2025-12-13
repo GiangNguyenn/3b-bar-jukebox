@@ -118,9 +118,20 @@ export function GameBoard({
     options
   ])
 
-  const visibleOptions = currentTrack
-    ? options.filter((option) => option.track.id !== currentTrack.id)
-    : options
+  // Shuffle options for random display order (Fisher-Yates algorithm)
+  // Only re-shuffles when options prop changes or current track ID changes
+  const shuffledOptions = useMemo(() => {
+    const visible = currentTrack?.id
+      ? options.filter((option) => option.track.id !== currentTrack.id)
+      : options
+
+    const shuffled = [...visible]
+    for (let i = shuffled.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1))
+      ;[shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]]
+    }
+    return shuffled
+  }, [options, currentTrack?.id])
 
   // Create Supabase client for fetching genre
   const supabase = useMemo(
@@ -392,13 +403,13 @@ export function GameBoard({
                   </p>
                 </div>
               </div>
-            ) : phase === 'loading' && visibleOptions.length === 0 ? (
+            ) : phase === 'loading' && shuffledOptions.length === 0 ? (
               // Show skeleton cards while loading
               Array.from({ length: 6 }).map((_, index) => (
                 <GameOptionSkeleton key={`skeleton-${index}`} />
               ))
-            ) : visibleOptions.length > 0 ? (
-              visibleOptions.map((option) => {
+            ) : shuffledOptions.length > 0 ? (
+              shuffledOptions.map((option) => {
                 const isQueued = option.track.id === pendingSelectionTrackId
                 const cardFeedback = getCardFeedback(option)
                 const isSelectedTrack =

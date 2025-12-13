@@ -81,6 +81,7 @@ export type CandidateSource =
   | 'embedding'
   | 'target_insertion'
   | 'target_boost'
+  | 'related_artist_insertion'
 
 export type PopularityBand = 'low' | 'mid' | 'high'
 
@@ -209,6 +210,8 @@ export interface DgsDebugInfo {
   }
   candidates: Array<{
     artistName: string
+    trackName?: string
+    source?: string
     simScore: number
     isTargetArtist: boolean
     filtered: boolean
@@ -287,6 +290,11 @@ export interface DgsDebugInfo {
     artistAttempts: number
     artistSuccesses: number
     artistFailures: number
+  }
+  candidatePool?: {
+    totalUnique: number
+    seedArtists?: Array<{ name: string; id: string }>
+    targetArtists?: Array<{ name: string; id: string }>
   }
 }
 

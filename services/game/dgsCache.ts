@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Database cache layer for DGS engine
  * Provides DB-first lookups for artist data to minimize Spotify API calls
  *

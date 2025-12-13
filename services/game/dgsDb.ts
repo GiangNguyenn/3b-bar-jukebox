@@ -87,11 +87,13 @@ export async function fetchRandomTracksFromDb({
     `DB fallback: attempting to fetch up to ${fetchLimit} tracks to satisfy ${neededArtists} missing unique artists`
   )
 
-  const { data, error } = await queryWithRetry<DbTrackRow[]>(
+  // Use any as generic because we are excluding the required 'id' column
+  const { data, error } = await queryWithRetry<any>(
     supabase
       .from('tracks')
+      // Removed 'id' (DB internal UUID) to prevent usage/leaking
       .select(
-        'id, spotify_track_id, name, artist, album, duration_ms, popularity, spotify_url, genre'
+        'spotify_track_id, name, artist, album, duration_ms, popularity, spotify_url, genre'
       )
       .not('spotify_track_id', 'is', null)
       .neq('spotify_track_id', '')
@@ -279,8 +281,9 @@ export async function fetchTracksByGenreFromDb({
     // Fetch more than needed since we'll filter by profiled artists
     let query = supabase
       .from('tracks')
+      // Removed 'id' (DB internal UUID) to prevent usage/leaking
       .select(
-        'id, spotify_track_id, name, artist, album, duration_ms, popularity, spotify_url, genre'
+        'spotify_track_id, name, artist, album, duration_ms, popularity, spotify_url, genre'
       )
       .not('spotify_track_id', 'is', null)
       .neq('spotify_track_id', '')
@@ -288,7 +291,8 @@ export async function fetchTracksByGenreFromDb({
       .lte('popularity', maxPopularity)
       .limit(limit * 3) // Increased multiplier since we're filtering more
 
-    const { data, error } = await queryWithRetry<DbTrackRow[]>(
+    // Use any as generic because we are excluding the required 'id' column
+    const { data, error } = await queryWithRetry<any>(
       query as any,
       undefined,
       'DGS fetchTracksByGenreFromDb'
@@ -316,7 +320,7 @@ export async function fetchTracksByGenreFromDb({
     // Filter by genre match, exclusions, and profiled artists
     const genresLower = new Set(genres.map((g) => g.toLowerCase()))
     let filteredOutUnprofiled = 0
-    const filtered = rows.filter((row) => {
+    const filtered = rows.filter((row: any) => {
       if (
         !row.spotify_track_id ||
         excludeSpotifyTrackIds.has(row.spotify_track_id)
@@ -443,10 +447,14 @@ export async function fetchAbsoluteRandomTracks(
 
   const excludeArray = Array.from(excludeTrackIds)
 
-  const { data, error } = await queryWithRetry<DbTrackRow[]>(
+  // Use any as generic because we are excluding the required 'id' column
+  const { data, error } = await queryWithRetry<any>(
     supabase
       .from('tracks')
-      .select('*')
+      // Explicitly select columns excluding 'id' (UUID)
+      .select(
+        'spotify_track_id, name, artist, album, duration_ms, popularity, spotify_url, genre'
+      )
       .not(
         'spotify_track_id',
         'in',
@@ -636,11 +644,13 @@ export async function fetchTracksCloserToTarget({
     // Query tracks - fetch more than needed since we'll filter by profiled artists
     const fetchLimit = Math.min(limit * 2, 200) // limit DB load for latency
 
-    const { data, error } = await queryWithRetry<DbTrackRow[]>(
+    // Use any as generic because we are excluding the required 'id' column
+    const { data, error } = await queryWithRetry<any>(
       supabase
         .from('tracks')
+        // Removed 'id' (DB internal UUID) to prevent usage/leaking
         .select(
-          'id, spotify_track_id, name, artist, album, duration_ms, popularity, spotify_url, genre'
+          'spotify_track_id, name, artist, album, duration_ms, popularity, spotify_url, genre'
         )
         .not('spotify_track_id', 'is', null)
         .neq('spotify_track_id', '')
@@ -667,7 +677,7 @@ export async function fetchTracksCloserToTarget({
 
     // Filter by exclusions and profiled artists, prioritize by popularity
     const filtered = rows
-      .filter((row) => {
+      .filter((row: any) => {
         if (
           !row.spotify_track_id ||
           excludeTrackIds.has(row.spotify_track_id)
@@ -678,7 +688,7 @@ export async function fetchTracksCloserToTarget({
         if (!artistName) return false
         return artistProfileMap.has(artistName.toLowerCase())
       })
-      .sort((a, b) => (b.popularity ?? 0) - (a.popularity ?? 0)) // Sort by popularity descending
+      .sort((a: any, b: any) => (b.popularity ?? 0) - (a.popularity ?? 0)) // Sort by popularity descending
 
     shuffleInPlace(filtered)
     const results: TrackDetails[] = []
@@ -836,11 +846,13 @@ export async function fetchTracksFurtherFromTarget({
     // Query tracks - fetch more than needed since we'll filter by profiled artists
     const fetchLimit = Math.min(limit * 2, 200) // limit DB load for latency
 
-    const { data, error } = await queryWithRetry<DbTrackRow[]>(
+    // Use any as generic because we are excluding the required 'id' column
+    const { data, error } = await queryWithRetry<any>(
       supabase
         .from('tracks')
+        // Removed 'id' (DB internal UUID) to prevent usage/leaking
         .select(
-          'id, spotify_track_id, name, artist, album, duration_ms, popularity, spotify_url, genre'
+          'spotify_track_id, name, artist, album, duration_ms, popularity, spotify_url, genre'
         )
         .not('spotify_track_id', 'is', null)
         .neq('spotify_track_id', '')
@@ -866,7 +878,7 @@ export async function fetchTracksFurtherFromTarget({
     }
 
     // Filter by exclusions and profiled artists
-    const filtered = rows.filter((row) => {
+    const filtered = rows.filter((row: any) => {
       if (!row.spotify_track_id || excludeTrackIds.has(row.spotify_track_id)) {
         return false
       }
@@ -1191,11 +1203,13 @@ export async function fetchTracksByArtistIdsFromDb({
     // Fetch more than limit to allow for filtering
     const fetchLimit = limit * 3
 
-    const { data, error } = await queryWithRetry<DbTrackRow[]>(
+    // Use any as generic because we are excluding the required 'id' column
+    const { data, error } = await queryWithRetry<any>(
       supabase
         .from('tracks')
+        // Removed 'id' (DB internal UUID) to prevent usage/leaking
         .select(
-          'id, spotify_track_id, name, artist, album, duration_ms, popularity, spotify_url, genre'
+          'spotify_track_id, name, artist, album, duration_ms, popularity, spotify_url, genre'
         )
         .not('spotify_track_id', 'is', null)
         .neq('spotify_track_id', '')

@@ -418,18 +418,41 @@ export async function POST(
 
     if (existingQueueItem) {
       logger(
-        'WARN',
-        `Track ${tracks.name} (${tracks.id}) is already in the queue for user ${username}`
+        'INFO',
+        `Track ${tracks.name} (${tracks.id}) already in queue for user ${username} - boosting votes to 50`
       )
-      const errorResponse = NextResponse.json(
-        { error: 'This track is already in your playlist' },
-        { status: 409 }
+
+      // Instead of returning an error, boost the vote count to 50
+      const updateResult = await queryWithRetry(
+        supabase
+          .from('jukebox_queue')
+          .update({ votes: 50 })
+          .eq('id', existingQueueItem.id),
+        undefined,
+        `Boost votes to 50 for duplicate track selection: ${existingQueueItem.id}`
       )
-      errorResponse.headers.set(
-        'Cache-Control',
-        'no-store, no-cache, must-revalidate, proxy-revalidate'
-      )
-      return errorResponse
+
+      const updateError = updateResult.error
+
+      if (updateError) {
+        logger(
+          'ERROR',
+          `Failed to boost votes for duplicate track: ${JSON.stringify(updateError)}`
+        )
+        const errorResponse = NextResponse.json(
+          { error: 'Failed to boost track votes' },
+          { status: 500 }
+        )
+        errorResponse.headers.set(
+          'Cache-Control',
+          'no-store, no-cache, must-revalidate, proxy-revalidate'
+        )
+        return errorResponse
+      }
+
+      return NextResponse.json({
+        message: 'Track already in queue - votes boosted to 50!'
+      })
     }
 
     const insertResult = await queryWithRetry(

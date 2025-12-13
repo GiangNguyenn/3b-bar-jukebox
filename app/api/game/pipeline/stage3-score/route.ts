@@ -2,8 +2,12 @@
 import { NextRequest, NextResponse } from 'next/server'
 import {
   scoreCandidates,
-  applyDiversityConstraints
+  applyDiversityConstraints,
+  ensureTargetDiversity,
+  enrichCandidatesWithArtistProfiles,
+  computeAttraction
 } from '@/services/game/dgsEngine'
+import { getGenreStatistics } from '@/services/game/dgsDb'
 import { ApiStatisticsTracker } from '@/services/game/apiStatisticsTracker'
 import { createModuleLogger } from '@/shared/utils/logger'
 import {
@@ -89,7 +93,102 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
 
     logger('INFO', `Stage 3: Scoring ${seeds.length} candidates`, 'POST')
 
-    // 1. Score Candidates
+    // 0. Pre-calculation for Diversity Injection
+    // We need current song attraction to know what is "Good" vs "Bad"
+    let currentSongAttraction = 0
+    const currentTarget = targetProfiles[currentPlayerId]
+
+    // We need current track metadata/profile to compute attraction
+    // Attempt to find current artist profile in the passed profiles
+    const currentArtistId = currentTrack?.artists?.[0]?.id
+    let currentArtistProfile = currentArtistId
+      ? artistProfilesMap.get(currentArtistId)
+      : undefined
+
+    if (currentArtistId && !currentArtistProfile) {
+      // If missing, we might need to fetch it (or skip injection accuracy)
+      if (token) {
+        try {
+          const { musicService } = await import('@/services/musicService')
+          const { data: profile } = await musicService.getArtist(
+            currentArtistId,
+            token
+          )
+          if (profile) {
+            currentArtistProfile = {
+              id: profile.id,
+              name: profile.name,
+              genres: profile.genres ?? [],
+              popularity: profile.popularity,
+              followers: profile.followers
+            }
+            // Also add to map for later use
+            artistProfilesMap.set(currentArtistId, currentArtistProfile)
+            logger(
+              'INFO',
+              `Fetched missing profile for current artist: ${profile.name}`,
+              'POST'
+            )
+          }
+        } catch (err) {
+          logger(
+            'WARN',
+            `Failed to fetch current artist profile: ${String(err)}`,
+            'POST'
+          )
+        }
+      }
+    }
+
+    if (currentArtistProfile && currentTarget) {
+      currentSongAttraction = computeAttraction(
+        currentArtistProfile,
+        currentTarget,
+        artistProfilesMap,
+        artistRelationships
+      )
+    }
+
+    // 1. Ensure Diversity (Inject candidates if needed)
+    // This restores the "Build Pool" logic that was lost in pipeline refactor
+    const additionalCandidates = await ensureTargetDiversity({
+      candidatePool: seeds,
+      targetProfiles,
+      currentSongAttraction,
+      currentPlayerId,
+      currentTrackId: currentTrack?.id || '',
+      playedTrackIds: [], // We don't have playedTrackIds in Stage 3 request? Passed in body?
+      // Request interface doesn't show it. We might need to add it or ignore.
+      // Ignoring means we might suggest duplicates from history, but Stage 2 should have filtered?
+      // Let's pass empty for now.
+      artistProfiles: artistProfilesMap,
+      artistRelationships,
+      token,
+      statisticsTracker,
+      currentArtistId
+    })
+
+    if (additionalCandidates.length > 0) {
+      logger(
+        'INFO',
+        `Diversity Injection: Adding ${additionalCandidates.length} generated candidates`,
+        'POST'
+      )
+
+      // Enrich new candidates
+      const newProfiles = await enrichCandidatesWithArtistProfiles(
+        additionalCandidates,
+        artistProfilesMap,
+        token,
+        statisticsTracker
+      )
+
+      // Merge into main sets
+      additionalCandidates.forEach((c) => seeds.push(c))
+      newProfiles.forEach((p, id) => artistProfilesMap.set(id, p))
+    }
+
+    // 2. Score Candidates (Full Scoring)
     const { metrics, debugInfo: scoringDebug } = await scoreCandidates({
       candidates: seeds,
       playerGravities: playerGravities,
@@ -110,11 +209,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
         popularity: currentTrack?.popularity ?? 0,
         duration_ms: currentTrack?.duration_ms ?? 0,
         release_date: currentTrack?.album?.release_date,
-        genres: [], // Main track genres usually come from Artist?
-        // In dgsEngine, `currentTrackMetadata` has genres from artist profile.
-        // We need current track artist profile to get genres.
-        // It should be in `artistProfilesMap` if we fetched seed artist details?
-        artistId: currentTrack?.artists?.[0]?.id
+        genres: currentArtistProfile?.genres ?? [] // Use genres from profile we looked up
       },
       ogDrift: ogDrift ?? 0,
       hardConvergenceActive: !!hardConvergenceActive,
@@ -125,13 +220,14 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       allowFallback: false
     })
 
-    // 2. Diversity Constraints (Selection)
+    // 3. Diversity Constraints (Selection)
     const diversityResult = applyDiversityConstraints(
       metrics,
       roundNumber,
       targetProfiles,
       playerGravities,
-      currentPlayerId
+      currentPlayerId,
+      hardConvergenceActive
     )
 
     // Map to DgsOptionTrack
@@ -147,6 +243,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
             id: metric.artistId ?? 'unknown',
             name: metric.artistName ?? 'Unknown'
           },
+          finalScore: metric.finalScore, // Include finalScore for frontend debugging
           metrics: otherMetrics
         }
       }
@@ -156,16 +253,27 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
 
     logger(
       'INFO',
-      `Stage 3 Complete: ${optionTracks.length} options selected | Time=${executionTime} ms`,
+      `Stage 3 Complete: ${optionTracks.length} options selected (from pool of ${seeds.length}) | Time=${executionTime} ms`,
       'POST'
     )
+
+    // Enrich debug info with filtered status
+    const debugCandidates = scoringDebug.candidates.map((c) => ({
+      ...c,
+      filtered: diversityResult.filteredArtistNames.has(c.artistName)
+    }))
 
     return NextResponse.json({
       optionTracks,
       debug: {
         executionTime,
         stats: statisticsTracker.getStatistics(),
-        scoring: scoringDebug
+        scoring: {
+          ...scoringDebug,
+          candidates: undefined // Remove from scoring to match type
+        },
+        candidates: debugCandidates,
+        genreStatistics: await getGenreStatistics()
       }
     })
   } catch (error) {

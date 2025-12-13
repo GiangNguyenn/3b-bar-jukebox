@@ -97,55 +97,36 @@ export async function getRelatedArtistsServer(
     return dbArtists
   }
 
-  // TIER 2: Genre similarity (1-2 API calls - FAST!)
-  // Only used when graph and database cache are empty
+  // TIER 2: Database-Only Approach (Genre Similarity + Popular Artists)
+  // Uses database queries instead of deprecated Spotify API
   console.log(
-    '[spotifyApiServer] Falling back to genre similarity (graph and DB empty)'
+    '[spotifyApiServer] Using database-only approach for related artists'
   )
 
-  const { getArtistProfile, getRelatedByGenreSimilarity } = await import(
-    './game/genreSimilarity'
+  const { getRelatedArtistsFromDatabase } = await import(
+    './game/relatedArtistsDb'
   )
+  let artists = await getRelatedArtistsFromDatabase(artistId)
 
-  // Pass through statisticsTracker so genre similarity can track API calls directly
-  const artistProfile = await getArtistProfile(
-    artistId,
-    token,
-    statisticsTracker
-  )
-
-  if (!artistProfile) {
-    throw new Error('Could not fetch artist profile')
-  }
-
-  // This will increment related artists tracking through the statistics tracker
-  const genreSimilar = await getRelatedByGenreSimilarity(
-    artistProfile,
-    token!,
-    50,
-    statisticsTracker
-  )
-  const artists = genreSimilar.map((a) => ({ id: a.id, name: a.name }))
-
-  // Track items returned from API (genre similarity makes API calls)
   if (artists.length > 0 && statisticsTracker) {
-    statisticsTracker.recordFromSpotify('relatedArtists', artists.length)
-  }
-
-  // Save to graph for future lookups (fire and forget)
-  if (artists.length > 0) {
-    void saveToArtistGraph(
-      artistId,
-      artistProfile.name,
-      genreSimilar.map((a) => ({ ...a, type: 'genre' }))
-    )
+    // These are from database, not Spotify API
+    statisticsTracker.recordCacheHit('relatedArtists', 'database')
   }
 
   console.log(
-    '[spotifyApiServer] Genre similarity found:',
+    '[spotifyApiServer] Database lookup found:',
     artists.length,
     'artists'
   )
+
+  // Save to graph for future lookups if we got results
+  if (artists.length > 0) {
+    void saveToArtistGraph(
+      artistId,
+      artists[0]?.name || 'Unknown Artist',
+      artists.map((a) => ({ ...a, type: 'database' }))
+    )
+  }
 
   // Store in memory cache (even if empty, to avoid retrying immediately)
   cache.set(

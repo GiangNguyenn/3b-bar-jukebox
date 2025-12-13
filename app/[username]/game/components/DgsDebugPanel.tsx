@@ -64,6 +64,10 @@ export function DgsDebugPanel({
 }: DgsDebugPanelProps): JSX.Element {
   const [isExpanded, setIsExpanded] = useState(false)
 
+  /* Safe accessors to prevent crashes */
+  const p1Gravity = playerGravities?.player1 ?? 0
+  const p2Gravity = playerGravities?.player2 ?? 0
+
   const formatScore = (score: number | undefined): string => {
     if (score === undefined) return 'N/A'
     return score.toFixed(3)
@@ -94,8 +98,8 @@ export function DgsDebugPanel({
     )
     lines.push('')
     lines.push('Player Gravities')
-    lines.push(`Player 1: ${playerGravities.player1.toFixed(3)}`)
-    lines.push(`Player 2: ${playerGravities.player2.toFixed(3)}`)
+    lines.push(`Player 1: ${p1Gravity.toFixed(3)}`)
+    lines.push(`Player 2: ${p2Gravity.toFixed(3)}`)
     lines.push('')
     lines.push('Exploration Phase')
     lines.push(`Level: ${explorationPhase.level}`)
@@ -125,23 +129,26 @@ export function DgsDebugPanel({
 
     // Calculate baseline and category for each option
     const baseline = options[0]?.metrics?.currentSongAttraction
-    if (baseline !== undefined) {
-      lines.push(
-        `  Baseline (Current Song Attraction to ${activePlayerId ?? 'active'} target): ${baseline.toFixed(3)}`
-      )
-    }
 
     options.forEach((option, index) => {
       const metrics = option.metrics
       if (!metrics) return
 
-      // Determine category
+      // Use server-provided category if available, otherwise fallback (though server should always provide it now)
+      let category = metrics.selectionCategory
+        ? metrics.selectionCategory.toUpperCase()
+        : 'NEUTRAL'
+
+      // If server didn't provide it, use local approximation (legacy fallback)
       const currentPlayerAttraction =
         activePlayerId === 'player1' ? metrics.aAttraction : metrics.bAttraction
-      const baseline = metrics.currentSongAttraction
-      const NEUTRAL_TOLERANCE = 0.02 // 2% tolerance for neutral zone (matches server-side)
-      let category = 'NEUTRAL'
-      if (baseline !== undefined && currentPlayerAttraction !== undefined) {
+
+      if (
+        !metrics.selectionCategory &&
+        baseline !== undefined &&
+        currentPlayerAttraction !== undefined
+      ) {
+        const NEUTRAL_TOLERANCE = 0.02
         const diff = currentPlayerAttraction - baseline
         if (diff > NEUTRAL_TOLERANCE) {
           category = 'CLOSER'
@@ -161,47 +168,43 @@ export function DgsDebugPanel({
         lines.push(`  Artist: ${option.artist.name}`)
       }
       lines.push(`  Sim Score: ${formatScore(metrics.simScore)}`)
-      if (metrics.scoreComponents) {
-        const genreScore =
-          typeof metrics.scoreComponents.genre === 'number'
-            ? metrics.scoreComponents.genre
-            : metrics.scoreComponents.genre.score
-
-        lines.push(`    Genre (30%): ${formatScore(genreScore)}`)
-        lines.push(
-          `    Relations (30%): ${formatScore(metrics.scoreComponents.relationship)}`
-        )
-        lines.push(`    Era (20%): ${formatScore(metrics.scoreComponents.era)}`)
-        lines.push(
-          `    Followers (5%): ${formatScore(metrics.scoreComponents.followers)}`
-        )
-        lines.push(
-          `    TrackPop (7.5%): ${formatScore(metrics.scoreComponents.trackPop)}`
-        )
-        lines.push(
-          `    ArtistPop (7.5%): ${formatScore(metrics.scoreComponents.artistPop)}`
-        )
-      }
       lines.push(`  Final Score: ${formatScore(metrics.finalScore)}`)
-      lines.push(`  A Attraction: ${formatScore(metrics.aAttraction)}`)
-      lines.push(`  B Attraction: ${formatScore(metrics.bAttraction)}`)
+
+      // Only show attraction details if they are relevant (non-zero or specifically debugging attraction)
+      // Standardizing on showing what contributes to the score
+      lines.push(`  Gravity Score: ${formatScore(metrics.gravityScore)}`)
+
+      if (metrics.scoreComponents) {
+        // Add breakdown if available
+        const comps = metrics.scoreComponents
+        lines.push('  Score Components:')
+        lines.push(`    Genre Match: ${comps.genre.score.toFixed(3)}`)
+        lines.push(`    Relationship: ${comps.relationship.toFixed(3)}`)
+        lines.push(`    Track Pop: ${comps.trackPop.toFixed(3)}`)
+        lines.push(`    Artist Pop: ${comps.artistPop.toFixed(3)}`)
+        lines.push(`    Era Match: ${comps.era.toFixed(3)}`)
+        lines.push(`    Follower Ratio: ${comps.followers.toFixed(3)}`)
+      }
+
+      lines.push(`  Metrics:`)
+      lines.push(`    A Attraction: ${formatScore(metrics.aAttraction)}`)
+      lines.push(`    B Attraction: ${formatScore(metrics.bAttraction)}`)
       if (baseline !== undefined && currentPlayerAttraction !== undefined) {
         lines.push(
-          `  Current Player Attraction: ${formatScore(currentPlayerAttraction)}`
+          `    Current Player Attraction: ${formatScore(currentPlayerAttraction)}`
         )
-        lines.push(`  Baseline: ${formatScore(baseline)}`)
+        lines.push(`    Baseline: ${formatScore(baseline)}`)
         lines.push(
-          `  Difference: ${(currentPlayerAttraction - baseline).toFixed(3)}`
+          `    Difference: ${(currentPlayerAttraction - baseline).toFixed(3)}`
         )
       }
-      lines.push(`  Gravity Score: ${formatScore(metrics.gravityScore)}`)
-      lines.push(`  Stabilized Score: ${formatScore(metrics.stabilizedScore)}`)
-      lines.push(`  Popularity Band: ${metrics.popularityBand ?? 'N/A'}`)
+
+      lines.push(`  Popularity: ${metrics.popularityBand ?? 'N/A'}`)
       lines.push(
-        `  P1 Distance: ${formatDistance(metrics.vicinityDistances?.player1)}`
+        `  Vicinity P1: ${formatDistance(metrics.vicinityDistances?.player1)}`
       )
       lines.push(
-        `  P2 Distance: ${formatDistance(metrics.vicinityDistances?.player2)}`
+        `  Vicinity P2: ${formatDistance(metrics.vicinityDistances?.player2)}`
       )
 
       // Genre Details
@@ -236,63 +239,50 @@ export function DgsDebugPanel({
       lines.push('=== Debug Information ===')
       lines.push('')
       lines.push('Target Profiles')
-      lines.push(
-        `  Player 1: ${debugInfo.targetProfiles.player1.resolved ? 'Resolved' : 'NOT RESOLVED'}`
-      )
-      if (debugInfo.targetProfiles.player1.resolved) {
+      if (debugInfo.targetProfiles?.player1) {
         lines.push(
-          `    Artist: ${debugInfo.targetProfiles.player1.artistName ?? 'N/A'}`
-        )
-        lines.push(
-          `    Spotify ID: ${debugInfo.targetProfiles.player1.spotifyId ?? 'N/A'}`
-        )
-        lines.push(
-          `    Genres: ${debugInfo.targetProfiles.player1.genresCount}`
+          `  Player 1: ${debugInfo.targetProfiles.player1.resolved ? 'Resolved' : 'NOT RESOLVED'}`
         )
       }
-      lines.push(
-        `  Player 2: ${debugInfo.targetProfiles.player2.resolved ? 'Resolved' : 'NOT RESOLVED'}`
-      )
-      if (debugInfo.targetProfiles.player2.resolved) {
+      if (debugInfo.targetProfiles?.player2) {
         lines.push(
-          `    Artist: ${debugInfo.targetProfiles.player2.artistName ?? 'N/A'}`
-        )
-        lines.push(
-          `    Spotify ID: ${debugInfo.targetProfiles.player2.spotifyId ?? 'N/A'}`
-        )
-        lines.push(
-          `    Genres: ${debugInfo.targetProfiles.player2.genresCount}`
+          `  Player 2: ${debugInfo.targetProfiles.player2.resolved ? 'Resolved' : 'NOT RESOLVED'}`
         )
       }
+
       lines.push('')
       lines.push('Artist Profiles')
-      lines.push(`  Requested: ${debugInfo.artistProfiles.requested}`)
-      lines.push(`  Fetched: ${debugInfo.artistProfiles.fetched}`)
-      lines.push(`  Missing: ${debugInfo.artistProfiles.missing}`)
-      lines.push(
-        `  Success Rate: ${debugInfo.artistProfiles.successRate.toFixed(1)}%`
-      )
+      if (debugInfo.artistProfiles) {
+        lines.push(`  Requested: ${debugInfo.artistProfiles.requested}`)
+        lines.push(`  Fetched: ${debugInfo.artistProfiles.fetched}`)
+        lines.push(`  Missing: ${debugInfo.artistProfiles.missing}`)
+      } else if (debugInfo.caching) {
+        lines.push(`  Requested: ${debugInfo.caching.artistProfilesRequested}`)
+        // Fallback to caching stats
+      }
+
+      // ... keep existing scoring stats ...
       lines.push('')
       lines.push('Scoring')
-      lines.push(`  Total Candidates: ${debugInfo.scoring.totalCandidates}`)
-      lines.push(`  Fallback Fetches: ${debugInfo.scoring.fallbackFetches}`)
-      lines.push(
-        `  P1 Non-Zero Attraction: ${debugInfo.scoring.p1NonZeroAttraction}`
-      )
-      lines.push(
-        `  P2 Non-Zero Attraction: ${debugInfo.scoring.p2NonZeroAttraction}`
-      )
+      lines.push(`  Candidates: ${debugInfo.scoring?.totalCandidates ?? 0}`)
+      lines.push(`  Fallbacks: ${debugInfo.scoring?.fallbackFetches ?? 0}`)
+
       lines.push('  Zero Attraction Reasons:')
-      lines.push(
-        `    Missing Artist Profile: ${debugInfo.scoring.zeroAttractionReasons.missingArtistProfile}`
-      )
-      lines.push(
-        `    Null Target Profile: ${debugInfo.scoring.zeroAttractionReasons.nullTargetProfile}`
-      )
-      lines.push(
-        `    Zero Similarity: ${debugInfo.scoring.zeroAttractionReasons.zeroSimilarity}`
-      )
+      if (debugInfo.scoring?.zeroAttractionReasons) {
+        lines.push(
+          `    Missing Artist Profile: ${debugInfo.scoring.zeroAttractionReasons.missingArtistProfile}`
+        )
+        lines.push(
+          `    Null Target Profile: ${debugInfo.scoring.zeroAttractionReasons.nullTargetProfile}`
+        )
+        lines.push(
+          `    Zero Similarity: ${debugInfo.scoring.zeroAttractionReasons.zeroSimilarity}`
+        )
+      } else {
+        lines.push('    Data unavailable')
+      }
       lines.push('')
+
       if (debugInfo.caching) {
         lines.push('Spotify API & Cache Performance')
         lines.push(
@@ -309,14 +299,6 @@ export function DgsDebugPanel({
         lines.push(`    Requested: ${debugInfo.caching.trackDetailsRequested}`)
         lines.push(`    Cached: ${debugInfo.caching.trackDetailsCached}`)
         lines.push(`    From API: ${debugInfo.caching.trackDetailsFromSpotify}`)
-        lines.push('  Related Artists:')
-        lines.push(
-          `    Requested: ${debugInfo.caching.relatedArtistsRequested}`
-        )
-        lines.push(`    Cached: ${debugInfo.caching.relatedArtistsCached}`)
-        lines.push(
-          `    From API: ${debugInfo.caching.relatedArtistsFromSpotify}`
-        )
         lines.push('  Artist Profiles:')
         lines.push(
           `    Requested: ${debugInfo.caching.artistProfilesRequested}`
@@ -325,122 +307,105 @@ export function DgsDebugPanel({
         lines.push(
           `    From API: ${debugInfo.caching.artistProfilesFromSpotify}`
         )
-        lines.push('  Artist Searches:')
-        lines.push(
-          `    Requested: ${debugInfo.caching.artistSearchesRequested}`
-        )
-        lines.push(`    From DB: ${debugInfo.caching.artistSearchesCached}`)
-        lines.push(
-          `    From API: ${debugInfo.caching.artistSearchesFromSpotify}`
-        )
         lines.push('')
       }
-      if (debugInfo.genreStatistics) {
-        lines.push('Genre Statistics')
+
+      if (debugInfo.candidatePool) {
+        lines.push('Candidate Pool Details')
         lines.push(
-          `  Total Tracks: ${debugInfo.genreStatistics.totalTracks.toLocaleString()}`
+          `  Total Unique Artists: ${debugInfo.candidatePool.totalUnique}`
         )
-        lines.push(
-          `  Tracks With Genres: ${debugInfo.genreStatistics.tracksWithGenres.toLocaleString()}`
-        )
-        lines.push(
-          `  Tracks With Null Genres: ${debugInfo.genreStatistics.tracksWithNullGenres.toLocaleString()}`
-        )
-        lines.push(
-          `  Genre Coverage: ${debugInfo.genreStatistics.percentageCoverage.toFixed(1)}%`
-        )
-        lines.push('')
-      }
-      if (debugInfo.performanceDiagnostics) {
-        lines.push('=== Performance Timing ===')
-        if (debugInfo.timingBreakdown) {
+
+        if (
+          debugInfo.candidatePool.seedArtists &&
+          debugInfo.candidatePool.seedArtists.length > 0
+        ) {
           lines.push(
-            `Total Execution: ${debugInfo.timingBreakdown.totalMs.toLocaleString()}ms`
+            `  From Seed Artist: ${debugInfo.candidatePool.seedArtists.length}`
           )
-          lines.push('')
-          lines.push('Phases:')
-          const phases = [
-            {
-              label: 'Candidate Pool',
-              ms: debugInfo.timingBreakdown.candidatePoolMs
-            },
-            {
-              label: 'Target Resolution',
-              ms: debugInfo.timingBreakdown.targetResolutionMs
-            },
-            { label: 'Enrichment', ms: debugInfo.timingBreakdown.enrichmentMs },
-            { label: 'Scoring', ms: debugInfo.timingBreakdown.scoringMs },
-            { label: 'Selection', ms: debugInfo.timingBreakdown.selectionMs }
-          ]
-          phases.forEach(({ label, ms }) => {
-            const pct =
-              debugInfo.timingBreakdown!.totalMs > 0
-                ? ((ms / debugInfo.timingBreakdown!.totalMs) * 100).toFixed(1)
-                : '0.0'
-            const marker =
-              label === debugInfo.performanceDiagnostics!.bottleneckPhase
-                ? ' 🔴 BOTTLENECK'
-                : ''
-            lines.push(`  ${label}: ${ms}ms (${pct}%)${marker}`)
-          })
-          lines.push('')
-        }
-        if (debugInfo.performanceDiagnostics.dbQueries.length > 0) {
-          lines.push(
-            `Database Queries (${debugInfo.performanceDiagnostics.totalDbTimeMs}ms):`
-          )
-          debugInfo.performanceDiagnostics.dbQueries.forEach((q) => {
-            lines.push(`  ${q.operation}: ${q.durationMs}ms`)
-          })
-          if (debugInfo.performanceDiagnostics.slowestDbQuery) {
+          debugInfo.candidatePool.seedArtists
+            .slice(0, 20)
+            .forEach((artist, idx) => {
+              lines.push(`    ${idx + 1}. ${artist.name}`)
+            })
+          if (debugInfo.candidatePool.seedArtists.length > 20) {
             lines.push(
-              `  Slowest: ${debugInfo.performanceDiagnostics.slowestDbQuery.operation} (${debugInfo.performanceDiagnostics.slowestDbQuery.durationMs}ms)`
+              `    ... and ${debugInfo.candidatePool.seedArtists.length - 20} more`
             )
           }
-          lines.push('')
         }
-        if (debugInfo.performanceDiagnostics.apiCalls.length > 0) {
+
+        if (
+          debugInfo.candidatePool.targetArtists &&
+          debugInfo.candidatePool.targetArtists.length > 0
+        ) {
           lines.push(
-            `Spotify API Calls (${debugInfo.performanceDiagnostics.totalApiTimeMs}ms):`
+            `  From Target Artist: ${debugInfo.candidatePool.targetArtists.length}`
           )
-          debugInfo.performanceDiagnostics.apiCalls.forEach((c) => {
-            lines.push(`  ${c.operation}: ${c.durationMs}ms`)
-          })
-          if (debugInfo.performanceDiagnostics.slowestApiCall) {
+          debugInfo.candidatePool.targetArtists
+            .slice(0, 20)
+            .forEach((artist, idx) => {
+              lines.push(`    ${idx + 1}. ${artist.name}`)
+            })
+          if (debugInfo.candidatePool.targetArtists.length > 20) {
             lines.push(
-              `  Slowest: ${debugInfo.performanceDiagnostics.slowestApiCall.operation} (${debugInfo.performanceDiagnostics.slowestApiCall.durationMs}ms)`
+              `    ... and ${debugInfo.candidatePool.targetArtists.length - 20} more`
             )
           }
-          lines.push('')
-        }
-        lines.push(
-          `Bottleneck: ${debugInfo.performanceDiagnostics.bottleneckPhase}`
-        )
-        lines.push('')
-      }
-      if (debugInfo.dbFallback) {
-        lines.push('DB Fallback')
-        lines.push(`  Used: ${debugInfo.dbFallback.used ? 'Yes' : 'No'}`)
-        if (debugInfo.dbFallback.used) {
-          lines.push(`  Added Tracks: ${debugInfo.dbFallback.addedTracks}`)
-          lines.push(`  Added Artists: ${debugInfo.dbFallback.addedArtists}`)
         }
         lines.push('')
       }
+
       if (debugInfo.candidates && debugInfo.candidates.length > 0) {
-        lines.push('All Candidates')
+        lines.push('All Candidates Pool (Top 50)')
         lines.push(`  Total: ${debugInfo.candidates.length}`)
-        debugInfo.candidates.forEach((candidate, idx) => {
+        debugInfo.candidates.slice(0, 50).forEach((candidate, idx) => {
           const status = candidate.filtered
             ? '[FILTERED]'
             : candidate.isTargetArtist
               ? '[TARGET]'
               : '[ALLOWED]'
+          const source = candidate.source ? `[${candidate.source}]` : ''
           lines.push(
-            `  ${idx + 1}. ${candidate.artistName} ${status} | Sim: ${candidate.simScore.toFixed(3)}`
+            `  ${idx + 1}. ${candidate.artistName} - ${candidate.trackName ?? 'Unknown'} ${source} ${status} | Sim: ${(candidate.simScore ?? 0).toFixed(3)}`
           )
         })
       }
+    }
+
+    // Genre Statistics
+    if (debugInfo?.genreStatistics) {
+      lines.push('')
+      lines.push('Genre Statistics')
+      lines.push(
+        `  Genre Coverage: ${debugInfo.genreStatistics.percentageCoverage.toFixed(1)}% (${debugInfo.genreStatistics.tracksWithGenres}/${debugInfo.genreStatistics.totalTracks})`
+      )
+      lines.push(
+        `  Missing Genres: ${debugInfo.genreStatistics.tracksWithNullGenres}`
+      )
+    }
+
+    // Timing Breakdown
+    if (debugInfo?.timingBreakdown) {
+      lines.push('')
+      lines.push('Timing Breakdown')
+      const total = debugInfo.timingBreakdown.totalMs
+      lines.push(`  Total: ${total}ms`)
+      lines.push(
+        `  Candidate Pool: ${debugInfo.timingBreakdown.candidatePoolMs}ms (${((debugInfo.timingBreakdown.candidatePoolMs / total) * 100).toFixed(1)}%)`
+      )
+      lines.push(
+        `  Target Resolution: ${debugInfo.timingBreakdown.targetResolutionMs}ms (${((debugInfo.timingBreakdown.targetResolutionMs / total) * 100).toFixed(1)}%)`
+      )
+      lines.push(
+        `  Enrichment: ${debugInfo.timingBreakdown.enrichmentMs}ms (${((debugInfo.timingBreakdown.enrichmentMs / total) * 100).toFixed(1)}%)`
+      )
+      lines.push(
+        `  Scoring: ${debugInfo.timingBreakdown.scoringMs}ms (${((debugInfo.timingBreakdown.scoringMs / total) * 100).toFixed(1)}%)`
+      )
+      lines.push(
+        `  Selection: ${debugInfo.timingBreakdown.selectionMs}ms (${((debugInfo.timingBreakdown.selectionMs / total) * 100).toFixed(1)}%)`
+      )
     }
 
     return lines.join('\n')
@@ -616,12 +581,12 @@ export function DgsDebugPanel({
                     <div
                       className='h-full bg-blue-500'
                       style={{
-                        width: `${((playerGravities.player1 - 0.15) / (0.7 - 0.15)) * 100}%`
+                        width: `${((p1Gravity - 0.15) / (0.7 - 0.15)) * 100}%`
                       }}
                     />
                   </div>
                   <span className='font-mono text-gray-300'>
-                    {playerGravities.player1.toFixed(3)}
+                    {p1Gravity.toFixed(3)}
                   </span>
                 </div>
               </div>
@@ -632,12 +597,12 @@ export function DgsDebugPanel({
                     <div
                       className='h-full bg-green-500'
                       style={{
-                        width: `${((playerGravities.player2 - 0.15) / (0.7 - 0.15)) * 100}%`
+                        width: `${((p2Gravity - 0.15) / (0.7 - 0.15)) * 100}%`
                       }}
                     />
                   </div>
                   <span className='font-mono text-gray-300'>
-                    {playerGravities.player2.toFixed(3)}
+                    {p2Gravity.toFixed(3)}
                   </span>
                 </div>
               </div>
@@ -970,6 +935,75 @@ export function DgsDebugPanel({
             </section>
           )}
 
+          {/* Candidate Pool Details */}
+          {debugInfo?.candidatePool && (
+            <section className='mb-4 border-b border-gray-700 pb-3'>
+              <h3 className='mb-2 font-semibold text-gray-300'>
+                Candidate Pool Details
+              </h3>
+              <div className='space-y-2 text-[10px]'>
+                <div className='flex items-center justify-between text-gray-400'>
+                  <span>Total Unique Artists:</span>
+                  <span className='font-mono text-gray-300'>
+                    {debugInfo.candidatePool.totalUnique}
+                  </span>
+                </div>
+
+                {debugInfo.candidatePool.seedArtists &&
+                  debugInfo.candidatePool.seedArtists.length > 0 && (
+                    <div className='rounded bg-gray-800/50 p-2'>
+                      <div className='mb-1 font-semibold text-blue-400'>
+                        From Seed Artist (
+                        {debugInfo.candidatePool.seedArtists.length})
+                      </div>
+                      <div className='max-h-32 space-y-0.5 overflow-y-auto'>
+                        {debugInfo.candidatePool.seedArtists
+                          .slice(0, 20)
+                          .map((artist, idx) => (
+                            <div key={artist.id} className='text-gray-400'>
+                              {idx + 1}. {artist.name}
+                            </div>
+                          ))}
+                        {debugInfo.candidatePool.seedArtists.length > 20 && (
+                          <div className='italic text-gray-500'>
+                            ... and{' '}
+                            {debugInfo.candidatePool.seedArtists.length - 20}{' '}
+                            more
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                {debugInfo.candidatePool.targetArtists &&
+                  debugInfo.candidatePool.targetArtists.length > 0 && (
+                    <div className='rounded bg-gray-800/50 p-2'>
+                      <div className='mb-1 font-semibold text-green-400'>
+                        From Target Artist (
+                        {debugInfo.candidatePool.targetArtists.length})
+                      </div>
+                      <div className='max-h-32 space-y-0.5 overflow-y-auto'>
+                        {debugInfo.candidatePool.targetArtists
+                          .slice(0, 20)
+                          .map((artist, idx) => (
+                            <div key={artist.id} className='text-gray-400'>
+                              {idx + 1}. {artist.name}
+                            </div>
+                          ))}
+                        {debugInfo.candidatePool.targetArtists.length > 20 && (
+                          <div className='italic text-gray-500'>
+                            ... and{' '}
+                            {debugInfo.candidatePool.targetArtists.length - 20}{' '}
+                            more
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+              </div>
+            </section>
+          )}
+
           {/* System Status */}
           <section className='mb-4 border-b border-gray-700 pb-3'>
             <h3 className='mb-2 font-semibold text-gray-300'>System Status</h3>
@@ -1274,28 +1308,30 @@ export function DgsDebugPanel({
                       <span>Player 1:</span>
                       <span
                         className={
-                          debugInfo.targetProfiles.player1.resolved
+                          debugInfo.targetProfiles?.player1?.resolved
                             ? 'text-green-400'
                             : 'text-red-400'
                         }
                       >
-                        {debugInfo.targetProfiles.player1.resolved
+                        {debugInfo.targetProfiles?.player1?.resolved
                           ? 'Resolved'
                           : 'NOT RESOLVED'}
                       </span>
                     </div>
-                    {debugInfo.targetProfiles.player1.resolved && (
+                    {debugInfo.targetProfiles?.player1?.resolved && (
                       <div className='pl-2 text-[10px]'>
                         <div>
                           Artist:{' '}
-                          {debugInfo.targetProfiles.player1.artistName ?? 'N/A'}
+                          {debugInfo.targetProfiles?.player1.artistName ??
+                            'N/A'}
                         </div>
                         <div>
                           Spotify ID:{' '}
-                          {debugInfo.targetProfiles.player1.spotifyId ?? 'N/A'}
+                          {debugInfo.targetProfiles?.player1.spotifyId ?? 'N/A'}
                         </div>
                         <div>
-                          Genres: {debugInfo.targetProfiles.player1.genresCount}
+                          Genres:{' '}
+                          {debugInfo.targetProfiles?.player1.genresCount}
                         </div>
                       </div>
                     )}
@@ -1303,64 +1339,104 @@ export function DgsDebugPanel({
                       <span>Player 2:</span>
                       <span
                         className={
-                          debugInfo.targetProfiles.player2.resolved
+                          debugInfo.targetProfiles?.player2?.resolved
                             ? 'text-green-400'
                             : 'text-red-400'
                         }
                       >
-                        {debugInfo.targetProfiles.player2.resolved
+                        {debugInfo.targetProfiles?.player2?.resolved
                           ? 'Resolved'
                           : 'NOT RESOLVED'}
                       </span>
                     </div>
-                    {debugInfo.targetProfiles.player2.resolved && (
+                    {debugInfo.targetProfiles?.player2?.resolved && (
                       <div className='pl-2 text-[10px]'>
                         <div>
                           Artist:{' '}
-                          {debugInfo.targetProfiles.player2.artistName ?? 'N/A'}
+                          {debugInfo.targetProfiles?.player2.artistName ??
+                            'N/A'}
                         </div>
                         <div>
                           Spotify ID:{' '}
-                          {debugInfo.targetProfiles.player2.spotifyId ?? 'N/A'}
+                          {debugInfo.targetProfiles?.player2.spotifyId ?? 'N/A'}
                         </div>
                         <div>
-                          Genres: {debugInfo.targetProfiles.player2.genresCount}
+                          Genres:{' '}
+                          {debugInfo.targetProfiles?.player2.genresCount}
                         </div>
                       </div>
                     )}
                   </div>
                 </div>
 
-                {/* Artist Profiles */}
+                {/* Artist Profiles - Robust Fallback */}
                 <div>
                   <h4 className='mb-1 font-medium text-gray-400'>
                     Artist Profiles
                   </h4>
                   <div className='space-y-1 pl-2 text-gray-500'>
-                    <div className='flex items-center justify-between'>
-                      <span>Requested:</span>
-                      <span className='font-mono text-gray-300'>
-                        {debugInfo.artistProfiles.requested}
-                      </span>
-                    </div>
-                    <div className='flex items-center justify-between'>
-                      <span>Fetched:</span>
-                      <span className='font-mono text-green-400'>
-                        {debugInfo.artistProfiles.fetched}
-                      </span>
-                    </div>
-                    <div className='flex items-center justify-between'>
-                      <span>Missing:</span>
-                      <span className='font-mono text-red-400'>
-                        {debugInfo.artistProfiles.missing}
-                      </span>
-                    </div>
-                    <div className='flex items-center justify-between'>
-                      <span>Success Rate:</span>
-                      <span className='font-mono text-gray-300'>
-                        {debugInfo.artistProfiles.successRate.toFixed(1)}%
-                      </span>
-                    </div>
+                    {debugInfo.artistProfiles ? (
+                      <>
+                        <div className='flex items-center justify-between'>
+                          <span>Requested:</span>
+                          <span className='font-mono text-gray-300'>
+                            {debugInfo.artistProfiles.requested}
+                          </span>
+                        </div>
+                        <div className='flex items-center justify-between'>
+                          <span>Fetched:</span>
+                          <span className='font-mono text-green-400'>
+                            {debugInfo.artistProfiles.fetched}
+                          </span>
+                        </div>
+                        <div className='flex items-center justify-between'>
+                          <span>Missing:</span>
+                          <span
+                            className={`font-mono ${debugInfo.artistProfiles.missing > 0 ? 'text-red-400' : 'text-gray-500'}`}
+                          >
+                            {debugInfo.artistProfiles.missing}
+                          </span>
+                        </div>
+                        <div className='flex items-center justify-between'>
+                          <span>Success Rate:</span>
+                          <span className='font-mono text-blue-400'>
+                            {debugInfo.artistProfiles.successRate.toFixed(1)}%
+                          </span>
+                        </div>
+                      </>
+                    ) : debugInfo.caching ? (
+                      <>
+                        <div className='flex items-center justify-between'>
+                          <span>Requested:</span>
+                          <span className='font-mono text-gray-300'>
+                            {debugInfo.caching.artistProfilesRequested}
+                          </span>
+                        </div>
+                        <div className='flex items-center justify-between'>
+                          <span>Resolved:</span>
+                          <span className='font-mono text-green-400'>
+                            {debugInfo.caching.artistProfilesCached +
+                              debugInfo.caching.artistProfilesFromSpotify}
+                          </span>
+                        </div>
+                        <div className='flex items-center justify-between'>
+                          <span>Cache Rate:</span>
+                          <span className='font-mono text-blue-400'>
+                            {(
+                              (debugInfo.caching.artistProfilesCached /
+                                (debugInfo.caching.artistProfilesRequested ||
+                                  1)) *
+                              100
+                            ).toFixed(1)}
+                            %
+                          </span>
+                        </div>
+                      </>
+                    ) : (
+                      <div className='italic text-gray-600'>
+                        No profile stats available
+                      </div>
+                    )}
                   </div>
                 </div>
 
@@ -1369,61 +1445,55 @@ export function DgsDebugPanel({
                   <h4 className='mb-1 font-medium text-gray-400'>Scoring</h4>
                   <div className='space-y-1 pl-2 text-gray-500'>
                     <div className='flex items-center justify-between'>
-                      <span>Total Candidates:</span>
+                      <span>Candidates:</span>
                       <span className='font-mono text-gray-300'>
-                        {debugInfo.scoring.totalCandidates}
+                        {debugInfo.scoring?.totalCandidates ?? 0}
                       </span>
                     </div>
                     <div className='flex items-center justify-between'>
-                      <span>Fallback Fetches:</span>
+                      <span>Fallbacks:</span>
                       <span className='font-mono text-yellow-400'>
-                        {debugInfo.scoring.fallbackFetches}
+                        {debugInfo.scoring?.fallbackFetches ?? 0}
                       </span>
                     </div>
-                    <div className='flex items-center justify-between'>
-                      <span>P1 Non-Zero Attraction:</span>
-                      <span className='font-mono text-blue-400'>
-                        {debugInfo.scoring.p1NonZeroAttraction}
-                      </span>
-                    </div>
-                    <div className='flex items-center justify-between'>
-                      <span>P2 Non-Zero Attraction:</span>
-                      <span className='font-mono text-green-400'>
-                        {debugInfo.scoring.p2NonZeroAttraction}
-                      </span>
-                    </div>
-                    <div className='mt-1 border-t border-gray-700 pt-1'>
-                      <div className='text-[10px] font-medium text-gray-400'>
-                        Zero Attraction Reasons:
+                  </div>
+                  {debugInfo.scoring && (
+                    <div className='mt-1 space-y-1 pl-2 text-[10px] text-gray-600'>
+                      <div className='flex justify-between'>
+                        <span>P1 Attraction:</span>
+                        <span>{debugInfo.scoring.p1NonZeroAttraction}</span>
                       </div>
-                      <div className='pl-2 text-[10px]'>
-                        <div className='flex items-center justify-between'>
-                          <span>Missing Artist Profile:</span>
-                          <span className='font-mono text-red-400'>
-                            {
-                              debugInfo.scoring.zeroAttractionReasons
-                                .missingArtistProfile
-                            }
-                          </span>
-                        </div>
-                        <div className='flex items-center justify-between'>
-                          <span>Null Target Profile:</span>
-                          <span className='font-mono text-red-400'>
-                            {
-                              debugInfo.scoring.zeroAttractionReasons
-                                .nullTargetProfile
-                            }
-                          </span>
-                        </div>
-                        <div className='flex items-center justify-between'>
-                          <span>Zero Similarity:</span>
-                          <span className='font-mono text-orange-400'>
-                            {
-                              debugInfo.scoring.zeroAttractionReasons
-                                .zeroSimilarity
-                            }
-                          </span>
-                        </div>
+                      <div className='flex justify-between'>
+                        <span>P2 Attraction:</span>
+                        <span>{debugInfo.scoring.p2NonZeroAttraction}</span>
+                      </div>
+                    </div>
+                  )}
+                  <div className='mt-1 border-t border-gray-700 pt-1'>
+                    <div className='text-[10px] font-medium text-gray-400'>
+                      Zero Attraction Reasons:
+                    </div>
+                    <div className='pl-2 text-[10px]'>
+                      <div className='flex items-center justify-between'>
+                        <span>Missing Artist Profile:</span>
+                        <span className='font-mono text-red-400'>
+                          {debugInfo.scoring?.zeroAttractionReasons
+                            ?.missingArtistProfile ?? 0}
+                        </span>
+                      </div>
+                      <div className='flex items-center justify-between'>
+                        <span>Null Target Profile:</span>
+                        <span className='font-mono text-red-400'>
+                          {debugInfo.scoring?.zeroAttractionReasons
+                            ?.nullTargetProfile ?? 0}
+                        </span>
+                      </div>
+                      <div className='flex items-center justify-between'>
+                        <span>Zero Similarity:</span>
+                        <span className='font-mono text-orange-400'>
+                          {debugInfo.scoring?.zeroAttractionReasons
+                            ?.zeroSimilarity ?? 0}
+                        </span>
                       </div>
                     </div>
                   </div>
@@ -1439,7 +1509,7 @@ export function DgsDebugPanel({
                       {debugInfo.candidates.map((candidate, idx) => (
                         <div
                           key={idx}
-                          className={`flex items-center justify-between rounded px-1 py-0.5 ${
+                          className={`flex items-center justify-between rounded px-1 py-1 ${
                             candidate.filtered
                               ? 'bg-red-900/20 text-red-400'
                               : candidate.isTargetArtist
@@ -1447,24 +1517,35 @@ export function DgsDebugPanel({
                                 : 'text-gray-400'
                           }`}
                         >
-                          <span
-                            className='truncate'
-                            title={candidate.artistName}
-                          >
-                            {candidate.artistName}
-                            {candidate.isTargetArtist && (
-                              <span className='ml-1 text-[9px] opacity-75'>
-                                (Target)
+                          <div className='flex w-full flex-col overflow-hidden pr-2'>
+                            <div className='flex items-center space-x-1'>
+                              <span
+                                className='truncate font-medium'
+                                title={candidate.artistName}
+                              >
+                                {candidate.artistName}
                               </span>
-                            )}
-                            {candidate.filtered && (
-                              <span className='ml-1 text-[9px] opacity-75'>
-                                (Filtered)
-                              </span>
-                            )}
-                          </span>
-                          <span className='ml-2 font-mono text-gray-300'>
-                            Sim: {candidate.simScore.toFixed(3)}
+                              {candidate.isTargetArtist && (
+                                <span className='whitespace-nowrap text-[9px] opacity-75'>
+                                  (Target)
+                                </span>
+                              )}
+                              {candidate.filtered && (
+                                <span className='whitespace-nowrap text-[9px] opacity-75'>
+                                  (Filtered)
+                                </span>
+                              )}
+                            </div>
+                            <div
+                              className='truncate text-[9px] opacity-60'
+                              title={`${candidate.trackName} [${candidate.source}]`}
+                            >
+                              {candidate.trackName}{' '}
+                              {candidate.source ? `[${candidate.source}]` : ''}
+                            </div>
+                          </div>
+                          <span className='whitespace-nowrap font-mono text-gray-300'>
+                            {candidate.simScore.toFixed(3)}
                           </span>
                         </div>
                       ))}

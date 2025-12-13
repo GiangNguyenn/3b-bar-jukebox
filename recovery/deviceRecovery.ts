@@ -170,8 +170,15 @@ export async function attemptDeviceRecovery(
       )
     }
 
-    // Transfer playback to device (with play: false, so it won't start playback)
-    const transferred = await transferPlaybackToDevice(deviceId)
+    // Transfer playback to device (with shouldPlay: null to maintain current state)
+    // We pass undefined for intermediate optional parameters to use their defaults
+    const transferred = await transferPlaybackToDevice(
+      deviceId,
+      undefined,
+      undefined,
+      undefined,
+      null
+    )
 
     if (transferred) {
       logger('INFO', `Device ${deviceId} successfully activated`)

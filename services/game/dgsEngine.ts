@@ -207,31 +207,16 @@ async function addTargetArtistsToPool({
 }): Promise<CandidateSeed[]> {
   const additionalCandidates: CandidateSeed[] = []
 
-  // Thresholds: add if gravity >= 0.40 OR round >= 8 OR player has no good choices (very low gravity)
-  const GRAVITY_THRESHOLD = 0.4
+  // Thresholds: add if gravity >= 0.80 OR round >= 8
+  // Note: Desperation logic (<0.2) is now handled by Stage 1 seeding related artists
+  const GRAVITY_THRESHOLD = 0.8
   const ROUND_THRESHOLD = 8
-  const NO_GOOD_CHOICES_THRESHOLD = 0.2 // If gravity drops below this, force target insertion
 
-  // Check if we should add target artists
+  // Check if we should add target artists (Target Artist Itself)
   const shouldAdd =
     playerGravities.player1 >= GRAVITY_THRESHOLD ||
     playerGravities.player2 >= GRAVITY_THRESHOLD ||
-    roundNumber >= ROUND_THRESHOLD ||
-    playerGravities.player1 <= NO_GOOD_CHOICES_THRESHOLD ||
-    playerGravities.player2 <= NO_GOOD_CHOICES_THRESHOLD
-
-  // Additional check: always add target artists if a player has extremely low gravity (no good choices scenario)
-  const forceTargetInsertion =
-    playerGravities.player1 <= NO_GOOD_CHOICES_THRESHOLD ||
-    playerGravities.player2 <= NO_GOOD_CHOICES_THRESHOLD
-
-  if (forceTargetInsertion) {
-    logger(
-      'INFO',
-      `Forcing target insertion due to low gravity - P1: ${(Number(playerGravities.player1) ?? 0).toFixed(3)}, P2: ${(Number(playerGravities.player2) ?? 0).toFixed(3)} (threshold: ${NO_GOOD_CHOICES_THRESHOLD})`,
-      'addTargetArtistsToPool'
-    )
-  }
+    roundNumber >= ROUND_THRESHOLD
 
   if (!shouldAdd) {
     return additionalCandidates
@@ -239,7 +224,7 @@ async function addTargetArtistsToPool({
 
   logger(
     'INFO',
-    `Checking target artists for pool addition: P1 gravity=${(Number(playerGravities.player1) ?? 0).toFixed(3)}, P2 gravity=${(Number(playerGravities.player2) ?? 0).toFixed(3)}, Round=${roundNumber}, ForceThreshold=${NO_GOOD_CHOICES_THRESHOLD}${forceTargetInsertion ? ' [FORCED]' : ''}`
+    `Checking target artists for pool addition: P1 gravity=${(Number(playerGravities.player1) ?? 0).toFixed(3)}, P2 gravity=${(Number(playerGravities.player2) ?? 0).toFixed(3)}, Round=${roundNumber}`
   )
 
   // Check which target artists are already in the pool
@@ -269,13 +254,10 @@ async function addTargetArtistsToPool({
       continue
     }
 
-    // Check if this player's gravity is high enough OR round threshold met OR force insertion needed
+    // Check if this player's gravity is high enough OR round threshold met
     const playerGravity = playerGravities[playerId as PlayerId]
     const playerShouldAdd =
-      playerGravity >= GRAVITY_THRESHOLD ||
-      roundNumber >= ROUND_THRESHOLD ||
-      playerGravity <= NO_GOOD_CHOICES_THRESHOLD ||
-      forceTargetInsertion
+      playerGravity >= GRAVITY_THRESHOLD || roundNumber >= ROUND_THRESHOLD
 
     if (!playerShouldAdd) {
       continue
@@ -456,54 +438,16 @@ export async function ensureTargetDiversity({
       `Injecting 'Good' candidates (Need ${needed}). Strategy: Target Artist & Related`
     )
 
-    // 1. Target Artist Top Tracks
-    if (
-      currentPlayerTarget?.spotifyId &&
-      !excludeArtistIds.has(currentPlayerTarget.spotifyId)
-    ) {
-      try {
-        const targetId = currentPlayerTarget.spotifyId
-        const { data: tracks, source } = await musicService.getTopTracks(
-          targetId,
-          token,
-          statisticsTracker
-        )
+    // NOTE: Target Artist injection removed from this function
+    // Target artists are now ONLY injected via addTargetArtistsToPool() which properly checks:
+    // - Gravity >= 80% OR Round >= 8
+    // This ensures target artists don't appear too early in the game
+    // This function (ensureTargetDiversity) should only inject RELATED artists for diversity
 
-        // Add valid tracks
-        const validTracks = tracks.filter(
-          (t) => t.id && !excludeTrackIds.has(t.id) && t.is_playable
-        )
-        validTracks.forEach((track) => {
-          additionalCandidates.push({ track, source: 'target_insertion' })
-          excludeTrackIds.add(track.id)
-        })
-        if (validTracks.length > 0) {
-          logger(
-            'INFO',
-            `Added ${validTracks.length} tracks from Target Artist: ${currentPlayerTarget.artist.name}`
-          )
-          // If we found tracks, we might not need related artists, but let's keep going if we need many
-        } else {
-          logger(
-            'WARN',
-            `Target Artist ${currentPlayerTarget.artist.name} has tracks but none valid/playable/new (Total fetched: ${tracks.length})`
-          )
-        }
-      } catch (err) {
-        logger(
-          'WARN',
-          `Failed to inject Target Artist tracks`,
-          'ensureTargetDiversity',
-          err instanceof Error ? err : undefined
-        )
-      }
-    }
-
-    // 2. Related Artists of Target (if we still need more)
+    // 1. Related Artists of Target (for diversity)
     // Only do this if we haven't filled the quota
-    const currentCloserCount =
-      closerCount +
-      additionalCandidates.filter((c) => c.source === 'target_insertion').length
+    // Note: No longer counting target_insertion since we removed that code above
+    const currentCloserCount = closerCount + additionalCandidates.length
     if (
       currentCloserCount < TARGET_COUNT_PER_CATEGORY &&
       currentPlayerTarget?.spotifyId
@@ -534,7 +478,7 @@ export async function ensureTargetDiversity({
           if (validTrack) {
             additionalCandidates.push({
               track: validTrack,
-              source: 'target_insertion'
+              source: 'related_artist_insertion'
             })
             excludeTrackIds.add(validTrack.id)
             logger(
@@ -555,9 +499,7 @@ export async function ensureTargetDiversity({
     }
 
     // 3. Genre Fallback for Target (if we still need more options)
-    const countAfterRelated =
-      closerCount +
-      additionalCandidates.filter((c) => c.source === 'target_insertion').length
+    const countAfterRelated = closerCount + additionalCandidates.length
     if (
       countAfterRelated < TARGET_COUNT_PER_CATEGORY &&
       currentPlayerTarget?.genres &&
@@ -643,7 +585,12 @@ export async function ensureTargetDiversity({
         if (validTracks.length > 0) {
           logger(
             'INFO',
-            `Added ${validTracks.length} tracks from Current Artist`
+            `Added ${validTracks.length} tracks from Current Artist for Neutral category`
+          )
+        } else {
+          logger(
+            'WARN',
+            `Current Artist has no valid tracks for Neutral category (filtered or empty)`
           )
         }
       } catch (e) {
@@ -706,20 +653,56 @@ export async function ensureTargetDiversity({
     }
   }
 
-  // === KEEP EXISITNG FURTHER LOGIC AS FALLBACK ===
+  // === STRATEGY 3: FALLBACK FURTHER CANDIDATES (Random/Diverse) ===
   if (furtherCount < TARGET_COUNT_PER_CATEGORY) {
-    const needed = TARGET_COUNT_PER_CATEGORY - furtherCount
+    const needed = Math.max(5, TARGET_COUNT_PER_CATEGORY - furtherCount) // Ask for more to ensure valid ones
+    logger(
+      'INFO',
+      `Injecting 'Further/Bad' candidates (Need ${needed}). Strategy: Database Embeddings/Random`
+    )
+
     // Use existing DB strategy for further
     try {
+      // 1. Try "Further" specifically (anti-affinity if we had embeddings, but here random/far genres)
       const dbResult = await fetchTracksFurtherFromTarget({
         targetGenres: currentPlayerTarget.genres,
         excludeArtistIds,
         excludeTrackIds,
-        limit: needed * 2
+        limit: needed * 2 // Over-fetch
       })
+
+      let added = 0
       dbResult.tracks.forEach((track) => {
-        additionalCandidates.push({ track, source: 'embedding' })
+        if (track.id && !excludeTrackIds.has(track.id)) {
+          additionalCandidates.push({ track, source: 'embedding' })
+          excludeTrackIds.add(track.id)
+          added++
+        }
       })
+
+      logger('INFO', `Added ${added} 'Further' tracks from DB`)
+
+      // 2. If still not enough, just grab random tracks (guaranteed "Bad" usually)
+      if (added < needed) {
+        const stillNeeded = needed - added
+        const randomResult = await fetchRandomTracksFromDb({
+          neededArtists: stillNeeded,
+          existingArtistNames: new Set(),
+          excludeSpotifyTrackIds: excludeTrackIds,
+          tracksPerArtist: 1
+        })
+
+        randomResult.tracks.forEach((track) => {
+          if (track.id && !excludeTrackIds.has(track.id)) {
+            additionalCandidates.push({ track, source: 'embedding' }) // misuse embedding source for random
+            excludeTrackIds.add(track.id)
+          }
+        })
+        logger(
+          'INFO',
+          `Added ${randomResult.tracks.length} additional random tracks for 'Further'`
+        )
+      }
     } catch (e) {
       logger(
         'WARN',
@@ -1000,6 +983,10 @@ async function buildCandidatePool({
       uniqueArtists >= targetUniqueArtists &&
       totalTracks >= MIN_CANDIDATE_POOL
     ) {
+      logger(
+        'INFO',
+        `Candidate pool targets met: ${uniqueArtists} artists (min ${targetUniqueArtists}), ${totalTracks} tracks (min ${MIN_CANDIDATE_POOL})`
+      )
       break
     }
 
@@ -1128,6 +1115,74 @@ async function buildCandidatePool({
         uniqueArtists = countUniqueArtists(candidateMap)
         totalTracks = candidateMap.size
       }
+    }
+  }
+
+  // FINAL SAFETY CHECK: If we still don't have enough candidates, force random DB fill
+  // This is critical for the "Candidate Pool: 1" bug
+  if (totalTracks < MIN_CANDIDATE_POOL) {
+    const deficit = MIN_CANDIDATE_POOL - totalTracks
+    logger(
+      'WARN',
+      `Candidate pool still below minimum (${totalTracks}/${MIN_CANDIDATE_POOL}). Forcing random DB fill for ${deficit} tracks.`
+    )
+
+    const excludeIds = new Set([currentTrackId, ...playedTrackIds])
+    // Add existing candidates to exclusion list to avoid duplicates
+    candidateMap.forEach((c) => {
+      if (c.track.id) excludeIds.add(c.track.id)
+    })
+
+    const existingArtistNames = new Set<string>()
+    candidateMap.forEach((candidate) => {
+      const name = candidate.track.artists?.[0]?.name
+      if (name) {
+        existingArtistNames.add(name.trim().toLowerCase())
+      }
+    })
+
+    // We want mainly new artists to hit diversity goals
+    const neededArtists = Math.max(5, Math.ceil(deficit / 2))
+
+    try {
+      const dbResult = await timeDbQuery(`forceRandomDbFill (${deficit})`, () =>
+        fetchRandomTracksFromDb({
+          neededArtists: neededArtists,
+          existingArtistNames,
+          excludeSpotifyTrackIds: excludeIds,
+          tracksPerArtist: 2
+        })
+      )
+
+      if (dbResult.tracks.length > 0) {
+        logger(
+          'INFO',
+          `Forced DB fill added ${dbResult.tracks.length} tracks. Total before: ${totalTracks}`
+        )
+        dbResult.tracks.forEach((track) => {
+          registerCandidate(
+            track,
+            'embedding',
+            candidateMap,
+            playedTrackIds,
+            currentArtistId
+          )
+        })
+        totalTracks = candidateMap.size
+        logger('INFO', `Total after forced fill: ${totalTracks}`)
+      } else {
+        logger(
+          'ERROR',
+          `Forced DB fill failed to return any tracks. Database might be empty or connection failed.`
+        )
+      }
+    } catch (err) {
+      logger(
+        'ERROR',
+        `Error during forced DB fill`,
+        'buildCandidatePool',
+        err instanceof Error ? err : undefined
+      )
     }
   }
 
@@ -1425,8 +1480,16 @@ async function buildCandidatePool({
   // Strategy changed to minimize Spotify API calls and rely on database fallback instead
   // If pool is insufficient, the absolute database fallback below will handle it
 
-  // ABSOLUTE FALLBACK: If pool is STILL empty, get ANY tracks from database
-  if (finalPool.length === 0) {
+  // ABSOLUTE FALLBACK: If pool is STILL empty or lacks diversity, get ANY tracks from database
+  // [FIX] Trigger even if we have *some* tracks but not enough unique artists
+  if (
+    finalPool.length < MIN_CANDIDATE_POOL ||
+    uniqueArtists < DISPLAY_OPTION_COUNT * 2
+  ) {
+    logger(
+      'WARN',
+      `Candidate pool insufficient after all aggregation attempts (Pool=${finalPool.length}, Unique=${uniqueArtists}). Triggering ABSOLUTE FALLBACK.`
+    )
     logger(
       'ERROR',
       `Candidate pool is empty after all aggregation attempts. Current track: ${currentTrackId}, Seed artist: ${seedArtistId}, Played tracks: ${playedTrackIds.length}, Related artists: ${relatedArtists.length}, Unique artists: ${uniqueArtists}, Filtering stats: ${JSON.stringify(filteringStats)}`
@@ -1976,16 +2039,20 @@ export async function enrichCandidatesWithArtistProfiles(
 ): Promise<Map<string, ArtistProfile>> {
   // Extract all unique artist IDs and names from candidates
   const allArtistIds = new Set<string>()
-  const artistsWithoutIds: Array<{ name: string; trackId: string }> = []
+  // Store reference to the artist object so we can update it in-place
+  const artistsWithoutIds: Array<{
+    artistObj: { id: string; name: string }
+    trackId: string
+  }> = []
 
   candidates.forEach((candidate) => {
     candidate.track.artists?.forEach((artist) => {
       if (artist?.id && isValidSpotifyId(artist.id)) {
         allArtistIds.add(artist.id)
-      } else if (artist?.name) {
+      } else if (artist?.name && artist) {
         // Track has artist name but no valid ID (from database)
         artistsWithoutIds.push({
-          name: artist.name,
+          artistObj: artist,
           trackId: candidate.track.id
         })
       }
@@ -2076,7 +2143,7 @@ export async function enrichCandidatesWithArtistProfiles(
             }>
           }
         }>({
-          path: `/search?q=${encodeURIComponent(artistInfo.name)}&type=artist&limit=1`,
+          path: `/search?q=${encodeURIComponent(artistInfo.artistObj.name)}&type=artist&limit=1`,
           method: 'GET',
           token
         })
@@ -2090,13 +2157,25 @@ export async function enrichCandidatesWithArtistProfiles(
             popularity: match.popularity,
             followers: match.followers?.total
           })
+
+          // CRITICAL FIX: Update the candidate's artist ID in-place
+          // This ensures subsequent stages can find the profile using the Spotify ID
+          if (artistInfo.artistObj) {
+            logger(
+              'INFO',
+              `Resolved artist ID for "${artistInfo.artistObj.name}": ${artistInfo.artistObj.id} -> ${match.id}`,
+              'enrichCandidatesWithArtistProfiles'
+            )
+            artistInfo.artistObj.id = match.id
+          }
+
           nameSearchCount++
         }
       } catch (error) {
         // Continue on error - don't block the game
         logger(
           'WARN',
-          `Failed to search for artist: ${artistInfo.name}`,
+          `Failed to search for artist: ${artistInfo.artistObj.name}`,
           'enrichCandidatesWithArtistProfiles',
           error instanceof Error ? error : undefined
         )
@@ -2190,27 +2269,31 @@ async function lookupArtistProfile(
   try {
     // Validate Spotify ID format (base62, alphanumeric, typically 22 chars)
     // Database UUIDs have dashes and are invalid Spotify IDs
-    if (artist.id && artist.id.includes('-')) {
+    let validSpotifyId = artist.id
+
+    if (validSpotifyId && validSpotifyId.includes('-')) {
       logger(
         'WARN',
-        `Invalid Spotify ID format (looks like database UUID): ${artist.name} (${artist.id}). Falling back to search.`,
+        `Invalid Spotify ID format (looks like database UUID): ${artist.name} (${validSpotifyId}). Falling back to search.`,
         'lookupArtistProfile'
       )
-      // Fall through to name search below
-    } else if (artist.id) {
+      validSpotifyId = undefined
+    }
+
+    if (validSpotifyId) {
       logger(
         'INFO',
-        `Looking up target artist by ID: ${artist.name} (${artist.id})`,
+        `Looking up target artist by ID: ${artist.name} (${validSpotifyId})`,
         'lookupArtistProfile'
       )
       // Use database-first approach for consistency
       statisticsTracker?.recordRequest('artistProfiles')
       const profilesMap = await batchGetArtistProfilesWithCache(
-        [artist.id],
+        [validSpotifyId],
         token,
         statisticsTracker
       )
-      const fullProfile = profilesMap.get(artist.id)
+      const fullProfile = profilesMap.get(validSpotifyId)
 
       if (fullProfile) {
         logger(
@@ -2223,12 +2306,24 @@ async function lookupArtistProfile(
         // Note: backfill should already be triggered in batchGetArtistProfilesWithCache,
         // but we double-check here for target artists to ensure it happens
         if (!fullProfile.genres || fullProfile.genres.length === 0) {
-          logger(
-            'WARN',
-            `[Target Artist] "${fullProfile.name}" (${fullProfile.id}) has no genres - ensuring backfill is triggered`
-          )
-          const { safeBackfillArtistGenres } = await import('./genreBackfill')
-          void safeBackfillArtistGenres(fullProfile.id, fullProfile.name, token)
+          // Check if already marked as unknown
+          if (fullProfile.genres && fullProfile.genres.includes('unknown')) {
+            logger(
+              'INFO',
+              `[Target Artist] "${fullProfile.name}" has unknown genre - skipping backfill`
+            )
+          } else {
+            logger(
+              'WARN',
+              `[Target Artist] "${fullProfile.name}" (${fullProfile.id}) has no genres - ensuring backfill is triggered`
+            )
+            const { safeBackfillArtistGenres } = await import('./genreBackfill')
+            void safeBackfillArtistGenres(
+              fullProfile.id,
+              fullProfile.name,
+              token
+            )
+          }
         }
 
         return {
@@ -2238,6 +2333,13 @@ async function lookupArtistProfile(
           popularity: fullProfile.popularity,
           followers: fullProfile.followers
         }
+      } else {
+        logger(
+          'WARN',
+          `Target artist ID ${validSpotifyId} not found in cache/Spotify. Falling back to search by name.`,
+          'lookupArtistProfile'
+        )
+        // Fallback to name search if ID lookup fails
       }
     }
 
@@ -2330,9 +2432,17 @@ async function lookupArtistProfile(
     })
 
     // If Spotify returned no genres, trigger backfill (especially important for target artists)
+    // If Spotify returned no genres, trigger backfill (especially important for target artists)
     if (!match.genres || match.genres.length === 0) {
-      const { safeBackfillArtistGenres } = await import('./genreBackfill')
-      void safeBackfillArtistGenres(match.id, match.name, token)
+      if (match.genres && match.genres.includes('unknown')) {
+        logger(
+          'INFO',
+          `[Target Search] "${match.name}" has unknown genre - skipping backfill`
+        )
+      } else {
+        const { safeBackfillArtistGenres } = await import('./genreBackfill')
+        void safeBackfillArtistGenres(match.id, match.name, token)
+      }
     }
 
     return {
@@ -2502,7 +2612,7 @@ async function fetchArtistProfiles(
   }
 }
 
-function extractTrackMetadata(
+export function extractTrackMetadata(
   track: TrackDetails,
   artistProfile: ArtistProfile | undefined
 ): TrackMetadata {
@@ -2589,9 +2699,12 @@ export async function scoreCandidates({
     }
     candidates: Array<{
       artistName: string
+      trackName?: string
+      source?: string
       simScore: number
       isTargetArtist: boolean
     }>
+    totalCandidates: number // Added missing field definition
   }
 }> {
   const metrics: CandidateTrackMetrics[] = []
@@ -2611,6 +2724,8 @@ export async function scoreCandidates({
   }
   const candidateDebugInfo: Array<{
     artistName: string
+    trackName?: string
+    source?: string
     simScore: number
     isTargetArtist: boolean
   }> = []
@@ -2634,6 +2749,57 @@ export async function scoreCandidates({
     `Baseline attraction (current song to ${currentPlayerId} target): ${(currentSongAttraction ?? 0).toFixed(3)}`,
     'scoreCandidates'
   )
+
+  // [STRICT COMPLIANCE] Fallback Injection to ensure unique artists
+  // If we have fewer than 20 unique artists, fetch distinct ones from DB
+  const uniqueArtistNames = new Set<string>()
+  candidates.forEach((c) => {
+    if (c.track.artists?.[0]?.name) {
+      uniqueArtistNames.add(normalizeName(c.track.artists[0].name))
+    }
+  })
+
+  // Buffer of 20 unique artists to safely select 9 without duplicates
+  // This replaces the previous "Desperation Mode" with a proper data fill
+  const MIN_STRICT_UNIQUE_ARTISTS = 20
+  if (uniqueArtistNames.size < MIN_STRICT_UNIQUE_ARTISTS && allowFallback) {
+    logger(
+      'WARN',
+      `Unique artist deficit (${uniqueArtistNames.size} < ${MIN_STRICT_UNIQUE_ARTISTS}). Fetching fallback tracks for strict compliance.`,
+      'scoreCandidates'
+    )
+
+    const needed = MIN_STRICT_UNIQUE_ARTISTS - uniqueArtistNames.size
+    const existingTrackIds = new Set(candidates.map((c) => c.track.id))
+
+    // Blocking call to ensure we have data before scoring
+    const fallbackResult = await fetchRandomTracksFromDb({
+      neededArtists: needed,
+      existingArtistNames: uniqueArtistNames, // Pass names to ignore artists we already have
+      excludeSpotifyTrackIds: existingTrackIds,
+      tracksPerArtist: 1 // Only 1 track per new artist to maximize diversity
+    })
+
+    if (fallbackResult.tracks.length > 0) {
+      logger(
+        'INFO',
+        `Fallback fetched ${fallbackResult.tracks.length} tracks from ${fallbackResult.uniqueArtistsAdded} unique artists`,
+        'scoreCandidates'
+      )
+      fallbackResult.tracks.forEach((track) => {
+        candidates.push({
+          track: track,
+          source: 'recommendations' // Generic source
+        })
+      })
+    } else {
+      logger(
+        'WARN',
+        'Fallback failed to return any usage tracks.',
+        'scoreCandidates'
+      )
+    }
+  }
 
   for (const candidate of candidates) {
     let artistId = candidate.track.artists?.[0]?.id
@@ -2757,6 +2923,8 @@ export async function scoreCandidates({
     // Collect candidate debug info
     candidateDebugInfo.push({
       artistName: finalArtistName,
+      trackName: candidate.track.name,
+      source: candidate.source,
       simScore,
       isTargetArtist
     })
@@ -2939,6 +3107,7 @@ export async function scoreCandidates({
     metrics: metrics.sort((a, b) => b.finalScore - a.finalScore),
     debugInfo: {
       fallbackFetches: fallbackFetchCount,
+      totalCandidates: metrics.length, // Added missing field
       p1NonZeroAttraction: attractionStats.p1NonZero,
       p2NonZeroAttraction: attractionStats.p2NonZero,
       zeroAttractionReasons,
@@ -3011,8 +3180,8 @@ function computeSimilarity(
 
   // Weighted combination (duration similarity removed)
   const combinedScore =
-    0.3 * genreSimilarity.score + // Boosted: 20% -> 30% (User Request)
-    0.3 * artistRelationshipScore + // High: 35% -> 30% (Still key factor)
+    0.5 * genreSimilarity.score + // Boosted: 30% -> 50% (User Request)
+    0.1 * artistRelationshipScore + // Reduced: 30% -> 10% (User Request)
     0.075 * trackPopularitySimilarity + // Reduced: 10% -> 7.5%
     0.075 * artistPopularitySimilarity + // Reduced: 10% -> 7.5%
     0.2 * releaseSimilarity + // Boosted & Swapped: 5% -> 20% (User Request)
@@ -3024,7 +3193,7 @@ function computeSimilarity(
   const candidateTrackName = candidateTrack.name ?? 'Unknown'
   logger(
     'INFO',
-    `Similarity: ${baseTrackName} vs ${candidateTrackName} | Genre(30%)=${genreSimilarity.score.toFixed(3)} | Relationship(30%)=${artistRelationshipScore.toFixed(3)} | TrackPop(7.5%)=${trackPopularitySimilarity.toFixed(3)} | ArtistPop(7.5%)=${artistPopularitySimilarity.toFixed(3)} | Era(20%)=${releaseSimilarity.toFixed(3)} | Followers(5%)=${followerSimilarity.toFixed(3)} | Final=${finalScore.toFixed(3)}`,
+    `Similarity: ${baseTrackName} vs ${candidateTrackName} | Genre(50%)=${genreSimilarity.score.toFixed(3)} | Relationship(10%)=${artistRelationshipScore.toFixed(3)} | TrackPop(7.5%)=${trackPopularitySimilarity.toFixed(3)} | ArtistPop(7.5%)=${artistPopularitySimilarity.toFixed(3)} | Era(20%)=${releaseSimilarity.toFixed(3)} | Followers(5%)=${followerSimilarity.toFixed(3)} | Final=${finalScore.toFixed(3)}`,
     'computeSimilarity'
   )
 
@@ -3136,7 +3305,80 @@ function computeReleaseEraSimilarity(
   }
 }
 
-function computeAttraction(
+/**
+ * Compute similarity strictly between two artists
+ * Ignores track-level metadata like release date or track popularity
+ * Used for "Attraction" calculation (Target-to-Candidate proximity)
+ */
+function computeStrictArtistSimilarity(
+  baseProfile: ArtistProfile,
+  candidateProfile: ArtistProfile,
+  artistProfiles: Map<string, ArtistProfile>,
+  artistRelationships: Map<string, Set<string>>
+): { score: number; components: ScoringComponents } {
+  // 1. Identity Check (Mathematical Truth, not a hack)
+  if (baseProfile.id === candidateProfile.id) {
+    return {
+      score: 1.0,
+      components: {
+        genre: { score: 1.0, details: [] },
+        relationship: 1.0,
+        trackPop: 1.0,
+        artistPop: 1.0,
+        era: 1.0,
+        followers: 1.0
+      }
+    }
+  }
+
+  // 2. Genre Similarity (40%)
+  const genreSimilarity = calculateAvgMaxGenreSimilarity(
+    baseProfile.genres,
+    candidateProfile.genres
+  )
+
+  // 3. Relationship (30%)
+  const relationshipScore = computeArtistRelationshipScore(
+    baseProfile.id,
+    candidateProfile.id,
+    artistProfiles,
+    artistRelationships
+  )
+
+  // 4. Artist Popularity (15%)
+  const artistPopSim = computeArtistPopularitySimilarity(
+    baseProfile.id,
+    candidateProfile.id,
+    artistProfiles
+  )
+
+  // 5. Follower Similarity (15%)
+  const followerSim = computeFollowerSimilarity(
+    baseProfile.followers,
+    candidateProfile.followers
+  )
+
+  // Weighted Score
+  const score =
+    genreSimilarity.score * 0.4 +
+    relationshipScore * 0.3 +
+    artistPopSim * 0.15 +
+    followerSim * 0.15
+
+  return {
+    score,
+    components: {
+      genre: genreSimilarity,
+      relationship: relationshipScore,
+      trackPop: 0,
+      artistPop: artistPopSim,
+      era: 0,
+      followers: followerSim
+    }
+  }
+}
+
+export function computeAttraction(
   artistProfile: ArtistProfile | undefined,
   targetProfile: TargetProfile | null,
   artistProfiles: Map<string, ArtistProfile>,
@@ -3159,21 +3401,19 @@ function computeAttraction(
     return 0
   }
 
-  const candidate = artistProfileToSyntheticTrack(artistProfile)
-  const target = artistProfileToSyntheticTrack({
+  // Convert TargetProfile to ArtistProfile interface for comparison
+  const targetArtistProfile: ArtistProfile = {
     id: targetProfile.spotifyId || targetProfile.artist.id || '',
     name: targetProfile.artist.name,
     genres: targetProfile.genres,
     popularity: targetProfile.popularity,
     followers: targetProfile.followers
-  })
+  }
 
-  // We only care about the raw attraction score here, not the breakdown
-  const { score } = computeSimilarity(
-    target.track,
-    target.metadata,
-    candidate.track,
-    candidate.metadata,
+  // Calculate strict artist-to-artist similarity
+  const { score } = computeStrictArtistSimilarity(
+    targetArtistProfile,
+    artistProfile,
     artistProfiles,
     artistRelationships
   )
@@ -3238,14 +3478,16 @@ export function applyDiversityConstraints(
   roundNumber: number,
   targetProfiles: Record<PlayerId, TargetProfile | null>,
   playerGravities: PlayerGravityMap,
-  currentPlayerId: PlayerId
+  currentPlayerId: PlayerId,
+  forceHardConvergence?: boolean
 ): {
   selected: CandidateTrackMetrics[]
   filteredArtistNames: Set<string>
 } {
   const artistIds = new Set<string>()
   const selected: CandidateTrackMetrics[] = []
-  const hardConvergenceActive = roundNumber >= MAX_ROUND_TURNS
+  const hardConvergenceActive =
+    forceHardConvergence ?? roundNumber >= MAX_ROUND_TURNS
   const SIMILARITY_THRESHOLD = 0.4
 
   logger(
@@ -3627,14 +3869,19 @@ export function applyDiversityConstraints(
 
   // Log attraction distribution for diagnostics
   const attractionScores = candidatesWithDiff.map((item) => item.attraction)
-  const attractionStats = {
-    min: Math.min(...attractionScores),
-    max: Math.max(...attractionScores),
-    avg: attractionScores.reduce((a, b) => a + b, 0) / attractionScores.length,
-    median: attractionScores.sort((a, b) => a - b)[
-      Math.floor(attractionScores.length / 2)
-    ]
-  }
+  const attractionStats =
+    attractionScores.length > 0
+      ? {
+          min: Math.min(...attractionScores),
+          max: Math.max(...attractionScores),
+          avg:
+            attractionScores.reduce((a, b) => a + b, 0) /
+            attractionScores.length,
+          median: attractionScores.sort((a, b) => a - b)[
+            Math.floor(attractionScores.length / 2)
+          ]
+        }
+      : { min: 0, max: 0, avg: 0, median: 0 }
   const diffStats = {
     min: minDiff,
     max: maxDiff,
@@ -3758,68 +4005,6 @@ export function applyDiversityConstraints(
     // Add all artist IDs and names to prevent future overlaps
     trackArtistIds.forEach((id) => artistIds.add(id))
     trackArtistNames.forEach((name) => artistNames.add(name))
-  }
-
-  // Helper function to select tracks from a category with similarity diversity
-  const selectFromCategory = (
-    candidates: CandidateTrackMetrics[],
-    targetCount: number,
-    categoryLabel: string
-  ): CandidateTrackMetrics[] => {
-    const selected: CandidateTrackMetrics[] = []
-
-    // Group by similarity tiers
-    const lowSim = candidates.filter(
-      (m) => m.simScore < SIMILARITY_TIERS.low.max
-    )
-    const mediumSim = candidates.filter(
-      (m) =>
-        m.simScore >= SIMILARITY_TIERS.medium.min &&
-        m.simScore < SIMILARITY_TIERS.medium.max
-    )
-    const highSim = candidates.filter(
-      (m) => m.simScore >= SIMILARITY_TIERS.high.min
-    )
-
-    // Try to select one from each similarity tier first
-    const tiers = [
-      { tracks: lowSim, label: 'Low' },
-      { tracks: mediumSim, label: 'Medium' },
-      { tracks: highSim, label: 'High' }
-    ]
-
-    for (const tier of tiers) {
-      if (selected.length >= targetCount) break
-
-      const candidate = tier.tracks.find((m) => !isArtistSelected(m))
-      if (candidate) {
-        addToSelected(candidate)
-        selected.push(candidate)
-        logger(
-          'INFO',
-          `  Selected ${categoryLabel} track (${tier.label} sim): ${candidate.artistName} | Sim=${candidate.simScore.toFixed(3)} | Gravity=${candidate.gravityScore.toFixed(3)}`,
-          'applyDiversityConstraints'
-        )
-      }
-    }
-
-    // Fill remaining slots with best available candidates
-    if (selected.length < targetCount) {
-      for (const candidate of candidates) {
-        if (selected.length >= targetCount) break
-        if (!isArtistSelected(candidate)) {
-          addToSelected(candidate)
-          selected.push(candidate)
-          logger(
-            'INFO',
-            `  Selected ${categoryLabel} track (fill): ${candidate.artistName} | Sim=${candidate.simScore.toFixed(3)} | Gravity=${candidate.gravityScore.toFixed(3)}`,
-            'applyDiversityConstraints'
-          )
-        }
-      }
-    }
-
-    return selected
   }
 
   // Select balanced tracks using weighted allocation instead of round-robin
@@ -4249,6 +4434,22 @@ export function applyDiversityConstraints(
           (m) => !isArtistSelected(m)
         )
         for (const candidate of allRemaining.slice(0, finalNeeded)) {
+          // Determine best-fit category
+          const diff =
+            getCurrentPlayerAttraction(candidate) -
+            candidate.currentSongAttraction
+
+          if (allPositive || allNegative) {
+            // If distribution is skewed (forced percentile), late additions are effectively 'neutral'
+            // relative to the enforced extremes.
+            candidate.selectionCategory = 'neutral'
+          } else {
+            if (diff > NEUTRAL_TOLERANCE) candidate.selectionCategory = 'closer'
+            else if (diff < -NEUTRAL_TOLERANCE)
+              candidate.selectionCategory = 'further'
+            else candidate.selectionCategory = 'neutral'
+          }
+
           addToSelected(candidate)
         }
       }
@@ -4346,6 +4547,36 @@ export function applyDiversityConstraints(
       .filter((m) => !finalSelected.includes(m))
       .slice(0, missing)
     finalSelected.push(...additional)
+  }
+
+  // If we still don't have 9 tracks, this indicates a severe issue or extremely limited candidate pool.
+  // We will now fall back to simply taking the top tracks from the original sorted list,
+  // strictly maintaining artist uniqueness, but potentially violating diversity.
+  // This is a last resort to ensure DISPLAY_OPTION_COUNT tracks are returned.
+  if (finalSelected.length < DISPLAY_OPTION_COUNT) {
+    const missing = DISPLAY_OPTION_COUNT - finalSelected.length
+    logger(
+      'WARN',
+      `CRITICAL: Still missing ${missing} tracks after all attempts. Falling back to strict artist uniqueness from original candidates.`,
+      'applyDiversityConstraints'
+    )
+
+    const usedArtistIds = new Set(finalSelected.map((m) => m.artistId))
+    const additional = sortedFilteredMetrics
+      .filter(
+        (m) => !usedArtistIds.has(m.artistId) && !finalSelected.includes(m)
+      )
+      .slice(0, missing)
+
+    additional.forEach((m) => {
+      m.selectionCategory = m.selectionCategory || 'neutral' // Default if not set
+      finalSelected.push(m)
+      logger(
+        'WARN',
+        `  Strict fallback add: "${m.track.name}" by ${m.artistName}`,
+        'applyDiversityConstraints'
+      )
+    })
   }
 
   logger(
@@ -4582,4 +4813,29 @@ function computeVicinityDistances(
   artistRelationships: Map<string, Set<string>>
 ) {
   return { p1: 1, p2: 1 }
+}
+
+export async function getSeedRelatedArtists(
+  artistId: string,
+  token?: string
+): Promise<Array<{ id: string; name: string }>> {
+  if (!token) return []
+
+  try {
+    const related = await getRelatedArtistsWithCache(artistId, () =>
+      getRelatedArtistsServer(artistId, token)
+    )
+    return related.map((a) => ({
+      id: a.id,
+      name: a.name
+    }))
+  } catch (err) {
+    logger(
+      'WARN',
+      `Failed to get seed related artists for ${artistId}`,
+      undefined,
+      err as Error
+    )
+    return []
+  }
 }

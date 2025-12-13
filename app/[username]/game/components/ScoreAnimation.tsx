@@ -26,7 +26,7 @@ export function ScoreAnimation({
       const timer = setTimeout(() => {
         setIsVisible(false)
         setTimeout(onComplete, 300) // Wait for fade-out to complete
-      }, 2500) // Show animation for 2.5 seconds
+      }, 1250) // Show animation for 1.25 seconds (half of original 2.5s)
 
       return () => clearTimeout(timer)
     }

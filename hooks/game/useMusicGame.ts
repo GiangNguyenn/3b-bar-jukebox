@@ -268,6 +268,7 @@ export function useMusicGame({
         targetArtist: null
       }))
     )
+    setPendingSelectionTrackId(null)
     lastCompletedSelectionRef.current = null
     pendingSelectionMetaRef.current = null
     gravityUpdateTrackIdRef.current = null
@@ -358,12 +359,24 @@ export function useMusicGame({
       !scoringPlayer
     ) {
       // Set phase to selecting
-      if (phase !== 'selecting') {
+      // If we are waiting for a track, ONLY switch if we just finished loading the new options
+      // This prevents premature switching before the fetch even starts
+      if (phase === 'waiting_for_track') {
+        if (justFinishedLoading) {
+          setPhase('selecting')
+          resetTimer()
+          // Unlock UI: Clear any stale pending selection
+          if (pendingSelectionTrackId) {
+            setPendingSelectionTrackId(null)
+            pendingSelectionMetaRef.current = null
+          }
+        }
+      } else if (phase !== 'selecting') {
+        // Normal transition from 'loading' or other states
         setPhase('selecting')
-      }
-
-      // Reset timer only when we just finished loading new options
-      if (justFinishedLoading) {
+        resetTimer()
+      } else if (justFinishedLoading) {
+        // Already selecting, but just reloaded options (e.g. manual refresh)
         resetTimer()
       }
     }
@@ -423,11 +436,22 @@ export function useMusicGame({
     // Was this selected by a player?
     const wasPlayerSelected = pendingSelectionTrackId === nowPlayingId
 
+    // Track change observed; no verbose logging in production
+
     // Clear pending if mismatch (skipped track/error)
+    /* 
+    Aggressive clearing removed to handle race conditions where an intermediate track 
+    (e.g. next in queue) plays briefly before our selected track.
+    
     if (pendingSelectionTrackId && !wasPlayerSelected) {
+      console.log('[GameFlow] Clearing mismatching pending selection', {
+        pending: pendingSelectionTrackId,
+        actual: nowPlayingId
+      })
       setPendingSelectionTrackId(null)
       pendingSelectionMetaRef.current = null
-    }
+    } 
+    */
 
     // Score Check
     const trackArtistNames = new Set(
@@ -544,10 +568,11 @@ export function useMusicGame({
           : option.metrics.bAttraction
       const baseline = option.metrics.currentSongAttraction
 
-      const selectionCategory = calculateMoveCategory(
-        currentPlayerAttraction,
-        baseline
-      )
+      // Prefer server-assigned category (which respects forced distribution)
+      // Fallback to local calculation if missing
+      const selectionCategory =
+        option.metrics.selectionCategory ??
+        calculateMoveCategory(currentPlayerAttraction, baseline)
 
       // Optimistic Update
       const meta = {
@@ -636,24 +661,24 @@ export function useMusicGame({
         }))
       )
       clearOptions()
-      // Active player was already switched when the selection was made
 
-      // Refresh options with clean slate, null target artists, and reset gravities
-      if (nowPlaying) {
-        void refreshOptions(
-          nowPlaying,
-          { player1: null, player2: null },
-          false,
-          [],
-          undefined,
-          {
-            player1: DEFAULT_PLAYER_GRAVITY,
-            player2: DEFAULT_PLAYER_GRAVITY
-          }
-        )
+      // RESET GAME LOOP TO WAITING STATE
+      // We want to wait for the *next* song to start before offering new choices.
+      // By resetting initialization state and updating the last ref to current,
+      // the main effect will detect "same track" and keep us in 'waiting' mode
+      // until the track ID actually changes.
+      setIsWaitingForFirstTrack(true)
+      hasInitializedRef.current = false
+      setPendingSelectionTrackId(null)
+      pendingSelectionMetaRef.current = null
+      if (nowPlaying?.item?.id) {
+        lastTrackIdRef.current = nowPlaying.item.id
       }
+
+      // Do NOT call refreshOptions here.
+      // The main useEffect will trigger it automatically when the next track starts.
     }
-  }, [scoringPlayer, resetRound, clearOptions, nowPlaying, refreshOptions])
+  }, [scoringPlayer, resetRound, clearOptions, nowPlaying])
 
   return {
     players,

@@ -24,15 +24,19 @@ export async function GET(): Promise<NextResponse> {
     if (artists.length >= 20) {
       logger('INFO', `Returning ${artists.length} artists from ${source}`)
 
-      const response: PopularArtistResponse[] = artists.map((artist) => ({
-        id: artist.id,
-        name: artist.name,
-        spotify_artist_id: artist.spotify_artist_id ?? artist.id ?? '', // Fallback to id or empty string
-        genre:
-          artist.genres && artist.genres.length > 0
-            ? artist.genres[0]
-            : undefined
-      }))
+      const response: PopularArtistResponse[] = artists
+        .filter(
+          (a) => a.spotify_artist_id && !a.spotify_artist_id.includes('-')
+        )
+        .map((artist) => ({
+          id: artist.id,
+          name: artist.name,
+          spotify_artist_id: artist.spotify_artist_id!, // Guaranteed by filter
+          genre:
+            artist.genres && artist.genres.length > 0
+              ? artist.genres[0]
+              : undefined
+        }))
 
       return NextResponse.json({ artists: response })
     }
@@ -59,13 +63,17 @@ export async function GET(): Promise<NextResponse> {
       `Fallback fetch complete. Returning ${fallbackArtists.length} artists from ${fallbackSource}`
     )
 
-    const response: PopularArtistResponse[] = fallbackArtists.map((artist) => ({
-      id: artist.id,
-      name: artist.name,
-      spotify_artist_id: artist.spotify_artist_id ?? artist.id ?? '',
-      genre:
-        artist.genres && artist.genres.length > 0 ? artist.genres[0] : undefined
-    }))
+    const response: PopularArtistResponse[] = fallbackArtists
+      .filter((a) => a.spotify_artist_id && !a.spotify_artist_id.includes('-'))
+      .map((artist) => ({
+        id: artist.id,
+        name: artist.name,
+        spotify_artist_id: artist.spotify_artist_id!,
+        genre:
+          artist.genres && artist.genres.length > 0
+            ? artist.genres[0]
+            : undefined
+      }))
 
     return NextResponse.json({ artists: response })
   } catch (err) {

@@ -13,10 +13,14 @@ import { ScoreAnimation } from './components/ScoreAnimation'
 import { DgsDebugPanel } from './components/DgsDebugPanel'
 import { LoadingProgressBar } from './components/LoadingProgressBar'
 import { Loading, ErrorMessage } from '@/components/ui'
+import { useBackgroundUpdates } from '@/hooks/game/useBackgroundUpdates'
 
 export default function GamePage(): JSX.Element {
   const params = useParams()
   const username = typeof params?.username === 'string' ? params.username : ''
+
+  // Enable background updates (genre backfill, healing, etc.)
+  useBackgroundUpdates()
 
   const { playerNames, updatePlayerName } = usePlayerNames()
 

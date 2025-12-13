@@ -248,13 +248,24 @@ export const musicService = {
 
     const { data: artists, error } = await db
       .from('artists')
-      .select('*')
+      .select('name, spotify_artist_id, genres, popularity')
       .order('popularity', { ascending: false })
       .limit(limit)
 
     if (!error && artists && artists.length >= 20) {
+      // Map DB result to TargetArtist, ensuring id is always spotify_artist_id
+      const mappedArtists: TargetArtist[] = artists.map((a: any) => ({
+        id: a.spotify_artist_id, // Map Spotify ID to id
+        name: a.name,
+        spotify_artist_id: a.spotify_artist_id,
+        genres: a.genres || [],
+        popularity: a.popularity,
+        followers: 0, // Default to 0 as not in DB
+        image_url: undefined // Default to undefined as not in DB
+      }))
+
       return {
-        data: artists as TargetArtist[],
+        data: mappedArtists,
         source: DataSource.Database
       }
     }
@@ -279,13 +290,23 @@ export const musicService = {
     // 1. Try DB first
     const { data: artists, error } = await db
       .from('artists')
-      .select('*')
+      .select('name, spotify_artist_id, genres, popularity')
       .order('popularity', { ascending: false })
       .limit(limit)
 
     if (!error && artists && artists.length >= 50) {
+      const mappedArtists: TargetArtist[] = artists.map((a: any) => ({
+        id: a.spotify_artist_id,
+        name: a.name,
+        spotify_artist_id: a.spotify_artist_id,
+        genres: a.genres || [],
+        popularity: a.popularity,
+        followers: 0,
+        image_url: undefined
+      }))
+
       return {
-        data: artists as TargetArtist[],
+        data: mappedArtists,
         source: DataSource.Database
       }
     }

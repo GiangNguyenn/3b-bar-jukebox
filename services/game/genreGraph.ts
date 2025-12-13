@@ -176,6 +176,42 @@ export function calculateAvgMaxGenreSimilarity(
   baseGenres: string[],
   candidateGenres: string[]
 ): GenreScoreComponent {
+  // Handle unknown genre special case
+  const hasUnknownBase = baseGenres?.includes('unknown')
+  const hasUnknownCandidate = candidateGenres?.includes('unknown')
+
+  if (hasUnknownBase && hasUnknownCandidate) {
+    // Both unknown - moderate similarity (0.5)
+    return {
+      score: 0.5,
+      details: [
+        {
+          candidateGenre: 'unknown',
+          bestMatchGenre: 'unknown',
+          score: 0.5,
+          matchType: 'cluster' // Treat unknowns as loosely clustered
+        }
+      ]
+    }
+  }
+
+  if (hasUnknownBase || hasUnknownCandidate) {
+    // One unknown - low similarity (0.2)
+    return {
+      score: 0.2,
+      details: [
+        {
+          candidateGenre: hasUnknownCandidate
+            ? 'unknown'
+            : candidateGenres[0] || '',
+          bestMatchGenre: hasUnknownBase ? 'unknown' : baseGenres[0] || '',
+          score: 0.2,
+          matchType: 'unrelated' // Treat mixed known/unknown as mostly unrelated
+        }
+      ]
+    }
+  }
+
   if (!baseGenres?.length || !candidateGenres?.length)
     return { score: 0, details: [] }
 
