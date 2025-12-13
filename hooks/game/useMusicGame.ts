@@ -275,6 +275,7 @@ export function useMusicGame({
     if (typeof window !== 'undefined') {
       localStorage.removeItem(STORAGE_KEY_TARGET_ARTISTS)
     }
+    setPlayedTrackIds([])
   }, [resetRound])
 
   // --- Track Change & Initialization Handling ---
@@ -661,6 +662,8 @@ export function useMusicGame({
         }))
       )
       clearOptions()
+      // Reset played tracks on score
+      setPlayedTrackIds([])
 
       // RESET GAME LOOP TO WAITING STATE
       // We want to wait for the *next* song to start before offering new choices.

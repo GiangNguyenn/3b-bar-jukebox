@@ -17,13 +17,18 @@ export function useBackgroundUpdates() {
 
     const pollLazyUpdates = async () => {
       try {
+        if (!token) {
+          // Skip if no token
+          return
+        }
+
         const response = await fetch('/api/game/lazy-update-tick', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json'
           },
           body: JSON.stringify({
-            token: token ?? undefined // Pass token if available
+            token
           })
         })
 

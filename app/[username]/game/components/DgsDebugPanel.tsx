@@ -210,27 +210,43 @@ export function DgsDebugPanel({
       // Genre Details
       if (
         metrics.scoreComponents &&
-        typeof metrics.scoreComponents.genre !== 'number' &&
-        metrics.scoreComponents.genre.details.length > 0
+        typeof metrics.scoreComponents.genre !== 'number'
       ) {
         lines.push(`  Genre Details:`)
-        metrics.scoreComponents.genre.details.slice(0, 5).forEach((d) => {
-          // Limit to top 5
-          const relation =
-            d.matchType === 'cluster'
-              ? '[Same Cluster]'
-              : d.matchType === 'related'
-                ? '[Related Cluster]'
-                : d.matchType === 'exact'
-                  ? '[Exact]'
-                  : d.matchType === 'partial'
-                    ? '[Partial]'
-                    : '[Unrelated]'
 
+        // Add raw genre lists
+        if (metrics.scoreComponents.genre.targetGenres) {
           lines.push(
-            `    - ${d.candidateGenre} -> ${d.bestMatchGenre} (${d.score.toFixed(2)}) ${relation}`
+            `    Target Genres: [${metrics.scoreComponents.genre.targetGenres.join(', ')}]`
           )
-        })
+        }
+        if (metrics.scoreComponents.genre.candidateGenres) {
+          lines.push(
+            `    Candidate Genres: [${metrics.scoreComponents.genre.candidateGenres.join(', ')}]`
+          )
+        }
+
+        if (metrics.scoreComponents.genre.details.length > 0) {
+          metrics.scoreComponents.genre.details.slice(0, 5).forEach((d) => {
+            // Limit to top 5
+            const relation =
+              d.matchType === 'cluster'
+                ? '[Same Cluster]'
+                : d.matchType === 'related'
+                  ? '[Related Cluster]'
+                  : d.matchType === 'exact'
+                    ? '[Exact]'
+                    : d.matchType === 'partial'
+                      ? '[Partial]'
+                      : '[Unrelated]'
+
+            lines.push(
+              `    - ${d.candidateGenre} -> ${d.bestMatchGenre} (${d.score.toFixed(2)}) ${relation}`
+            )
+          })
+        } else {
+          lines.push(`    (No matches found)`)
+        }
       }
     })
 
@@ -1736,6 +1752,125 @@ export function DgsDebugPanel({
                         </span>
                       </div>
                     </div>
+
+                    {/* Score Components & Detailed Breakdown */}
+                    {metrics.scoreComponents && (
+                      <div className='mt-2 border-t border-gray-700 pt-1'>
+                        <div className='mb-1 text-[10px] font-semibold text-gray-400'>
+                          Score Components
+                        </div>
+                        <div className='grid grid-cols-2 gap-1 text-[10px] text-gray-400'>
+                          <div title='Weighted 40%'>
+                            Genre:{' '}
+                            <span className='text-gray-300'>
+                              {metrics.scoreComponents.genre?.score?.toFixed(3)}
+                            </span>
+                          </div>
+                          <div title='Weighted 30%'>
+                            Rel:{' '}
+                            <span className='text-gray-300'>
+                              {metrics.scoreComponents.relationship?.toFixed(3)}
+                            </span>
+                          </div>
+                          <div title='Weighted 15%'>
+                            ArtPop:{' '}
+                            <span className='text-gray-300'>
+                              {metrics.scoreComponents.artistPop?.toFixed(3)}
+                            </span>
+                          </div>
+                          <div title='Weighted 15%'>
+                            Foll:{' '}
+                            <span className='text-gray-300'>
+                              {metrics.scoreComponents.followers?.toFixed(3)}
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* Genre Details */}
+                        {metrics.scoreComponents.genre &&
+                          typeof metrics.scoreComponents.genre !== 'number' && (
+                            <div className='mt-2 rounded bg-gray-900/50 p-1.5'>
+                              <div className='mb-1 text-[9px] font-semibold uppercase tracking-wider text-gray-500'>
+                                Genre Analysis
+                              </div>
+
+                              {/* Raw Lists */}
+                              <div className='mb-2 font-mono text-[9px]'>
+                                <div className='mb-1'>
+                                  <span className='mb-0.5 block text-gray-500'>
+                                    Target Genres:
+                                  </span>
+                                  <div className='break-all rounded bg-gray-800/50 p-1 leading-tight text-gray-300'>
+                                    {metrics.scoreComponents.genre.targetGenres
+                                      ?.length ? (
+                                      metrics.scoreComponents.genre.targetGenres.join(
+                                        ', '
+                                      )
+                                    ) : (
+                                      <span className='italic text-gray-600'>
+                                        None
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
+                                <div>
+                                  <span className='mb-0.5 block text-gray-500'>
+                                    Candidate Genres:
+                                  </span>
+                                  <div className='break-all rounded bg-gray-800/50 p-1 leading-tight text-gray-300'>
+                                    {metrics.scoreComponents.genre
+                                      .candidateGenres?.length ? (
+                                      metrics.scoreComponents.genre.candidateGenres.join(
+                                        ', '
+                                      )
+                                    ) : (
+                                      <span className='italic text-gray-600'>
+                                        None
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
+                              </div>
+
+                              {/* Matches */}
+                              {metrics.scoreComponents.genre.details.length >
+                              0 ? (
+                                <div className='mt-1 space-y-0.5 border-t border-gray-800 pt-1'>
+                                  <div className='mb-0.5 text-[9px] text-gray-500'>
+                                    Top Matches:
+                                  </div>
+                                  {metrics.scoreComponents.genre.details
+                                    .slice(0, 3)
+                                    .map((d, i) => (
+                                      <div
+                                        key={i}
+                                        className='font-mono text-[9px] text-gray-400'
+                                      >
+                                        {d.candidateGenre} → {d.bestMatchGenre}{' '}
+                                        <span className='text-gray-500'>
+                                          ({d.score.toFixed(2)})
+                                        </span>
+                                      </div>
+                                    ))}
+                                  {metrics.scoreComponents.genre.details
+                                    .length > 3 && (
+                                    <div className='text-[8px] italic text-gray-600'>
+                                      +{' '}
+                                      {metrics.scoreComponents.genre.details
+                                        .length - 3}{' '}
+                                      more
+                                    </div>
+                                  )}
+                                </div>
+                              ) : (
+                                <div className='mt-1 text-[9px] italic text-gray-500'>
+                                  No meaningful matches found
+                                </div>
+                              )}
+                            </div>
+                          )}
+                      </div>
+                    )}
                   </div>
                 )
               })}

@@ -321,7 +321,8 @@ async function fetchGenresFromMusicBrainz(
         'INFO',
         `[MusicBrainz] Successfully extracted genres for "${artistName}": ${finalGenres.join(', ')}`
       )
-      console.log(
+      logger(
+        'INFO',
         `[GenreBackfill] ✅ MUSICBRAINZ SUCCESS: Found genres for "${artistName}": ${finalGenres.join(', ')}`
       )
     } else {
@@ -329,7 +330,8 @@ async function fetchGenresFromMusicBrainz(
         'WARN',
         `[MusicBrainz] Step 3 failed: No genres could be mapped to Spotify format for "${artistName}". Raw genres: ${artistData.genres.map((g) => g.name).join(', ')}`
       )
-      console.log(
+      logger(
+        'WARN',
         `[GenreBackfill] ❌ MUSICBRAINZ FAILED: No mappable genres for "${artistName}". Raw: ${artistData.genres.map((g) => g.name).join(', ')}`
       )
     }
@@ -528,6 +530,19 @@ export async function backfillArtistGenres(
         'WARN',
         `[Backfill] 💾 Updating database for "${artistName}" (${spotifyArtistId}): Genres=${finalGenres.length}, Pop=${popularity}, Followers=${followers}`
       )
+      // 4. Update database
+      if (genres.length > 0) {
+        logger(
+          'INFO',
+          `[GenreBackfill] ✅ Found ${genres.length} genres for "${artistName}"`
+        )
+      } else {
+        logger(
+          'WARN',
+          `[GenreBackfill] ⚠️ Found artist "${artistName}" but NO GENRES available (Spotify/MusicBrainz returned empty)`
+        )
+      }
+
       await upsertArtistProfile({
         spotify_artist_id: spotifyArtistId,
         name: artistName,
@@ -707,10 +722,71 @@ export async function backfillTrackGenre(
       'Get artist ID for track backfill'
     )
 
-    const spotifyArtistId: string | null = artist?.spotify_artist_id || null
+    let spotifyArtistId: string | null = artist?.spotify_artist_id || null
 
-    // If artist not found, try to search Spotify (but this is expensive, so skip for now)
-    // We'll rely on the artist being in the database from other operations
+    // If artist not found in DB, search Spotify
+    if (!spotifyArtistId && token) {
+      try {
+        logger(
+          'INFO',
+          `[GenreBackfill] Searching Spotify for missing artist: "${artistName}"`
+        )
+        const searchData = await sendApiRequest<{
+          artists: { items: Array<{ id: string; name: string }> }
+        }>({
+          path: `/search?q=artist:${encodeURIComponent(artistName)}&type=artist&limit=1`,
+          method: 'GET',
+          token,
+          retryConfig: {
+            maxRetries: 1,
+            baseDelay: 500,
+            maxDelay: 2000
+          }
+        })
+
+        logger(
+          'INFO',
+          `[GenreBackfill] Search response for "${artistName}": keys=${Object.keys(searchData || {})}`
+        )
+        if (searchData?.artists) {
+          logger(
+            'INFO',
+            `[GenreBackfill] Search artists found: ${searchData.artists.items?.length ?? 'undefined items'}`
+          )
+        } else {
+          logger(
+            'WARN',
+            `[GenreBackfill] Search response has no 'artists' property. Raw: ${JSON.stringify(searchData)}`
+          )
+        }
+
+        if (searchData.artists?.items?.length > 0) {
+          const match = searchData.artists.items[0]
+          spotifyArtistId = match.id
+          logger(
+            'INFO',
+            `[GenreBackfill] Found artist on Spotify: "${match.name}" (${match.id})`
+          )
+
+          // Note: The subsequent call to backfillArtistGenres will fetch profile & insert into DB
+        } else {
+          logger(
+            'WARN',
+            `[GenreBackfill] Artist not found on Spotify: "${artistName}"`
+          )
+        }
+      } catch (err) {
+        logger(
+          'WARN',
+          `[GenreBackfill] Failed to search artist on Spotify: ${artistName} - ${err}`
+        )
+      }
+    } else if (!spotifyArtistId && !token) {
+      logger(
+        'WARN',
+        `[GenreBackfill] Cannot search for missing artist "${artistName}" without token`
+      )
+    }
 
     if (spotifyArtistId) {
       // Backfill artist genres (which will try all fallbacks)
@@ -753,11 +829,26 @@ export async function backfillTrackGenre(
       }
     }
 
-    // Final fallback: Metadata inference - REMOVED
-    // genre = inferGenreFromMetadata(releaseYear, popularity)
-    // if (genre) { ... } (REMOVED)
+    // Final fallback: Mark as Unknown to prevent infinite retries
+    logger(
+      'WARN',
+      `[GenreBackfill] All strategies failed for "${spotifyTrackId}" (Artist: ${artistName}) - marking track as "Unknown"`
+    )
 
-    return null
+    // Determine fallback genre (Unknown)
+    const fallbackGenre = 'Unknown'
+
+    await queryWithRetry(
+      supabase
+        .from('tracks')
+        .update({ genre: fallbackGenre })
+        .eq('spotify_track_id', spotifyTrackId)
+        .is('genre', null),
+      undefined,
+      'Mark track genre as Unknown'
+    )
+
+    return fallbackGenre
   } catch (error) {
     logger(
       'WARN',
@@ -820,8 +911,16 @@ export async function safeBackfillTrackGenre(
       metrics.trackSuccesses++
       // Mark as completed
       completedBackfills.set(key, Date.now())
+      logger(
+        'INFO',
+        `[GenreBackfill] ✅ TRACK SUCCESS: Backfilled genre for "${spotifyTrackId}" (Artist: ${artistName}) -> ${result}`
+      )
     } else {
       metrics.trackFailures++
+      logger(
+        'WARN',
+        `[GenreBackfill] ❌ TRACK FAILED: Could not backfill genre for "${spotifyTrackId}" (Artist: ${artistName})`
+      )
     }
   } catch (error) {
     if ((error as any)?.status === 429) {
@@ -952,40 +1051,64 @@ export async function processGenreBackfillBatch(
   try {
     // Find tracks with missing genres
     const { data: tracks, error } = await queryWithRetry<
-      Array<{ spotify_track_id: string; name: string; artists: any }>
+      Array<{ spotify_track_id: string; name: string; artist: string }>
     >(
       supabase
         .from('tracks')
-        .select('spotify_track_id, name, artists(name)')
+        .select('spotify_track_id, name, artist')
         .is('genre', null)
         .limit(limit),
       undefined,
       'Get tracks for genre backfill batch'
     )
 
-    if (error || !tracks || tracks.length === 0) {
+    if (error) {
+      logger(
+        'WARN',
+        `[GenreBackfill] Error fetching tracks: ${JSON.stringify(error)}`
+      )
       return 0
     }
 
-    let processed = 0
-    for (const track of tracks) {
-      if (activeBackfills >= MAX_CONCURRENT_BACKFILLS) break
+    // Log how many tracks we actually found
+    logger(
+      'INFO',
+      `[GenreBackfill] Fetched ${tracks?.length ?? 0} tracks for backfill`
+    )
 
-      const artistName = Array.isArray(track.artists)
-        ? track.artists[0]?.name
-        : (track.artists as any)?.name
+    if (!tracks || tracks.length === 0) {
+      return 0
+    }
+
+    const tasks: Promise<void>[] = []
+    let processed = 0
+
+    for (const track of tracks) {
+      if (activeBackfills >= MAX_CONCURRENT_BACKFILLS) {
+        // If we hit concurrency limit, stop scheduling new ones for this tick
+        break
+      }
+
+      const artistName = track.artist
 
       if (!artistName) continue
 
-      // Fire and forget (safe wrapper handles state)
-      void safeBackfillTrackGenre(
+      // Fire and track
+      const task = safeBackfillTrackGenre(
         track.spotify_track_id,
         artistName,
         null,
         null,
         token
       )
+      tasks.push(task)
       processed++
+    }
+
+    // Wait for all triggered backfills to complete or fail
+    // This ensures the serverless function doesn't exit while API calls are pending
+    if (tasks.length > 0) {
+      await Promise.allSettled(tasks)
     }
 
     return processed

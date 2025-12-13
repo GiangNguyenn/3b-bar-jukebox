@@ -97,6 +97,8 @@ export interface GenreMatchDetail {
 export interface GenreScoreComponent {
   score: number
   details: GenreMatchDetail[]
+  candidateGenres?: string[]
+  targetGenres?: string[]
 }
 
 export interface ScoringComponents {

@@ -385,7 +385,7 @@ export async function ensureTargetDiversity({
       currentPlayerTarget,
       artistProfiles,
       artistRelationships
-    )
+    ).score
 
     const diff = attraction - currentSongAttraction
     candidateAttractions.push({ candidate, attraction, diff })
@@ -815,6 +815,17 @@ async function buildCandidatePool({
     token,
     statisticsTracker
   )
+
+  // Filter out the seed artist itself to prevent "self-related" loops
+  const filteredRelatedArtists = relatedArtists.filter(
+    (a) => a.id !== seedArtistId
+  )
+  if (filteredRelatedArtists.length < relatedArtists.length) {
+    logger(
+      'INFO',
+      `Filtered seed artist ${seedArtistId} from related artists list`
+    )
+  }
   const candidateMap = new Map<string, CandidateSeed>()
 
   if (hasExceededDeadline(startTime)) {
@@ -912,14 +923,14 @@ async function buildCandidatePool({
   const seedArtistName = playbackState.item?.artists?.[0]?.name ?? 'Unknown'
   logger(
     'INFO',
-    `Building candidate pool: SeedArtist=${seedArtistName} (${seedArtistId}) | CurrentTrack=${currentTrackId} | PlayedTracks=${playedTrackIds.length} | RelatedArtists=${relatedArtists.length} | TargetUniqueArtists=${MIN_UNIQUE_ARTISTS}`
+    `Building candidate pool: SeedArtist=${seedArtistName} (${seedArtistId}) | CurrentTrack=${currentTrackId} | PlayedTracks=${playedTrackIds.length} | RelatedArtists=${filteredRelatedArtists.length} | TargetUniqueArtists=${MIN_UNIQUE_ARTISTS}`
   )
 
   // PRIORITY 1: Fetch top tracks from discovered related artists
   // This uses the results from the hybrid artist discovery system
   logger(
     'INFO',
-    `Processing ${relatedArtists.length} related artists from hybrid discovery`
+    `Processing ${filteredRelatedArtists.length} related artists from hybrid discovery`
   )
 
   // Start with smaller batch to get initial results faster
@@ -935,7 +946,7 @@ async function buildCandidatePool({
 
   while (
     (uniqueArtists < targetUniqueArtists || totalTracks < MIN_CANDIDATE_POOL) &&
-    startIndex < relatedArtists.length
+    startIndex < filteredRelatedArtists.length
   ) {
     // Check elapsed time - bail out early if taking too long
     const elapsed = Date.now() - startTime
@@ -951,8 +962,11 @@ async function buildCandidatePool({
       break
     }
 
-    const endIndex = Math.min(startIndex + batchSize, relatedArtists.length)
-    const batch = relatedArtists.slice(startIndex, endIndex)
+    const endIndex = Math.min(
+      startIndex + batchSize,
+      filteredRelatedArtists.length
+    )
+    const batch = filteredRelatedArtists.slice(startIndex, endIndex)
 
     if (batch.length === 0) break
 
@@ -1868,6 +1882,28 @@ function registerCandidate(
   }
 
   const existing = candidateMap.get(track.id)
+
+  // Check for artist flooding
+  if (trackArtistId && !existing) {
+    // Only check limit for new tracks
+    let artistCount = 0
+    for (const candidate of Array.from(candidateMap.values())) {
+      if (candidate.track.artists?.[0]?.id === trackArtistId) {
+        artistCount++
+      }
+    }
+
+    // Allow more for target artist or high priority sources?
+    // For now, strict limit to ensure diversity
+    if (artistCount >= MAX_ARTIST_REPETITIONS) {
+      // Allow target insertion to bypass regular limit if needed, but usually target insertion is specific
+      if (source !== 'target_insertion' && source !== 'target_boost') {
+        // filteringStats.filteredArtistRepetition++ // (Add metric if we had it, for now just return)
+        return
+      }
+    }
+  }
+
   if (!existing || sourcePriority(source) < sourcePriority(existing.source)) {
     candidateMap.set(track.id, { track, source })
     filteringStats.added++
@@ -2742,7 +2778,7 @@ export async function scoreCandidates({
     currentPlayerTargetProfile,
     artistProfiles,
     artistRelationships
-  )
+  ).score
 
   logger(
     'INFO',
@@ -2902,7 +2938,7 @@ export async function scoreCandidates({
       }
     }
 
-    const { score: simScore, components: scoreComponents } = computeSimilarity(
+    let { score: simScore, components: scoreComponents } = computeSimilarity(
       currentTrack,
       currentTrackMetadata,
       candidate.track,
@@ -2949,18 +2985,30 @@ export async function scoreCandidates({
       zeroAttractionReasons.nullTargetProfile++
     }
 
-    const aAttractionVal = computeAttraction(
+    const aAttractionResult = computeAttraction(
       artistProfile,
       targetProfiles.player1,
       artistProfiles,
       artistRelationships
     )
-    const bAttraction = computeAttraction(
+    const bAttractionResult = computeAttraction(
       artistProfile,
       targetProfiles.player2,
       artistProfiles,
       artistRelationships
     )
+
+    const aAttractionVal = aAttractionResult.score
+    const bAttraction = bAttractionResult.score
+
+    // Override scoreComponents with the components from the ACTIVE player's attraction calculation
+    // This effectively changes the Debug Panel to show "Target Genres" (active player) instead of "Current Song Genres"
+    // Also updates the breakdown to reflect "Attraction" (Closer/Further logic) rather than "Similarity" (Stabilizer logic)
+    if (currentPlayerId === 'player1') {
+      scoreComponents = aAttractionResult.components
+    } else {
+      scoreComponents = bAttractionResult.components
+    }
 
     // Track zero similarity (when profiles exist but similarity is 0)
     if (artistProfile && targetProfiles.player1 && aAttractionVal === 0) {
@@ -3212,7 +3260,11 @@ function computeSimilarity(
   return {
     score: finalScore,
     components: {
-      genre: genreSimilarity,
+      genre: {
+        ...genreSimilarity,
+        candidateGenres: candidateMetadata.genres,
+        targetGenres: baseMetadata.genres
+      },
       relationship: artistRelationshipScore,
       trackPop: trackPopularitySimilarity,
       artistPop: artistPopularitySimilarity,
@@ -3380,7 +3432,11 @@ function computeStrictArtistSimilarity(
   return {
     score,
     components: {
-      genre: genreSimilarity,
+      genre: {
+        ...genreSimilarity,
+        candidateGenres: candidateProfile.genres,
+        targetGenres: baseProfile.genres
+      },
       relationship: relationshipScore,
       trackPop: 0,
       artistPop: artistPopSim,
@@ -3390,19 +3446,28 @@ function computeStrictArtistSimilarity(
   }
 }
 
+const DUMMY_COMPONENTS: ScoringComponents = {
+  genre: { score: 0, details: [] },
+  relationship: 0,
+  trackPop: 0,
+  artistPop: 0,
+  era: 0,
+  followers: 0
+}
+
 export function computeAttraction(
   artistProfile: ArtistProfile | undefined,
   targetProfile: TargetProfile | null,
   artistProfiles: Map<string, ArtistProfile>,
   artistRelationships: Map<string, Set<string>>
-): number {
+): { score: number; components: ScoringComponents } {
   if (!artistProfile) {
     logger(
       'WARN',
       `computeAttraction: artistProfile is undefined`,
       'computeAttraction'
     )
-    return 0
+    return { score: 0, components: DUMMY_COMPONENTS }
   }
   if (!targetProfile) {
     logger(
@@ -3410,7 +3475,7 @@ export function computeAttraction(
       `computeAttraction: targetProfile is null (artist: ${artistProfile.name})`,
       'computeAttraction'
     )
-    return 0
+    return { score: 0, components: DUMMY_COMPONENTS }
   }
 
   // Convert TargetProfile to ArtistProfile interface for comparison
@@ -3423,7 +3488,7 @@ export function computeAttraction(
   }
 
   // Calculate strict artist-to-artist similarity
-  const { score } = computeStrictArtistSimilarity(
+  const { score, components } = computeStrictArtistSimilarity(
     targetArtistProfile,
     artistProfile,
     artistProfiles,
@@ -3435,7 +3500,7 @@ export function computeAttraction(
     `Attraction: ${artistProfile.name} -> ${targetProfile.artist.name} = ${(score ?? 0).toFixed(3)}`,
     'computeAttraction'
   )
-  return score ?? 0
+  return { score: score ?? 0, components }
 }
 
 /**

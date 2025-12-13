@@ -119,7 +119,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
               id: profile.id,
               name: profile.name,
               genres: profile.genres ?? [],
-              popularity: profile.popularity,
+              popularity: profile.popularity ?? 0, // Changed from profile.popularity to profile.popularity ?? 0
               followers: profile.followers
             }
             // Also add to map for later use
@@ -146,7 +146,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
         currentTarget,
         artistProfilesMap,
         artistRelationships
-      )
+      ).score
     }
 
     // 1. Ensure Diversity (Inject candidates if needed)
@@ -156,7 +156,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       targetProfiles,
       currentSongAttraction,
       currentPlayerId,
-      currentTrackId: currentTrack?.id || '',
+      currentTrackId: currentTrack?.id ?? '',
       playedTrackIds: [], // We don't have playedTrackIds in Stage 3 request? Passed in body?
       // Request interface doesn't show it. We might need to add it or ignore.
       // Ignoring means we might suggest duplicates from history, but Stage 2 should have filtered?

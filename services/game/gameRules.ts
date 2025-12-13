@@ -1,11 +1,11 @@
-import { DgsOptionTrack, ExplorationPhase } from './dgsTypes'
+import type { DgsOptionTrack, ExplorationPhase } from './dgsTypes'
 
 // --- Constants ---
 
 export const MAX_ROUND_TURNS = 10
 export const DISPLAY_OPTION_COUNT = 9
-export const MIN_CANDIDATE_POOL = 150
-export const MAX_CANDIDATE_POOL = 200
+export const MIN_CANDIDATE_POOL = 50
+export const MAX_CANDIDATE_POOL = 100
 export const MIN_UNIQUE_ARTISTS = 100
 
 export const GRAVITY_LIMITS = {

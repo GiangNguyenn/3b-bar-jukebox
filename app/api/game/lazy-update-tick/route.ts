@@ -109,15 +109,31 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
 
   // Genre Backfill (Background Crawler)
   // If we have time left, process some tracks missing genres
-  const timeLeft = DEADLINE_MS - (Date.now() - startTime)
+  const now = Date.now()
+  const elapsed = now - startTime
+  const timeLeft = DEADLINE_MS - elapsed
+
+  logger(
+    'INFO',
+    `[LazyTick] Status: Pending=${pending.length}, Processed=${processed}, Failed=${failed}`
+  )
+  logger(
+    'INFO',
+    `[LazyTick] Timing: Elapsed=${elapsed}ms, Deadline=${DEADLINE_MS}ms, TimeLeft=${timeLeft}ms`
+  )
+
   let genreBackfillCount = 0
   let healingResults = { processed: 0, succeeded: 0, failed: 0 }
 
-  if (timeLeft > 1000) {
-    // Require at least 1s buffer
+  // Force at least one check if we have cleared the queue, even if time is tight (unless completely exhausted)
+  const shouldBackfill =
+    timeLeft > 1000 || (pending.length === 0 && timeLeft > -2000)
+
+  if (shouldBackfill) {
+    // Require at least 1s buffer OR if queue is empty (and we aren't ridiculously over time)
     // Process a small batch (e.g. 5) to incrementally improve coverage
     // Pass token so batch processor can make Spotify API calls if needed
-    logger('INFO', 'Starting genre backfill batch (5 tracks)...')
+    logger('INFO', '[LazyTick] Starting genre backfill batch (5 tracks)...')
     const beforeMetrics = getBackfillMetrics()
     genreBackfillCount = await processGenreBackfillBatch(5, token)
     const afterMetrics = getBackfillMetrics()
@@ -131,12 +147,12 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     )
     logger(
       'INFO',
-      `Genre backfill completed: ${genreBackfillCount} tracks processed, ${genresUpdated} genres updated, ${genresFailed} failed/not found`
+      `[LazyTick] Genre backfill completed: ${genreBackfillCount} tracks processed, ${genresUpdated} genres updated, ${genresFailed} failed/not found`
     )
   } else {
     logger(
       'INFO',
-      `Skipping genre backfill - insufficient time (${timeLeft}ms remaining)`
+      `[LazyTick] Skipping genre backfill - insufficient time (${timeLeft}ms remaining)`
     )
   }
 

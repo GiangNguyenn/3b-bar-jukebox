@@ -154,7 +154,7 @@ If the candidate pool cannot satisfy the 3-3-3 distribution (e.g., not enough "B
 ### 3.5 Filtering
 
 - **REQ-FUN-04:** The result set must exclude the currently playing song.
-- **REQ-FUN-05:** The result set must exclude any song previously played this round.
+- **REQ-FUN-05:** The result set must exclude any song previously played since the last player score. This list only resets when a player successfully scores (reaches their Target Artist).
 - **REQ-FUN-06:** The result set must not contain duplicate artist entries.
 - **REQ-FUN-07:** Target Artists must NOT appear in the candidate list during early gameplay levels (Rounds 1-9) unless their similarity score > 0.4. From Round 10 onwards (Level 10 influence), the system enters 'Hard Convergence' and Target Artists are allowed regardless of similarity.
 
