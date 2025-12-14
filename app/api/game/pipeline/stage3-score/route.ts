@@ -33,6 +33,7 @@ interface Stage3ScoreRequest {
   currentPlayerId: PlayerId
   ogDrift?: number
   hardConvergenceActive?: boolean
+  playedTrackIds: string[]
 }
 
 export async function POST(req: NextRequest): Promise<NextResponse> {
@@ -52,7 +53,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     }
 
     const {
-      seeds,
+      seeds: rawSeeds,
       profiles,
       targetProfiles,
       playerGravities,
@@ -61,8 +62,22 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       roundNumber,
       currentPlayerId,
       ogDrift,
-      hardConvergenceActive
+      hardConvergenceActive,
+      playedTrackIds = []
     } = request
+
+    // Filter out played tracks from seeds to be safe
+    // This ensures that even if Stage 2 leaked them, we catch them here
+    const playedSet = new Set(playedTrackIds)
+    // Add current track to exclusion list
+    if (currentTrack?.id) {
+      playedSet.add(currentTrack.id)
+    }
+
+    const seeds = rawSeeds.filter((s) => {
+      if (!s.track.id) return false
+      return !playedSet.has(s.track.id)
+    })
 
     const authHeader = req.headers.get('Authorization')
     if (!authHeader) {
@@ -157,7 +172,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       currentSongAttraction,
       currentPlayerId,
       currentTrackId: currentTrack?.id ?? '',
-      playedTrackIds: [], // We don't have playedTrackIds in Stage 3 request? Passed in body?
+      playedTrackIds,
       // Request interface doesn't show it. We might need to add it or ignore.
       // Ignoring means we might suggest duplicates from history, but Stage 2 should have filtered?
       // Let's pass empty for now.
