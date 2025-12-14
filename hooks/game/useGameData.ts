@@ -459,7 +459,8 @@ export function useGameData({
               roundNumber: sentRoundNumber,
               currentPlayerId: effectiveActivePlayerId,
               ogDrift,
-              hardConvergenceActive
+              hardConvergenceActive,
+              playedTrackIds: overridePlayedTrackIds ?? playedTrackIds
             }
           })
 
