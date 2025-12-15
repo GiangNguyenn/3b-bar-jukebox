@@ -87,7 +87,7 @@ function shuffleArray<T>(array: T[]): T[] {
   const shuffled = [...array] // Create a copy to avoid mutating the original
   for (let i = shuffled.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1))
-      ;[shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]]
+    ;[shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]]
   }
   return shuffled
 }
@@ -1632,9 +1632,9 @@ async function buildCandidatePool({
       `Current distribution: ${Object.entries(currentDistribution)
         .map(([k, v]) => `${k}=${v}`)
         .join(', ')} | ` +
-      `Target distribution: ${Object.entries(targetCounts)
-        .map(([k, v]) => `${k}=${v}`)
-        .join(', ')}`,
+        `Target distribution: ${Object.entries(targetCounts)
+          .map(([k, v]) => `${k}=${v}`)
+          .join(', ')}`,
       'ensureDiversityBalance'
     )
 
@@ -3949,15 +3949,15 @@ export function applyDiversityConstraints(
   const attractionStats =
     attractionScores.length > 0
       ? {
-        min: Math.min(...attractionScores),
-        max: Math.max(...attractionScores),
-        avg:
-          attractionScores.reduce((a, b) => a + b, 0) /
-          attractionScores.length,
-        median: attractionScores.sort((a, b) => a - b)[
-          Math.floor(attractionScores.length / 2)
-        ]
-      }
+          min: Math.min(...attractionScores),
+          max: Math.max(...attractionScores),
+          avg:
+            attractionScores.reduce((a, b) => a + b, 0) /
+            attractionScores.length,
+          median: attractionScores.sort((a, b) => a - b)[
+            Math.floor(attractionScores.length / 2)
+          ]
+        }
       : { min: 0, max: 0, avg: 0, median: 0 }
   const diffStats = {
     min: minDiff,
@@ -3975,8 +3975,8 @@ export function applyDiversityConstraints(
   logger(
     'INFO',
     `Attraction distribution (baseline=${baseline.toFixed(3)}, total=${totalCandidates}): ` +
-    `Attraction: min=${attractionStats.min.toFixed(3)}, max=${attractionStats.max.toFixed(3)}, avg=${attractionStats.avg.toFixed(3)}, median=${attractionStats.median.toFixed(3)} | ` +
-    `Diff: min=${diffStats.min.toFixed(3)}, max=${diffStats.max.toFixed(3)}, avg=${diffStats.avg.toFixed(3)}, range=${diffRange.toFixed(3)}${allNegative ? ' | ⚠️ ALL NEGATIVE (no genuine closer options)' : ''}${allPositive ? ' | ⚠️ ALL POSITIVE (no genuine further options)' : ''}`,
+      `Attraction: min=${attractionStats.min.toFixed(3)}, max=${attractionStats.max.toFixed(3)}, avg=${attractionStats.avg.toFixed(3)}, median=${attractionStats.median.toFixed(3)} | ` +
+      `Diff: min=${diffStats.min.toFixed(3)}, max=${diffStats.max.toFixed(3)}, avg=${diffStats.avg.toFixed(3)}, range=${diffRange.toFixed(3)}${allNegative ? ' | ⚠️ ALL NEGATIVE (no genuine closer options)' : ''}${allPositive ? ' | ⚠️ ALL POSITIVE (no genuine further options)' : ''}`,
     'applyDiversityConstraints'
   )
 
@@ -4675,9 +4675,9 @@ export function applyDiversityConstraints(
     logger(
       'WARN',
       `Diversity validation: Did not achieve perfect 3-3-3 balance. Actual: Closer=${actualCloser} | Neutral=${actualNeutral} | Further=${actualFurther}. ` +
-      `Category sizes: Closer=${closerSelected.length} | Neutral=${neutralSelected.length} | Further=${furtherSelected.length}. ` +
-      `Total candidates: ${sortedFilteredMetrics.length}. ` +
-      `This may indicate insufficient diversity in candidate pool.`,
+        `Category sizes: Closer=${closerSelected.length} | Neutral=${neutralSelected.length} | Further=${furtherSelected.length}. ` +
+        `Total candidates: ${sortedFilteredMetrics.length}. ` +
+        `This may indicate insufficient diversity in candidate pool.`,
       'applyDiversityConstraints'
     )
   } else {
