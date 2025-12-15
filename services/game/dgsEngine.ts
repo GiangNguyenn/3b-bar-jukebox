@@ -186,7 +186,7 @@ function isValidSpotifyId(id: string | undefined): boolean {
  * Add target artists to candidate pool when gravity is high enough or rounds are late
  * This ensures target artists have a chance to appear as options
  */
-async function addTargetArtistsToPool({
+export async function addTargetArtistsToPool({
   candidatePool,
   targetProfiles,
   playerGravities,
