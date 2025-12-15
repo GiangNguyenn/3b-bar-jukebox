@@ -5,7 +5,8 @@ import {
   applyDiversityConstraints,
   ensureTargetDiversity,
   enrichCandidatesWithArtistProfiles,
-  computeAttraction
+  computeAttraction,
+  addTargetArtistsToPool
 } from '@/services/game/dgsEngine'
 import { getGenreStatistics } from '@/services/game/dgsDb'
 import { ApiStatisticsTracker } from '@/services/game/apiStatisticsTracker'
@@ -162,6 +163,51 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
         artistProfilesMap,
         artistRelationships
       ).score
+    }
+
+    // 0.5. Inject Target Artists (Target Boost / Hard Convergence)
+    // This MUST happen before diversity check so these high-value candidates are counted
+    const targetCandidates = await addTargetArtistsToPool({
+      candidatePool: seeds,
+      targetProfiles,
+      playerGravities,
+      roundNumber,
+      currentTrackId: currentTrack?.id ?? '',
+      playedTrackIds,
+      token,
+      statisticsTracker
+    })
+
+    if (targetCandidates.length > 0) {
+      logger(
+        'INFO',
+        `Target Injection: Added ${targetCandidates.length} tracks from target artists`,
+        'POST'
+      )
+
+      // Add to seeds
+      targetCandidates.forEach((c) => seeds.push(c))
+
+      // Ensure target artist profiles are in the map so they can be scored
+      Object.values(targetProfiles).forEach((tp) => {
+        if (tp?.spotifyId && tp.artist) {
+          if (!artistProfilesMap.has(tp.spotifyId)) {
+            const profile: ArtistProfile = {
+              id: tp.spotifyId,
+              name: tp.artist.name,
+              genres: tp.genres,
+              popularity: tp.popularity,
+              followers: tp.followers
+            }
+            artistProfilesMap.set(tp.spotifyId, profile)
+            logger(
+              'INFO',
+              `Added missing profile for target artist: ${tp.artist.name}`,
+              'POST'
+            )
+          }
+        }
+      })
     }
 
     // 1. Ensure Diversity (Inject candidates if needed)
