@@ -321,6 +321,7 @@ export const MAX_ARTIST_REPETITIONS = 2
 export interface CandidateSeed {
   track: TrackDetails
   source: CandidateSource
+  seedArtistId: string // Spotify artist ID that generated this seed
 }
 
 export interface ArtistProfile {

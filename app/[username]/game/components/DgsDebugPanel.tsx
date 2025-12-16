@@ -323,73 +323,112 @@ export function DgsDebugPanel({
         lines.push(
           `    From API: ${debugInfo.caching.artistProfilesFromSpotify}`
         )
-        lines.push('')
-      }
-
-      if (debugInfo.candidatePool) {
-        lines.push('Candidate Pool Details')
+        lines.push('  Related Artists:')
         lines.push(
-          `  Total Unique Artists: ${debugInfo.candidatePool.totalUnique}`
+          `    Requested: ${debugInfo.caching.relatedArtistsRequested}`
         )
+        lines.push(`    Cached: ${debugInfo.caching.relatedArtistsCached}`)
+        lines.push(
+          `    From API: ${debugInfo.caching.relatedArtistsFromSpotify}`
+        )
+        lines.push('  Artist Searches:')
+        lines.push(
+          `    Requested: ${debugInfo.caching.artistSearchesRequested}`
+        )
+        lines.push(`    Cached: ${debugInfo.caching.artistSearchesCached}`)
+        lines.push(
+          `    From API: ${debugInfo.caching.artistSearchesFromSpotify}`
+        )
+        lines.push('')
+      }
 
-        if (
-          debugInfo.candidatePool.seedArtists &&
-          debugInfo.candidatePool.seedArtists.length > 0
-        ) {
-          lines.push(
-            `  From Seed Artist: ${debugInfo.candidatePool.seedArtists.length}`
-          )
-          debugInfo.candidatePool.seedArtists
-            .slice(0, 20)
-            .forEach((artist, idx) => {
-              lines.push(`    ${idx + 1}. ${artist.name}`)
-            })
-          if (debugInfo.candidatePool.seedArtists.length > 20) {
-            lines.push(
-              `    ... and ${debugInfo.candidatePool.seedArtists.length - 20} more`
-            )
-          }
+      // Target Profiles
+      if (debugInfo.targetProfiles) {
+        lines.push('Target Profiles')
+        lines.push('  Player 1:')
+        lines.push(`    Resolved: ${debugInfo.targetProfiles.player1.resolved ? 'YES' : 'NO'}`)
+        if (debugInfo.targetProfiles.player1.resolved) {
+          lines.push(`    Artist: ${debugInfo.targetProfiles.player1.artistName}`)
+          lines.push(`    ID: ${debugInfo.targetProfiles.player1.spotifyId}`)
+          lines.push(`    Genres: ${debugInfo.targetProfiles.player1.genresCount}`)
         }
-
-        if (
-          debugInfo.candidatePool.targetArtists &&
-          debugInfo.candidatePool.targetArtists.length > 0
-        ) {
-          lines.push(
-            `  From Target Artist: ${debugInfo.candidatePool.targetArtists.length}`
-          )
-          debugInfo.candidatePool.targetArtists
-            .slice(0, 20)
-            .forEach((artist, idx) => {
-              lines.push(`    ${idx + 1}. ${artist.name}`)
-            })
-          if (debugInfo.candidatePool.targetArtists.length > 20) {
-            lines.push(
-              `    ... and ${debugInfo.candidatePool.targetArtists.length - 20} more`
-            )
-          }
+        lines.push('  Player 2:')
+        lines.push(`    Resolved: ${debugInfo.targetProfiles.player2.resolved ? 'YES' : 'NO'}`)
+        if (debugInfo.targetProfiles.player2.resolved) {
+          lines.push(`    Artist: ${debugInfo.targetProfiles.player2.artistName}`)
+          lines.push(`    ID: ${debugInfo.targetProfiles.player2.spotifyId}`)
+          lines.push(`    Genres: ${debugInfo.targetProfiles.player2.genresCount}`)
         }
         lines.push('')
       }
 
-      if (debugInfo.candidates && debugInfo.candidates.length > 0) {
-        lines.push('All Candidates Pool (Top 50)')
-        lines.push(`  Total: ${debugInfo.candidates.length}`)
-        debugInfo.candidates.slice(0, 50).forEach((candidate, idx) => {
-          const status = candidate.filtered
-            ? '[FILTERED]'
-            : candidate.isTargetArtist
-              ? '[TARGET]'
-              : '[ALLOWED]'
-          const source = candidate.source ? `[${candidate.source}]` : ''
-          lines.push(
-            `  ${idx + 1}. ${candidate.artistName} - ${candidate.trackName ?? 'Unknown'} ${source} ${status} | Sim: ${(candidate.simScore ?? 0).toFixed(3)}`
-          )
-        })
-      }
-    }
+      // Candidate Pool Analysis (Consolidated)
+      if (debugInfo.candidatePool || (debugInfo.candidates && debugInfo.candidates.length > 0)) {
+        lines.push('Candidate Pool Analysis')
 
-    // Genre Statistics
+        // 1. Seed Artists
+        if (debugInfo.candidatePool?.seedArtists?.length) {
+          debugInfo.candidatePool.seedArtists.forEach((artist) => {
+            lines.push(`  From Seed: ${artist.name} (${artist.id})`)
+            const candidates =
+              debugInfo.candidates?.filter(
+                (c) =>
+                  c.source === 'related_top_tracks' ||
+                  c.source === 'recommendations'
+              ) ?? []
+
+            if (candidates.length > 0) {
+              candidates.slice(0, 10).forEach((c) => {
+                lines.push(
+                  `    - ${c.artistName} - ${c.trackName} [${c.filtered ? 'Filtered' : c.simScore.toFixed(3)}]`
+                )
+              })
+              if (candidates.length > 10)
+                lines.push(`    ... ${candidates.length - 10} more`)
+            } else {
+              lines.push('    (No candidates selected)')
+            }
+          })
+        }
+
+        // 2. Target Artists
+        if (debugInfo.candidatePool?.targetArtists?.length) {
+          debugInfo.candidatePool.targetArtists.forEach((artist) => {
+            lines.push(`  From Target: ${artist.name} (${artist.id})`)
+            const candidates =
+              debugInfo.candidates?.filter(
+                (c) => c.source?.includes('target') || c.isTargetArtist
+              ) ?? []
+
+            if (candidates.length > 0) {
+              candidates.forEach((c) => {
+                lines.push(
+                  `    - ${c.artistName} - ${c.trackName} [${c.filtered ? 'Filtered' : c.simScore.toFixed(3)}]`
+                )
+              })
+            } else {
+              lines.push('    (No candidates injected)')
+            }
+          })
+        }
+
+        // 3. Fallback / Raw List
+        if (
+          !debugInfo.candidatePool?.seedArtists?.length &&
+          !debugInfo.candidatePool?.targetArtists?.length &&
+          debugInfo.candidates?.length
+        ) {
+          lines.push('  All Candidates (Fallback View)')
+          debugInfo.candidates.slice(0, 50).forEach((c, idx) => {
+            lines.push(
+              `    ${idx + 1}. ${c.artistName} - ${c.trackName} [${c.source}] [${c.filtered ? 'FILTERED' : 'ALLOWED'}]`
+            )
+          })
+        }
+
+        lines.push('')
+      }
+    } // Genre Statistics
     if (debugInfo?.genreStatistics) {
       lines.push('')
       lines.push('Genre Statistics')
@@ -489,13 +528,12 @@ export function DgsDebugPanel({
                 <div className='col-span-2'>
                   <span className='text-gray-500'>Load Time:</span>{' '}
                   <span
-                    className={`font-mono font-semibold ${
-                      debugInfo.executionTimeMs < 2000
-                        ? 'text-green-400'
-                        : debugInfo.executionTimeMs < 10000
-                          ? 'text-yellow-400'
-                          : 'text-red-400'
-                    }`}
+                    className={`font-mono font-semibold ${debugInfo.executionTimeMs < 2000
+                      ? 'text-green-400'
+                      : debugInfo.executionTimeMs < 10000
+                        ? 'text-yellow-400'
+                        : 'text-red-400'
+                      }`}
                   >
                     {debugInfo.executionTimeMs < 1000
                       ? `${debugInfo.executionTimeMs}ms`
@@ -884,26 +922,24 @@ export function DgsDebugPanel({
                   <div className='mb-1 flex items-center justify-between'>
                     <span className='text-gray-400'>Genre Coverage:</span>
                     <span
-                      className={`font-mono text-lg font-bold ${
-                        debugInfo.genreStatistics.percentageCoverage >= 80
-                          ? 'text-green-400'
-                          : debugInfo.genreStatistics.percentageCoverage >= 50
-                            ? 'text-yellow-400'
-                            : 'text-red-400'
-                      }`}
+                      className={`font-mono text-lg font-bold ${debugInfo.genreStatistics.percentageCoverage >= 80
+                        ? 'text-green-400'
+                        : debugInfo.genreStatistics.percentageCoverage >= 50
+                          ? 'text-yellow-400'
+                          : 'text-red-400'
+                        }`}
                     >
                       {debugInfo.genreStatistics.percentageCoverage.toFixed(1)}%
                     </span>
                   </div>
                   <div className='h-2 w-full overflow-hidden rounded-full bg-gray-700'>
                     <div
-                      className={`h-full transition-all duration-500 ${
-                        debugInfo.genreStatistics.percentageCoverage >= 80
-                          ? 'bg-gradient-to-r from-green-500 to-emerald-400'
-                          : debugInfo.genreStatistics.percentageCoverage >= 50
-                            ? 'bg-gradient-to-r from-yellow-500 to-orange-400'
-                            : 'bg-gradient-to-r from-red-500 to-orange-400'
-                      }`}
+                      className={`h-full transition-all duration-500 ${debugInfo.genreStatistics.percentageCoverage >= 80
+                        ? 'bg-gradient-to-r from-green-500 to-emerald-400'
+                        : debugInfo.genreStatistics.percentageCoverage >= 50
+                          ? 'bg-gradient-to-r from-yellow-500 to-orange-400'
+                          : 'bg-gradient-to-r from-red-500 to-orange-400'
+                        }`}
                       style={{
                         width: `${debugInfo.genreStatistics.percentageCoverage}%`
                       }}
@@ -931,13 +967,12 @@ export function DgsDebugPanel({
                     <div>
                       <span className='text-gray-500'>Coverage:</span>
                       <span
-                        className={`ml-1 font-mono ${
-                          debugInfo.genreStatistics.percentageCoverage >= 80
-                            ? 'text-green-400'
-                            : debugInfo.genreStatistics.percentageCoverage >= 50
-                              ? 'text-yellow-400'
-                              : 'text-red-400'
-                        }`}
+                        className={`ml-1 font-mono ${debugInfo.genreStatistics.percentageCoverage >= 80
+                          ? 'text-green-400'
+                          : debugInfo.genreStatistics.percentageCoverage >= 50
+                            ? 'text-yellow-400'
+                            : 'text-red-400'
+                          }`}
                       >
                         {debugInfo.genreStatistics.percentageCoverage.toFixed(
                           1
@@ -951,157 +986,125 @@ export function DgsDebugPanel({
             </section>
           )}
 
-          {/* Candidate Pool Details */}
-          {debugInfo?.candidatePool && (
+          {/* Candidate Pool Analysis */}
+          {(debugInfo?.candidatePool || (debugInfo?.candidates && debugInfo.candidates.length > 0)) && (
             <section className='mb-4 border-b border-gray-700 pb-3'>
               <h3 className='mb-2 font-semibold text-gray-300'>
-                Candidate Pool Details
+                Candidate Pool Analysis
               </h3>
-              <div className='space-y-2 text-[10px]'>
-                <div className='flex items-center justify-between text-gray-400'>
-                  <span>Total Unique Artists:</span>
-                  <span className='font-mono text-gray-300'>
-                    {debugInfo.candidatePool.totalUnique}
-                  </span>
-                </div>
+              <div className='max-h-60 overflow-y-auto pr-1'>
+                {/* 1. Seed Artists Source */}
+                {debugInfo.candidatePool?.seedArtists?.map((artist) => {
+                  const candidatesFromSource =
+                    debugInfo.candidates?.filter(
+                      (c) =>
+                        c.source === 'related_top_tracks' ||
+                        c.source === 'recommendations'
+                    ) ?? []
 
-                {debugInfo.candidatePool.seedArtists &&
-                  debugInfo.candidatePool.seedArtists.length > 0 && (
-                    <div className='rounded bg-gray-800/50 p-2'>
-                      <div className='mb-1 font-semibold text-blue-400'>
-                        From Seed Artist (
-                        {debugInfo.candidatePool.seedArtists.length})
+                  return (
+                    <div key={`seed-${artist.id}`} className='mb-3 text-xs'>
+                      <div className='mb-1 flex items-center justify-between font-semibold text-blue-300'>
+                        <span>From Seed: {artist.name}</span>
+                        <span className='text-[10px] text-gray-500'>
+                          ({artist.id})
+                        </span>
                       </div>
-                      <div className='max-h-32 space-y-0.5 overflow-y-auto'>
-                        {debugInfo.candidatePool.seedArtists
-                          .slice(0, 20)
-                          .map((artist, idx) => (
-                            <div key={artist.id} className='text-gray-400'>
-                              {idx + 1}. {artist.name}
-                            </div>
-                          ))}
-                        {debugInfo.candidatePool.seedArtists.length > 20 && (
-                          <div className='italic text-gray-500'>
-                            ... and{' '}
-                            {debugInfo.candidatePool.seedArtists.length - 20}{' '}
-                            more
+                      <div className='pl-2'>
+                        {candidatesFromSource.length > 0 ? (
+                          candidatesFromSource
+                            .slice(0, 10) // Limit preview per artist
+                            .map((c, idx) => (
+                              <div
+                                key={`${artist.id}-${idx}`}
+                                className='flex justify-between text-gray-400'
+                              >
+                                <span className='truncate pr-2'>
+                                  {c.artistName} - {c.trackName}
+                                </span>
+                                <span className={`whitespace-nowrap ${c.filtered ? 'text-gray-600' : 'text-green-500'}`}>
+                                  {c.filtered ? '[Filtered]' : c.simScore.toFixed(3)}
+                                </span>
+                              </div>
+                            ))
+                        ) : (
+                          <div className='italic text-gray-600'>
+                            No candidates selected
+                          </div>
+                        )}
+                        {candidatesFromSource.length > 10 && (
+                          <div className='text-[10px] italic text-gray-500'>
+                            ... and {candidatesFromSource.length - 10} more
                           </div>
                         )}
                       </div>
                     </div>
-                  )}
+                  )
+                })}
 
-                {debugInfo.candidatePool.targetArtists &&
-                  debugInfo.candidatePool.targetArtists.length > 0 && (
-                    <div className='rounded bg-gray-800/50 p-2'>
-                      <div className='mb-1 font-semibold text-green-400'>
-                        From Target Artist (
-                        {debugInfo.candidatePool.targetArtists.length})
+                {/* 2. Target Artists Source */}
+                {debugInfo.candidatePool?.targetArtists?.map((artist) => {
+                  const candidatesFromSource =
+                    debugInfo.candidates?.filter(
+                      (c) =>
+                        c.source?.includes('target') || c.isTargetArtist
+                    ) ?? []
+
+                  return (
+                    <div key={`target-${artist.id}`} className='mb-3 text-xs'>
+                      <div className='mb-1 flex items-center justify-between font-semibold text-purple-300'>
+                        <span>From Target: {artist.name}</span>
+                        <span className='text-[10px] text-gray-500'>
+                          ({artist.id})
+                        </span>
                       </div>
-                      <div className='max-h-32 space-y-0.5 overflow-y-auto'>
-                        {debugInfo.candidatePool.targetArtists
-                          .slice(0, 20)
-                          .map((artist, idx) => (
-                            <div key={artist.id} className='text-gray-400'>
-                              {idx + 1}. {artist.name}
+                      <div className='pl-2'>
+                        {candidatesFromSource.length > 0 ? (
+                          candidatesFromSource.map((c, idx) => (
+                            <div
+                              key={`${artist.id}-${idx}`}
+                              className='flex justify-between text-gray-400'
+                            >
+                              <span className='truncate pr-2'>
+                                {c.artistName} - {c.trackName}
+                              </span>
+                              <span className={`whitespace-nowrap ${c.filtered ? 'text-gray-600' : 'text-purple-500'}`}>
+                                {c.filtered ? '[Filtered]' : c.simScore.toFixed(3)}
+                              </span>
                             </div>
-                          ))}
-                        {debugInfo.candidatePool.targetArtists.length > 20 && (
-                          <div className='italic text-gray-500'>
-                            ... and{' '}
-                            {debugInfo.candidatePool.targetArtists.length - 20}{' '}
-                            more
+                          ))
+                        ) : (
+                          <div className='italic text-gray-600'>
+                            No candidates Injected
                           </div>
                         )}
                       </div>
                     </div>
-                  )}
+                  )
+                })}
+
+                {/* 3. Fallback / Other candidates not matched above (or if no pool info) */}
+                {(!debugInfo.candidatePool?.seedArtists?.length && !debugInfo.candidatePool?.targetArtists?.length) && debugInfo.candidates && (
+                  <div className='space-y-1 text-xs'>
+                    <div className='mb-1 font-semibold text-gray-400'>All Candidates</div>
+                    {debugInfo.candidates.slice(0, 50).map((candidate, idx) => {
+                      const status = candidate.filtered
+                        ? '[FILTERED]'
+                        : candidate.isTargetArtist
+                          ? '[TARGET]'
+                          : '[ALLOWED]'
+                      const source = candidate.source ? `[${candidate.source}]` : ''
+                      return (
+                        <div key={idx} className='text-gray-400'>
+                          {idx + 1}. {candidate.artistName} - {candidate.trackName ?? 'Unknown'} {source} {status} | Sim: {(candidate.simScore ?? 0).toFixed(3)}
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
               </div>
             </section>
           )}
-
-          {/* System Status */}
-          <section className='mb-4 border-b border-gray-700 pb-3'>
-            <h3 className='mb-2 font-semibold text-gray-300'>System Status</h3>
-            <div className='space-y-1 text-gray-400'>
-              <div className='flex items-center justify-between'>
-                <span>Candidate Pool:</span>
-                <span className='font-mono text-gray-300'>
-                  {candidatePoolSize}
-                </span>
-              </div>
-              <div className='flex items-center justify-between'>
-                <span>Hard Convergence:</span>
-                <span
-                  className={
-                    hardConvergenceActive ? 'text-yellow-400' : 'text-gray-500'
-                  }
-                >
-                  {hardConvergenceActive ? 'Active' : 'Inactive'}
-                </span>
-              </div>
-              <div className='flex items-center justify-between'>
-                <span>Vicinity Trigger:</span>
-                <span
-                  className={
-                    vicinity.triggered ? 'text-yellow-400' : 'text-gray-500'
-                  }
-                >
-                  {vicinity.triggered
-                    ? `Active (${vicinity.playerId === 'player1' ? 'P1' : 'P2'})`
-                    : 'Inactive'}
-                </span>
-              </div>
-              {debugInfo?.dbFallback && (
-                <div className='mt-2 rounded bg-gray-800 px-2 py-1 text-[10px]'>
-                  <div className='flex items-center justify-between text-gray-400'>
-                    <span>DB Fallback:</span>
-                    <span
-                      className={
-                        debugInfo.dbFallback.used
-                          ? 'text-green-400'
-                          : 'text-gray-500'
-                      }
-                    >
-                      {debugInfo.dbFallback.used
-                        ? `Used (${debugInfo.dbFallback.reason ?? 'standard'})`
-                        : 'Not used'}
-                    </span>
-                  </div>
-                  {debugInfo.dbFallback.used && (
-                    <div className='mt-1 space-y-0.5 pl-2 text-[9px] text-gray-500'>
-                      <div className='flex items-center justify-between'>
-                        <span>Tracks Added:</span>
-                        <span className='font-mono text-gray-300'>
-                          {debugInfo.dbFallback.addedTracks}
-                        </span>
-                      </div>
-                      <div className='flex items-center justify-between'>
-                        <span>Artists Added:</span>
-                        <span className='font-mono text-gray-300'>
-                          {debugInfo.dbFallback.addedArtists}
-                        </span>
-                      </div>
-                      {debugInfo.dbFallback.requestedTracks && (
-                        <div className='flex items-center justify-between'>
-                          <span>Requested:</span>
-                          <span className='font-mono text-yellow-400'>
-                            {debugInfo.dbFallback.requestedTracks}
-                          </span>
-                        </div>
-                      )}
-                      {debugInfo.dbFallback.reason === 'absolute_fallback' && (
-                        <div className='mt-1 rounded bg-yellow-900/20 px-1.5 py-0.5 text-yellow-400'>
-                          ⚠ Emergency fallback used - all discovery methods
-                          failed
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-          </section>
 
           {/* Performance Timing */}
           {debugInfo?.performanceDiagnostics && (
@@ -1151,9 +1154,9 @@ export function DgsDebugPanel({
                     const percentage =
                       debugInfo.timingBreakdown!.totalMs > 0
                         ? (
-                            (ms / debugInfo.timingBreakdown!.totalMs) *
-                            100
-                          ).toFixed(1)
+                          (ms / debugInfo.timingBreakdown!.totalMs) *
+                          100
+                        ).toFixed(1)
                         : '0.0'
                     const isBottleneck =
                       label ===
@@ -1525,13 +1528,12 @@ export function DgsDebugPanel({
                       {debugInfo.candidates.map((candidate, idx) => (
                         <div
                           key={idx}
-                          className={`flex items-center justify-between rounded px-1 py-1 ${
-                            candidate.filtered
-                              ? 'bg-red-900/20 text-red-400'
-                              : candidate.isTargetArtist
-                                ? 'bg-yellow-900/20 text-yellow-400'
-                                : 'text-gray-400'
-                          }`}
+                          className={`flex items-center justify-between rounded px-1 py-1 ${candidate.filtered
+                            ? 'bg-red-900/20 text-red-400'
+                            : candidate.isTargetArtist
+                              ? 'bg-yellow-900/20 text-yellow-400'
+                              : 'text-gray-400'
+                            }`}
                         >
                           <div className='flex w-full flex-col overflow-hidden pr-2'>
                             <div className='flex items-center space-x-1'>
@@ -1834,7 +1836,7 @@ export function DgsDebugPanel({
 
                               {/* Matches */}
                               {metrics.scoreComponents.genre.details.length >
-                              0 ? (
+                                0 ? (
                                 <div className='mt-1 space-y-0.5 border-t border-gray-800 pt-1'>
                                   <div className='mb-0.5 text-[9px] text-gray-500'>
                                     Top Matches:
@@ -1854,13 +1856,13 @@ export function DgsDebugPanel({
                                     ))}
                                   {metrics.scoreComponents.genre.details
                                     .length > 3 && (
-                                    <div className='text-[8px] italic text-gray-600'>
-                                      +{' '}
-                                      {metrics.scoreComponents.genre.details
-                                        .length - 3}{' '}
-                                      more
-                                    </div>
-                                  )}
+                                      <div className='text-[8px] italic text-gray-600'>
+                                        +{' '}
+                                        {metrics.scoreComponents.genre.details
+                                          .length - 3}{' '}
+                                        more
+                                      </div>
+                                    )}
                                 </div>
                               ) : (
                                 <div className='mt-1 text-[9px] italic text-gray-500'>

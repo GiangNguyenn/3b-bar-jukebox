@@ -32,7 +32,7 @@ The system must retrieve song/artist data using the following priority order (Wa
 2.  **Tier 2 (Persistent DB):** If not in cache, query the internal database.
 3.  **Tier 3 (External API):** If not in DB, call the Spotify API.
 
-### 2.2 Lazy Write-Back
+### 2.3 Lazy Write-Back
 
 - **REQ-DAT-01:** If data is retrieved via Tier 3 (External API), the system must asynchronously write this data to Tier 2 (Database) and Tier 1 (Cache) for future use.
 - **REQ-DAT-02:** Use a "Read-Through" strategy; the user should not wait for the write-back to complete before receiving the game response.
@@ -50,7 +50,7 @@ The system accepts the following inputs from the Game State Manager:
 
 ### 3.2 Candidate Pool Generation (Three-Stage Process)
 
-The system generates a candidate pool of approximately 100-200 tracks through a three-stage pipeline:
+The system generates a candidate pool of approximately 100 tracks through a three-stage pipeline:
 
 #### Stage 1: Artist Seeding (Init)
 
@@ -69,7 +69,7 @@ The system generates a candidate pool of approximately 100-200 tracks through a 
    - **40-79%:** Good Influence - fetch target-related artists
    - **≥ 80%:** High Influence - fetch target-related artists (target tracks injected later)
 4. **Target Artist Injection:** Explicitly adds the target artist itself to the pool
-5. **Output:** Combined list of 20-100 artist IDs (deduplicated)
+5. **Output:** Combined list of 20-100 unique artist IDs (deduplicated)
 
 #### Stage 2: Track Fetching (Candidates)
 
@@ -98,7 +98,7 @@ The system generates a candidate pool of approximately 100-200 tracks through a 
 
 #### Minimum Pool Requirements
 
-- **REQ-FUN-01:** The system must ensure the final pre-selection pool contains at least 30-50 unique tracks before diversity filtering.
+- **REQ-FUN-01:** The system must ensure the final pre-selection pool contains at least 50 unique tracks before diversity filtering.
 - **Fallback Strategy:** If Stage 2 yields insufficient candidates:
   - Stage 3 triggers database fallback via `fetchRandomTracksFromDb`
   - Fetches additional tracks from profiled artists in database

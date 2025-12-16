@@ -185,8 +185,8 @@ export async function fetchRandomTracksFromDb({
       ],
       external_urls: row.spotify_url
         ? {
-            spotify: row.spotify_url
-          }
+          spotify: row.spotify_url
+        }
         : undefined,
       genre: row.genre ?? undefined
     }
@@ -401,8 +401,8 @@ export async function fetchTracksByGenreFromDb({
         ],
         external_urls: row.spotify_url
           ? {
-              spotify: row.spotify_url
-            }
+            spotify: row.spotify_url
+          }
           : undefined,
         genre: row.genre ?? undefined
       }
@@ -504,8 +504,8 @@ export async function fetchAbsoluteRandomTracks(
       ],
       external_urls: row.spotify_url
         ? {
-            spotify: row.spotify_url
-          }
+          spotify: row.spotify_url
+        }
         : undefined,
       genre: row.genre ?? undefined
     }
@@ -728,8 +728,8 @@ export async function fetchTracksCloserToTarget({
         ],
         external_urls: row.spotify_url
           ? {
-              spotify: row.spotify_url
-            }
+            spotify: row.spotify_url
+          }
           : undefined,
         genre: row.genre ?? undefined
       }
@@ -925,8 +925,8 @@ export async function fetchTracksFurtherFromTarget({
         ],
         external_urls: row.spotify_url
           ? {
-              spotify: row.spotify_url
-            }
+            spotify: row.spotify_url
+          }
           : undefined,
         genre: row.genre ?? undefined
       }
@@ -1277,8 +1277,8 @@ export async function fetchTracksByArtistIdsFromDb({
         ],
         external_urls: row.spotify_url
           ? {
-              spotify: row.spotify_url
-            }
+            spotify: row.spotify_url
+          }
           : undefined,
         genre: row.genre ?? undefined
       })
@@ -1303,5 +1303,96 @@ export async function fetchTracksByArtistIdsFromDb({
       error instanceof Error ? error : undefined
     )
     return { tracks: [], uniqueArtists: 0 }
+  }
+}
+
+/**
+ * Fetch a single track by Spotify ID from the database.
+ * Used for Tier 2 caching in musicService.getTrack.
+ */
+export async function getTrackByIdFromDb(
+  trackId: string
+): Promise<TrackDetails | null> {
+  const { data, error } = await queryWithRetry<any>(
+    supabase
+      .from('tracks')
+      // Exclude 'id' internal UUID
+      .select(
+        'spotify_track_id, name, artist, album, duration_ms, popularity, spotify_url, genre'
+      )
+      .eq('spotify_track_id', trackId)
+      .maybeSingle(),
+    undefined,
+    `getTrackByIdFromDb:${trackId}`
+  )
+
+  if (error) {
+    logger(
+      'WARN',
+      `Error fetching track ${trackId} from DB: ${JSON.stringify(error)}`,
+      'getTrackByIdFromDb'
+    )
+    return null
+  }
+
+  if (!data) return null
+
+  // Resolve Artist ID from 'artists' table using the name
+  let artistId = ''
+  if (data.artist) {
+    const { data: artistData } = await supabase
+      .from('artists')
+      .select('spotify_artist_id')
+      .ilike('name', data.artist)
+      .maybeSingle()
+
+    if (artistData?.spotify_artist_id) {
+      artistId = artistData.spotify_artist_id
+    }
+  }
+
+  // Critical: If we can't find the Artist ID, we MUST return null to trigger
+  // the API fallback in musicService.getTrack.
+  // stage1-init and other consumers require a valid Artist ID.
+  if (!artistId) {
+    logger(
+      'WARN',
+      `DB cache hit for track ${trackId} ("${data.name}") but failed to resolve artist ID for "${data.artist}". Returning null to force API fallback.`,
+      'getTrackByIdFromDb'
+    )
+    return null
+  }
+
+  // Map to TrackDetails
+  return {
+    id: data.spotify_track_id,
+    name: data.name,
+    uri: `spotify:track:${data.spotify_track_id}`,
+    duration_ms: data.duration_ms,
+    popularity: data.popularity,
+    preview_url: null, // Not storing this currently or invalid
+    is_playable: true,
+    explicit: false, // Defaulting as we don't store explicit flag yet
+    artists: [
+      {
+        id: artistId, // Resolved from artists table lookup above
+        // but 'artist' column likely has the name.
+        // For 'getTrack', we usually need the full object.
+        // However, the current schema seems to treat 'artist' as a string name?
+        // Let's check dgsDb usage above.
+        // Line 1276 uses `artistName` passed in.
+        // The 'artist' column in tracks table is a string name.
+        // We might be missing artist ID here which is suboptimal but strictly following schema.
+        name: data.artist
+      }
+    ],
+    album: {
+      name: data.album,
+      images: [], // We don't store album images in tracks table currently
+      release_date: ''
+    },
+    external_urls: {
+      spotify: data.spotify_url
+    }
   }
 }

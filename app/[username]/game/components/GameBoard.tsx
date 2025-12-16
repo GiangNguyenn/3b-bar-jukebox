@@ -6,181 +6,114 @@ import type { DgsOptionTrack, GamePlayer } from '@/services/game/dgsTypes'
 import { GameOptionNode } from './GameOptionNode'
 import { GameOptionSkeleton } from './GameOptionSkeleton'
 import { useState, useEffect, useRef, useMemo } from 'react'
-
 import type { TargetArtist } from '@/services/gameService'
 import { PlayerHud } from './PlayerHud'
-import { createBrowserClient } from '@supabase/ssr'
-import type { Database } from '@/types/supabase'
+import { TurnTimer } from './TurnTimer'
+import { useTrackGenre } from '@/hooks/useTrackGenre'
+import { shuffleArray } from '@/lib/utils'
 
-type GamePhase = 'loading' | 'selecting' | 'waiting_for_track'
-type PlayerId = 'player1' | 'player2'
+export type GamePhase = 'loading' | 'selecting' | 'waiting_for_track'
+export type PlayerId = 'player1' | 'player2'
 
-interface GameBoardProps {
+export interface GameBoardProps {
   nowPlaying: SpotifyPlaybackState | null
   options: DgsOptionTrack[]
-  phase: GamePhase
-  pendingSelectionTrackId: string | null
-  onSelectOption: (option: DgsOptionTrack) => void
-  activePlayerId: PlayerId
-  roundTurn: number
-  difficulty: 'easy' | 'medium' | 'hard'
-  onDifficultyChange: (difficulty: 'easy' | 'medium' | 'hard') => void
-  turnExpired: boolean
-  turnTimeRemaining: number
-  turnTimerActive: boolean
-  isWaitingForFirstTrack: boolean
 
-  // Player HUD props
-  players: GamePlayer[]
-  playerNames: Record<PlayerId, string>
-  playerGravities: Record<PlayerId, number>
-  availableArtists: TargetArtist[]
-  onTargetArtistChange: (playerId: PlayerId, artist: TargetArtist) => void
-  onPlayerNameChange: (playerId: PlayerId, name: string) => void
+  gameState: {
+    phase: GamePhase
+    roundTurn: number
+    turnExpired: boolean
+    turnTimeRemaining: number
+    turnTimerActive: boolean
+    isWaitingForFirstTrack: boolean
+    pendingSelectionTrackId: string | null
+    difficulty: 'easy' | 'medium' | 'hard'
+  }
+
+  playerState: {
+    players: GamePlayer[]
+    names: Record<PlayerId, string>
+    gravities: Record<PlayerId, number>
+    activeId: PlayerId
+    targetArtists: TargetArtist[]
+  }
+
+  callbacks: {
+    onSelectOption: (option: DgsOptionTrack) => void
+    onDifficultyChange: (difficulty: 'easy' | 'medium' | 'hard') => void
+    onTargetArtistChange: (playerId: PlayerId, artist: TargetArtist) => void
+    onPlayerNameChange: (playerId: PlayerId, name: string) => void
+  }
 }
 
 export function GameBoard({
   nowPlaying,
   options,
-  phase,
-  pendingSelectionTrackId,
-  onSelectOption,
-  activePlayerId,
-  roundTurn,
-  difficulty,
-  onDifficultyChange,
-  turnExpired,
-  turnTimeRemaining,
-  turnTimerActive,
-  isWaitingForFirstTrack,
-  players,
-  playerNames,
-  playerGravities,
-  availableArtists,
-  onTargetArtistChange,
-  onPlayerNameChange
+  gameState,
+  playerState,
+  callbacks
 }: GameBoardProps): JSX.Element {
   const currentTrack = nowPlaying?.item
   const [feedbackForPlayer, setFeedbackForPlayer] = useState<PlayerId | null>(
     null
   )
   const feedbackRoundRef = useRef<number | null>(null)
-  const previousOptionsRef = useRef<string | null>(null)
-  const [currentTrackGenre, setCurrentTrackGenre] = useState<string | null>(
-    null
-  )
+
+  // Custom hook for genre
+  const { genre: currentTrackGenre } = useTrackGenre(currentTrack?.id)
 
   const isSelecting =
-    phase === 'selecting' &&
-    !turnExpired &&
-    !pendingSelectionTrackId &&
+    gameState.phase === 'selecting' &&
+    !gameState.turnExpired &&
+    !gameState.pendingSelectionTrackId &&
     !feedbackForPlayer
 
   // Show feedback after a selection is made, keep it visible until new options arrive
   useEffect(() => {
-    if (pendingSelectionTrackId !== null) {
+    if (gameState.pendingSelectionTrackId !== null) {
       // Selection made - show feedback for active player and track the round
-      setFeedbackForPlayer(activePlayerId)
-      feedbackRoundRef.current = roundTurn
+      setFeedbackForPlayer(playerState.activeId)
+      feedbackRoundRef.current = gameState.roundTurn
     } else if (
       feedbackForPlayer !== null &&
       feedbackRoundRef.current !== null
     ) {
-      // Check if round has changed since feedback was shown
-      if (roundTurn !== feedbackRoundRef.current) {
-        // New round - clear feedback
+      if (gameState.roundTurn !== feedbackRoundRef.current) {
         setFeedbackForPlayer(null)
         feedbackRoundRef.current = null
       }
     }
-
-    // Track options changes to detect when truly new options arrive
-    const currentOptionsKey = options
-      .map((opt) => opt.track.id)
-      .sort()
-      .join(',')
-    if (
-      previousOptionsRef.current !== null &&
-      previousOptionsRef.current !== currentOptionsKey
-    ) {
-      // Options have actually changed - clear feedback if it was showing
-      if (feedbackForPlayer !== null) {
-        setFeedbackForPlayer(null)
-        feedbackRoundRef.current = null
-      }
-    }
-    previousOptionsRef.current = currentOptionsKey
   }, [
-    pendingSelectionTrackId,
-    activePlayerId,
-    roundTurn,
-    feedbackForPlayer,
-    options
+    gameState.pendingSelectionTrackId,
+    playerState.activeId,
+    gameState.roundTurn,
+    feedbackForPlayer
   ])
 
+  // Clear feedback when options *content* changes significantly (e.g. new round)
+  const optionsIdHash = options
+    .map((o) => o.track.id)
+    .sort()
+    .join(',')
+  const prevOptionsRef = useRef<string>(optionsIdHash)
+
+  useEffect(() => {
+    if (prevOptionsRef.current !== optionsIdHash) {
+      if (feedbackForPlayer) {
+        setFeedbackForPlayer(null)
+      }
+      prevOptionsRef.current = optionsIdHash
+    }
+  }, [optionsIdHash, feedbackForPlayer])
+
   // Shuffle options for random display order (Fisher-Yates algorithm)
-  // Only re-shuffles when options prop changes or current track ID changes
   const shuffledOptions = useMemo(() => {
     const visible = currentTrack?.id
       ? options.filter((option) => option.track.id !== currentTrack.id)
       : options
 
-    const shuffled = [...visible]
-    for (let i = shuffled.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1))
-      ;[shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]]
-    }
-    return shuffled
+    return shuffleArray(visible)
   }, [options, currentTrack?.id])
-
-  // Create Supabase client for fetching genre
-  const supabase = useMemo(
-    () =>
-      createBrowserClient<Database>(
-        process.env.NEXT_PUBLIC_SUPABASE_URL!,
-        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-      ),
-    []
-  )
-
-  // Fetch genre for currently playing track
-  useEffect(() => {
-    if (!currentTrack?.id) {
-      setCurrentTrackGenre(null)
-      return
-    }
-
-    // First, check if the track is in the options (which would have genre)
-    const optionTrack = options.find((opt) => opt.track.id === currentTrack.id)
-    if (optionTrack?.track.genre) {
-      setCurrentTrackGenre(optionTrack.track.genre)
-      return
-    }
-
-    // If not found in options, fetch from database
-    const fetchGenre = async (): Promise<void> => {
-      try {
-        const { data, error } = await supabase
-          .from('tracks')
-          .select('genre')
-          .eq('spotify_track_id', currentTrack.id)
-          .maybeSingle()
-
-        if (!error && data?.genre) {
-          setCurrentTrackGenre(data.genre)
-        } else {
-          setCurrentTrackGenre(null)
-        }
-      } catch (error) {
-        console.error('Error fetching track genre:', error)
-        setCurrentTrackGenre(null)
-      }
-    }
-
-    void fetchGenre()
-  }, [currentTrack?.id, options, supabase])
-
-  // ...
 
   // Helper to determine feedback for each card based on comparison to current song
   const getCardFeedback = (
@@ -237,77 +170,19 @@ export function GameBoard({
                 !
               </p>
 
-              {/* Turn Timer - Hide when a selection has been made */}
-              {(turnTimerActive ||
-                (turnExpired && !pendingSelectionTrackId)) && (
+              {/* Turn Timer */}
+              {(gameState.turnTimerActive ||
+                (gameState.turnExpired &&
+                  !gameState.pendingSelectionTrackId)) && (
                 <div className='mt-4 flex flex-col items-center gap-2 border-t border-gray-800 pt-4'>
-                  <div className='relative h-24 w-24'>
-                    <svg className='h-full w-full -rotate-90 transform'>
-                      <circle
-                        cx='48'
-                        cy='48'
-                        r='36'
-                        stroke='currentColor'
-                        strokeWidth='6'
-                        fill='none'
-                        className='text-gray-700'
-                      />
-                      <circle
-                        cx='48'
-                        cy='48'
-                        r='36'
-                        stroke={
-                          turnExpired
-                            ? '#ef4444'
-                            : turnTimeRemaining <= 15
-                              ? '#ef4444'
-                              : turnTimeRemaining <= 30
-                                ? '#f59e0b'
-                                : '#10b981'
-                        }
-                        strokeWidth='6'
-                        fill='none'
-                        strokeDasharray={2 * Math.PI * 36}
-                        strokeDashoffset={
-                          2 * Math.PI * 36 -
-                          (((turnTimeRemaining / 60) * 100) / 100) *
-                            (2 * Math.PI * 36)
-                        }
-                        className={`transition-all duration-1000 ${turnTimeRemaining <= 15 && !turnExpired ? 'animate-pulse' : ''}`}
-                        strokeLinecap='round'
-                      />
-                    </svg>
-                    <div className='absolute inset-0 flex items-center justify-center'>
-                      {turnExpired ? (
-                        <div className='text-center'>
-                          <div className='text-[10px] font-bold text-red-500'>
-                            TIME&apos;S
-                          </div>
-                          <div className='text-[10px] font-bold text-red-500'>
-                            UP!
-                          </div>
-                        </div>
-                      ) : (
-                        <div className='text-center'>
-                          <div
-                            className='text-2xl font-bold'
-                            style={{
-                              color:
-                                turnTimeRemaining <= 15
-                                  ? '#ef4444'
-                                  : turnTimeRemaining <= 30
-                                    ? '#f59e0b'
-                                    : '#10b981'
-                            }}
-                          >
-                            {turnTimeRemaining}
-                          </div>
-                          <div className='text-[9px] text-gray-400'>sec</div>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                  {turnExpired && (
+                  <TurnTimer
+                    timeRemaining={gameState.turnTimeRemaining}
+                    isActive={
+                      gameState.turnTimerActive || gameState.turnExpired
+                    }
+                    isExpired={gameState.turnExpired}
+                  />
+                  {gameState.turnExpired && (
                     <p className='animate-pulse text-center text-[10px] text-red-400'>
                       Wait for next song
                     </p>
@@ -325,28 +200,32 @@ export function GameBoard({
 
       {/* SECTION 2: PLAYER HUDS */}
       <div className='grid w-full grid-cols-2 gap-3'>
-        {players.map((player) => (
+        {playerState.players.map((player) => (
           <PlayerHud
             key={player.id}
             id={player.id as PlayerId}
-            label={playerNames[player.id as PlayerId]}
+            label={playerState.names[player.id as PlayerId]}
             score={player.score}
             targetArtist={player.targetArtist}
-            isActive={player.id === activePlayerId}
-            isSelecting={phase === 'selecting'}
-            gravity={playerGravities[player.id as PlayerId]}
+            isActive={player.id === playerState.activeId}
+            isSelecting={gameState.phase === 'selecting'}
+            gravity={playerState.gravities[player.id as PlayerId]}
             onTargetArtistChange={
-              onTargetArtistChange
+              callbacks.onTargetArtistChange
                 ? (artist) =>
-                    onTargetArtistChange(player.id as PlayerId, artist)
+                    callbacks.onTargetArtistChange(
+                      player.id as PlayerId,
+                      artist
+                    )
                 : undefined
             }
             onLabelChange={
-              onPlayerNameChange
-                ? (name) => onPlayerNameChange(player.id as PlayerId, name)
+              callbacks.onPlayerNameChange
+                ? (name) =>
+                    callbacks.onPlayerNameChange(player.id as PlayerId, name)
                 : undefined
             }
-            availableArtists={availableArtists}
+            availableArtists={playerState.targetArtists}
           />
         ))}
       </div>
@@ -359,7 +238,7 @@ export function GameBoard({
               Related Songs
             </p>
             <span className='text-[11px] text-gray-500'>
-              {phase === 'waiting_for_track'
+              {gameState.phase === 'waiting_for_track'
                 ? 'Waiting for selected song to start...'
                 : 'Choose one song to queue next'}
             </span>
@@ -373,10 +252,12 @@ export function GameBoard({
                 <button
                   key={mode.id}
                   onClick={() =>
-                    onDifficultyChange(mode.id as 'easy' | 'medium' | 'hard')
+                    callbacks.onDifficultyChange(
+                      mode.id as 'easy' | 'medium' | 'hard'
+                    )
                   }
                   className={`rounded-md px-2 py-1 text-[10px] font-medium transition-colors ${
-                    difficulty === mode.id
+                    gameState.difficulty === mode.id
                       ? 'text-white bg-gray-700 shadow-sm'
                       : 'text-gray-500 hover:text-gray-300'
                   }`}
@@ -388,8 +269,8 @@ export function GameBoard({
           </div>
 
           <div className='mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3'>
-            {isWaitingForFirstTrack ? (
-              // Show waiting message when waiting for first track
+            {gameState.isWaitingForFirstTrack ? (
+              // Show waiting message
               <div className='col-span-full flex flex-col items-center justify-center py-12'>
                 <div className='max-w-md rounded-lg border border-blue-500/30 bg-blue-950/20 p-6 text-center'>
                   <div className='mb-4 flex justify-center'>
@@ -403,29 +284,31 @@ export function GameBoard({
                   </p>
                 </div>
               </div>
-            ) : phase === 'loading' && shuffledOptions.length === 0 ? (
+            ) : gameState.phase === 'loading' &&
+              shuffledOptions.length === 0 ? (
               // Show skeleton cards while loading
               Array.from({ length: 6 }).map((_, index) => (
                 <GameOptionSkeleton key={`skeleton-${index}`} />
               ))
             ) : shuffledOptions.length > 0 ? (
               shuffledOptions.map((option) => {
-                const isQueued = option.track.id === pendingSelectionTrackId
+                const isQueued =
+                  option.track.id === gameState.pendingSelectionTrackId
                 const cardFeedback = getCardFeedback(option)
                 const isSelectedTrack =
-                  option.track.id === pendingSelectionTrackId &&
+                  option.track.id === gameState.pendingSelectionTrackId &&
                   feedbackForPlayer !== null
 
                 return (
                   <GameOptionNode
-                    key={option.track.id}
+                    key={`${option.track.id}-${gameState.roundTurn}`}
                     option={option}
                     disabled={!isSelecting}
                     isQueued={isQueued}
-                    onSelect={onSelectOption}
+                    onSelect={callbacks.onSelectOption}
                     feedbackResult={cardFeedback}
                     isSelected={isSelectedTrack}
-                    difficulty={difficulty}
+                    difficulty={gameState.difficulty}
                   />
                 )
               })

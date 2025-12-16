@@ -300,3 +300,4 @@ export async function getRelatedArtistsFromDatabase(
 
   return combined
 }
+

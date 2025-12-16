@@ -3,15 +3,13 @@ import assert from 'node:assert/strict'
 import type { CandidateTrackMetrics, PopularityBand } from '../dgsTypes'
 import type { TrackDetails } from '@/shared/types/spotify'
 import { GRAVITY_LIMITS } from '../dgsTypes'
-import { __dgsTestHelpers } from '../dgsEngine'
-
-const {
+import {
   clampGravity,
   computeSimilarity,
-  applyDiversityConstraints,
   getPopularityBand,
   extractTrackMetadata
-} = __dgsTestHelpers
+} from '../dgsScoring'
+import { applyDiversityConstraints } from '../dgsDiversity'
 
 const baseTrack: TrackDetails = {
   id: 'track-base',
@@ -40,7 +38,9 @@ function makeMetric(
   id: string,
   artistId: string,
   popularity: number,
-  popularityBand: PopularityBand
+  popularityBand: PopularityBand,
+  attraction?: number,
+  currentSongAttraction: number = 0.5
 ): CandidateTrackMetrics {
   const track: TrackDetails = {
     ...baseTrack,
@@ -51,6 +51,11 @@ function makeMetric(
     popularity
   }
 
+  const baseAttraction = attraction ?? Math.random()
+  // Ensure attraction values allow for categorization
+  const aAttraction = baseAttraction
+  const bAttraction = baseAttraction * 0.8 // Slightly different for player 2
+
   return {
     track,
     source: 'recommendations',
@@ -58,14 +63,14 @@ function makeMetric(
     artistName: artistId,
     artistGenres: [],
     simScore: Math.random(),
-    aAttraction: Math.random(),
-    bAttraction: Math.random(),
+    aAttraction,
+    bAttraction,
     gravityScore: Math.random(),
     stabilizedScore: Math.random(),
     finalScore: Math.random() + 0.5,
     popularityBand,
     vicinityDistances: {},
-    currentSongAttraction: 0
+    currentSongAttraction
   }
 }
 
@@ -111,13 +116,19 @@ test('getPopularityBand correctly categorizes popularity', () => {
 })
 
 test('applyDiversityConstraints ensures unique artists and balances popularity', () => {
+  const baseline = 0.5
+  // Create metrics with varied attractions to allow 3-3-3 categorization
+  // Closer: > 0.52, Neutral: 0.48-0.52, Further: < 0.48
   const metrics: CandidateTrackMetrics[] = [
-    makeMetric('t1', 'artist-a', 20, 'low'),
-    makeMetric('t2', 'artist-a', 25, 'low'),
-    makeMetric('t3', 'artist-a', 30, 'low'),
-    makeMetric('t4', 'artist-b', 50, 'mid'),
-    makeMetric('t5', 'artist-c', 80, 'high'),
-    makeMetric('t6', 'artist-d', 75, 'high')
+    makeMetric('t1', 'artist-a', 20, 'low', 0.6, baseline), // Closer
+    makeMetric('t2', 'artist-b', 25, 'low', 0.55, baseline), // Closer
+    makeMetric('t3', 'artist-c', 30, 'low', 0.53, baseline), // Closer
+    makeMetric('t4', 'artist-d', 50, 'mid', 0.5, baseline), // Neutral
+    makeMetric('t5', 'artist-e', 80, 'high', 0.49, baseline), // Neutral
+    makeMetric('t6', 'artist-f', 75, 'high', 0.51, baseline), // Neutral
+    makeMetric('t7', 'artist-g', 40, 'mid', 0.45, baseline), // Further
+    makeMetric('t8', 'artist-h', 60, 'mid', 0.4, baseline), // Further
+    makeMetric('t9', 'artist-i', 70, 'high', 0.35, baseline) // Further
   ]
 
   const result = applyDiversityConstraints(
@@ -129,7 +140,9 @@ test('applyDiversityConstraints ensures unique artists and balances popularity',
   )
   const selected = result.selected
 
-  assert.ok(selected.length <= 5)
+  // Should return up to 9 tracks (3-3-3 distribution) if available, but at least what we have
+  assert.ok(selected.length <= 9, `Expected at most 9 tracks, got ${selected.length}`)
+  assert.ok(selected.length >= 1, `Expected at least 1 track, got ${selected.length}`)
 
   // Ensure each artist appears at most once
   const artistCounts = selected.reduce<Record<string, number>>((acc, entry) => {

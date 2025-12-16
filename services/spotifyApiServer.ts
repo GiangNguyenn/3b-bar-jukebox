@@ -301,7 +301,7 @@ export async function getArtistTopTracksServer(
   const memCached = cache.get<TrackDetails[]>(memCacheKey)
   if (memCached) {
     console.log('[spotifyApiServer] Memory cache hit for top tracks:', artistId)
-    statisticsTracker?.recordCacheHit('topTracks', 'memory')
+    // Note: Statistics tracking is handled by callers to avoid double-counting
     return memCached
   }
 
@@ -314,7 +314,7 @@ export async function getArtistTopTracksServer(
       'top tracks for',
       artistId
     )
-    statisticsTracker?.recordCacheHit('topTracks', 'database')
+    // Note: Statistics tracking is handled by callers to avoid double-counting
     // For DB cache hits, we need to fetch full track details
     // Check if we have them in memory or need to get minimal objects
     // Since callers expect full TrackDetails, return minimal objects for now

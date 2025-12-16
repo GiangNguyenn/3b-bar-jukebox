@@ -2,12 +2,12 @@
 import { NextRequest, NextResponse } from 'next/server'
 import {
   scoreCandidates,
-  applyDiversityConstraints,
   ensureTargetDiversity,
   enrichCandidatesWithArtistProfiles,
-  computeAttraction,
   addTargetArtistsToPool
 } from '@/services/game/dgsEngine'
+import { computeAttraction } from '@/services/game/dgsScoring'
+import { applyDiversityConstraints } from '@/services/game/dgsDiversity'
 import { getGenreStatistics } from '@/services/game/dgsDb'
 import { ApiStatisticsTracker } from '@/services/game/apiStatisticsTracker'
 import { createModuleLogger } from '@/shared/utils/logger'
@@ -334,6 +334,20 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
           candidates: undefined // Remove from scoring to match type
         },
         candidates: debugCandidates,
+        targetProfiles: {
+          player1: {
+            resolved: !!targetProfiles.player1?.artist,
+            artistName: targetProfiles.player1?.artist?.name ?? null,
+            spotifyId: targetProfiles.player1?.spotifyId ?? null,
+            genresCount: targetProfiles.player1?.genres?.length ?? 0
+          },
+          player2: {
+            resolved: !!targetProfiles.player2?.artist,
+            artistName: targetProfiles.player2?.artist?.name ?? null,
+            spotifyId: targetProfiles.player2?.spotifyId ?? null,
+            genresCount: targetProfiles.player2?.genres?.length ?? 0
+          }
+        },
         genreStatistics: await getGenreStatistics()
       }
     })

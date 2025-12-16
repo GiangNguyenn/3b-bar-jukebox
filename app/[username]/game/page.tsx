@@ -197,23 +197,29 @@ export default function GamePage(): JSX.Element {
         <GameBoard
           nowPlaying={nowPlaying}
           options={options}
-          phase={phase}
-          pendingSelectionTrackId={pendingSelectionTrackId}
-          onSelectOption={handleSelectOption}
-          activePlayerId={activePlayerId}
-          roundTurn={roundTurn}
-          difficulty={difficulty}
-          onDifficultyChange={setDifficulty}
-          turnExpired={turnExpired}
-          turnTimeRemaining={turnTimeRemaining}
-          turnTimerActive={turnTimerActive}
-          isWaitingForFirstTrack={isWaitingForFirstTrack}
-          players={players}
-          playerNames={playerNames}
-          playerGravities={playerGravities}
-          availableArtists={availableArtists}
-          onTargetArtistChange={handleManualTargetArtistChange}
-          onPlayerNameChange={handlePlayerNameChange}
+          gameState={{
+            phase,
+            roundTurn,
+            turnExpired,
+            turnTimeRemaining,
+            turnTimerActive,
+            isWaitingForFirstTrack,
+            pendingSelectionTrackId,
+            difficulty
+          }}
+          playerState={{
+            players,
+            names: playerNames,
+            gravities: playerGravities,
+            activeId: activePlayerId,
+            targetArtists: availableArtists
+          }}
+          callbacks={{
+            onSelectOption: handleSelectOption,
+            onDifficultyChange: setDifficulty,
+            onTargetArtistChange: handleManualTargetArtistChange,
+            onPlayerNameChange: handlePlayerNameChange
+          }}
         />
 
         {isBusy && (

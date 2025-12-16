@@ -13,6 +13,34 @@ interface GameOptionNodeProps {
   difficulty: 'easy' | 'medium' | 'hard'
 }
 
+// Configuration for feedback styles
+const feedbackConfig = {
+  closer: {
+    border: 'border-green-500',
+    bgBase: 'bg-green-900/40',
+    bgIntense: 'bg-green-900/70',
+    shadowBase: 'shadow-[0_0_10px_rgba(34,197,94,0.3)]',
+    shadowIntense: 'shadow-[0_0_20px_rgba(34,197,94,0.6)]',
+    intensity: 'ring-2 ring-green-500/50'
+  },
+  neutral: {
+    border: 'border-blue-500',
+    bgBase: 'bg-blue-900/40',
+    bgIntense: 'bg-blue-900/70',
+    shadowBase: 'shadow-[0_0_10px_rgba(59,130,246,0.3)]',
+    shadowIntense: 'shadow-[0_0_20px_rgba(59,130,246,0.6)]',
+    intensity: 'ring-2 ring-blue-500/50'
+  },
+  further: {
+    border: 'border-orange-500',
+    bgBase: 'bg-orange-900/40',
+    bgIntense: 'bg-orange-900/70',
+    shadowBase: 'shadow-[0_0_10px_rgba(249,115,22,0.3)]',
+    shadowIntense: 'shadow-[0_0_20px_rgba(249,115,22,0.6)]',
+    intensity: 'ring-2 ring-orange-500/50'
+  }
+}
+
 export function GameOptionNode({
   option,
   disabled = false,
@@ -23,34 +51,6 @@ export function GameOptionNode({
   difficulty
 }: GameOptionNodeProps): JSX.Element {
   const { track, artist } = option
-
-  // Configuration for feedback styles
-  const feedbackConfig = {
-    closer: {
-      border: 'border-green-500',
-      bgBase: 'bg-green-900/40',
-      bgIntense: 'bg-green-900/70',
-      shadowBase: 'shadow-[0_0_10px_rgba(34,197,94,0.3)]',
-      shadowIntense: 'shadow-[0_0_20px_rgba(34,197,94,0.6)]',
-      intensity: 'ring-2 ring-green-500/50'
-    },
-    neutral: {
-      border: 'border-blue-500',
-      bgBase: 'bg-blue-900/40',
-      bgIntense: 'bg-blue-900/70',
-      shadowBase: 'shadow-[0_0_10px_rgba(59,130,246,0.3)]',
-      shadowIntense: 'shadow-[0_0_20px_rgba(59,130,246,0.6)]',
-      intensity: 'ring-2 ring-blue-500/50'
-    },
-    further: {
-      border: 'border-orange-500',
-      bgBase: 'bg-orange-900/40',
-      bgIntense: 'bg-orange-900/70',
-      shadowBase: 'shadow-[0_0_10px_rgba(249,115,22,0.3)]',
-      shadowIntense: 'shadow-[0_0_20px_rgba(249,115,22,0.6)]',
-      intensity: 'ring-2 ring-orange-500/50'
-    }
-  }
 
   const getButtonStyles = (): string => {
     if (disabled) {
