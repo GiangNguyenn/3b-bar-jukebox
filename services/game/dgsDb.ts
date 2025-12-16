@@ -185,8 +185,8 @@ export async function fetchRandomTracksFromDb({
       ],
       external_urls: row.spotify_url
         ? {
-          spotify: row.spotify_url
-        }
+            spotify: row.spotify_url
+          }
         : undefined,
       genre: row.genre ?? undefined
     }
@@ -401,8 +401,8 @@ export async function fetchTracksByGenreFromDb({
         ],
         external_urls: row.spotify_url
           ? {
-            spotify: row.spotify_url
-          }
+              spotify: row.spotify_url
+            }
           : undefined,
         genre: row.genre ?? undefined
       }
@@ -435,6 +435,95 @@ export async function fetchTracksByGenreFromDb({
  * Guaranteed to return tracks if database has any data
  * Used as last resort when all other discovery methods fail
  */
+/**
+ * Fetch random artists from the artists table where all columns are populated
+ * Used for initial candidate pool building (Stage 1)
+ */
+export async function fetchRandomArtistsFromDb({
+  limit = 100,
+  excludeArtistIds = new Set<string>()
+}: {
+  limit?: number
+  excludeArtistIds?: Set<string>
+}): Promise<Array<{ id: string; name: string }>> {
+  logger(
+    'INFO',
+    `Fetching ${limit} random artists from database (fully-populated only)`,
+    'fetchRandomArtistsFromDb'
+  )
+
+  const excludeArray = Array.from(excludeArtistIds)
+
+  // Query artists where all columns are populated:
+  // - spotify_artist_id (NOT NULL constraint)
+  // - name (NOT NULL constraint)
+  // - genres is not null and array is not empty
+  // - popularity is not null
+  // - follower_count is not null
+  const { data, error } = await queryWithRetry<
+    {
+      spotify_artist_id: string
+      name: string
+      genres: string[] | null
+    }[]
+  >(
+    supabase
+      .from('artists')
+      .select('spotify_artist_id, name, genres')
+      .not('spotify_artist_id', 'is', null)
+      .not('name', 'is', null)
+      .not('genres', 'is', null)
+      .not('popularity', 'is', null)
+      .not('follower_count', 'is', null)
+      .not(
+        'spotify_artist_id',
+        'in',
+        excludeArray.length > 0 ? excludeArray : ['__never__']
+      )
+      .limit(limit * 2), // Fetch more to account for filtering
+    undefined,
+    'Fetch random fully-populated artists'
+  )
+
+  if (error || !data || data.length === 0) {
+    logger(
+      'WARN',
+      `No fully-populated artists found in database (${data?.length ?? 0} rows returned)`,
+      'fetchRandomArtistsFromDb',
+      error instanceof Error ? error : undefined
+    )
+    return []
+  }
+
+  // Filter out artists with empty genres array and ensure spotify_artist_id is valid
+  const validArtists = data.filter((artist) => {
+    // Ensure spotify_artist_id doesn't look like UUID (should be Spotify ID format)
+    if (!artist.spotify_artist_id || artist.spotify_artist_id.includes('-')) {
+      return false
+    }
+    // Ensure genres array is not null and not empty
+    if (!artist.genres || artist.genres.length === 0) {
+      return false
+    }
+    return true
+  })
+
+  // Shuffle and take limit
+  shuffleInPlace(validArtists)
+  const selected = validArtists.slice(0, limit)
+
+  logger(
+    'INFO',
+    `Selected ${selected.length} random artists from ${validArtists.length} fully-populated artists`,
+    'fetchRandomArtistsFromDb'
+  )
+
+  return selected.map((artist) => ({
+    id: artist.spotify_artist_id,
+    name: artist.name
+  }))
+}
+
 export async function fetchAbsoluteRandomTracks(
   limit: number,
   excludeTrackIds: Set<string>
@@ -504,8 +593,8 @@ export async function fetchAbsoluteRandomTracks(
       ],
       external_urls: row.spotify_url
         ? {
-          spotify: row.spotify_url
-        }
+            spotify: row.spotify_url
+          }
         : undefined,
       genre: row.genre ?? undefined
     }
@@ -728,8 +817,8 @@ export async function fetchTracksCloserToTarget({
         ],
         external_urls: row.spotify_url
           ? {
-            spotify: row.spotify_url
-          }
+              spotify: row.spotify_url
+            }
           : undefined,
         genre: row.genre ?? undefined
       }
@@ -925,8 +1014,8 @@ export async function fetchTracksFurtherFromTarget({
         ],
         external_urls: row.spotify_url
           ? {
-            spotify: row.spotify_url
-          }
+              spotify: row.spotify_url
+            }
           : undefined,
         genre: row.genre ?? undefined
       }
@@ -1277,8 +1366,8 @@ export async function fetchTracksByArtistIdsFromDb({
         ],
         external_urls: row.spotify_url
           ? {
-            spotify: row.spotify_url
-          }
+              spotify: row.spotify_url
+            }
           : undefined,
         genre: row.genre ?? undefined
       })

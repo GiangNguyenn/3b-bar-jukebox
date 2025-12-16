@@ -232,12 +232,12 @@ export function computeStrictArtistSimilarity(
 
   // Validation: Verify score calculation matches requirements
   const calculatedScore = score
-  const expectedScore = 
+  const expectedScore =
     genreSimilarity.score * 0.4 +
     relationshipScore * 0.3 +
     artistPopSim * 0.15 +
     followerSim * 0.15
-  
+
   if (Math.abs(calculatedScore - expectedScore) > 0.0001) {
     // This should never happen, but log if it does
     console.warn(

@@ -12,6 +12,7 @@ import { getExplorationPhase, MAX_ROUND_TURNS } from '@/services/game/gameRules'
 import { musicService } from '@/services/musicService'
 import { createModuleLogger } from '@/shared/utils/logger'
 import { DualGravityRequest } from '@/services/game/dgsTypes'
+import { fetchRandomArtistsFromDb } from '@/services/game/dgsDb'
 
 const logger = createModuleLogger('Stage1Init')
 
@@ -118,12 +119,12 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       )
     }
 
-    // CHECK GRAVITY ZONES:
-    // < 0.2: Desperation (Fetch)
-    // 0.2 - 0.39: Dead Zone (SKIP)
-    // 0.4 - 0.79: Good Influence (Fetch)
-    // >= 0.8: High Influence (Fetch + Inject later)
-    const isInDeadZone = pGravity >= 0.2 && pGravity < 0.4
+    // CHECK GRAVITY ZONES (converted to influence):
+    // < 0.2 (20% influence): Desperation (Fetch)
+    // 0.2 - 0.49 (20-49% influence): Dead Zone (SKIP)
+    // >= 0.5 (50%+ influence): Good Influence (Fetch)
+    // > 0.59 (80%+ influence): High Influence (Fetch + Inject later)
+    const isInDeadZone = pGravity >= 0.2 && pGravity < 0.5
 
     // Fetch seed artists (always)
     const seedArtists = await getSeedRelatedArtists(seedArtistId, token)
@@ -168,35 +169,89 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     targetArtists.forEach((a) => combinedMap.set(a.id, a))
 
     // CRITICAL: Target Artist Injection Logic
-    // Per requirements 3.4.2: Target Artist tracks should ONLY be forcibly injected at ≥ 80% gravity
-    // At all other gravity levels, target artist can only appear if it's naturally in related artists
-    const highInfluenceThreshold = 0.8
-    const isHighInfluence = pGravity >= highInfluenceThreshold
+    // Per requirements: Target Artist tracks should be injected when:
+    // - Round >= 10, OR
+    // - Player's influence > 80% (gravity > 0.59)
+    // 80% influence = ((gravity - 0.15) / (0.7 - 0.15)) * 100 = 80
+    // Solving: gravity = 0.59
+    const highInfluenceGravityThreshold = 0.59 // 80% influence
+    const roundThreshold = 10
+    const isHighInfluence = pGravity > highInfluenceGravityThreshold
+    const isRoundThresholdMet = roundNumber >= roundThreshold
+    const shouldInjectTarget = isHighInfluence || isRoundThresholdMet
 
     if (targetArtistId && targetProfile?.artist?.name) {
-      if (isHighInfluence) {
+      if (shouldInjectTarget) {
         combinedMap.set(targetArtistId, {
           id: targetArtistId,
           name: targetProfile.artist.name
         })
         logger(
           'INFO',
-          `High Influence (Gravity ${pGravity.toFixed(2)} ≥ ${highInfluenceThreshold}): Forcibly injecting target artist: ${targetProfile.artist.name}`,
+          `Target Artist Injection (Gravity ${pGravity.toFixed(2)} > ${highInfluenceGravityThreshold} OR Round ${roundNumber} >= ${roundThreshold}): Forcibly injecting target artist: ${targetProfile.artist.name}`,
           'POST'
         )
       } else {
         logger(
           'INFO',
-          `Gravity ${pGravity.toFixed(2)} < ${highInfluenceThreshold}: Target artist NOT forcibly injected (${targetProfile.artist.name} can only appear if naturally related)`,
+          `Target artist NOT forcibly injected (Gravity ${pGravity.toFixed(2)} <= ${highInfluenceGravityThreshold} AND Round ${roundNumber} < ${roundThreshold}) - ${targetProfile.artist.name} can only appear if naturally related`,
           'POST'
         )
       }
     }
 
+    // 5. Add Random Database Artists (minimum 100 total artists required)
+    const MIN_TOTAL_ARTISTS = 100
+    const currentArtistCount = combinedMap.size
+    const neededRandomArtists = Math.max(0, MIN_TOTAL_ARTISTS - currentArtistCount)
+
+    if (neededRandomArtists > 0) {
+      logger(
+        'INFO',
+        `Adding ${neededRandomArtists} random artists to reach minimum of ${MIN_TOTAL_ARTISTS} artists`,
+        'POST'
+      )
+      try {
+        const existingArtistIds = new Set(combinedMap.keys())
+        const randomArtists = await fetchRandomArtistsFromDb({
+          limit: neededRandomArtists,
+          excludeArtistIds: existingArtistIds
+        })
+
+        randomArtists.forEach((artist) => {
+          combinedMap.set(artist.id, {
+            id: artist.id,
+            name: artist.name
+          })
+        })
+
+        logger(
+          'INFO',
+          `Added ${randomArtists.length} random artists from database`,
+          'POST'
+        )
+      } catch (error) {
+        logger(
+          'ERROR',
+          `Failed to fetch random artists: ${error instanceof Error ? error.message : String(error)}`,
+          'POST'
+        )
+        // Continue with what we have - fallback will handle it in Stage 2
+      }
+    } else {
+      logger(
+        'INFO',
+        `Already have ${currentArtistCount} artists, no random artists needed`,
+        'POST'
+      )
+    }
+
     const relatedArtistIds = Array.from(combinedMap.keys())
+    const targetInjectedCount = shouldInjectTarget && targetArtistId ? 1 : 0
+    const randomCount = relatedArtistIds.length - seedArtists.length - targetArtists.length - targetInjectedCount
     logger(
       'INFO',
-      `Total unique candidate artists: ${relatedArtistIds.length} (${seedArtists.length} from seed, ${targetArtists.length} from target, +1 target itself)`,
+      `Total unique candidate artists: ${relatedArtistIds.length} (${seedArtists.length} from seed, ${targetArtists.length} from target, ${targetInjectedCount} target injected, ${randomCount} random)`,
       'POST'
     )
 

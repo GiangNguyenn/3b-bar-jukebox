@@ -87,12 +87,12 @@ test('applyDiversityConstraints - Filtering Logic', async (t) => {
   )
 
   await t.test(
-    'allows target artist in Round 8+ (Target Boost) even with low similarity',
+    'allows target artist in Round 10+ (Target Boost) even with low similarity',
     () => {
       const metrics = [mockMetric('Target Artist', 0.1)] // Low sim
       const result = applyDiversityConstraints(
         metrics,
-        8, // Round 8 (Target Boost)
+        10, // Round 10 (Target Boost)
         targetProfiles,
         baseGravities,
         'player1'
@@ -102,10 +102,25 @@ test('applyDiversityConstraints - Filtering Logic', async (t) => {
   )
 
   await t.test(
-    'allows target artist with MAX gravity (0.7) even with low similarity',
+    'does NOT allow target artist in Round 9 even with low similarity',
     () => {
       const metrics = [mockMetric('Target Artist', 0.1)] // Low sim
-      const highGravities = { ...baseGravities, player1: GRAVITY_LIMITS.max } // 0.7
+      const result = applyDiversityConstraints(
+        metrics,
+        9, // Round 9 (before threshold)
+        targetProfiles,
+        baseGravities,
+        'player1'
+      )
+      assert.equal(result.selected.length, 0)
+    }
+  )
+
+  await t.test(
+    'allows target artist with gravity > 0.59 (80% influence) even with low similarity',
+    () => {
+      const metrics = [mockMetric('Target Artist', 0.1)] // Low sim
+      const highGravities = { ...baseGravities, player1: 0.6 } // > 0.59 (80% influence)
       const result = applyDiversityConstraints(
         metrics,
         1, // Early round
@@ -118,10 +133,27 @@ test('applyDiversityConstraints - Filtering Logic', async (t) => {
   )
 
   await t.test(
-    'does NOT allow target artist with just below MAX gravity (0.69) and low similarity',
+    'does NOT allow target artist with gravity exactly 0.59 (threshold is > 0.59)',
     () => {
       const metrics = [mockMetric('Target Artist', 0.1)] // Low sim
-      const highGravities = { ...baseGravities, player1: 0.69 }
+      const highGravities = { ...baseGravities, player1: 0.59 } // Exactly 80% influence, but threshold is > 0.59
+      const result = applyDiversityConstraints(
+        metrics,
+        1, // Early round
+        targetProfiles,
+        highGravities,
+        'player1'
+      )
+      // Implementation uses > 0.59, so 0.59 should NOT be allowed
+      assert.equal(result.selected.length, 0, '0.59 should not be allowed (threshold is > 0.59)')
+    }
+  )
+
+  await t.test(
+    'does NOT allow target artist with gravity <= 0.59 (below 80% influence) and low similarity',
+    () => {
+      const metrics = [mockMetric('Target Artist', 0.1)] // Low sim
+      const highGravities = { ...baseGravities, player1: 0.58 } // Just below 80% influence
       const result = applyDiversityConstraints(
         metrics,
         1, // Early round

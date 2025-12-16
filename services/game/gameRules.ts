@@ -4,7 +4,7 @@ import type { DgsOptionTrack, ExplorationPhase } from './dgsTypes'
 
 export const MAX_ROUND_TURNS = 10
 export const DISPLAY_OPTION_COUNT = 9
-export const MIN_CANDIDATE_POOL = 50
+export const MIN_CANDIDATE_POOL = 100
 export const MAX_CANDIDATE_POOL = 100
 export const MIN_UNIQUE_ARTISTS = 100
 

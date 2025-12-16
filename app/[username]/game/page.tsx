@@ -130,7 +130,7 @@ export default function GamePage(): JSX.Element {
   // State for difficulty level (Easy = Full Info, Medium = Artist Only, Hard = Title Only)
   const [difficulty, setDifficulty] = React.useState<
     'easy' | 'medium' | 'hard'
-  >('easy')
+  >('medium')
 
   const isInitialLoading =
     (phase === 'loading' && !nowPlaying && !error) || isLoadingArtists

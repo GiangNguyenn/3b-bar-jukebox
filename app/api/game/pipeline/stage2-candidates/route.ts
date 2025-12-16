@@ -6,6 +6,8 @@ import {
 import { ApiStatisticsTracker } from '@/services/game/apiStatisticsTracker'
 import { createModuleLogger } from '@/shared/utils/logger'
 import { ArtistProfile } from '@/services/game/dgsTypes'
+import { fetchAbsoluteRandomTracks } from '@/services/game/dgsDb'
+import { MIN_CANDIDATE_POOL } from '@/services/game/gameRules'
 
 const logger = createModuleLogger('Stage2Candidates')
 
@@ -15,8 +17,15 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
 
   try {
     const body = (await req.json()) as unknown
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { artistIds } = body as { artistIds: any[] }
+    const {
+      artistIds,
+      playedTrackIds = [],
+      currentTrackId
+    } = body as {
+      artistIds: string[]
+      playedTrackIds?: string[]
+      currentTrackId?: string
+    }
 
     const authHeader = req.headers.get('Authorization')
     if (!authHeader) {
@@ -34,17 +43,23 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     // Cast to string array safely
     const safeArtistIds = artistIds.map(String)
 
+    // Build exclude set for tracks
+    const excludeTrackIds = new Set<string>()
+    if (currentTrackId) excludeTrackIds.add(currentTrackId)
+    playedTrackIds.forEach((id) => excludeTrackIds.add(id))
+
     logger(
       'INFO',
-      `Stage 2: Fetching candidates for ${safeArtistIds.length} artists`,
+      `Stage 2: Fetching candidates for ${safeArtistIds.length} artists (excluding ${excludeTrackIds.size} tracks)`,
       'POST'
     )
 
-    // 1. Fetch Candidates (Tracks)
+    // 1. Fetch Candidates (Tracks) - randomly select 1 from top 10 per artist
     const seeds = await fetchTopTracksForArtists(
       safeArtistIds,
       token,
-      statisticsTracker // We assume this function uses the tracker we pass? (Need to check strict type match)
+      statisticsTracker,
+      excludeTrackIds
     )
 
     // 2. Enrich with Artist Profiles
@@ -60,6 +75,48 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
 
     // Convert Map to Array for JSON response
     const profiles = Array.from(enrichedProfilesMap.values())
+
+    // 3. Final Fallback: If we don't have minimum 100 tracks, add random tracks from TRACKS table
+    if (seeds.length < MIN_CANDIDATE_POOL) {
+      const neededTracks = MIN_CANDIDATE_POOL - seeds.length
+      logger(
+        'WARN',
+        `Candidate pool has only ${seeds.length} tracks, adding ${neededTracks} random tracks from database`,
+        'POST'
+      )
+
+      try {
+        const existingTrackIds = new Set(seeds.map((s) => s.track.id))
+        excludeTrackIds.forEach((id) => existingTrackIds.add(id))
+
+        const randomTracks = await fetchAbsoluteRandomTracks(
+          neededTracks,
+          existingTrackIds
+        )
+
+        // Convert random tracks to CandidateSeed format
+        const randomSeeds = randomTracks.map((track) => ({
+          track,
+          source: 'embedding' as const,
+          seedArtistId: track.artists?.[0]?.id || ''
+        }))
+
+        seeds.push(...randomSeeds)
+
+        logger(
+          'INFO',
+          `Added ${randomSeeds.length} random tracks from database. New pool size: ${seeds.length}`,
+          'POST'
+        )
+      } catch (error) {
+        logger(
+          'ERROR',
+          `Failed to fetch random tracks for fallback: ${error instanceof Error ? error.message : String(error)}`,
+          'POST'
+        )
+        // Continue with what we have
+      }
+    }
 
     const executionTime = Date.now() - startTime
 

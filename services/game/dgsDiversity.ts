@@ -74,11 +74,13 @@ export function applyDiversityConstraints(
       return true
     }
 
-    // CHECK OVERRIDES: Target Boost (Round 8+) OR High Influence (>= 0.7)
+    // CHECK OVERRIDES: Target Boost (Round 10+) OR High Influence (> 0.59 = 80% influence)
     // If either condition is met, we ALLOW the target artist regardless of similarity
-    const roundOverride = roundNumber >= 8
+    // 80% influence = ((gravity - 0.15) / (0.7 - 0.15)) * 100 = 80
+    // Solving: gravity = 0.59
+    const roundOverride = roundNumber >= 10
     const gravityOverride =
-      targetPlayerId && playerGravities[targetPlayerId] >= GRAVITY_LIMITS.max
+      targetPlayerId && playerGravities[targetPlayerId] > 0.59
 
     if (roundOverride || gravityOverride) {
       logger(
@@ -977,7 +979,7 @@ export function applyDiversityConstraints(
     const currentPlayerAttraction = getCurrentPlayerAttraction(metric)
     const baseline = metric.currentSongAttraction
     const diff = currentPlayerAttraction - baseline
-    
+
     // Use NEUTRAL_TOLERANCE (0.02) as per requirements_scoring_logic.md Section 5.1
     if (diff > NEUTRAL_TOLERANCE) {
       metric.selectionCategory = 'closer'
@@ -989,18 +991,30 @@ export function applyDiversityConstraints(
   })
 
   // Rebuild category arrays after recalculating categories to ensure correct 3-3-3 distribution
-  const recategorizedCloser = selected.filter((m) => m.selectionCategory === 'closer')
-  const recategorizedNeutral = selected.filter((m) => m.selectionCategory === 'neutral')
-  const recategorizedFurther = selected.filter((m) => m.selectionCategory === 'further')
+  const recategorizedCloser = selected.filter(
+    (m) => m.selectionCategory === 'closer'
+  )
+  const recategorizedNeutral = selected.filter(
+    (m) => m.selectionCategory === 'neutral'
+  )
+  const recategorizedFurther = selected.filter(
+    (m) => m.selectionCategory === 'further'
+  )
 
   // Ensure we have exactly 3 of each category, prioritizing by finalScore
   const finalSelected: CandidateTrackMetrics[] = []
-  
+
   // Sort each category by finalScore (best first) and take top 3
-  const sortedCloser = [...recategorizedCloser].sort((a, b) => b.finalScore - a.finalScore)
-  const sortedNeutral = [...recategorizedNeutral].sort((a, b) => b.finalScore - a.finalScore)
-  const sortedFurther = [...recategorizedFurther].sort((a, b) => b.finalScore - a.finalScore)
-  
+  const sortedCloser = [...recategorizedCloser].sort(
+    (a, b) => b.finalScore - a.finalScore
+  )
+  const sortedNeutral = [...recategorizedNeutral].sort(
+    (a, b) => b.finalScore - a.finalScore
+  )
+  const sortedFurther = [...recategorizedFurther].sort(
+    (a, b) => b.finalScore - a.finalScore
+  )
+
   finalSelected.push(...sortedCloser.slice(0, TRACKS_PER_CATEGORY))
   finalSelected.push(...sortedNeutral.slice(0, TRACKS_PER_CATEGORY))
   finalSelected.push(...sortedFurther.slice(0, TRACKS_PER_CATEGORY))
@@ -1012,13 +1026,13 @@ export function applyDiversityConstraints(
       .filter((m) => !usedIds.has(m.track.id))
       .sort((a, b) => b.finalScore - a.finalScore)
       .slice(0, DISPLAY_OPTION_COUNT - finalSelected.length)
-    
+
     // Recalculate category for remaining tracks
     remaining.forEach((metric) => {
       const currentPlayerAttraction = getCurrentPlayerAttraction(metric)
       const baseline = metric.currentSongAttraction
       const diff = currentPlayerAttraction - baseline
-      
+
       if (diff > NEUTRAL_TOLERANCE) {
         metric.selectionCategory = 'closer'
       } else if (diff < -NEUTRAL_TOLERANCE) {
@@ -1027,7 +1041,7 @@ export function applyDiversityConstraints(
         metric.selectionCategory = 'neutral'
       }
     })
-    
+
     finalSelected.push(...remaining)
   }
 
@@ -1038,9 +1052,15 @@ export function applyDiversityConstraints(
   )
 
   // Validate diversity: verify we achieved 3-3-3 distribution
-  const actualCloser = finalSelected.filter((m) => m.selectionCategory === 'closer').length
-  const actualNeutral = finalSelected.filter((m) => m.selectionCategory === 'neutral').length
-  const actualFurther = finalSelected.filter((m) => m.selectionCategory === 'further').length
+  const actualCloser = finalSelected.filter(
+    (m) => m.selectionCategory === 'closer'
+  ).length
+  const actualNeutral = finalSelected.filter(
+    (m) => m.selectionCategory === 'neutral'
+  ).length
+  const actualFurther = finalSelected.filter(
+    (m) => m.selectionCategory === 'further'
+  ).length
   const achievedPerfectBalance =
     actualCloser === TRACKS_PER_CATEGORY &&
     actualNeutral === TRACKS_PER_CATEGORY &&
@@ -1052,10 +1072,13 @@ export function applyDiversityConstraints(
     const currentPlayerAttraction = getCurrentPlayerAttraction(metric)
     const baseline = metric.currentSongAttraction
     const diff = currentPlayerAttraction - baseline
-    const expectedCategory = 
-      diff > NEUTRAL_TOLERANCE ? 'closer' :
-      diff < -NEUTRAL_TOLERANCE ? 'further' : 'neutral'
-    
+    const expectedCategory =
+      diff > NEUTRAL_TOLERANCE
+        ? 'closer'
+        : diff < -NEUTRAL_TOLERANCE
+          ? 'further'
+          : 'neutral'
+
     if (metric.selectionCategory !== expectedCategory) {
       categorizationErrors.push(
         `Option ${index + 1} (${metric.track.name}): Expected ${expectedCategory} (diff=${diff.toFixed(3)}), got ${metric.selectionCategory}`

@@ -217,7 +217,7 @@ export async function runGameGenerationPipeline(
       body: {
         artistIds: chunk,
         playedTrackIds,
-        currentArtistId: currentTrack.artists?.[0]?.id
+        currentTrackId: currentTrack.id
       }
     }).then((res) => {
       completedChunks++
@@ -285,7 +285,9 @@ export async function runGameGenerationPipeline(
 
   // Enrich candidatePool debug info with resolved names
   if (accumulatedDebug?.candidatePool) {
-    const enrichArtists = (artists: { id: string; name: string }[] | undefined) => {
+    const enrichArtists = (
+      artists: { id: string; name: string }[] | undefined
+    ) => {
       if (!artists) return []
       return artists.map((a) => {
         const profile = allProfiles.find((p) => p.id === a.id)

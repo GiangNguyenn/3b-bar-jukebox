@@ -67,7 +67,8 @@ export const mergeDebugInfo = (
       merged.caching.artistProfilesRequested +
       merged.caching.artistSearchesRequested
 
-    const calculatedRate = totalReq > 0 ? merged.caching.totalCacheHits / totalReq : 0
+    const calculatedRate =
+      totalReq > 0 ? merged.caching.totalCacheHits / totalReq : 0
     merged.caching.cacheHitRate = Math.min(1.0, calculatedRate) // Cap at 100% to prevent impossible rates
   }
 

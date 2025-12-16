@@ -141,8 +141,14 @@ test('applyDiversityConstraints ensures unique artists and balances popularity',
   const selected = result.selected
 
   // Should return up to 9 tracks (3-3-3 distribution) if available, but at least what we have
-  assert.ok(selected.length <= 9, `Expected at most 9 tracks, got ${selected.length}`)
-  assert.ok(selected.length >= 1, `Expected at least 1 track, got ${selected.length}`)
+  assert.ok(
+    selected.length <= 9,
+    `Expected at most 9 tracks, got ${selected.length}`
+  )
+  assert.ok(
+    selected.length >= 1,
+    `Expected at least 1 track, got ${selected.length}`
+  )
 
   // Ensure each artist appears at most once
   const artistCounts = selected.reduce<Record<string, number>>((acc, entry) => {

@@ -103,7 +103,7 @@ function shuffleArray<T>(array: T[]): T[] {
   const shuffled = [...array] // Create a copy to avoid mutating the original
   for (let i = shuffled.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1))
-      ;[shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]]
+    ;[shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]]
   }
   return shuffled
 }
@@ -195,15 +195,17 @@ export async function addTargetArtistsToPool({
 }): Promise<CandidateSeed[]> {
   const additionalCandidates: CandidateSeed[] = []
 
-  // Thresholds: add if gravity >= MAX (0.7) OR round >= 8
+  // Thresholds: add if gravity > 0.59 (80% influence) OR round >= 10
   // Note: Desperation logic (<0.2) is now handled by Stage 1 seeding related artists
-  const GRAVITY_THRESHOLD = GRAVITY_LIMITS.max
-  const ROUND_THRESHOLD = 8
+  // 80% influence = ((gravity - 0.15) / (0.7 - 0.15)) * 100 = 80
+  // Solving: gravity = 0.59
+  const GRAVITY_THRESHOLD = 0.59 // 80% influence
+  const ROUND_THRESHOLD = 10
 
   // Check if we should add target artists (Target Artist Itself)
   const shouldAdd =
-    playerGravities.player1 >= GRAVITY_THRESHOLD ||
-    playerGravities.player2 >= GRAVITY_THRESHOLD ||
+    playerGravities.player1 > GRAVITY_THRESHOLD ||
+    playerGravities.player2 > GRAVITY_THRESHOLD ||
     roundNumber >= ROUND_THRESHOLD
 
   if (!shouldAdd) {
@@ -245,7 +247,7 @@ export async function addTargetArtistsToPool({
     // Check if this player's gravity is high enough OR round threshold met
     const playerGravity = playerGravities[playerId as PlayerId]
     const playerShouldAdd =
-      playerGravity >= GRAVITY_THRESHOLD || roundNumber >= ROUND_THRESHOLD
+      playerGravity > GRAVITY_THRESHOLD || roundNumber >= ROUND_THRESHOLD
 
     if (!playerShouldAdd) {
       continue
@@ -280,7 +282,8 @@ export async function addTargetArtistsToPool({
         // Add top track (or first valid track)
         const trackToAdd = validTracks[0]
         // Use target artist's spotifyId, or fallback to track's artist ID
-        const seedArtistId = targetProfile.spotifyId ?? trackToAdd.artists?.[0]?.id ?? ''
+        const seedArtistId =
+          targetProfile.spotifyId ?? trackToAdd.artists?.[0]?.id ?? ''
         additionalCandidates.push({
           track: trackToAdd,
           source: 'target_boost',
@@ -431,7 +434,7 @@ export async function ensureTargetDiversity({
 
     // NOTE: Target Artist injection removed from this function
     // Target artists are now ONLY injected via addTargetArtistsToPool() which properly checks:
-    // - Gravity >= 80% OR Round >= 8
+    // - Gravity > 0.59 (80% influence) OR Round >= 10
     // This ensures target artists don't appear too early in the game
     // This function (ensureTargetDiversity) should only inject RELATED artists for diversity
 
@@ -524,9 +527,10 @@ export async function ensureTargetDiversity({
           // Ensure it's not a duplicate track
           if (track.id && !excludeTrackIds.has(track.id) && track.is_playable) {
             // Use target artist's spotifyId, or fallback to track's artist ID
-            const seedArtistId = currentPlayerTarget.spotifyId ?? track.artists?.[0]?.id ?? ''
-            additionalCandidates.push({ 
-              track, 
+            const seedArtistId =
+              currentPlayerTarget.spotifyId ?? track.artists?.[0]?.id ?? ''
+            additionalCandidates.push({
+              track,
               source: 'target_insertion',
               seedArtistId
             })
@@ -577,8 +581,8 @@ export async function ensureTargetDiversity({
             t.id !== currentTrackId
         )
         validTracks.forEach((track) => {
-          additionalCandidates.push({ 
-            track, 
+          additionalCandidates.push({
+            track,
             source: 'related_top_tracks',
             seedArtistId: currentArtistId ?? ''
           })
@@ -679,8 +683,8 @@ export async function ensureTargetDiversity({
         if (track.id && !excludeTrackIds.has(track.id)) {
           // Use track's artist ID as seedArtistId for database tracks
           const seedArtistId = track.artists?.[0]?.id ?? currentArtistId ?? ''
-          additionalCandidates.push({ 
-            track, 
+          additionalCandidates.push({
+            track,
             source: 'embedding',
             seedArtistId
           })
@@ -705,8 +709,8 @@ export async function ensureTargetDiversity({
           if (track.id && !excludeTrackIds.has(track.id)) {
             // Use track's artist ID as seedArtistId for random database tracks
             const seedArtistId = track.artists?.[0]?.id ?? currentArtistId ?? ''
-            additionalCandidates.push({ 
-              track, 
+            additionalCandidates.push({
+              track,
               source: 'embedding', // misuse embedding source for random
               seedArtistId
             })
@@ -1654,9 +1658,9 @@ async function buildCandidatePool({
       `Current distribution: ${Object.entries(currentDistribution)
         .map(([k, v]) => `${k}=${v}`)
         .join(', ')} | ` +
-      `Target distribution: ${Object.entries(targetCounts)
-        .map(([k, v]) => `${k}=${v}`)
-        .join(', ')}`,
+        `Target distribution: ${Object.entries(targetCounts)
+          .map(([k, v]) => `${k}=${v}`)
+          .join(', ')}`,
       'ensureDiversityBalance'
     )
 
@@ -1860,18 +1864,16 @@ async function addRelatedArtistTracks({
 
   // 5. Use the combined data (mostly from database)
   dbTopTracks.forEach((tracks, artistId) => {
-    tracks
-      .slice(0, tracksPerArtist)
-      .forEach((track) =>
-        registerCandidate(
-          track,
-          'related_top_tracks',
-          candidateMap,
-          playedTrackIds,
-          currentArtistId,
-          artistId // Use the related artist ID as seedArtistId
-        )
+    tracks.slice(0, tracksPerArtist).forEach((track) =>
+      registerCandidate(
+        track,
+        'related_top_tracks',
+        candidateMap,
+        playedTrackIds,
+        currentArtistId,
+        artistId // Use the related artist ID as seedArtistId
       )
+    )
   })
 }
 
@@ -1939,7 +1941,11 @@ function registerCandidate(
   if (!existing || sourcePriority(source) < sourcePriority(existing.source)) {
     // Use provided seedArtistId, or fallback to track's artist ID, or empty string
     const finalSeedArtistId = seedArtistId ?? trackArtistId ?? ''
-    candidateMap.set(track.id, { track, source, seedArtistId: finalSeedArtistId })
+    candidateMap.set(track.id, {
+      track,
+      source,
+      seedArtistId: finalSeedArtistId
+    })
     filteringStats.added++
   }
 }
@@ -2183,7 +2189,7 @@ export async function enrichCandidatesWithArtistProfiles(
 
     let nameSearchCount = 0
     const limitedSearches = artistsWithoutIds.slice(0, 20) // Limit to avoid too many API calls
-    
+
     // First, try to resolve IDs from database (database-first strategy)
     const dbLookupPromises = limitedSearches.map(async (artistInfo) => {
       try {
@@ -2946,7 +2952,7 @@ export async function scoreCandidates({
   // Buffer of 20 unique artists to safely select 9 without duplicates
   const MIN_STRICT_UNIQUE_ARTISTS = 20
   const needsArtistFallback = uniqueArtistNames.size < MIN_STRICT_UNIQUE_ARTISTS
-  
+
   // REQ-FUN-01: Ensure at least 50 unique tracks before diversity filtering
   const needsTrackFallback = candidates.length < MIN_CANDIDATE_POOL
 
@@ -2966,18 +2972,29 @@ export async function scoreCandidates({
     }
 
     // Calculate how many tracks we need
-    const neededTracks = needsTrackFallback 
-      ? Math.max(MIN_CANDIDATE_POOL - candidates.length, MIN_STRICT_UNIQUE_ARTISTS - uniqueArtistNames.size)
+    const neededTracks = needsTrackFallback
+      ? Math.max(
+          MIN_CANDIDATE_POOL - candidates.length,
+          MIN_STRICT_UNIQUE_ARTISTS - uniqueArtistNames.size
+        )
       : MIN_STRICT_UNIQUE_ARTISTS - uniqueArtistNames.size
-    
+
     const existingTrackIds = new Set(candidates.map((c) => c.track.id))
 
     // Blocking call to ensure we have data before scoring
     const fallbackResult = await fetchRandomTracksFromDb({
-      neededArtists: Math.max(neededTracks, MIN_STRICT_UNIQUE_ARTISTS - uniqueArtistNames.size),
+      neededArtists: Math.max(
+        neededTracks,
+        MIN_STRICT_UNIQUE_ARTISTS - uniqueArtistNames.size
+      ),
       existingArtistNames: uniqueArtistNames, // Pass names to ignore artists we already have
       excludeSpotifyTrackIds: existingTrackIds,
-      tracksPerArtist: needsTrackFallback ? Math.ceil(neededTracks / Math.max(1, MIN_STRICT_UNIQUE_ARTISTS - uniqueArtistNames.size)) : 1
+      tracksPerArtist: needsTrackFallback
+        ? Math.ceil(
+            neededTracks /
+              Math.max(1, MIN_STRICT_UNIQUE_ARTISTS - uniqueArtistNames.size)
+          )
+        : 1
     })
 
     if (fallbackResult.tracks.length > 0) {
@@ -3533,10 +3550,12 @@ export async function getSeedRelatedArtistIds(
 export async function fetchTopTracksForArtists(
   artistIds: string[],
   token: string,
-  statisticsTracker?: ApiStatisticsTracker
+  statisticsTracker?: ApiStatisticsTracker,
+  excludeTrackIds?: Set<string>
 ): Promise<CandidateSeed[]> {
   const seeds: CandidateSeed[] = []
   const artistIdsSet = new Set(artistIds)
+  const excludeSet = excludeTrackIds || new Set<string>()
 
   // Record requests for all artists
   artistIds.forEach(() => {
@@ -3584,20 +3603,38 @@ export async function fetchTopTracksForArtists(
     )
   }
 
-  // 4. Build seeds
+  // 4. Build seeds - randomly select 1 track from top 10 per artist
   dbTopTracks.forEach((tracks, artistId) => {
     // Only if requested
-    if (artistIdsSet.has(artistId)) {
-      tracks.slice(0, 1).forEach((track) => {
-        if (track.is_playable) {
-          seeds.push({ 
-            track, 
-            source: 'related_top_tracks',
-            seedArtistId: artistId // Use the artist ID from the forEach loop
-          })
-        }
-      })
+    if (!artistIdsSet.has(artistId)) return
+
+    // Get top 10 tracks (or all available if less than 10)
+    const topTracks = tracks.slice(0, 10)
+
+    // Filter out excluded tracks (current track, played tracks)
+    const validTracks = topTracks.filter(
+      (track) => track.is_playable && !excludeSet.has(track.id)
+    )
+
+    // If no valid tracks, skip this artist
+    if (validTracks.length === 0) {
+      logger(
+        'WARN',
+        `No valid tracks for artist ${artistId} after filtering (${topTracks.length} total tracks)`,
+        'fetchTopTracksForArtists'
+      )
+      return
     }
+
+    // Randomly select 1 track from valid tracks
+    const randomIndex = Math.floor(Math.random() * validTracks.length)
+    const selectedTrack = validTracks[randomIndex]
+
+    seeds.push({
+      track: selectedTrack,
+      source: 'related_top_tracks',
+      seedArtistId: artistId
+    })
   })
 
   return seeds
