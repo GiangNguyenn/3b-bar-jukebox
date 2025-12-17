@@ -145,7 +145,11 @@ test('applyDiversityConstraints - Filtering Logic', async (t) => {
         'player1'
       )
       // Implementation uses > 0.59, so 0.59 should NOT be allowed
-      assert.equal(result.selected.length, 0, '0.59 should not be allowed (threshold is > 0.59)')
+      assert.equal(
+        result.selected.length,
+        0,
+        '0.59 should not be allowed (threshold is > 0.59)'
+      )
     }
   )
 

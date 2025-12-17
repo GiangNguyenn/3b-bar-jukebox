@@ -121,25 +121,31 @@ test('fetchRandomArtistsFromDb - Fully-Populated Filter', async (t) => {
 })
 
 test('fetchRandomArtistsFromDb - Edge Cases', async (t) => {
-  await t.test('returns empty array when database has no fully-populated artists', () => {
-    const mockData: Array<{
-      spotify_artist_id: string
-      name: string
-      genres: string[] | null
-    }> = []
+  await t.test(
+    'returns empty array when database has no fully-populated artists',
+    () => {
+      const mockData: Array<{
+        spotify_artist_id: string
+        name: string
+        genres: string[] | null
+      }> = []
 
-    const validArtists = mockData.filter((artist) => {
-      if (!artist.spotify_artist_id || artist.spotify_artist_id.includes('-')) {
-        return false
-      }
-      if (!artist.genres || artist.genres.length === 0) {
-        return false
-      }
-      return true
-    })
+      const validArtists = mockData.filter((artist) => {
+        if (
+          !artist.spotify_artist_id ||
+          artist.spotify_artist_id.includes('-')
+        ) {
+          return false
+        }
+        if (!artist.genres || artist.genres.length === 0) {
+          return false
+        }
+        return true
+      })
 
-    assert.equal(validArtists.length, 0)
-  })
+      assert.equal(validArtists.length, 0)
+    }
+  )
 
   await t.test('handles database with fewer than requested artists', () => {
     const mockData = [

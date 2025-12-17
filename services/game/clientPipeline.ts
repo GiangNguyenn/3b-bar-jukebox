@@ -8,12 +8,13 @@ import type {
   PlayerId,
   PlayerTargetsMap,
   TargetProfile,
-  CandidateSeed,
-  ArtistProfile,
   DgsSelectionMeta
 } from './dgsTypes'
 import type { TargetArtist } from '../gameService'
 import { mergeDebugInfo } from './debugUtils'
+import { createModuleLogger } from '@/shared/utils/logger'
+
+const logger = createModuleLogger('ClientPipeline')
 
 interface PipelineConfig {
   playbackState: SpotifyPlaybackState
@@ -45,11 +46,14 @@ export interface PipelineResult {
 
 // Internal Response Types
 interface Stage1Response {
+  artistIds: string[]
+  relatedToCurrent: Array<{ name: string; id: string }>
+  relatedToTarget: Array<{ name: string; id: string }>
+  randomArtists: Array<{ name: string; id: string }>
   targetProfiles: Record<PlayerId, TargetProfile | null>
+  currentTrack: any // TrackDetails
   seedArtistId: string
   seedArtistName: string
-  currentTrack: any // TrackDetails
-  relatedArtistIds: string[]
   updatedGravities: PlayerGravityMap
   explorationPhase: any // ExplorationPhase
   hardConvergenceActive: boolean
@@ -58,14 +62,19 @@ interface Stage1Response {
 }
 
 interface Stage2Response {
-  seeds: CandidateSeed[]
-  profiles: ArtistProfile[]
-  debug: DgsDebugInfo | unknown
+  selectedArtists: Array<{
+    artistId: string
+    artistName: string
+    category: 'CLOSER' | 'NEUTRAL' | 'FURTHER'
+    attractionScore: number
+    delta: number
+  }>
+  debugInfo: DgsDebugInfo
 }
 
 interface Stage3Response {
-  optionTracks: DgsOptionTrack[]
-  debug: DgsDebugInfo | unknown
+  options: DgsOptionTrack[]
+  debugInfo: DgsDebugInfo
 }
 
 export async function runGameGenerationPipeline(
@@ -91,9 +100,10 @@ export async function runGameGenerationPipeline(
   if (!token) throw new Error('No access token available')
   const authHeaders = { Authorization: `Bearer ${token}` }
 
-  // --- STAGE 1: INIT ---
+  // --- STAGE 1: ARTISTS ---
+  onProgress('Building Artist Pool...', 20)
   const stage1Res = await sendApiRequest<Stage1Response | { error: string }>({
-    path: '/game/pipeline/stage1-init',
+    path: '/game/pipeline/stage1-artists',
     method: 'POST',
     isLocalApi: true,
     extraHeaders: authHeaders,
@@ -113,8 +123,11 @@ export async function runGameGenerationPipeline(
   if ('error' in stage1Res) throw new Error(stage1Res.error)
 
   const {
+    artistIds,
+    relatedToCurrent,
+    relatedToTarget,
+    randomArtists,
     targetProfiles,
-    relatedArtistIds,
     currentTrack,
     updatedGravities,
     ogDrift,
@@ -194,132 +207,116 @@ export async function runGameGenerationPipeline(
     }
   }
 
-  onProgress('Finding Candidates...', 30)
-
-  // --- STAGE 2: CANDIDATES (Parallel Chunks) ---
-  const CHUNK_SIZE = 5
-  const allSeeds: CandidateSeed[] = []
-  const allProfiles: ArtistProfile[] = []
-  const chunks: string[][] = []
-
-  for (let i = 0; i < relatedArtistIds.length; i += CHUNK_SIZE) {
-    chunks.push(relatedArtistIds.slice(i, i + CHUNK_SIZE))
-  }
-
-  let completedChunks = 0
-  const chunkPromises = chunks.map((chunk) =>
-    sendApiRequest<Stage2Response | { error: string }>({
-      path: '/game/pipeline/stage2-candidates',
-      method: 'POST',
-      isLocalApi: true,
-      extraHeaders: authHeaders,
-      config: { signal },
-      body: {
-        artistIds: chunk,
-        playedTrackIds,
-        currentTrackId: currentTrack.id
-      }
-    }).then((res) => {
-      completedChunks++
-      const percent = Math.round((completedChunks / chunks.length) * 100)
-      // Map 30% -> 75% range
-      const uiProgress = 30 + Math.floor((completedChunks / chunks.length) * 45)
-      onProgress(`Finding Candidates (${percent}%)...`, uiProgress)
-      return res
-    })
-  )
-
-  const stage2Results = await Promise.all(chunkPromises)
-
-  for (const res of stage2Results) {
-    if ('error' in res) throw new Error(res.error)
-    if (res.seeds) allSeeds.push(...res.seeds)
-    if (res.profiles) allProfiles.push(...res.profiles)
-
-    if (res.debug) {
-      const debugData = res.debug as any
-      // Map 'stats' to 'caching' if needed
-      const chunkDebug = {
-        ...debugData,
-        caching: debugData.stats || debugData.caching,
-        executionTimeMs: debugData.executionTime || debugData.executionTimeMs
-      } as DgsDebugInfo
-      accumulatedDebug = mergeDebugInfo(accumulatedDebug, chunkDebug)
+  // Merge Stage 1 debug info
+  if (stage1Res.debug) {
+    const s1Debug = stage1Res.debug as any
+    accumulatedDebug = {
+      caching: s1Debug?.stats || s1Debug?.caching,
+      executionTimeMs: s1Debug?.executionTime || s1Debug?.executionTimeMs,
+      candidatePool: s1Debug?.candidatePool,
+      ...s1Debug
     }
   }
 
-  // --- STAGE 3: SCORE ---
-  onProgress('Scoring Candidates...', 80)
+  // --- STAGE 2: SCORE ARTISTS ---
+  const artistCount = artistIds.length // Should be ~100
+  logger(
+    'INFO',
+    `Stage 1 returned ${artistCount} artists. Passing to Stage 2...`,
+    'runGameGenerationPipeline'
+  )
 
-  const stage3Res = await sendApiRequest<Stage3Response | { error: string }>({
-    path: '/game/pipeline/stage3-score',
+  onProgress('Scoring Artists...', 50)
+  const stage2Res = await sendApiRequest<Stage2Response | { error: string }>({
+    path: '/game/pipeline/stage2-score-artists',
     method: 'POST',
     isLocalApi: true,
     extraHeaders: authHeaders,
     config: { signal },
     body: {
-      seeds: allSeeds,
-      profiles: allProfiles,
+      artistIds,
       targetProfiles,
       playerGravities: updatedGravities,
       currentTrack,
-      relatedArtistIds,
+      relatedArtistIds: artistIds, // All artists are related in some way
       roundNumber,
       currentPlayerId: activePlayerId,
       ogDrift,
       hardConvergenceActive,
-      playedTrackIds
+      relatedToCurrent,
+      relatedToTarget,
+      randomArtists
+    }
+  })
+
+  if ('error' in stage2Res) throw new Error(stage2Res.error)
+
+  // Merge Stage 2 debug info
+  if (stage2Res.debugInfo) {
+    accumulatedDebug = mergeDebugInfo(accumulatedDebug, stage2Res.debugInfo)
+  }
+
+  // --- STAGE 3: FETCH TRACKS ---
+  onProgress('Fetching Tracks...', 80)
+  const stage3Res = await sendApiRequest<Stage3Response | { error: string }>({
+    path: '/game/pipeline/stage3-fetch-tracks',
+    method: 'POST',
+    isLocalApi: true,
+    extraHeaders: authHeaders,
+    config: { signal },
+    body: {
+      selectedArtists: stage2Res.selectedArtists,
+      currentTrack,
+      playedTrackIds,
+      targetProfiles,
+      playerGravities: updatedGravities,
+      currentPlayerId: activePlayerId,
+      roundNumber,
+      hardConvergenceActive,
+      ogDrift
     }
   })
 
   if ('error' in stage3Res) throw new Error(stage3Res.error)
 
-  // Merge final debug
-  if (stage3Res.debug) {
-    let s3Debug = stage3Res.debug as any
-    if (s3Debug.stats && !s3Debug.caching) {
-      s3Debug = { ...s3Debug, caching: s3Debug.stats }
-    }
-    accumulatedDebug = mergeDebugInfo(accumulatedDebug, s3Debug)
-  }
-
-  // Enrich candidatePool debug info with resolved names
-  if (accumulatedDebug?.candidatePool) {
-    const enrichArtists = (
-      artists: { id: string; name: string }[] | undefined
-    ) => {
-      if (!artists) return []
-      return artists.map((a) => {
-        const profile = allProfiles.find((p) => p.id === a.id)
-        return {
-          id: a.id,
-          name: profile?.name ?? a.name // Use profile name if available (more reliable)
-        }
-      })
-    }
-
-    if (accumulatedDebug.candidatePool.seedArtists) {
-      accumulatedDebug.candidatePool.seedArtists = enrichArtists(
-        accumulatedDebug.candidatePool.seedArtists
-      )
-    }
-    if (accumulatedDebug.candidatePool.targetArtists) {
-      accumulatedDebug.candidatePool.targetArtists = enrichArtists(
-        accumulatedDebug.candidatePool.targetArtists
-      )
-    }
+  // Merge Stage 3 debug info
+  if (stage3Res.debugInfo) {
+    accumulatedDebug = mergeDebugInfo(accumulatedDebug, stage3Res.debugInfo)
   }
 
   onProgress('Finalizing...', 95)
 
+  // Use the actual total candidates from scoring debug info
+  const actualPoolSize =
+    accumulatedDebug?.scoring?.totalCandidates ?? stage2Res.selectedArtists.length
+
+  // Construct Timing Breakdown
+  if (accumulatedDebug) {
+    const s1Time = (stage1Res.debug as any)?.executionTimeMs ?? 0
+    const s2Time = stage2Res.debugInfo?.executionTimeMs ?? 0
+    const s3Time = stage3Res.debugInfo?.executionTimeMs ?? 0
+
+    accumulatedDebug.timingBreakdown = {
+      candidatePoolMs: s1Time, // Stage 1 covers pool & targets
+      targetResolutionMs: 0, // Included in Stage 1 for now
+      enrichmentMs: 0, // Included in Stage 1/3
+      scoringMs: s2Time, // Stage 2 is pure scoring
+      selectionMs: s3Time, // Stage 3 is selection/fetching
+      totalMs: s1Time + s2Time + s3Time
+    }
+
+    // Update total execution time
+    accumulatedDebug.executionTimeMs = accumulatedDebug.timingBreakdown.totalMs
+  }
+
   return {
-    options: stage3Res.optionTracks,
+    options: stage3Res.options,
     debugInfo: accumulatedDebug,
-    candidatePoolSize: allSeeds.length,
+    candidatePoolSize: actualPoolSize,
     vicinity: { triggered: false }, // Simplified
     updatedGravities,
     targetProfiles,
     stage1Data: stage1Res,
-    stage3Data: stage3Res as Stage3Response // Cast to ensure type matching
+    stage3Data: stage3Res
   }
 }

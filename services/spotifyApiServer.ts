@@ -314,29 +314,28 @@ export async function getArtistTopTracksServer(
       'top tracks for',
       artistId
     )
-    // Note: Statistics tracking is handled by callers to avoid double-counting
-    // For DB cache hits, we need to fetch full track details
-    // Check if we have them in memory or need to get minimal objects
-    // Since callers expect full TrackDetails, return minimal objects for now
-    // (full details will be fetched on-demand if needed)
-    const tracks = dbCachedTrackIds.map(
-      (id) =>
-        ({
-          id,
-          uri: `spotify:track:${id}`,
-          name: '',
-          duration_ms: 0,
-          popularity: 0,
-          preview_url: null,
-          is_playable: true,
-          explicit: false,
-          album: { name: '', images: [], release_date: '' },
-          artists: [{ id: artistId, name: '' }]
-        }) as TrackDetails
+
+    // Fetch full track details from DB
+    const { batchGetTrackDetailsFromDb } = await import('./game/dgsCache')
+    const trackDetailsMap = await batchGetTrackDetailsFromDb(
+      dbCachedTrackIds,
+      statisticsTracker
     )
-    // Store in memory cache (10-minute TTL)
-    cache.set(memCacheKey, tracks, 10 * 60 * 1000)
-    return tracks
+
+    const tracks = dbCachedTrackIds
+      .map((id) => trackDetailsMap.get(id))
+      .filter((t): t is TrackDetails => t !== undefined)
+
+    if (tracks.length > 0) {
+      // Store in memory cache (10-minute TTL)
+      cache.set(memCacheKey, tracks, 10 * 60 * 1000)
+      return tracks
+    }
+
+    console.log(
+      '[spotifyApiServer] DB cache hit but track details missing, falling back to Spotify',
+      artistId
+    )
   }
 
   console.log(
@@ -360,6 +359,10 @@ export async function getArtistTopTracksServer(
 
     const tracks = response.tracks || []
 
+    if (statisticsTracker) {
+      statisticsTracker.recordFromSpotify('topTracks', tracks.length)
+    }
+
     // FIRE-AND-FORGET: Save to database cache
     void upsertTopTracks(
       artistId,
@@ -373,8 +376,7 @@ export async function getArtistTopTracksServer(
   } catch (error) {
     console.error('[spotifyApiServer] getArtistTopTracksServer error:', error)
     throw new Error(
-      `Failed to fetch artist top tracks: ${
-        error instanceof Error ? error.message : 'Unknown error'
+      `Failed to fetch artist top tracks: ${error instanceof Error ? error.message : 'Unknown error'
       }`
     )
   }

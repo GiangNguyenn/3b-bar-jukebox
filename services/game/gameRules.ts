@@ -23,15 +23,15 @@ export const VICINITY_DISTANCE_THRESHOLD = 0.05
 export const OG_CONSTANT = 0.12
 
 export const CATEGORY_WEIGHTS = {
-  closer: 0.4, // 40% chance to pick from closer when available
-  neutral: 0.4, // 40% chance to pick from neutral when available
-  further: 0.2 // 20% chance to pick from further when available
+  closer: 0.34, // Balanced probability for fallback filling
+  neutral: 0.33,
+  further: 0.33
 }
 
 export const GUARANTEED_MINIMUMS = {
-  closer: 2, // Always get at least 2 closer tracks
-  neutral: 3, // Always get at least 3 neutral tracks
-  further: 1 // Always get at least 1 further track
+  closer: 3, // Force 3 closer tracks
+  neutral: 3, // Force 3 neutral tracks
+  further: 3 // Force 3 further tracks
 }
 
 export const MIN_QUALITY_THRESHOLDS = {

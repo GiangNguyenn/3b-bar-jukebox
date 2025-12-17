@@ -72,6 +72,37 @@ export const mergeDebugInfo = (
     merged.caching.cacheHitRate = Math.min(1.0, calculatedRate) // Cap at 100% to prevent impossible rates
   }
 
+  // Merge Performance Diagnostics
+  const p1 = prev?.performanceDiagnostics
+  const p2 = next?.performanceDiagnostics
+
+  if (p1 || p2) {
+    // Helper to merge call arrays
+    const mergeCalls = (a?: any[], b?: any[]) => [...(a || []), ...(b || [])]
+    // Helper to sum numbers
+    const sum = (a?: number, b?: number) => (a || 0) + (b || 0)
+
+    // Helper to find slowest call
+    const getSlowest = (a?: { durationMs: number } | null, b?: { durationMs: number } | null) => {
+      if (a && b) return a.durationMs > b.durationMs ? a : b
+      return a || b || null
+    }
+
+    merged.performanceDiagnostics = {
+      apiCalls: mergeCalls(p1?.apiCalls, p2?.apiCalls),
+      // We don't merge DB queries here yet as they aren't fully instrumented, but safe to merge if present
+      dbQueries: mergeCalls(p1?.dbQueries, p2?.dbQueries),
+
+      totalApiTimeMs: sum(p1?.totalApiTimeMs, p2?.totalApiTimeMs),
+      totalDbTimeMs: sum(p1?.totalDbTimeMs, p2?.totalDbTimeMs),
+
+      slowestApiCall: getSlowest(p1?.slowestApiCall, p2?.slowestApiCall) as any,
+      slowestDbQuery: getSlowest(p1?.slowestDbQuery, p2?.slowestDbQuery) as any,
+
+      bottleneckPhase: p2?.bottleneckPhase || p1?.bottleneckPhase
+    }
+  }
+
   // Merge Artist Profiles Stats (if structure exists)
   if (prev.artistProfiles && next.artistProfiles) {
     merged.artistProfiles = {
@@ -91,7 +122,36 @@ export const mergeDebugInfo = (
 
   // Scoring: usually Stage 3 has the final scoring, so we prefer next,
   // but if next doesn't have it (e.g. stage 2 response), keep prev.
-  if (next.scoring) {
+  // Scoring: Merge intelligently to preserve the "broad phase" stats
+  if (prev.scoring && next.scoring) {
+    merged.scoring = {
+      totalCandidates: Math.max(
+        prev.scoring.totalCandidates,
+        next.scoring.totalCandidates
+      ),
+      fallbackFetches:
+        prev.scoring.fallbackFetches + next.scoring.fallbackFetches,
+      p1NonZeroAttraction: Math.max(
+        prev.scoring.p1NonZeroAttraction,
+        next.scoring.p1NonZeroAttraction
+      ),
+      p2NonZeroAttraction: Math.max(
+        prev.scoring.p2NonZeroAttraction,
+        next.scoring.p2NonZeroAttraction
+      ),
+      zeroAttractionReasons: {
+        missingArtistProfile:
+          prev.scoring.zeroAttractionReasons.missingArtistProfile +
+          next.scoring.zeroAttractionReasons.missingArtistProfile,
+        nullTargetProfile:
+          prev.scoring.zeroAttractionReasons.nullTargetProfile +
+          next.scoring.zeroAttractionReasons.nullTargetProfile,
+        zeroSimilarity:
+          prev.scoring.zeroAttractionReasons.zeroSimilarity +
+          next.scoring.zeroAttractionReasons.zeroSimilarity
+      }
+    }
+  } else if (next.scoring) {
     merged.scoring = next.scoring
   } else {
     merged.scoring = prev.scoring
@@ -100,6 +160,32 @@ export const mergeDebugInfo = (
   // Candidates: Merge arrays
   if (prev.candidates || next.candidates) {
     merged.candidates = [...(prev.candidates || []), ...(next.candidates || [])]
+  }
+
+  // Merge Selected Artists (replace, don't accumulate as they define the round's outcome)
+  if (next.selectedArtists) {
+    merged.selectedArtists = next.selectedArtists
+  } else if (prev.selectedArtists) {
+    merged.selectedArtists = prev.selectedArtists
+  }
+
+  // Merge Candidate Pool (Stage 1 usually has the full pool)
+  if (next.candidatePool) {
+    merged.candidatePool = next.candidatePool
+  } else if (prev.candidatePool) {
+    merged.candidatePool = prev.candidatePool
+  }
+
+  // Merge Pipeline Logs (Concatenate)
+  const prevLogs = prev.pipelineLogs || []
+  const nextLogs = next.pipelineLogs || []
+
+  if (prevLogs.length > 0 || nextLogs.length > 0) {
+    // Concatenate logs
+    merged.pipelineLogs = [...prevLogs, ...nextLogs]
+
+    // Optional: Deduplicate logs if needed (based on timestamp and message)
+    // For now simple concatenation is better for tracing
   }
 
   return merged

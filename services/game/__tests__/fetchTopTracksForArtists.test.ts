@@ -116,7 +116,10 @@ test('Random Track Selection Logic', async (t) => {
     const selected = simulateRandomTrackSelection(tracks, excludeSet)
 
     assert.ok(selected !== null, 'Should select from available tracks')
-    assert.ok(tracks.some((t) => t.id === selected.id), 'Selected from available tracks')
+    assert.ok(
+      tracks.some((t) => t.id === selected.id),
+      'Selected from available tracks'
+    )
   })
 
   await t.test('filters out non-playable tracks', () => {

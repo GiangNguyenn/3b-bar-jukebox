@@ -223,20 +223,22 @@ export const sendApiRequest = async <T>({
         headers['Authorization'] = `Bearer ${token}`
       }
 
-      // Track API calls using the statistics tracker
-      if (statisticsTracker && !isLocalApi) {
-        const operationType = categorizeApiCall(path)
-        if (operationType) {
-          statisticsTracker.recordApiCall(operationType)
-        }
-      }
-
+      const startTime = Date.now()
       const response = await fetch(url, {
         method,
         headers,
         body: body ? JSON.stringify(body) : undefined,
         ...config
       })
+      const durationMs = Date.now() - startTime
+
+      // Track API calls using the statistics tracker
+      if (statisticsTracker && !isLocalApi) {
+        const operationType = categorizeApiCall(path)
+        if (operationType) {
+          statisticsTracker.recordApiCall(operationType, durationMs)
+        }
+      }
 
       if (!response.ok) {
         const errorText = await response.text()

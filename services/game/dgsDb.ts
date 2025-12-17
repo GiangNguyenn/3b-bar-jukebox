@@ -3,6 +3,7 @@ import type { Database } from '@/types/supabase'
 import { supabase, queryWithRetry } from '@/lib/supabase'
 import { safeBackfillTrackGenre } from './genreBackfill'
 import { safeBackfillTrackDetails } from './trackBackfill'
+import type { ApiStatisticsTracker } from './apiStatisticsTracker'
 
 import { createModuleLogger } from '@/shared/utils/logger'
 
@@ -15,6 +16,7 @@ interface FetchRandomTracksParams {
   existingArtistNames: Set<string>
   excludeSpotifyTrackIds: Set<string>
   tracksPerArtist?: number // Optional: allow multiple tracks per artist
+  statisticsTracker?: ApiStatisticsTracker
 }
 
 interface FetchRandomTracksResult {
@@ -35,13 +37,15 @@ export async function fetchRandomTracksFromDb({
   neededArtists,
   existingArtistNames,
   excludeSpotifyTrackIds,
-  tracksPerArtist = 1
+  tracksPerArtist = 1,
+  statisticsTracker
 }: FetchRandomTracksParams): Promise<FetchRandomTracksResult> {
   if (neededArtists <= 0) {
     return { tracks: [], uniqueArtistsAdded: 0 }
   }
 
   // First, get all profiled artists from the artists table
+  const t1Start = Date.now()
   const { data: profiledArtists, error: artistsError } = await queryWithRetry<
     {
       name: string
@@ -55,6 +59,8 @@ export async function fetchRandomTracksFromDb({
     undefined,
     'DGS fetch profiled artists for random tracks'
   )
+  const t1End = Date.now()
+  statisticsTracker?.recordDbQuery('fetchProfiledArtists', t1End - t1Start)
 
   if (artistsError || !profiledArtists || profiledArtists.length === 0) {
     logger(
@@ -88,6 +94,7 @@ export async function fetchRandomTracksFromDb({
   )
 
   // Use any as generic because we are excluding the required 'id' column
+  const t2Start = Date.now()
   const { data, error } = await queryWithRetry<any>(
     supabase
       .from('tracks')
@@ -101,6 +108,8 @@ export async function fetchRandomTracksFromDb({
     undefined,
     'DGS fetchRandomTracksFromDb'
   )
+  const t2End = Date.now()
+  statisticsTracker?.recordDbQuery('fetchRandomTracks', t2End - t2Start)
 
   if (error) {
     logger(
@@ -185,8 +194,8 @@ export async function fetchRandomTracksFromDb({
       ],
       external_urls: row.spotify_url
         ? {
-            spotify: row.spotify_url
-          }
+          spotify: row.spotify_url
+        }
         : undefined,
       genre: row.genre ?? undefined
     }
@@ -223,13 +232,15 @@ export async function fetchTracksByGenreFromDb({
   minPopularity = 20,
   maxPopularity = 100,
   limit = 100,
-  excludeSpotifyTrackIds
+  excludeSpotifyTrackIds,
+  statisticsTracker
 }: {
   genres: string[]
   minPopularity?: number
   maxPopularity?: number
   limit?: number
   excludeSpotifyTrackIds: Set<string>
+  statisticsTracker?: ApiStatisticsTracker
 }): Promise<{
   tracks: TrackDetails[]
   uniqueArtists: number
@@ -240,6 +251,7 @@ export async function fetchTracksByGenreFromDb({
 
   try {
     // First, get all profiled artists from the artists table
+    const t1Start = Date.now()
     const { data: profiledArtists, error: artistsError } = await queryWithRetry<
       {
         name: string
@@ -292,11 +304,14 @@ export async function fetchTracksByGenreFromDb({
       .limit(limit * 3) // Increased multiplier since we're filtering more
 
     // Use any as generic because we are excluding the required 'id' column
+    const t2Start = Date.now()
     const { data, error } = await queryWithRetry<any>(
       query as any,
       undefined,
       'DGS fetchTracksByGenreFromDb'
     )
+    const t2End = Date.now()
+    statisticsTracker?.recordDbQuery('fetchTracksByGenre', t2End - t2Start)
 
     if (error) {
       logger(
@@ -401,8 +416,8 @@ export async function fetchTracksByGenreFromDb({
         ],
         external_urls: row.spotify_url
           ? {
-              spotify: row.spotify_url
-            }
+            spotify: row.spotify_url
+          }
           : undefined,
         genre: row.genre ?? undefined
       }
@@ -441,92 +456,110 @@ export async function fetchTracksByGenreFromDb({
  */
 export async function fetchRandomArtistsFromDb({
   limit = 100,
-  excludeArtistIds = new Set<string>()
+  excludeArtistIds = new Set<string>(),
+  statisticsTracker
 }: {
   limit?: number
   excludeArtistIds?: Set<string>
-}): Promise<Array<{ id: string; name: string }>> {
-  logger(
-    'INFO',
-    `Fetching ${limit} random artists from database (fully-populated only)`,
-    'fetchRandomArtistsFromDb'
-  )
+  statisticsTracker?: ApiStatisticsTracker
+}): Promise<{ artists: Array<{ id: string; name: string }>; logs: string[] }> {
+  const logs: string[] = []
+  const log = (msg: string) => {
+    logs.push(`[fetchRandomArtistsFromDb] ${msg}`)
+    logger('INFO', msg, 'fetchRandomArtistsFromDb')
+  }
+
+  log(`Fetching ${limit} random artists from database (fully-populated only)`)
 
   const excludeArray = Array.from(excludeArtistIds)
 
-  // Query artists where all columns are populated:
-  // - spotify_artist_id (NOT NULL constraint)
-  // - name (NOT NULL constraint)
-  // - genres is not null and array is not empty
-  // - popularity is not null
-  // - follower_count is not null
-  const { data, error } = await queryWithRetry<
+  // Step 1: Fetch ALL valid artist IDs to ensure true random sampling
+  // We only fetch IDs here to keep the query light
+  const t1Start = Date.now()
+  const { data: allArtistIds, error: idError } = await queryWithRetry<
+    { spotify_artist_id: string }[]
+  >(
+    supabase
+      .from('artists')
+      .select('spotify_artist_id')
+      .not('spotify_artist_id', 'is', null)
+      .not('name', 'is', null)
+      .not('genres', 'is', null) // Ensure genres exist
+      .neq('genres', '{}') // Postgres empty array check
+      .not('popularity', 'is', null)
+      .not('follower_count', 'is', null),
+    undefined,
+    'Fetch all fully-populated artist IDs'
+  )
+  const t1End = Date.now()
+  statisticsTracker?.recordDbQuery('fetchRandomArtistIds', t1End - t1Start)
+
+  if (idError || !allArtistIds || allArtistIds.length === 0) {
+    logger(
+      'WARN',
+      `No fully-populated artists found in database (${allArtistIds?.length ?? 0} rows returned)`,
+      'fetchRandomArtistsFromDb',
+      idError instanceof Error ? idError : undefined
+    )
+    return { artists: [], logs }
+  }
+
+  // Step 2: Filter and Shuffle in Memory
+  const validIds = allArtistIds
+    .map((a) => a.spotify_artist_id)
+    .filter((id) => id && !id.includes('-') && !excludeArtistIds.has(id))
+
+  if (validIds.length === 0) {
+    logger(
+      'WARN',
+      'No valid artist IDs remaining after filtering exclusions',
+      'fetchRandomArtistsFromDb'
+    )
+    return { artists: [], logs }
+  }
+
+  shuffleInPlace(validIds)
+  const selectedIds = validIds.slice(0, limit)
+
+  log(`Randomly selected ${selectedIds.length} artists from ${validIds.length} valid candidates (filtered from ${allArtistIds.length} total, excluded ${excludeArray.length})`)
+
+  // Step 3: Fetch Details for Selected IDs
+  const { data: selectedArtists, error: detailsError } = await queryWithRetry<
     {
       spotify_artist_id: string
       name: string
-      genres: string[] | null
     }[]
   >(
     supabase
       .from('artists')
-      .select('spotify_artist_id, name, genres')
-      .not('spotify_artist_id', 'is', null)
-      .not('name', 'is', null)
-      .not('genres', 'is', null)
-      .not('popularity', 'is', null)
-      .not('follower_count', 'is', null)
-      .not(
-        'spotify_artist_id',
-        'in',
-        excludeArray.length > 0 ? excludeArray : ['__never__']
-      )
-      .limit(limit * 2), // Fetch more to account for filtering
+      .select('spotify_artist_id, name')
+      .in('spotify_artist_id', selectedIds),
     undefined,
-    'Fetch random fully-populated artists'
+    'Fetch details for selected random artists'
   )
 
-  if (error || !data || data.length === 0) {
+  if (detailsError || !selectedArtists) {
     logger(
-      'WARN',
-      `No fully-populated artists found in database (${data?.length ?? 0} rows returned)`,
+      'ERROR',
+      'Failed to fetch details for selected random artists',
       'fetchRandomArtistsFromDb',
-      error instanceof Error ? error : undefined
+      detailsError instanceof Error ? detailsError : undefined
     )
-    return []
+    return { artists: [], logs }
   }
 
-  // Filter out artists with empty genres array and ensure spotify_artist_id is valid
-  const validArtists = data.filter((artist) => {
-    // Ensure spotify_artist_id doesn't look like UUID (should be Spotify ID format)
-    if (!artist.spotify_artist_id || artist.spotify_artist_id.includes('-')) {
-      return false
-    }
-    // Ensure genres array is not null and not empty
-    if (!artist.genres || artist.genres.length === 0) {
-      return false
-    }
-    return true
-  })
-
-  // Shuffle and take limit
-  shuffleInPlace(validArtists)
-  const selected = validArtists.slice(0, limit)
-
-  logger(
-    'INFO',
-    `Selected ${selected.length} random artists from ${validArtists.length} fully-populated artists`,
-    'fetchRandomArtistsFromDb'
-  )
-
-  return selected.map((artist) => ({
+  const result = selectedArtists.map((artist) => ({
     id: artist.spotify_artist_id,
     name: artist.name
   }))
+
+  return { artists: result, logs }
 }
 
 export async function fetchAbsoluteRandomTracks(
   limit: number,
-  excludeTrackIds: Set<string>
+  excludeTrackIds: Set<string>,
+  statisticsTracker?: ApiStatisticsTracker
 ): Promise<TrackDetails[]> {
   logger(
     'WARN',
@@ -537,6 +570,7 @@ export async function fetchAbsoluteRandomTracks(
   const excludeArray = Array.from(excludeTrackIds)
 
   // Use any as generic because we are excluding the required 'id' column
+  const tStart = Date.now()
   const { data, error } = await queryWithRetry<any>(
     supabase
       .from('tracks')
@@ -555,6 +589,8 @@ export async function fetchAbsoluteRandomTracks(
     undefined,
     'Absolute fallback random tracks'
   )
+  const tEnd = Date.now()
+  statisticsTracker?.recordDbQuery('fetchAbsoluteRandomTracks', tEnd - tStart)
 
   if (error || !data || data.length === 0) {
     logger(
@@ -593,8 +629,8 @@ export async function fetchAbsoluteRandomTracks(
       ],
       external_urls: row.spotify_url
         ? {
-            spotify: row.spotify_url
-          }
+          spotify: row.spotify_url
+        }
         : undefined,
       genre: row.genre ?? undefined
     }
@@ -621,13 +657,15 @@ export async function fetchTracksCloserToTarget({
   targetPopularity,
   excludeArtistIds,
   excludeTrackIds,
-  limit
+  limit,
+  statisticsTracker
 }: {
   targetGenres: string[]
   targetPopularity: number
   excludeArtistIds: Set<string>
   excludeTrackIds: Set<string>
   limit: number
+  statisticsTracker?: ApiStatisticsTracker
 }): Promise<{
   tracks: TrackDetails[]
   uniqueArtists: number
@@ -649,6 +687,7 @@ export async function fetchTracksCloserToTarget({
     // - Genre overlap (primary)
     // - Similar popularity (secondary)
     // - This increases likelihood of higher attraction score
+    const tStart = Date.now()
     const { data: profiledArtists, error: artistsError } = await queryWithRetry<
       {
         name: string
@@ -666,6 +705,8 @@ export async function fetchTracksCloserToTarget({
       undefined,
       'DGS fetch profiled artists closer to target'
     )
+    const tEnd = Date.now()
+    statisticsTracker?.recordDbQuery('fetchProfiledArtistsCloser', tEnd - tStart)
 
     if (artistsError || !profiledArtists || profiledArtists.length === 0) {
       logger(
@@ -817,8 +858,8 @@ export async function fetchTracksCloserToTarget({
         ],
         external_urls: row.spotify_url
           ? {
-              spotify: row.spotify_url
-            }
+            spotify: row.spotify_url
+          }
           : undefined,
         genre: row.genre ?? undefined
       }
@@ -1014,8 +1055,8 @@ export async function fetchTracksFurtherFromTarget({
         ],
         external_urls: row.spotify_url
           ? {
-              spotify: row.spotify_url
-            }
+            spotify: row.spotify_url
+          }
           : undefined,
         genre: row.genre ?? undefined
       }
@@ -1366,8 +1407,8 @@ export async function fetchTracksByArtistIdsFromDb({
         ],
         external_urls: row.spotify_url
           ? {
-              spotify: row.spotify_url
-            }
+            spotify: row.spotify_url
+          }
           : undefined,
         genre: row.genre ?? undefined
       })

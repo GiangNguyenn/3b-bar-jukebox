@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Database cache layer for DGS engine
  * Provides DB-first lookups for artist data to minimize Spotify API calls
  *
@@ -234,7 +234,7 @@ export async function batchGetArtistRelationships(
         )
         .or(
           `source_spotify_artist_id.in.(${spotifyArtistIds.join(',')}),` +
-            `related_spotify_artist_id.in.(${spotifyArtistIds.join(',')})`
+          `related_spotify_artist_id.in.(${spotifyArtistIds.join(',')})`
         ),
       undefined,
       `Batch get artist relationships: ${spotifyArtistIds.length} artists`
@@ -551,6 +551,7 @@ export async function batchGetArtistProfilesWithCache(
     follower_count: number | null
     cached_at: string | null
   }
+  const tStart = Date.now()
   const { data: cachedProfiles } = await queryWithRetry<ArtistProfileSelect[]>(
     supabase
       .from('artists')
@@ -561,6 +562,8 @@ export async function batchGetArtistProfilesWithCache(
     undefined,
     `Batch get cached artists (${spotifyArtistIds.length} IDs)`
   )
+  const tEnd = Date.now()
+  statisticsTracker?.recordDbQuery('batchGetArtistProfiles', tEnd - tStart)
 
   const cachedMap = new Map<string, CachedArtistProfile>()
   const missingIds: string[] = []
@@ -777,7 +780,8 @@ export async function getTopTracksWithCache(
  * Returns a map of artist ID -> track details array
  */
 export async function batchGetTopTracksFromDb(
-  spotifyArtistIds: string[]
+  spotifyArtistIds: string[],
+  statisticsTracker?: ApiStatisticsTracker
 ): Promise<Map<string, TrackDetails[]>> {
   const result = new Map<string, TrackDetails[]>()
 
@@ -785,6 +789,7 @@ export async function batchGetTopTracksFromDb(
 
   try {
     // Query all top tracks for all artists in one query
+    const tStart = Date.now()
     const { data, error } = await queryWithRetry(
       supabase
         .from('artist_top_tracks')
@@ -794,6 +799,8 @@ export async function batchGetTopTracksFromDb(
       undefined,
       'Batch get top tracks from DB'
     )
+    const tEnd = Date.now()
+    statisticsTracker?.recordDbQuery('batchGetTopTracks', tEnd - tStart)
 
     if (error || !data) return result
 
@@ -815,12 +822,33 @@ export async function batchGetTopTracksFromDb(
     )
 
     if (allTrackIds.length > 0) {
-      const trackDetailsMap = await batchGetTrackDetailsFromDb(allTrackIds)
+      // Record track details requests
+      allTrackIds.forEach(() => {
+        statisticsTracker?.recordRequest('trackDetails')
+      })
+
+      const trackDetailsMap = await batchGetTrackDetailsFromDb(
+        allTrackIds,
+        statisticsTracker
+      )
 
       // Reconstruct artist -> tracks mapping
       trackIdsByArtist.forEach((trackIds, artistId) => {
         const tracks = trackIds
-          .map((id) => trackDetailsMap.get(id))
+          .map((id) => {
+            const track = trackDetailsMap.get(id)
+            if (!track) return undefined
+            // INJECT ARTIST ID: The tracks table does not store spotify_artist_id,
+            // so we must inject it here using the artistId we started with.
+            if (
+              track.artists &&
+              track.artists.length > 0 &&
+              !track.artists[0].id
+            ) {
+              track.artists[0].id = artistId
+            }
+            return track
+          })
           .filter((t): t is TrackDetails => t !== undefined)
         if (tracks.length > 0) {
           result.set(artistId, tracks)
@@ -849,13 +877,15 @@ export async function batchGetTopTracksFromDb(
  * Returns a map of track ID -> track details
  */
 export async function batchGetTrackDetailsFromDb(
-  spotifyTrackIds: string[]
+  spotifyTrackIds: string[],
+  statisticsTracker?: ApiStatisticsTracker
 ): Promise<Map<string, TrackDetails>> {
   const result = new Map<string, TrackDetails>()
 
   if (spotifyTrackIds.length === 0) return result
 
   try {
+    const tStart = Date.now()
     const { data, error } = await queryWithRetry(
       supabase
         .from('tracks')
@@ -864,8 +894,17 @@ export async function batchGetTrackDetailsFromDb(
       undefined,
       'Batch get track details from DB'
     )
+    const tEnd = Date.now()
+    statisticsTracker?.recordDbQuery('batchGetTrackDetails', tEnd - tStart)
 
     if (error || !data) return result
+
+    // Track cache hits for all tracks found in database
+    if (statisticsTracker) {
+      data.forEach(() => {
+        statisticsTracker.recordCacheHit('trackDetails', 'database')
+      })
+    }
 
     data.forEach((row) => {
       // Skip tracks with missing or empty critical metadata

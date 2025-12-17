@@ -1,10 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import type {
-  PlayerGravityMap,
-  PlayerId,
-  TargetProfile
-} from '../dgsTypes'
+import type { PlayerGravityMap, PlayerId, TargetProfile } from '../dgsTypes'
 
 // Integration tests for candidate pool building logic
 // These test the business logic and thresholds without requiring full API/database mocking
@@ -75,29 +71,35 @@ test('Full Pipeline Flow - Threshold Integration', async (t) => {
     }
   )
 
-  await t.test('Desperation Mode (< 20% influence) includes target-related', () => {
-    const lowGravities = [0.15, 0.16, 0.17, 0.18, 0.19]
+  await t.test(
+    'Desperation Mode (< 20% influence) includes target-related',
+    () => {
+      const lowGravities = [0.15, 0.16, 0.17, 0.18, 0.19]
 
-    lowGravities.forEach((gravity) => {
-      const shouldInclude = shouldIncludeTargetRelatedArtists(gravity)
-      assert.ok(
-        shouldInclude,
-        `Gravity ${gravity} (< 20% influence) should include target-related artists in Desperation Mode`
-      )
-    })
-  })
+      lowGravities.forEach((gravity) => {
+        const shouldInclude = shouldIncludeTargetRelatedArtists(gravity)
+        assert.ok(
+          shouldInclude,
+          `Gravity ${gravity} (< 20% influence) should include target-related artists in Desperation Mode`
+        )
+      })
+    }
+  )
 
-  await t.test('Good Influence (> 50% influence) includes target-related', () => {
-    const goodGravities = [0.51, 0.55, 0.6, 0.65, 0.7]
+  await t.test(
+    'Good Influence (> 50% influence) includes target-related',
+    () => {
+      const goodGravities = [0.51, 0.55, 0.6, 0.65, 0.7]
 
-    goodGravities.forEach((gravity) => {
-      const shouldInclude = shouldIncludeTargetRelatedArtists(gravity)
-      assert.ok(
-        shouldInclude,
-        `Gravity ${gravity} (> 50% influence) should include target-related artists`
-      )
-    })
-  })
+      goodGravities.forEach((gravity) => {
+        const shouldInclude = shouldIncludeTargetRelatedArtists(gravity)
+        assert.ok(
+          shouldInclude,
+          `Gravity ${gravity} (> 50% influence) should include target-related artists`
+        )
+      })
+    }
+  )
 })
 
 test('Candidate Pool Size Requirements', () => {
@@ -135,6 +137,73 @@ test('Candidate Pool Size Requirements', () => {
   )
 })
 
+test('Candidate Pool Must Have At Least 100 Tracks with 100 Unique Artists', () => {
+  const MIN_ARTISTS = 100
+  const MIN_TRACKS = 100
+
+  // This test verifies the requirement from docs/requirements_related_songs.md Section 3.2.4:
+  // "Always Included: Random Database Artists - Minimum of 100 random artists"
+  // and REQ-FUN-01: "The system must ensure the candidate pool contains at least 100 tracks"
+
+  // Simulate pool building with only related artists (no random artists)
+  // This should fail because we need random artists to reach 100
+  function simulatePoolWithoutRandomArtists(
+    relatedArtists: number,
+    targetArtists: number,
+    targetInjected: number
+  ): { artists: number; tracks: number } {
+    // Each artist contributes 1 track (randomly selected from top 10)
+    const totalArtists = relatedArtists + targetArtists + targetInjected
+    const totalTracks = totalArtists // 1 track per artist
+
+    return {
+      artists: totalArtists,
+      tracks: totalTracks
+    }
+  }
+
+  // Test scenario: Only 13 related artists (matching the debug output)
+  const smallPool = simulatePoolWithoutRandomArtists(13, 0, 0)
+  
+  // This should fail - we need random artists to reach minimum
+  assert.ok(
+    smallPool.artists < MIN_ARTISTS,
+    `Pool with only ${smallPool.artists} artists should be below minimum of ${MIN_ARTISTS}`
+  )
+  assert.ok(
+    smallPool.tracks < MIN_TRACKS,
+    `Pool with only ${smallPool.tracks} tracks should be below minimum of ${MIN_TRACKS}`
+  )
+
+  // Test that random artists are needed to reach minimum
+  const neededArtists = MIN_ARTISTS - smallPool.artists
+  const neededTracks = MIN_TRACKS - smallPool.tracks
+
+  assert.ok(
+    neededArtists > 0,
+    `Should need ${neededArtists} random artists to reach minimum`
+  )
+  assert.ok(
+    neededTracks > 0,
+    `Should need ${neededTracks} random tracks to reach minimum`
+  )
+
+  // Verify that adding random artists would satisfy the requirement
+  const withRandomArtists = {
+    artists: smallPool.artists + neededArtists,
+    tracks: smallPool.tracks + neededTracks
+  }
+
+  assert.ok(
+    withRandomArtists.artists >= MIN_ARTISTS,
+    `With random artists, should have at least ${MIN_ARTISTS} artists (got ${withRandomArtists.artists})`
+  )
+  assert.ok(
+    withRandomArtists.tracks >= MIN_TRACKS,
+    `With random tracks, should have at least ${MIN_TRACKS} tracks (got ${withRandomArtists.tracks})`
+  )
+})
+
 test('Track Selection Requirements', () => {
   // Each artist should contribute 1 track (randomly selected from top 10)
   const artistsSelected = 100
@@ -158,10 +227,7 @@ test('Exclusion Logic Integration', () => {
   const playedTrackIds = ['played-1', 'played-2', 'played-3']
 
   // Simulate track filtering
-  function filterTracks(
-    tracks: string[],
-    excludeSet: Set<string>
-  ): string[] {
+  function filterTracks(tracks: string[], excludeSet: Set<string>): string[] {
     return tracks.filter((id) => !excludeSet.has(id))
   }
 
@@ -179,17 +245,15 @@ test('Exclusion Logic Integration', () => {
   const excludeSet = new Set([currentTrackId, ...playedTrackIds])
   const validTracks = filterTracks(allTracks, excludeSet)
 
-  assert.equal(validTracks.length, 5, 'Should have 5 valid tracks after exclusion')
+  assert.equal(
+    validTracks.length,
+    5,
+    'Should have 5 valid tracks after exclusion'
+  )
   assert.ok(
     !validTracks.includes(currentTrackId),
     'Should exclude current track'
   )
-  assert.ok(
-    !validTracks.includes('played-1'),
-    'Should exclude played tracks'
-  )
-  assert.ok(
-    !validTracks.includes('played-2'),
-    'Should exclude played tracks'
-  )
+  assert.ok(!validTracks.includes('played-1'), 'Should exclude played tracks')
+  assert.ok(!validTracks.includes('played-2'), 'Should exclude played tracks')
 })

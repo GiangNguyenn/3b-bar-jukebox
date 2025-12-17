@@ -75,6 +75,7 @@ import {
 } from '../spotifyApiServer'
 import {
   fetchRandomTracksFromDb,
+  fetchRandomArtistsFromDb,
   fetchTracksByArtistIdsFromDb,
   fetchTracksByGenreFromDb,
   fetchTracksCloserToTarget,
@@ -103,7 +104,7 @@ function shuffleArray<T>(array: T[]): T[] {
   const shuffled = [...array] // Create a copy to avoid mutating the original
   for (let i = shuffled.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1))
-    ;[shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]]
+      ;[shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]]
   }
   return shuffled
 }
@@ -146,6 +147,29 @@ export function resetPerformanceTimings() {
   apiCallTimings.length = 0
 }
 
+// Diagnostic Logging Helper
+import { PipelineLogEntry } from './dgsTypes'
+
+// Global logs accumulator for the current request (module-level, be careful with concurrency if stateful)
+// Better approach: Pass the logs array around or return it.
+// For now, we'll modify the function signatures to accept/return logs, OR we can use the result object to return logs.
+// Let's modify fetchTopTracksForArtists to return logs.
+
+export function createPipelineLog(
+  stage: PipelineLogEntry['stage'],
+  level: PipelineLogEntry['level'],
+  message: string,
+  details?: any
+): PipelineLogEntry {
+  return {
+    stage,
+    level,
+    message,
+    details,
+    timestamp: Date.now()
+  }
+}
+
 interface GravityComputationContext {
   playerTargets: PlayerTargetsMap
   targetProfiles: Record<PlayerId, TargetProfile | null>
@@ -170,1815 +194,38 @@ export function ensureTargets(targets: PlayerTargetsMap): PlayerTargetsMap {
   }
 }
 
-/**
- * Add target artists to candidate pool when gravity is high enough or rounds are late
- * This ensures target artists have a chance to appear as options
- */
-export async function addTargetArtistsToPool({
-  candidatePool,
-  targetProfiles,
-  playerGravities,
-  roundNumber,
-  currentTrackId,
-  playedTrackIds,
-  token,
-  statisticsTracker
-}: {
-  candidatePool: CandidateSeed[]
-  targetProfiles: Record<PlayerId, TargetProfile | null>
-  playerGravities: PlayerGravityMap
-  roundNumber: number
-  currentTrackId: string
-  playedTrackIds: string[]
-  token: string
-  statisticsTracker: ApiStatisticsTracker
-}): Promise<CandidateSeed[]> {
-  const additionalCandidates: CandidateSeed[] = []
+// DEPRECATED FUNCTIONS REMOVED:
+// - addTargetArtistsToPool: Only used by old stage3-score route
+// - ensureTargetDiversity: Only used by old stage3-score route
+// - buildCandidatePool: Not exported, not called anywhere (~1077 lines)
+// - addRelatedArtistTracks: Only called by buildCandidatePool
+// - registerCandidate: Only called by buildCandidatePool and addRelatedArtistTracks
+// - resetFilteringStats and countUniqueArtists: Only used by buildCandidatePool
+// These were part of the old architecture that fetched tracks first, then scored them.
+// The new architecture (stage1-artists -> stage2-score-artists -> stage3-fetch-tracks)
+// scores artists first, then fetches tracks only for selected artists.
 
-  // Thresholds: add if gravity > 0.59 (80% influence) OR round >= 10
-  // Note: Desperation logic (<0.2) is now handled by Stage 1 seeding related artists
-  // 80% influence = ((gravity - 0.15) / (0.7 - 0.15)) * 100 = 80
-  // Solving: gravity = 0.59
-  const GRAVITY_THRESHOLD = 0.59 // 80% influence
-  const ROUND_THRESHOLD = 10
+// DEPRECATED: buildCandidatePool function removed (was ~1077 lines)
+// This function was not exported and not called anywhere.
+// It was part of the old architecture that fetched tracks first, then scored them.
+// The new architecture scores artists first, then fetches tracks only for selected artists.
 
-  // Check if we should add target artists (Target Artist Itself)
-  const shouldAdd =
-    playerGravities.player1 > GRAVITY_THRESHOLD ||
-    playerGravities.player2 > GRAVITY_THRESHOLD ||
-    roundNumber >= ROUND_THRESHOLD
+// DEPRECATED: All buildCandidatePool function body removed (~1050 lines)
+// The function body has been deleted as it was not exported and not called anywhere.
 
-  if (!shouldAdd) {
-    return additionalCandidates
-  }
-
-  logger(
-    'INFO',
-    `Checking target artists for pool additions: P1 gravity=${(Number(playerGravities.player1) ?? 0).toFixed(3)}, P2 gravity=${(Number(playerGravities.player2) ?? 0).toFixed(3)}, Round=${roundNumber}`
-  )
-
-  // Check which target artists are already in the pool
-  const existingArtistIds = new Set<string>()
-  candidatePool.forEach((c) => {
-    const artistId = c.track.artists?.[0]?.id
-    if (artistId && isValidSpotifyId(artistId)) {
-      existingArtistIds.add(artistId)
-    }
-  })
-
-  const excludeTrackIds = new Set<string>([currentTrackId, ...playedTrackIds])
-  candidatePool.forEach((c) => {
-    if (c.track.id) excludeTrackIds.add(c.track.id)
-  })
-
-  // Process each target profile
-  for (const [playerId, targetProfile] of Object.entries(targetProfiles)) {
-    if (!targetProfile?.spotifyId) continue
-
-    // Check if target artist is already in pool
-    if (existingArtistIds.has(targetProfile.spotifyId)) {
-      logger(
-        'INFO',
-        `Target artist ${targetProfile.artist.name} already in pool`
-      )
-      continue
-    }
-
-    // Check if this player's gravity is high enough OR round threshold met
-    const playerGravity = playerGravities[playerId as PlayerId]
-    const playerShouldAdd =
-      playerGravity > GRAVITY_THRESHOLD || roundNumber >= ROUND_THRESHOLD
-
-    if (!playerShouldAdd) {
-      continue
-    }
-
-    try {
-      logger(
-        'INFO',
-        `Adding target artist ${targetProfile.artist.name} to pool (gravity=${playerGravity.toFixed(3)}, round=${roundNumber})`
-      )
-
-      // Unified Service Call with metrics tracking
-      const { data: tracks, source } = await musicService.getTopTracks(
-        targetProfile.spotifyId,
-        token,
-        statisticsTracker
-      )
-
-      logger(
-        'INFO',
-        `Found ${tracks.length} tracks for ${targetProfile.artist.name} via ${source}`
-      )
-
-      // Filter out played tracks and current track
-      const validTracks = tracks.filter((track) => {
-        if (!track.id || excludeTrackIds.has(track.id)) return false
-        if (!track.is_playable) return false
-        return true
-      })
-
-      if (validTracks.length > 0) {
-        // Add top track (or first valid track)
-        const trackToAdd = validTracks[0]
-        // Use target artist's spotifyId, or fallback to track's artist ID
-        const seedArtistId =
-          targetProfile.spotifyId ?? trackToAdd.artists?.[0]?.id ?? ''
-        additionalCandidates.push({
-          track: trackToAdd,
-          source: 'target_boost',
-          seedArtistId
-        })
-        logger(
-          'INFO',
-          `Added target artist track: ${trackToAdd.name} by ${targetProfile.artist.name}`
-        )
-      } else {
-        logger(
-          'WARN',
-          `No valid tracks found for target artist ${targetProfile.artist.name}`
-        )
-      }
-    } catch (error) {
-      logger(
-        'WARN',
-        `Failed to add target artist ${targetProfile.artist.name} to pool`,
-        'addTargetArtistsToPool',
-        error instanceof Error ? error : undefined
-      )
-    }
-  }
-
-  if (additionalCandidates.length > 0) {
-    logger(
-      'INFO',
-      `Target artists: Added ${additionalCandidates.length} target artist tracks to candidate pool`
-    )
-  }
-
-  return additionalCandidates
-}
+// DEPRECATED: addRelatedArtistTracks, registerCandidate, resetFilteringStats, countUniqueArtists removed
+// These functions were only used by buildCandidatePool which has been removed.
+// The new architecture uses fetchTopTracksForArtists directly in stage3-fetch-tracks.
 
 /**
- * Ensure candidate pool has diverse attraction profiles relative to targets
- * Database-first approach: uses database queries to find closer/further candidates
- * Only called when existing pool lacks diversity in attraction scores
- */
-export async function ensureTargetDiversity({
-  candidatePool,
-  targetProfiles,
-  currentSongAttraction,
-  currentPlayerId,
-  currentTrackId,
-  playedTrackIds,
-  artistProfiles,
-  artistRelationships,
-  token,
-  statisticsTracker,
-  currentArtistId
-}: {
-  candidatePool: CandidateSeed[]
-  targetProfiles: Record<PlayerId, TargetProfile | null>
-  currentSongAttraction: number
-  currentPlayerId: PlayerId
-  currentTrackId: string
-  playedTrackIds: string[]
-  artistProfiles: Map<string, ArtistProfile>
-  artistRelationships: Map<string, Set<string>>
-  token: string
-  statisticsTracker: ApiStatisticsTracker
-  currentArtistId?: string
-}): Promise<CandidateSeed[]> {
-  const additionalCandidates: CandidateSeed[] = []
-  const currentPlayerTarget = targetProfiles[currentPlayerId]
 
-  if (!currentPlayerTarget) {
-    logger(
-      'INFO',
-      'No target profile for current player, skipping target diversity check'
-    )
-    return additionalCandidates
-  }
+// DEPRECATED: buildCandidatePool function body removed (~1050 lines)
+// The function body has been deleted as it was not exported and not called anywhere.
 
-  // Compute attraction for all existing candidates
-  const candidateAttractions: Array<{
-    candidate: CandidateSeed
-    attraction: number
-    diff: number
-  }> = []
+// DEPRECATED: addRelatedArtistTracks, registerCandidate, resetFilteringStats, countUniqueArtists removed
+// These functions were only used by buildCandidatePool which has been removed.
+// The new architecture uses fetchTopTracksForArtists directly in stage3-fetch-tracks.
 
-  for (const candidate of candidatePool) {
-    const artistId = candidate.track.artists?.[0]?.id
-    if (!artistId) continue
-
-    const artistProfile = artistProfiles.get(artistId)
-    if (!artistProfile) continue
-
-    const attraction = computeAttraction(
-      artistProfile,
-      currentPlayerTarget,
-      artistProfiles,
-      artistRelationships
-    ).score
-
-    const diff = attraction - currentSongAttraction
-    candidateAttractions.push({ candidate, attraction, diff })
-  }
-
-  // Count candidates in each category
-  // Strict diversity thresholds to match user expectation:
-  // Good: > Current (strictly better)
-  // Neutral: ~= Current (similar)
-  // Bad: < Current (strictly worse)
-  // We use a small epsilon for "Neutral" to account for floating point noise, but conceptually it's "Same Level"
-  const NEUTRAL_EPSILON = 0.05
-  const closerCount = candidateAttractions.filter(
-    (item) => item.diff > NEUTRAL_EPSILON
-  ).length
-  const furtherCount = candidateAttractions.filter(
-    (item) => item.diff < -NEUTRAL_EPSILON
-  ).length
-  const neutralCount = candidateAttractions.filter(
-    (item) => Math.abs(item.diff) <= NEUTRAL_EPSILON
-  ).length
-
-  // We strictly want 3 of each in the final display (9 total)
-  // Asking for slightly more (5) to allow for filtering/dupes/played tracks
-  const TARGET_COUNT_PER_CATEGORY = 5
-
-  logger(
-    'INFO',
-    `Target diversity check (Strict 3:3:3 target): Closer=${closerCount}, Neutral=${neutralCount}, Further=${furtherCount}, Baseline=${currentSongAttraction.toFixed(3)}`
-  )
-
-  // Get exclusion sets
-  const excludeArtistIds = new Set<string>()
-  candidatePool.forEach((c) => {
-    const artistId = c.track.artists?.[0]?.id
-    if (artistId && isValidSpotifyId(artistId)) {
-      excludeArtistIds.add(artistId)
-    }
-  })
-  const excludeTrackIds = new Set<string>([currentTrackId, ...playedTrackIds])
-  candidatePool.forEach((c) => {
-    if (c.track.id) excludeTrackIds.add(c.track.id)
-  })
-
-  // === STRATEGY 1: INJECT GOOD CANDIDATES (Target Artist Focus) ===
-  if (closerCount < TARGET_COUNT_PER_CATEGORY) {
-    const needed = TARGET_COUNT_PER_CATEGORY - closerCount
-    logger(
-      'INFO',
-      `Injecting 'Good' candidates (Need ${needed}). Strategy: Target Artist & Related`
-    )
-
-    // NOTE: Target Artist injection removed from this function
-    // Target artists are now ONLY injected via addTargetArtistsToPool() which properly checks:
-    // - Gravity > 0.59 (80% influence) OR Round >= 10
-    // This ensures target artists don't appear too early in the game
-    // This function (ensureTargetDiversity) should only inject RELATED artists for diversity
-
-    // 1. Related Artists of Target (for diversity)
-    // Only do this if we haven't filled the quota
-    // Note: No longer counting target_insertion since we removed that code above
-    const currentCloserCount = closerCount + additionalCandidates.length
-    if (
-      currentCloserCount < TARGET_COUNT_PER_CATEGORY &&
-      currentPlayerTarget?.spotifyId
-    ) {
-      try {
-        // Fetch related artists
-        const { data: relatedArtists, source: relSource } =
-          await musicService.getRelatedArtists(
-            currentPlayerTarget.spotifyId,
-            token
-          )
-
-        // Take top 3 related artists we haven't seen
-        const usefulRelated = relatedArtists
-          .filter((a) => !excludeArtistIds.has(a.id))
-          .slice(0, 3)
-
-        for (const artist of usefulRelated) {
-          const { data: tracks, source } = await musicService.getTopTracks(
-            artist.id,
-            token,
-            statisticsTracker
-          )
-
-          const validTrack = tracks.find(
-            (t) => t.id && !excludeTrackIds.has(t.id) && t.is_playable
-          )
-          if (validTrack) {
-            additionalCandidates.push({
-              track: validTrack,
-              source: 'related_artist_insertion',
-              seedArtistId: artist.id
-            })
-            excludeTrackIds.add(validTrack.id)
-            logger(
-              'INFO',
-              `Added Related Artist track: ${validTrack.name} by ${artist.name}`
-            )
-          }
-          if (additionalCandidates.length >= needed + 3) break // formatting buffer
-        }
-      } catch (err) {
-        logger(
-          'WARN',
-          `Failed to inject Target Related Artists`,
-          'ensureTargetDiversity',
-          err instanceof Error ? err : undefined
-        )
-      }
-    }
-
-    // 3. Genre Fallback for Target (if we still need more options)
-    const countAfterRelated = closerCount + additionalCandidates.length
-    if (
-      countAfterRelated < TARGET_COUNT_PER_CATEGORY &&
-      currentPlayerTarget?.genres &&
-      currentPlayerTarget.genres.length > 0
-    ) {
-      try {
-        const needed = TARGET_COUNT_PER_CATEGORY - countAfterRelated
-        logger(
-          'INFO',
-          `Still need ${needed} 'Good' candidates. Strategy: Genre Fallback (${currentPlayerTarget.genres.slice(0, 2).join(', ')})`
-        )
-
-        // Search for tracks matching these genres
-        const limit = Math.max(20, needed * 4)
-        const { data: genreOptionTracks, source } =
-          await musicService.searchTracksByGenre(
-            currentPlayerTarget.genres,
-            token,
-            limit
-          )
-
-        // Cache found tracks is handled by service
-
-        // Extract trackDetails from option tracks
-        const genreTracks = genreOptionTracks.map((o) => o.track)
-
-        // Add valid tracks
-        let added = 0
-        for (const track of genreTracks) {
-          // Ensure it's not a duplicate track
-          if (track.id && !excludeTrackIds.has(track.id) && track.is_playable) {
-            // Use target artist's spotifyId, or fallback to track's artist ID
-            const seedArtistId =
-              currentPlayerTarget.spotifyId ?? track.artists?.[0]?.id ?? ''
-            additionalCandidates.push({
-              track,
-              source: 'target_insertion',
-              seedArtistId
-            })
-            excludeTrackIds.add(track.id)
-            added++
-            if (added >= needed) break
-          }
-        }
-
-        if (added > 0) {
-          logger('INFO', `Added ${added} tracks from Target Genre Fallback`)
-        } else {
-          logger('WARN', `Genre Fallback found 0 valid tracks`)
-        }
-      } catch (err) {
-        logger(
-          'WARN',
-          `Failed to inject Target Genre tracks`,
-          'ensureTargetDiversity',
-          err instanceof Error ? err : undefined
-        )
-      }
-    }
-  }
-
-  // === STRATEGY 2: INJECT NEUTRAL CANDIDATES (Current Artist Focus) ===
-  if (neutralCount < TARGET_COUNT_PER_CATEGORY) {
-    const needed = TARGET_COUNT_PER_CATEGORY - neutralCount
-    logger(
-      'INFO',
-      `Injecting 'Neutral' candidates (Need ${needed}). Strategy: Current Artist & Related`
-    )
-
-    if (currentArtistId) {
-      // 1. Current Artist Top Tracks
-      try {
-        const { data: tracks, source } = await musicService.getTopTracks(
-          currentArtistId,
-          token,
-          statisticsTracker
-        )
-
-        const validTracks = tracks.filter(
-          (t) =>
-            t.id &&
-            !excludeTrackIds.has(t.id) &&
-            t.is_playable &&
-            t.id !== currentTrackId
-        )
-        validTracks.forEach((track) => {
-          additionalCandidates.push({
-            track,
-            source: 'related_top_tracks',
-            seedArtistId: currentArtistId ?? ''
-          })
-          excludeTrackIds.add(track.id)
-        })
-        if (validTracks.length > 0) {
-          logger(
-            'INFO',
-            `Added ${validTracks.length} tracks from Current Artist for Neutral category`
-          )
-        } else {
-          logger(
-            'WARN',
-            `Current Artist has no valid tracks for Neutral category (filtered or empty)`
-          )
-        }
-      } catch (e) {
-        logger(
-          'WARN',
-          `Failed to inject Current Artist tracks`,
-          'ensureTargetDiversity',
-          e instanceof Error ? e : undefined
-        )
-      }
-
-      // 2. Related Artists of Current (if needed)
-      if (additionalCandidates.length < needed) {
-        try {
-          const { data: relatedArtists, source: relSource } =
-            await musicService.getRelatedArtists(currentArtistId, token)
-
-          // Filter valid related artists
-          const usefulRelated = relatedArtists
-            .filter((a) => !excludeArtistIds.has(a.id))
-            .slice(0, 3)
-
-          for (const artist of usefulRelated) {
-            const { data: tracks, source } = await musicService.getTopTracks(
-              artist.id,
-              token,
-              statisticsTracker
-            )
-
-            const validTrack = tracks.find(
-              (t) => t.id && !excludeTrackIds.has(t.id) && t.is_playable
-            )
-            if (validTrack) {
-              additionalCandidates.push({
-                track: validTrack,
-                source: 'related_top_tracks',
-                seedArtistId: artist.id
-              })
-              excludeTrackIds.add(validTrack.id)
-              logger(
-                'INFO',
-                `Added Related Artist track: ${validTrack.name} by ${artist.name}`
-              )
-            }
-            if (additionalCandidates.length >= needed * 2) break
-          }
-        } catch (e) {
-          logger(
-            'WARN',
-            `Failed to inject Current Related Artists`,
-            'ensureTargetDiversity',
-            e instanceof Error ? e : undefined
-          )
-        }
-      }
-    } else {
-      logger(
-        'WARN',
-        'Cannot inject Neutral candidates: currentArtistId missing'
-      )
-    }
-  }
-
-  // === STRATEGY 3: FALLBACK FURTHER CANDIDATES (Random/Diverse) ===
-  if (furtherCount < TARGET_COUNT_PER_CATEGORY) {
-    const needed = Math.max(5, TARGET_COUNT_PER_CATEGORY - furtherCount) // Ask for more to ensure valid ones
-    logger(
-      'INFO',
-      `Injecting 'Further/Bad' candidates (Need ${needed}). Strategy: Database Embeddings/Random`
-    )
-
-    // Use existing DB strategy for further
-    try {
-      // 1. Try "Further" specifically (anti-affinity if we had embeddings, but here random/far genres)
-      const dbResult = await fetchTracksFurtherFromTarget({
-        targetGenres: currentPlayerTarget.genres,
-        excludeArtistIds,
-        excludeTrackIds,
-        limit: needed * 2 // Over-fetch
-      })
-
-      let added = 0
-      dbResult.tracks.forEach((track) => {
-        if (track.id && !excludeTrackIds.has(track.id)) {
-          // Use track's artist ID as seedArtistId for database tracks
-          const seedArtistId = track.artists?.[0]?.id ?? currentArtistId ?? ''
-          additionalCandidates.push({
-            track,
-            source: 'embedding',
-            seedArtistId
-          })
-          excludeTrackIds.add(track.id)
-          added++
-        }
-      })
-
-      logger('INFO', `Added ${added} 'Further' tracks from DB`)
-
-      // 2. If still not enough, just grab random tracks (guaranteed "Bad" usually)
-      if (added < needed) {
-        const stillNeeded = needed - added
-        const randomResult = await fetchRandomTracksFromDb({
-          neededArtists: stillNeeded,
-          existingArtistNames: new Set(),
-          excludeSpotifyTrackIds: excludeTrackIds,
-          tracksPerArtist: 1
-        })
-
-        randomResult.tracks.forEach((track) => {
-          if (track.id && !excludeTrackIds.has(track.id)) {
-            // Use track's artist ID as seedArtistId for random database tracks
-            const seedArtistId = track.artists?.[0]?.id ?? currentArtistId ?? ''
-            additionalCandidates.push({
-              track,
-              source: 'embedding', // misuse embedding source for random
-              seedArtistId
-            })
-            excludeTrackIds.add(track.id)
-          }
-        })
-        logger(
-          'INFO',
-          `Added ${randomResult.tracks.length} additional random tracks for 'Further'`
-        )
-      }
-    } catch (e) {
-      logger(
-        'WARN',
-        'Failed to fetch further tracks',
-        'ensureTargetDiversity',
-        e instanceof Error ? e : undefined
-      )
-    }
-  }
-
-  // Final fetch of profiles for all new candidates to ensure scoring works later
-  // ... (existing code handles this by returning candidates, caller handles enrichment? No, caller expects seeds)
-  // `runDualGravityEngine` handles enrichment of Returned candidates:
-  /*
-    if (diversityCandidates.length > 0) {
-      // Enrich new candidates with artist profiles
-      ...
-    }
-  */
-  // So I just need to return `additionalCandidates`.
-
-  return additionalCandidates
-}
-
-async function buildCandidatePool({
-  playbackState,
-  currentTrackId,
-  seedArtistId,
-  token,
-  playedTrackIds,
-  currentArtistId,
-  statisticsTracker
-}: {
-  playbackState: SpotifyPlaybackState
-  currentTrackId: string
-  seedArtistId: string
-  token: string
-  playedTrackIds: string[]
-  currentArtistId: string
-  statisticsTracker: ApiStatisticsTracker
-}): Promise<{
-  pool: CandidateSeed[]
-  dbFallback: {
-    used: boolean
-    addedTracks: number
-    addedArtists: number
-  }
-}> {
-  // Track start time to avoid timeout (Hobby ~10s budget)
-  const startTime = Date.now()
-  const MAX_BUILD_TIME_MS = 8500 // leave buffer for scoring/processing
-
-  const quickDbFallback = async (
-    reason: string
-  ): Promise<{
-    pool: CandidateSeed[]
-    dbFallback: {
-      used: boolean
-      addedTracks: number
-      addedArtists: number
-      reason?: string
-    }
-  }> => {
-    logger(
-      'WARN',
-      `Deadline reached (${reason}). Using quick DB fallback with minimal candidates.`,
-      'buildCandidatePool'
-    )
-
-    const excludeIds = new Set<string>([currentTrackId, ...playedTrackIds])
-    const existingArtistNames = new Set<string>()
-    const dbResult = await fetchRandomTracksFromDb({
-      neededArtists: 6,
-      existingArtistNames,
-      excludeSpotifyTrackIds: excludeIds,
-      tracksPerArtist: 1
-    })
-
-    const fallbackMap = new Map<string, CandidateSeed>()
-    dbResult.tracks.forEach((track) => {
-      registerCandidate(
-        track,
-        'embedding',
-        fallbackMap,
-        playedTrackIds,
-        currentArtistId,
-        track.artists?.[0]?.id // Use track's artist ID as seedArtistId
-      )
-    })
-
-    const pool = Array.from(fallbackMap.values()).slice(0, MAX_CANDIDATE_POOL)
-    return {
-      pool,
-      dbFallback: {
-        used: true,
-        addedTracks: pool.length,
-        addedArtists: dbResult.uniqueArtistsAdded ?? pool.length,
-        reason: 'deadline'
-      }
-    }
-  }
-
-  if (hasExceededDeadline(startTime)) {
-    return quickDbFallback('pre-related-artists')
-  }
-
-  // Get related artists using unified music service (Mem -> Graph -> Spotify)
-  // MusicService handles all the hybrid logic internally and tracks metrics
-  const { data: relatedArtists } = await musicService.getRelatedArtists(
-    seedArtistId,
-    token,
-    statisticsTracker
-  )
-
-  // Filter out the seed artist itself to prevent "self-related" loops
-  const filteredRelatedArtists = relatedArtists.filter(
-    (a) => a.id !== seedArtistId
-  )
-  if (filteredRelatedArtists.length < relatedArtists.length) {
-    logger(
-      'INFO',
-      `Filtered seed artist ${seedArtistId} from related artists list`
-    )
-  }
-  const candidateMap = new Map<string, CandidateSeed>()
-
-  if (hasExceededDeadline(startTime)) {
-    return quickDbFallback('post-related-artists')
-  }
-
-  // Track source diversity during collection
-  const sourceDiversityTracker = {
-    counts: { ...DIVERSITY_SOURCES },
-    targets: Object.fromEntries(
-      Object.entries(DIVERSITY_SOURCES).map(([key, percentage]) => [
-        key,
-        Math.round(MIN_CANDIDATE_POOL * percentage)
-      ])
-    ) as Record<keyof typeof DIVERSITY_SOURCES, number>,
-
-    // Map existing sources to diversity categories
-    mapSourceToCategory(
-      source: CandidateSource
-    ): keyof typeof DIVERSITY_SOURCES {
-      switch (source) {
-        case 'recommendations':
-          return 'directRecommendations'
-        case 'related_top_tracks':
-          return 'relatedArtists'
-        case 'target_insertion':
-        case 'target_boost':
-          return 'genreNeighbors'
-        case 'embedding':
-        default:
-          return 'popularityVaried'
-      }
-    },
-
-    // Check if we should prioritize underrepresented sources
-    shouldPrioritizeUnderrepresented(): boolean {
-      const totalCurrent = Object.values(this.counts).reduce((a, b) => a + b, 0)
-      if (totalCurrent < MIN_CANDIDATE_POOL * 0.3) return false // Don't prioritize too early
-
-      const underrepresented = Object.entries(this.counts).filter(
-        ([key, current]) =>
-          current < this.targets[key as keyof typeof this.targets]
-      )
-      return underrepresented.length > 0
-    },
-
-    // Get the most underrepresented category
-    getMostUnderrepresentedCategory(): keyof typeof DIVERSITY_SOURCES | null {
-      let mostUnderrepresented: keyof typeof DIVERSITY_SOURCES | null = null
-      let maxDeficit = 0
-
-      for (const [key, current] of Object.entries(this.counts)) {
-        const target = this.targets[key as keyof typeof this.targets]
-        const deficit = target - current
-        if (deficit > maxDeficit) {
-          maxDeficit = deficit
-          mostUnderrepresented = key as keyof typeof DIVERSITY_SOURCES
-        }
-      }
-
-      return mostUnderrepresented
-    },
-
-    // Update counts when adding a candidate
-    addCandidate(source: CandidateSource): void {
-      const category = this.mapSourceToCategory(source)
-      this.counts[category]++
-    },
-
-    // Log current diversity status
-    logStatus(context: string): void {
-      const totalCurrent = Object.values(this.counts).reduce((a, b) => a + b, 0)
-      const status = Object.entries(this.counts)
-        .map(([key, current]) => {
-          const target = this.targets[key as keyof typeof this.targets]
-          return `${key}=${current}/${target}`
-        })
-        .join(', ')
-
-      logger(
-        'INFO',
-        `Source diversity [${context}]: ${status} | Total=${totalCurrent}`,
-        'sourceDiversityTracker'
-      )
-    }
-  }
-
-  // Initialize diversity tracker
-  Object.keys(sourceDiversityTracker.counts).forEach((key) => {
-    sourceDiversityTracker.counts[key as keyof typeof DIVERSITY_SOURCES] = 0
-  })
-
-  resetFilteringStats()
-
-  const seedArtistName = playbackState.item?.artists?.[0]?.name ?? 'Unknown'
-  logger(
-    'INFO',
-    `Building candidate pool: SeedArtist=${seedArtistName} (${seedArtistId}) | CurrentTrack=${currentTrackId} | PlayedTracks=${playedTrackIds.length} | RelatedArtists=${filteredRelatedArtists.length} | TargetUniqueArtists=${MIN_UNIQUE_ARTISTS}`
-  )
-
-  // PRIORITY 1: Fetch top tracks from discovered related artists
-  // This uses the results from the hybrid artist discovery system
-  logger(
-    'INFO',
-    `Processing ${filteredRelatedArtists.length} related artists from hybrid discovery`
-  )
-
-  // Start with smaller batch to get initial results faster
-  let startIndex = 0
-  let batchSize = 30 // Start smaller for faster initial response
-
-  // Fetch in batches until we have enough unique artists AND enough tracks
-  let uniqueArtists = 0
-  let totalTracks = 0
-
-  // Use full target to ensure we get enough candidates
-  const targetUniqueArtists = MIN_UNIQUE_ARTISTS
-
-  while (
-    (uniqueArtists < targetUniqueArtists || totalTracks < MIN_CANDIDATE_POOL) &&
-    startIndex < filteredRelatedArtists.length
-  ) {
-    // Check elapsed time - bail out early if taking too long
-    const elapsed = Date.now() - startTime
-    if (hasExceededDeadline(startTime)) {
-      return quickDbFallback('related-artist-loop')
-    }
-    if (elapsed > MAX_BUILD_TIME_MS * 0.35) {
-      // 35% of budget
-      logger(
-        'WARN',
-        `Stopping related artist fetch early due to time constraint (${(elapsed / 1000).toFixed(1)}s elapsed). Will use DB fallback for remainder.`
-      )
-      break
-    }
-
-    const endIndex = Math.min(
-      startIndex + batchSize,
-      filteredRelatedArtists.length
-    )
-    const batch = filteredRelatedArtists.slice(startIndex, endIndex)
-
-    if (batch.length === 0) break
-
-    const beforeSize = candidateMap.size
-    await addRelatedArtistTracks({
-      relatedArtists: batch,
-      token,
-      candidateMap,
-      playedTrackIds,
-      currentArtistId,
-      tracksPerArtist: 2,
-      statisticsTracker,
-      deadline: startTime + MAX_BUILD_TIME_MS * 0.5 // aggressive deadline
-    })
-    const afterSize = candidateMap.size
-    const added = afterSize - beforeSize
-
-    uniqueArtists = countUniqueArtists(candidateMap)
-    totalTracks = candidateMap.size
-
-    logger(
-      'INFO',
-      `Related artists batch ${startIndex}-${endIndex}: Added ${added} tracks, Total: ${totalTracks} tracks (target: ${MIN_CANDIDATE_POOL}), Unique artists: ${uniqueArtists}/${targetUniqueArtists}`
-    )
-
-    // If we have enough unique artists AND enough tracks, stop
-    if (
-      uniqueArtists >= targetUniqueArtists &&
-      totalTracks >= MIN_CANDIDATE_POOL
-    ) {
-      logger(
-        'INFO',
-        `Candidate pool targets met: ${uniqueArtists} artists (min ${targetUniqueArtists}), ${totalTracks} tracks (min ${MIN_CANDIDATE_POOL})`
-      )
-      break
-    }
-
-    // Expand to next batch
-    startIndex = endIndex
-    // Increase batch size for subsequent batches to speed up
-    if (startIndex > 50) {
-      batchSize = 100
-    }
-  }
-
-  logger(
-    'INFO',
-    `After related artists: ${totalTracks} tracks, ${uniqueArtists} unique artists`
-  )
-  sourceDiversityTracker.logStatus('after_related_artists')
-
-  // Check elapsed time to avoid timeout (skip expensive operations if > 30s)
-  const elapsedTime = Date.now() - startTime
-  const skipExpensiveOperations = elapsedTime > MAX_BUILD_TIME_MS * 0.45
-  if (skipExpensiveOperations) {
-    logger(
-      'WARN',
-      `Running low on time (${(elapsedTime / 1000).toFixed(1)}s elapsed). Will skip expensive operations and use DB fallback.`
-    )
-  }
-
-  // PRIORITY 2: Supplement with DB genre search ONLY if related artists insufficient
-  // This ensures we use the hybrid discovery results first
-  const finalTargetUniqueArtists = MIN_UNIQUE_ARTISTS
-  if (uniqueArtists < finalTargetUniqueArtists) {
-    logger(
-      'INFO',
-      `Related artists provided ${uniqueArtists} unique artists, supplementing with DB genre search`
-    )
-
-    statisticsTracker?.recordRequest('artistProfiles')
-    const seedArtistProfile = await fetchArtistProfile(
-      seedArtistId,
-      token,
-      statisticsTracker
-    )
-    const seedGenres = seedArtistProfile?.genres ?? []
-
-    if (seedGenres.length > 0) {
-      logger(
-        'INFO',
-        `DB supplement with genres: ${seedGenres.slice(0, 3).join(', ')}`
-      )
-      const excludeIds = new Set([currentTrackId, ...playedTrackIds])
-
-      const neededArtists = finalTargetUniqueArtists - uniqueArtists
-      // Calculate how many tracks we need to reach MIN_CANDIDATE_POOL
-      const neededTracks = Math.max(0, MIN_CANDIDATE_POOL - totalTracks)
-      const dbResult = await fetchTracksByGenreFromDb({
-        genres: seedGenres,
-        minPopularity: 15,
-        maxPopularity: 100,
-        limit: Math.max(neededArtists * 1.2, neededTracks, 50), // Fetch enough to supplement both artists and tracks
-        excludeSpotifyTrackIds: excludeIds
-      })
-
-      if (dbResult.tracks.length > 0) {
-        logger(
-          'INFO',
-          `DB supplement: Found ${dbResult.tracks.length} tracks for ${dbResult.uniqueArtists} unique artists`
-        )
-        dbResult.tracks.forEach((track) => {
-          registerCandidate(
-            track,
-            'related_top_tracks',
-            candidateMap,
-            playedTrackIds,
-            currentArtistId,
-            track.artists?.[0]?.id // Use track's artist ID as seedArtistId
-          )
-        })
-
-        uniqueArtists = countUniqueArtists(candidateMap)
-        totalTracks = candidateMap.size
-        logger(
-          'INFO',
-          `After DB supplement: ${totalTracks} tracks, ${uniqueArtists} unique artists`
-        )
-      }
-    } else {
-      // No genres available, use random DB tracks
-      logger(
-        'INFO',
-        'No genres available, using random DB tracks to supplement'
-      )
-      const excludeIds = new Set([currentTrackId, ...playedTrackIds])
-      const existingArtistNames = new Set<string>()
-      candidateMap.forEach((candidate) => {
-        const name = candidate.track.artists?.[0]?.name
-        if (name) {
-          existingArtistNames.add(name.trim().toLowerCase())
-        }
-      })
-
-      const neededArtists = finalTargetUniqueArtists - uniqueArtists
-      const dbResult = await timeDbQuery(
-        `fetchRandomTracksFromDb (${neededArtists} artists needed)`,
-        () =>
-          fetchRandomTracksFromDb({
-            neededArtists: Math.min(neededArtists, 30),
-            existingArtistNames,
-            excludeSpotifyTrackIds: excludeIds
-          })
-      )
-
-      if (dbResult.tracks.length > 0) {
-        logger(
-          'INFO',
-          `DB random supplement: Found ${dbResult.tracks.length} random tracks`
-        )
-        dbResult.tracks.forEach((track) => {
-          registerCandidate(
-            track,
-            'embedding',
-            candidateMap,
-            playedTrackIds,
-            currentArtistId,
-            track.artists?.[0]?.id // Use track's artist ID as seedArtistId
-          )
-        })
-
-        uniqueArtists = countUniqueArtists(candidateMap)
-        totalTracks = candidateMap.size
-      }
-    }
-  }
-
-  // FINAL SAFETY CHECK: If we still don't have enough candidates, force random DB fill
-  // This is critical for the "Candidate Pool: 1" bug
-  if (totalTracks < MIN_CANDIDATE_POOL) {
-    const deficit = MIN_CANDIDATE_POOL - totalTracks
-    logger(
-      'WARN',
-      `Candidate pool still below minimum (${totalTracks}/${MIN_CANDIDATE_POOL}). Forcing random DB fill for ${deficit} tracks.`
-    )
-
-    const excludeIds = new Set([currentTrackId, ...playedTrackIds])
-    // Add existing candidates to exclusion list to avoid duplicates
-    candidateMap.forEach((c) => {
-      if (c.track.id) excludeIds.add(c.track.id)
-    })
-
-    const existingArtistNames = new Set<string>()
-    candidateMap.forEach((candidate) => {
-      const name = candidate.track.artists?.[0]?.name
-      if (name) {
-        existingArtistNames.add(name.trim().toLowerCase())
-      }
-    })
-
-    // We want mainly new artists to hit diversity goals
-    const neededArtists = Math.max(5, Math.ceil(deficit / 2))
-
-    try {
-      const dbResult = await timeDbQuery(`forceRandomDbFill (${deficit})`, () =>
-        fetchRandomTracksFromDb({
-          neededArtists: neededArtists,
-          existingArtistNames,
-          excludeSpotifyTrackIds: excludeIds,
-          tracksPerArtist: 2
-        })
-      )
-
-      if (dbResult.tracks.length > 0) {
-        logger(
-          'INFO',
-          `Forced DB fill added ${dbResult.tracks.length} tracks. Total before: ${totalTracks}`
-        )
-        dbResult.tracks.forEach((track) => {
-          registerCandidate(
-            track,
-            'embedding',
-            candidateMap,
-            playedTrackIds,
-            currentArtistId,
-            track.artists?.[0]?.id // Use track's artist ID as seedArtistId
-          )
-        })
-        totalTracks = candidateMap.size
-        logger('INFO', `Total after forced fill: ${totalTracks}`)
-      } else {
-        logger(
-          'ERROR',
-          `Forced DB fill failed to return any tracks. Database might be empty or connection failed.`
-        )
-      }
-    } catch (err) {
-      logger(
-        'ERROR',
-        `Error during forced DB fill`,
-        'buildCandidatePool',
-        err instanceof Error ? err : undefined
-      )
-    }
-  }
-
-  // Strategy 1: Skip expensive album fetching - database fallback will handle insufficient artists
-
-  // Strategy 2: Use genre-based search to find similar tracks
-  // Skip if running low on time
-  if (uniqueArtists < MIN_UNIQUE_ARTISTS && !skipExpensiveOperations) {
-    logger(
-      'WARN',
-      `Still insufficient unique artists (${uniqueArtists}/${MIN_UNIQUE_ARTISTS}). Trying genre-based search.`
-    )
-
-    // Get current artist's genres from their profile
-    try {
-      statisticsTracker?.recordRequest('artistProfiles')
-      const currentArtistProfile = await fetchArtistProfile(
-        seedArtistId,
-        token,
-        statisticsTracker
-      )
-      if (currentArtistProfile && currentArtistProfile.genres.length > 0) {
-        logger(
-          'INFO',
-          `Searching for tracks in genres: ${currentArtistProfile.genres.join(', ')}`
-        )
-        const genreTracks = await searchTracksByGenreServer(
-          currentArtistProfile.genres,
-          token,
-          50
-        )
-
-        // Cache tracks to database asynchronously
-        void enqueueLazyUpdate({
-          type: 'track_details',
-          spotifyId: seedArtistId,
-          payload: { tracks: genreTracks }
-        })
-
-        const beforeSize = candidateMap.size
-        genreTracks.forEach((track) => {
-          registerCandidate(
-            track,
-            'related_top_tracks',
-            candidateMap,
-            playedTrackIds,
-            currentArtistId,
-            seedArtistId // Use the seed artist ID that generated this genre search
-          )
-        })
-        const afterSize = candidateMap.size
-        uniqueArtists = countUniqueArtists(candidateMap)
-        logger(
-          'INFO',
-          `Genre search: Added ${afterSize - beforeSize} tracks, unique artists: ${uniqueArtists}`
-        )
-      } else {
-        logger('INFO', 'Seed artist has no genres, skipping genre-based search')
-      }
-    } catch (error) {
-      logger(
-        'WARN',
-        'Failed genre-based search',
-        'buildCandidatePool',
-        error instanceof Error ? error : undefined
-      )
-    }
-  }
-
-  // Strategy 3: Multi-level traversal as last artist-based attempt
-  if (
-    uniqueArtists < MIN_UNIQUE_ARTISTS &&
-    relatedArtists.length > 0 &&
-    !skipExpensiveOperations
-  ) {
-    logger(
-      'WARN',
-      `Insufficient unique artists (${uniqueArtists}/${MIN_UNIQUE_ARTISTS}). Attempting multi-level traversal.`
-    )
-
-    // Get related artists of related artists (2 levels deep)
-    const level2Artists: SpotifyArtist[] = []
-    const processedIds = new Set<string>([seedArtistId])
-
-    // Sample up to 10 related artists to get their related artists
-    const sampleSize = Math.min(10, relatedArtists.length)
-
-    // Parallelize fetching level 2 related artists instead of sequential
-    // Each call still checks DB cache first before hitting Spotify API
-    const level2Promises = []
-    for (let i = 0; i < sampleSize && uniqueArtists < MIN_UNIQUE_ARTISTS; i++) {
-      const artist = relatedArtists[i]
-      if (!artist.id || processedIds.has(artist.id)) continue
-
-      processedIds.add(artist.id)
-
-      // Push promise to array instead of awaiting
-      level2Promises.push(
-        getRelatedArtistsServer(artist.id, token)
-          .then((level2Related) => ({
-            artistId: artist.id,
-            level2Related,
-            success: true
-          }))
-          .catch((error) => {
-            logger(
-              'WARN',
-              `Failed to get level 2 related artists for ${artist.id}`,
-              'buildCandidatePool'
-            )
-            return { artistId: artist.id, level2Related: [], success: false }
-          })
-      )
-    }
-
-    // Wait for all fetches to complete in parallel
-    // Each call independently checks memory cache -> DB cache -> Spotify API
-    const level2Results = await Promise.all(level2Promises)
-
-    // Process all results
-    for (const result of level2Results) {
-      if (result.success) {
-        for (const level2Artist of result.level2Related) {
-          if (level2Artist.id && !processedIds.has(level2Artist.id)) {
-            level2Artists.push(level2Artist)
-            processedIds.add(level2Artist.id)
-          }
-        }
-      }
-    }
-
-    // Level 2 expansion disabled to minimize Spotify API calls
-    // Database fallback will be used to supplement candidates if needed
-    const MAX_LEVEL_2_ARTISTS = 0 // Disabled (was 50)
-    if (level2Artists.length > 0 && MAX_LEVEL_2_ARTISTS > 0) {
-      logger(
-        'INFO',
-        `Found ${level2Artists.length} level 2 related artists, fetching tracks for ${MAX_LEVEL_2_ARTISTS}...`
-      )
-      const beforeSize = candidateMap.size
-      await addRelatedArtistTracks({
-        relatedArtists: level2Artists.slice(0, MAX_LEVEL_2_ARTISTS),
-        token,
-        candidateMap,
-        playedTrackIds,
-        currentArtistId,
-        tracksPerArtist: 1,
-        statisticsTracker
-      })
-      const afterSize = candidateMap.size
-      uniqueArtists = countUniqueArtists(candidateMap)
-      totalTracks = candidateMap.size
-      logger(
-        'INFO',
-        `Level 2: Added ${afterSize - beforeSize} tracks, Total: ${totalTracks} tracks, Unique artists: ${uniqueArtists}`
-      )
-    } else if (level2Artists.length > 0) {
-      logger(
-        'INFO',
-        `Skipping ${level2Artists.length} level 2 artists (level 2 expansion disabled to minimize API calls)`
-      )
-    }
-  } else if (skipExpensiveOperations) {
-    const currentElapsed = Date.now() - startTime
-    logger(
-      'WARN',
-      `Skipping multi-level traversal to avoid timeout (${(currentElapsed / 1000).toFixed(1)}s elapsed). Jumping to database fallback.`
-    )
-  }
-
-  if (hasExceededDeadline(startTime)) {
-    return quickDbFallback('pre-db-fallback')
-  }
-
-  // Strategy 4: Database fallback to guarantee a healthy pool size
-  const dbFallbackStats: {
-    used: boolean
-    addedTracks: number
-    addedArtists: number
-    reason?: 'genre_deficiency' | 'artist_deficiency' | 'absolute_fallback'
-    requestedTracks?: number
-  } = {
-    used: false,
-    addedTracks: 0,
-    addedArtists: 0
-  }
-
-  // Database fallback with optimized settings (indexes added for performance)
-  const DB_FALLBACK_THRESHOLD = 60 // reduce scope for faster fallback
-  const DB_FALLBACK_MULTIPLIER = 1.2 // minimize query size
-
-  // Use fallback if we don't have enough artists OR enough tracks
-  if (
-    uniqueArtists < DB_FALLBACK_THRESHOLD ||
-    totalTracks < MIN_CANDIDATE_POOL
-  ) {
-    const elapsedBeforeFallback = Date.now() - startTime
-    if (elapsedBeforeFallback > MAX_BUILD_TIME_MS * 0.85) {
-      return quickDbFallback('db-fallback-time-budget')
-    }
-    const reason =
-      uniqueArtists < DB_FALLBACK_THRESHOLD
-        ? `Unique artists (${uniqueArtists}) below threshold (${DB_FALLBACK_THRESHOLD})`
-        : `Total tracks (${totalTracks}) below minimum (${MIN_CANDIDATE_POOL})`
-    logger('WARN', `${reason}. Using database fallback.`)
-
-    // Calculate needed artists and tracks
-    const neededArtists = Math.max(
-      0,
-      Math.ceil(
-        (DB_FALLBACK_THRESHOLD - uniqueArtists) * DB_FALLBACK_MULTIPLIER
-      )
-    )
-    const neededTracks = Math.max(0, MIN_CANDIDATE_POOL - totalTracks)
-    // fetchRandomTracksFromDb can return multiple tracks per artist (default 2), so calculate artists needed
-    const tracksPerArtist = 2
-    const artistsForTracks = Math.ceil(neededTracks / tracksPerArtist)
-    const totalNeeded = Math.max(neededArtists, artistsForTracks)
-
-    const existingArtistNames = new Set<string>()
-    candidateMap.forEach((candidate) => {
-      const name = candidate.track.artists?.[0]?.name
-      if (name) {
-        existingArtistNames.add(name.trim().toLowerCase())
-      }
-    })
-
-    const excludeIds = new Set<string>([currentTrackId, ...playedTrackIds])
-    candidateMap.forEach((candidate) => {
-      if (candidate.track.id) {
-        excludeIds.add(candidate.track.id)
-      }
-    })
-
-    const dbResult = await timeDbQuery(
-      `fetchRandomTracksFromDb - main fallback (${totalNeeded} artists, ${neededTracks} tracks needed)`,
-      () =>
-        fetchRandomTracksFromDb({
-          neededArtists: Math.min(totalNeeded, 40),
-          existingArtistNames,
-          excludeSpotifyTrackIds: excludeIds,
-          tracksPerArtist: 1 // reduce per-artist tracks to shrink response
-        })
-    )
-
-    if (dbResult.tracks.length > 0) {
-      logger(
-        'INFO',
-        `DB fallback returned ${dbResult.tracks.length} tracks for ${dbResult.uniqueArtistsAdded} unique artists`
-      )
-
-      dbFallbackStats.used = true
-      dbFallbackStats.addedTracks = dbResult.tracks.length
-      dbFallbackStats.addedArtists = dbResult.uniqueArtistsAdded
-      dbFallbackStats.reason = 'artist_deficiency'
-      dbFallbackStats.requestedTracks = neededArtists
-
-      dbResult.tracks.forEach((track) => {
-        // Use 'embedding' so DB fallback can be treated as a higher-priority, curated source
-        registerCandidate(
-          track,
-          'embedding',
-          candidateMap,
-          playedTrackIds,
-          currentArtistId,
-          track.artists?.[0]?.id // Use track's artist ID as seedArtistId
-        )
-      })
-
-      uniqueArtists = countUniqueArtists(candidateMap)
-      totalTracks = candidateMap.size
-
-      logger(
-        'INFO',
-        `After DB fallback: ${totalTracks} tracks, ${uniqueArtists} unique artists`
-      )
-    } else {
-      logger(
-        'WARN',
-        'DB fallback did not return any usable tracks. Proceeding with existing candidate pool.'
-      )
-    }
-  }
-
-  let finalPool = Array.from(candidateMap.values()).slice(0, MAX_CANDIDATE_POOL)
-  uniqueArtists = countUniqueArtists(
-    new Map(finalPool.map((c) => [c.track.id, c]))
-  )
-
-  logger(
-    'INFO',
-    `Final candidate pool: ${finalPool.length} tracks, ${uniqueArtists} unique artists | Filtering stats: checked=${filteringStats.totalChecked}, added=${filteringStats.added}, filtered: notPlayable=${filteringStats.filteredNotPlayable}, alreadyPlayed=${filteringStats.filteredAlreadyPlayed}, currentArtist=${filteringStats.filteredCurrentArtist}`
-  )
-  sourceDiversityTracker.logStatus('final_pool')
-
-  // Removed: Last resort Spotify fetch loop (previously lines 960-1014)
-  // Strategy changed to minimize Spotify API calls and rely on database fallback instead
-  // If pool is insufficient, the absolute database fallback below will handle it
-
-  // ABSOLUTE FALLBACK: If pool is STILL empty or lacks diversity, get ANY tracks from database
-  // [FIX] Trigger even if we have *some* tracks but not enough unique artists
-  if (
-    finalPool.length < MIN_CANDIDATE_POOL ||
-    uniqueArtists < DISPLAY_OPTION_COUNT * 2
-  ) {
-    logger(
-      'WARN',
-      `Candidate pool insufficient after all aggregation attempts (Pool=${finalPool.length}, Unique=${uniqueArtists}). Triggering ABSOLUTE FALLBACK.`
-    )
-    logger(
-      'ERROR',
-      `Candidate pool is empty after all aggregation attempts. Current track: ${currentTrackId}, Seed artist: ${seedArtistId}, Played tracks: ${playedTrackIds.length}, Related artists: ${relatedArtists.length}, Unique artists: ${uniqueArtists}, Filtering stats: ${JSON.stringify(filteringStats)}`
-    )
-
-    logger(
-      'ERROR',
-      'Pool empty after all strategies - using ABSOLUTE database fallback'
-    )
-
-    const excludeIds = new Set([currentTrackId, ...playedTrackIds])
-    const neededTracks = MIN_CANDIDATE_POOL // Ensure we get at least MIN_CANDIDATE_POOL tracks
-    const { fetchAbsoluteRandomTracks } = await import('./dgsDb')
-    const absoluteFallback = await fetchAbsoluteRandomTracks(
-      neededTracks,
-      excludeIds
-    )
-
-    if (absoluteFallback.length > 0) {
-      logger(
-        'INFO',
-        `Absolute fallback: Added ${absoluteFallback.length} random tracks (requested: ${neededTracks})`
-      )
-      absoluteFallback.forEach((track) => {
-        registerCandidate(
-          track,
-          'embedding',
-          candidateMap,
-          playedTrackIds,
-          currentArtistId,
-          track.artists?.[0]?.id // Use track's artist ID as seedArtistId
-        )
-      })
-      finalPool = Array.from(candidateMap.values()).slice(0, MAX_CANDIDATE_POOL)
-
-      // Update stats with detailed tracking
-      dbFallbackStats.used = true
-      dbFallbackStats.addedTracks = absoluteFallback.length
-      dbFallbackStats.addedArtists = countUniqueArtists(
-        new Map(finalPool.map((c) => [c.track.id, c]))
-      )
-      dbFallbackStats.reason = 'absolute_fallback'
-      dbFallbackStats.requestedTracks = neededTracks
-    } else {
-      // Only throw if database is completely empty (should NEVER happen with 13,056 tracks)
-      throw new Error(
-        'Database has no tracks available - this should never occur'
-      )
-    }
-  }
-
-  // Warn if we don't have enough unique artists
-  if (uniqueArtists < DISPLAY_OPTION_COUNT) {
-    logger(
-      'WARN',
-      `Insufficient unique artists (${uniqueArtists}/${DISPLAY_OPTION_COUNT}). This may cause issues with diversity constraints.`
-    )
-  }
-
-  // Ensure diversity balance in candidate pool
-  finalPool = ensureDiversityBalance(finalPool)
-
-  // Warn if pool is smaller than ideal but don't fail
-  if (finalPool.length < MIN_CANDIDATE_POOL) {
-    logger(
-      'WARN',
-      `Candidate pool (${finalPool.length}) is below required minimum (${MIN_CANDIDATE_POOL}). We have ${uniqueArtists} unique artists. Consider increasing tracksPerArtist or related artists count.`
-    )
-  }
-
-  return {
-    pool: finalPool,
-    dbFallback: dbFallbackStats
-  }
-
-  function ensureDiversityBalance(
-    candidates: CandidateSeed[]
-  ): CandidateSeed[] {
-    if (candidates.length === 0) return candidates
-
-    logger(
-      'INFO',
-      `Checking diversity balance for ${candidates.length} candidates`,
-      'ensureDiversityBalance'
-    )
-
-    // Map existing sources to diversity categories
-    function mapSourceToDiversityCategory(
-      source: CandidateSource
-    ): keyof typeof DIVERSITY_SOURCES {
-      switch (source) {
-        case 'recommendations':
-          return 'directRecommendations'
-        case 'related_top_tracks':
-          return 'relatedArtists'
-        case 'target_insertion':
-        case 'target_boost':
-          return 'genreNeighbors'
-        case 'embedding':
-        default:
-          return 'popularityVaried'
-      }
-    }
-
-    // Count current distribution
-    const currentDistribution = { ...DIVERSITY_SOURCES }
-    Object.keys(currentDistribution).forEach((key) => {
-      currentDistribution[key as keyof typeof DIVERSITY_SOURCES] = 0
-    })
-
-    candidates.forEach((candidate) => {
-      const category = mapSourceToDiversityCategory(candidate.source)
-      currentDistribution[category]++
-    })
-
-    // Calculate target counts
-    const totalCandidates = candidates.length
-    const targetCounts = Object.fromEntries(
-      Object.entries(DIVERSITY_SOURCES).map(([key, percentage]) => [
-        key,
-        Math.round(totalCandidates * percentage)
-      ])
-    ) as Record<keyof typeof DIVERSITY_SOURCES, number>
-
-    logger(
-      'INFO',
-      `Current distribution: ${Object.entries(currentDistribution)
-        .map(([k, v]) => `${k}=${v}`)
-        .join(', ')} | ` +
-        `Target distribution: ${Object.entries(targetCounts)
-          .map(([k, v]) => `${k}=${v}`)
-          .join(', ')}`,
-      'ensureDiversityBalance'
-    )
-
-    // Check popularity band diversity
-    const popularityBands = candidates.reduce(
-      (acc, c) => {
-        if (c.track.popularity !== undefined) {
-          if (c.track.popularity < 33) acc.low++
-          else if (c.track.popularity < 66) acc.mid++
-          else acc.high++
-        }
-        return acc
-      },
-      { low: 0, mid: 0, high: 0 }
-    )
-
-    const totalWithPopularity =
-      popularityBands.low + popularityBands.mid + popularityBands.high
-    if (totalWithPopularity > 0) {
-      const popularityDiversity =
-        (popularityBands.low > 0 ? 1 : 0) +
-        (popularityBands.mid > 0 ? 1 : 0) +
-        (popularityBands.high > 0 ? 1 : 0)
-      const diversityRatio = popularityDiversity / 3
-
-      if (diversityRatio < 0.67) {
-        // Less than 2/3 diversity
-        logger(
-          'WARN',
-          `Low popularity diversity: ${popularityBands.low}/${popularityBands.mid}/${popularityBands.high} bands present (${(diversityRatio * 100).toFixed(1)}% coverage)`,
-          'ensureDiversityBalance'
-        )
-      }
-    }
-
-    // For now, just log the diversity analysis
-    // Future enhancement: could add candidates to underrepresented categories
-    const underrepresentedCategories = Object.entries(currentDistribution)
-      .filter(
-        ([key, current]) =>
-          current < targetCounts[key as keyof typeof targetCounts]
-      )
-      .map(
-        ([key, current]) =>
-          `${key}(${current}/${targetCounts[key as keyof typeof targetCounts]})`
-      )
-
-    if (underrepresentedCategories.length > 0) {
-      logger(
-        'INFO',
-        `Diversity balance check: ${underrepresentedCategories.join(', ')} are underrepresented`,
-        'ensureDiversityBalance'
-      )
-    } else {
-      logger(
-        'INFO',
-        'Diversity balance check: All categories adequately represented',
-        'ensureDiversityBalance'
-      )
-    }
-
-    return candidates
-  }
-}
-
-async function addRelatedArtistTracks({
-  relatedArtists,
-  token,
-  candidateMap,
-  playedTrackIds,
-  currentArtistId,
-  tracksPerArtist = 1,
-  statisticsTracker,
-  deadline
-}: {
-  relatedArtists: SpotifyArtist[]
-  token: string
-  candidateMap: Map<string, CandidateSeed>
-  playedTrackIds: string[]
-  currentArtistId: string
-  tracksPerArtist?: number
-  statisticsTracker?: ApiStatisticsTrackerType
-  deadline?: number
-}) {
-  // 1. Collect all artist IDs
-  const artistIds = relatedArtists.map((a) => a.id).filter(Boolean) as string[]
-
-  if (artistIds.length === 0) return
-
-  // Record requests for all artists
-  artistIds.forEach(() => {
-    statisticsTracker?.recordRequest('topTracks')
-  })
-
-  // 2. Batch query database for all top tracks (FAST - single DB query)
-  const dbTopTracks = await timeDbQuery(
-    `batchGetTopTracksFromDb (${artistIds.length} artists)`,
-    () => batchGetTopTracksFromDb(artistIds)
-  )
-
-  // Record cache hits for artists found in database
-  artistIds.forEach((artistId) => {
-    if (dbTopTracks.has(artistId)) {
-      statisticsTracker?.recordCacheHit('topTracks', 'database')
-    }
-  })
-
-  // 3. Identify which artists are missing from database
-  const missingArtistIds = artistIds.filter((id) => !dbTopTracks.has(id))
-
-  // 4. ONLY fetch missing artists from Spotify (typically 0-5 artists after initial warm-up)
-  // Use parallel batching to speed up fetching while respecting rate limits
-  // LIMIT: Minimized to reduce Spotify API calls - database fallback will supplement
-  if (missingArtistIds.length > 0) {
-    // strict limit for cold starts
-    const MAX_MISSING_TO_FETCH = 5 // Reduced from 8 to minimize API calls (single batch)
-    const artistsToFetch = missingArtistIds.slice(0, MAX_MISSING_TO_FETCH)
-
-    if (missingArtistIds.length > MAX_MISSING_TO_FETCH) {
-      logger(
-        'WARN',
-        `Limiting top tracks fetch to ${MAX_MISSING_TO_FETCH}/${missingArtistIds.length} artists to minimize API calls. Database fallback will supplement.`,
-        'addRelatedArtistTracks'
-      )
-    }
-
-    logger(
-      'INFO',
-      `Fetching top tracks from Spotify for ${artistsToFetch.length} artists not in DB cache`
-    )
-
-    const PARALLEL_BATCH_SIZE = 5 // Reduced from 15 to minimize concurrent API calls
-
-    // Process in batches to avoid rate limits
-    // Check deadline before starting batches
-    if (deadline && Date.now() > deadline) {
-      logger(
-        'WARN',
-        'Skipping Spotify fetch in addRelatedArtistTracks due to deadline',
-        'addRelatedArtistTracks'
-      )
-      return
-    }
-
-    for (let i = 0; i < artistsToFetch.length; i += PARALLEL_BATCH_SIZE) {
-      // Check deadline before next batch
-      if (deadline && Date.now() > deadline) {
-        logger(
-          'WARN',
-          'Stopping Spotify fetch batches due to deadline',
-          'addRelatedArtistTracks'
-        )
-        break
-      }
-      const batch = artistsToFetch.slice(i, i + PARALLEL_BATCH_SIZE)
-
-      await Promise.all(
-        batch.map(async (artistId) => {
-          try {
-            const tracks = await timeApiCall(
-              `getArtistTopTracksServer (${artistId})`,
-              () => getArtistTopTracksServer(artistId, token, statisticsTracker)
-            )
-
-            // Queue database cache updates (non-blocking)
-            void enqueueLazyUpdate({
-              type: 'artist_top_tracks',
-              spotifyId: artistId,
-              payload: { trackIds: tracks.map((t) => t.id) }
-            })
-            void enqueueLazyUpdate({
-              type: 'track_details',
-              spotifyId: artistId,
-              payload: { tracks }
-            })
-
-            // Add to local map
-            dbTopTracks.set(artistId, tracks)
-          } catch (error) {
-            logger(
-              'WARN',
-              `Failed to fetch top tracks for artist ${artistId}`,
-              'addRelatedArtistTracks',
-              error instanceof Error ? error : undefined
-            )
-          }
-        })
-      )
-
-      logger(
-        'INFO',
-        `Completed batch ${Math.floor(i / PARALLEL_BATCH_SIZE) + 1}/${Math.ceil(artistsToFetch.length / PARALLEL_BATCH_SIZE)} (${batch.length} artists)`
-      )
-    }
-  } else {
-    logger(
-      'INFO',
-      `All ${artistIds.length} artists found in DB cache - no Spotify API calls needed!`
-    )
-  }
-
-  // 5. Use the combined data (mostly from database)
-  dbTopTracks.forEach((tracks, artistId) => {
-    tracks.slice(0, tracksPerArtist).forEach((track) =>
-      registerCandidate(
-        track,
-        'related_top_tracks',
-        candidateMap,
-        playedTrackIds,
-        currentArtistId,
-        artistId // Use the related artist ID as seedArtistId
-      )
-    )
-  })
-}
-
-// Recommendations endpoint is deprecated - removed addRecommendationTracks and addEmbeddingTracks
-// All candidate generation now uses related artists and their top tracks
-
-// Track filtering statistics for debugging
-let filteringStats = {
-  totalChecked: 0,
-  filteredNotPlayable: 0,
-  filteredAlreadyPlayed: 0,
-  filteredCurrentArtist: 0,
-  added: 0
-}
-
-function registerCandidate(
-  track: TrackDetails | undefined,
-  source: CandidateSource,
-  candidateMap: Map<string, CandidateSeed>,
-  playedTrackIds: string[],
-  currentArtistId: string,
-  seedArtistId?: string
-) {
-  filteringStats.totalChecked++
-
-  if (!track?.id || !track.is_playable) {
-    filteringStats.filteredNotPlayable++
-    return
-  }
-  if (playedTrackIds.includes(track.id)) {
-    filteringStats.filteredAlreadyPlayed++
-    return
-  }
-
-  // Exclude tracks by the currently playing artist
-  const trackArtistId = track.artists?.[0]?.id
-  if (trackArtistId && trackArtistId === currentArtistId) {
-    filteringStats.filteredCurrentArtist++
-    return
-  }
-
-  const existing = candidateMap.get(track.id)
-
-  // Check for artist flooding
-  if (trackArtistId && !existing) {
-    // Only check limit for new tracks
-    let artistCount = 0
-    for (const candidate of Array.from(candidateMap.values())) {
-      if (candidate.track.artists?.[0]?.id === trackArtistId) {
-        artistCount++
-      }
-    }
-
-    // Allow more for target artist or high priority sources?
-    // For now, strict limit to ensure diversity
-    if (artistCount >= MAX_ARTIST_REPETITIONS) {
-      // Allow target insertion to bypass regular limit if needed, but usually target insertion is specific
-      if (source !== 'target_insertion' && source !== 'target_boost') {
-        // filteringStats.filteredArtistRepetition++ // (Add metric if we had it, for now just return)
-        return
-      }
-    }
-  }
-
-  if (!existing || sourcePriority(source) < sourcePriority(existing.source)) {
-    // Use provided seedArtistId, or fallback to track's artist ID, or empty string
-    const finalSeedArtistId = seedArtistId ?? trackArtistId ?? ''
-    candidateMap.set(track.id, {
-      track,
-      source,
-      seedArtistId: finalSeedArtistId
-    })
-    filteringStats.added++
-  }
-}
-
-function resetFilteringStats() {
-  filteringStats = {
-    totalChecked: 0,
-    filteredNotPlayable: 0,
-    filteredAlreadyPlayed: 0,
-    filteredCurrentArtist: 0,
-    added: 0
-  }
-}
-
-/**
- * Counts unique artists in the candidate pool
- */
-function countUniqueArtists(candidateMap: Map<string, CandidateSeed>): number {
-  const artistIds = new Set<string>()
-  for (const candidate of Array.from(candidateMap.values())) {
-    const artistId = candidate.track.artists?.[0]?.id
-    if (artistId) {
-      artistIds.add(artistId)
-    }
-  }
-  return artistIds.size
-}
-
-/**
- * Enrich candidates with artist profiles by lazily fetching missing ones
- * This ensures DB fallback tracks have artist data for attraction calculations
- * Handles both artist IDs and artist names (for DB tracks without Spotify IDs)
- */
 /**
  * Look up Spotify artist ID by artist name
  * Database-first approach: checks DB, then optionally searches Spotify
@@ -2893,6 +1140,7 @@ export async function scoreCandidates({
       source?: string
       simScore: number
       isTargetArtist: boolean
+      skippedDueToMissingMetadata?: boolean
     }>
     totalCandidates: number // Added missing field definition
   }
@@ -2918,6 +1166,7 @@ export async function scoreCandidates({
     source?: string
     simScore: number
     isTargetArtist: boolean
+    skippedDueToMissingMetadata?: boolean
   }> = []
 
   // Calculate baseline attraction: current song's artist to active player's target
@@ -2974,9 +1223,9 @@ export async function scoreCandidates({
     // Calculate how many tracks we need
     const neededTracks = needsTrackFallback
       ? Math.max(
-          MIN_CANDIDATE_POOL - candidates.length,
-          MIN_STRICT_UNIQUE_ARTISTS - uniqueArtistNames.size
-        )
+        MIN_CANDIDATE_POOL - candidates.length,
+        MIN_STRICT_UNIQUE_ARTISTS - uniqueArtistNames.size
+      )
       : MIN_STRICT_UNIQUE_ARTISTS - uniqueArtistNames.size
 
     const existingTrackIds = new Set(candidates.map((c) => c.track.id))
@@ -2991,9 +1240,9 @@ export async function scoreCandidates({
       excludeSpotifyTrackIds: existingTrackIds,
       tracksPerArtist: needsTrackFallback
         ? Math.ceil(
-            neededTracks /
-              Math.max(1, MIN_STRICT_UNIQUE_ARTISTS - uniqueArtistNames.size)
-          )
+          neededTracks /
+          Math.max(1, MIN_STRICT_UNIQUE_ARTISTS - uniqueArtistNames.size)
+        )
         : 1
     })
 
@@ -3313,6 +1562,11 @@ export async function scoreCandidates({
         `Skipping candidate with missing/empty track metadata: name="${candidate.track.name ?? 'missing'}", id="${candidate.track.id ?? 'missing'}"`,
         'scoreCandidates'
       )
+      // Mark this candidate as skipped in debug info (it was already added above)
+      const lastCandidate = candidateDebugInfo[candidateDebugInfo.length - 1]
+      if (lastCandidate && lastCandidate.artistName === finalArtistName) {
+        lastCandidate.skippedDueToMissingMetadata = true
+      }
       continue
     }
 
@@ -3350,11 +1604,11 @@ export async function scoreCandidates({
     metrics: metrics.sort((a, b) => b.finalScore - a.finalScore),
     debugInfo: {
       fallbackFetches: fallbackFetchCount,
-      totalCandidates: metrics.length, // Added missing field
+      totalCandidates: candidateDebugInfo.length, // Total candidates scored (including skipped)
       p1NonZeroAttraction: attractionStats.p1NonZero,
       p2NonZeroAttraction: attractionStats.p2NonZero,
       zeroAttractionReasons,
-      candidates: candidateDebugInfo
+      candidates: candidateDebugInfo // All candidates that were scored (full pool)
     }
   }
 }
@@ -3552,10 +1806,26 @@ export async function fetchTopTracksForArtists(
   token: string,
   statisticsTracker?: ApiStatisticsTracker,
   excludeTrackIds?: Set<string>
-): Promise<CandidateSeed[]> {
+): Promise<{
+  seeds: CandidateSeed[]
+  failedArtists: string[]
+  logs: PipelineLogEntry[]
+}> {
   const seeds: CandidateSeed[] = []
+  const failedArtists: string[] = []
+  const logs: PipelineLogEntry[] = []
   const artistIdsSet = new Set(artistIds)
   const excludeSet = excludeTrackIds || new Set<string>()
+
+  const log = (level: PipelineLogEntry['level'], message: string, details?: any) => {
+    logs.push(createPipelineLog('engine', level, message, details))
+    // Also mirror to console for now
+    if (level === 'error') logger('ERROR', message, 'fetchTopTracksForArtists', details)
+    else if (level === 'warn') logger('WARN', message, 'fetchTopTracksForArtists')
+    else logger('INFO', message, 'fetchTopTracksForArtists')
+  }
+
+  log('info', `fetchTopTracksForArtists: Requested ${artistIds.length} artists`, { artistIds })
 
   // Record requests for all artists
   artistIds.forEach(() => {
@@ -3565,7 +1835,7 @@ export async function fetchTopTracksForArtists(
   // 1. Batch query DB
   const dbTopTracks = await timeDbQuery(
     `batchGetTopTracksFromDb (${artistIds.length} artists)`,
-    () => batchGetTopTracksFromDb(artistIds)
+    () => batchGetTopTracksFromDb(artistIds, statisticsTracker)
   )
 
   // Record cache hits for artists found in database
@@ -3577,11 +1847,18 @@ export async function fetchTopTracksForArtists(
 
   // 2. Identify missing
   const missingArtistIds = artistIds.filter((id) => !dbTopTracks.has(id))
+  log('info', `DB Cache: Found ${dbTopTracks.size} artists, Missing ${missingArtistIds.length}`)
 
-  // 3. Fetch missing from Spotify (limit 5 per batch for now to match logic)
+  // 3. Fetch missing from Spotify
   if (missingArtistIds.length > 0) {
-    const MAX_MISSING_TO_FETCH = 5
+    const MAX_MISSING_TO_FETCH = 10 // Increased from 5 to 10 for better coverage
     const artistsToFetch = missingArtistIds.slice(0, MAX_MISSING_TO_FETCH)
+
+    if (missingArtistIds.length > MAX_MISSING_TO_FETCH) {
+      log('warn', `Too many missing artists (${missingArtistIds.length}). Only fetching first ${MAX_MISSING_TO_FETCH}.`)
+    }
+
+    log('info', `Fetching ${artistsToFetch.length} missing artists from Spotify`, { artistsToFetch })
 
     await Promise.all(
       artistsToFetch.map(async (artistId) => {
@@ -3590,20 +1867,37 @@ export async function fetchTopTracksForArtists(
             `getArtistTopTracksServer (${artistId})`,
             () => getArtistTopTracksServer(artistId, token, statisticsTracker)
           )
-          void upsertTopTracks(
-            artistId,
-            tracks.map((t) => t.id)
-          )
-          void upsertTrackDetails(tracks)
-          dbTopTracks.set(artistId, tracks)
+
+          if (tracks.length === 0) {
+            log('warn', `Spotify API returned 0 tracks for artist ${artistId}`)
+          } else {
+            log('info', `Fetched ${tracks.length} tracks for artist ${artistId} from Spotify`)
+            void upsertTopTracks(
+              artistId,
+              tracks.map((t) => t.id)
+            )
+            void upsertTrackDetails(tracks)
+            dbTopTracks.set(artistId, tracks)
+          }
         } catch (e) {
-          // ignore
+          const errMsg = e instanceof Error ? e.message : String(e)
+          log('error', `Failed to fetch top tracks for artist ${artistId}`, { error: errMsg })
+
+          // Queue for healing if fetch failed
+          void enqueueLazyUpdate({
+            type: 'artist_top_tracks',
+            spotifyId: artistId,
+            payload: { needsRefresh: true, reason: 'fetch_failed' }
+          })
         }
       })
     )
   }
 
   // 4. Build seeds - randomly select 1 track from top 10 per artist
+  // Track which artists are missing from dbTopTracks entirely
+  const artistsWithNoData = artistIds.filter((id) => !dbTopTracks.has(id))
+
   dbTopTracks.forEach((tracks, artistId) => {
     // Only if requested
     if (!artistIdsSet.has(artistId)) return
@@ -3616,13 +1910,29 @@ export async function fetchTopTracksForArtists(
       (track) => track.is_playable && !excludeSet.has(track.id)
     )
 
-    // If no valid tracks, skip this artist
+    // Log filtering results
+    const excludedCount = topTracks.length - validTracks.length
+    if (excludedCount > 0) {
+      log('info', `Filtered ${excludedCount}/${topTracks.length} tracks for artist ${artistId} (Played/Current/Unplayable)`)
+    }
+
+    // If no valid tracks, queue for healing (REQ-DAT-03: Self-Healing Queue)
     if (validTracks.length === 0) {
-      logger(
-        'WARN',
-        `No valid tracks for artist ${artistId} after filtering (${topTracks.length} total tracks)`,
-        'fetchTopTracksForArtists'
-      )
+      log('warn', `No valid tracks for artist ${artistId} after filtering. Total fetched: ${topTracks.length}`)
+
+      // REQ-DAT-03: Queue metadata gap for asynchronous resolution
+      void enqueueLazyUpdate({
+        type: 'artist_top_tracks',
+        spotifyId: artistId,
+        payload: {
+          needsRefresh: true,
+          reason: 'no_valid_tracks',
+          totalTracks: topTracks.length,
+          filteredCount: topTracks.length - validTracks.length
+        }
+      })
+
+      failedArtists.push(artistId)
       return
     }
 
@@ -3637,7 +1947,25 @@ export async function fetchTopTracksForArtists(
     })
   })
 
-  return seeds
+  // Queue artists with no data in database for healing
+  artistsWithNoData.forEach((artistId) => {
+    if (!failedArtists.includes(artistId)) {
+      log('warn', `No data found in DB or Spotify for artist ${artistId}`)
+      void enqueueLazyUpdate({
+        type: 'artist_top_tracks',
+        spotifyId: artistId,
+        payload: {
+          needsRefresh: true,
+          reason: 'missing_from_database'
+        }
+      })
+      failedArtists.push(artistId)
+    }
+  })
+
+  log('info', `fetchTopTracksForArtists complete. Seeds: ${seeds.length}, Failed: ${failedArtists.length}`)
+
+  return { seeds, failedArtists, logs }
 }
 
 function computeVicinityDistances(

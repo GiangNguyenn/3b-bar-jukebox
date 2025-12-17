@@ -22,9 +22,9 @@ The purpose of this module is to generate a list of 9 selectable songs for a pla
 
 To respect the 10-second serverless timeout, the generation process must be split into distinct API Stages:
 
-1.  **Stage 1 (Init):** Context resolution & Seed ID determination.
-2.  **Stage 2 (Fetch):** Bulk retrieval of candidate metadata.
-3.  **Stage 3 (Score & Select):** Diversity injection, heavy scoring, and final selection.
+1.  **Stage 1 (Artists):** Build list of 100 unique artists from multiple sources (related to current, related to target, random).
+2.  **Stage 2 (Score Artists):** Score all 100 artists using artist-to-artist similarity, apply filtering rules, and select 9 artists (3-3-3 distribution).
+3.  **Stage 3 (Fetch Tracks):** Fetch top tracks for the 9 selected artists and randomly select 1 track per artist.
 
 ### 2.2 Tiered Data Retrieval
 
@@ -52,31 +52,33 @@ The system accepts the following inputs from the Game State Manager:
 
 ### 3.2 Candidate Pool Generation
 
-**Objective:** Build a candidate pool of **at least 100 tracks** to ensure sufficient diversity for the 3-3-3 selection process.
+**Objective:** Build a candidate pool of **at least 100 artists** to ensure sufficient diversity for the 3-3-3 selection process.
 
 **Process Overview:**
-1. Select a minimum of 100 artists from various sources (as described below)
-2. For each artist, fetch their top 10 tracks
-3. From each artist's top 10 tracks, randomly select 1 track (excluding currently playing track and played tracks)
-4. This yields a minimum of 100 tracks in the candidate pool
+
+1. **Stage 1:** Select exactly 100 unique artists from various sources (related to current, related to target, random)
+2. **Stage 2:** Score all 100 artists using artist-to-artist similarity, apply filtering, and select 9 artists (3-3-3 distribution)
+3. **Stage 3:** For each of the 9 selected artists, fetch their top 10 tracks and randomly select 1 track (excluding currently playing track and played tracks)
+4. This yields exactly 9 tracks in the final candidate pool (one per selected artist)
 
 The candidate pool is populated from four primary sources, prioritized as follows:
 
-#### 3.2.1 Primary Source: Currently Playing Artist Related Songs
+#### 3.2.1 Primary Source: Currently Playing Artist Related Artists
 
-- **Always included** - This should be the majority of the candidate pool
+- **Always included** - This should be the majority of the artist pool
 - Fetch related artists from the currently playing song's artist
 - Uses pre-computed artist relationship graph (database) with genre similarity fallback
-- Returns up to 50 related artists per seed
-- Fetches top tracks from each related artist
+- Returns up to 50 related unique artists
+- Part of Stage 1 sub-call 1.1 (executed in parallel with target-related artists)
 
-#### 3.2.2 Conditional Source: Current Player's Target Artist Related Songs
+#### 3.2.2 Conditional Source: Current Player's Target Artist Related Artists
 
 - **Included when:**
   - Player's influence < 20% (Desperation Mode), OR
   - Player's influence > 50% (Good Influence)
 - **NOT included** in Dead Zone (20-39% influence)
-- Populates the pool with songs related to the current player's target artist
+- Populates the pool with artists related to the current player's target artist
+- Part of Stage 1 sub-call 1.2 (executed in parallel with current-related artists)
 - Helps guide players toward their target when they're struggling or doing well
 
 #### 3.2.3 Conditional Source: Target Artist Direct Injection
@@ -84,76 +86,101 @@ The candidate pool is populated from four primary sources, prioritized as follow
 - **Injected when:**
   - Round >= 10, OR
   - Player's influence > 80% (gravity > 0.59)
-- Explicitly adds the target artist itself to the pool
-- Ensures target artist tracks are available for selection when player is close to winning or game is in late rounds
+- Explicitly adds the target artist itself to the artist pool
+- Part of Stage 1 sub-call 1.2 (included in relatedToTarget array)
+- Ensures target artist is available for selection when player is close to winning or game is in late rounds
 
 #### 3.2.4 Always Included: Random Database Artists
 
-- **Minimum of 100 random artists** from the artists table
+- **Fills remaining slots to reach 100 total artists** from the artists table
 - **Critical Requirement:** Only include artists where **all columns are populated** to avoid additional API calls for missing metadata
+- Part of Stage 1 sub-call 1.3 (executed sequentially after 1.1 and 1.2 complete)
 - Serves dual purpose:
-  1. **Size guarantee:** Ensures we have enough artists to reach minimum 100 tracks in candidate pool
-  2. **Quality diversity:** Provides bad and neutral tracks for the 3-3-3 distribution
-- Part of initial pool building, not just a fallback mechanism
+  1. **Size guarantee:** Ensures we have exactly 100 artists in the candidate pool
+  2. **Quality diversity:** Provides bad and neutral artists for the 3-3-3 distribution
+- Database-only (no API calls) - uses `fetchRandomArtistsFromDb`
 
 #### 3.2.5 Three-Stage Pipeline Execution
 
 The system generates the candidate pool through a three-stage pipeline:
 
-#### Stage 1: Artist Seeding (Init)
+#### Stage 1: Artist Selection (Artists)
 
-**Purpose:** Identify which artists' tracks should be fetched based on the pool building rules above.
-
-**Process:**
-
-1. **Seed Artist Selection:** Uses the currently playing song's artist as the primary seed
-2. **Related Artist Discovery:** Calls `getSeedRelatedArtists` which:
-   - Checks pre-computed artist relationship graph (database)
-   - Falls back to genre similarity queries if graph is empty
-   - Returns up to 50 related artists per seed
-3. **Target Artist Related Seeding (Conditional):** Based on player influence:
-   - **< 20%:** Desperation Mode - fetch target-related artists
-   - **20-39%:** Dead Zone - SKIP target-related artists
-   - **> 50%:** Good Influence - fetch target-related artists
-4. **Target Artist Direct Injection (Conditional):** Explicitly adds the target artist itself to the pool when:
-   - Round >= 10, OR
-   - Player's influence > 80% (gravity > 0.59)
-5. **Random Artist Selection:** Identifies artists from fully-populated artists in database for random inclusion
-6. **Output:** Combined list of unique artist IDs (deduplicated) representing all pool sources
-
-#### Stage 2: Track Fetching (Candidates)
-
-**Purpose:** Fetch actual tracks from all pool sources.
+**Purpose:** Build a list of exactly 100 unique artists from multiple sources.
 
 **Process:**
 
-1. **Top Tracks Retrieval:** Calls `fetchTopTracksForArtists` for all seeded artist IDs
-   - Fetches top 10 tracks per artist (database-first, Spotify API fallback)
+1. **Execute Sub-calls 1.1 and 1.2 in Parallel:**
+   - **Sub-call 1.1:** Get artists related to currently playing artist
+     - Uses `getSeedRelatedArtists` (checks pre-computed graph → genre similarity → Spotify API)
+     - Returns up to 50 related artists
+   - **Sub-call 1.2:** Get artists related to target artist + target itself (conditional)
+     - Based on player influence:
+       - **< 20%:** Desperation Mode - fetch target-related artists
+       - **20-39%:** Dead Zone - SKIP target-related artists
+       - **> 50%:** Good Influence - fetch target-related artists
+     - Adds target artist itself if: Round >= 10 OR Player's influence > 80% (gravity > 0.59)
+     - Returns up to 20 related artists
+2. **After 1.1 and 1.2 Complete, Execute Sub-call 1.3 Sequentially:**
+   - **Sub-call 1.3:** Random artists to reach 100 total
+     - Calculates: `needed = 100 - (relatedToCurrent.length + relatedToTarget.length)`
+     - Uses `fetchRandomArtistsFromDb` with exclusion set
+     - Only includes fully-populated artists (all columns present) to avoid API calls
+     - Database-only (no API calls for random artists)
+3. **Output:** Exactly 100 unique artist IDs grouped by source (relatedToCurrent, relatedToTarget, randomArtists)
+
+#### Stage 2: Artist Scoring & Selection (Score Artists)
+
+**Purpose:** Score all 100 artists and select 9 artists using 3-3-3 distribution.
+
+**Process:**
+
+1. **Fetch Artist Profiles:**
+   - Batch fetch `ArtistProfile` for all 100 artist IDs
    - Uses tiered caching: Memory → Database → Spotify API
-2. **Artist Profile Enrichment:** Calls `enrichCandidatesWithArtistProfiles`
-   - Fetches full artist metadata (genres, popularity, followers)
-   - Required for attraction scoring in Stage 3
-3. **Output:** Minimum 100 candidate tracks with enriched metadata (typically 100-500 tracks)
+   - Queues missing profiles for self-healing (REQ-DAT-03)
+2. **Score Artists:**
+   - For each artist, calculate attraction score (artist-to-artist similarity to target)
+   - Uses `computeAttraction` function
+   - Calculate baseline: current song's artist to target artist
+   - Calculate delta: candidate attraction - baseline
+3. **Apply Filtering Rules:**
+   - Exclude current artist
+   - Apply REQ-FUN-07 (target artist filtering based on round/influence)
+4. **Apply 3-3-3 Distribution:**
+   - Categorize artists: CLOSER (delta > tolerance), NEUTRAL (|delta| <= tolerance), FURTHER (delta < -tolerance)
+   - Select 3 from each category using `applyDiversityConstraints`
+5. **Output:** Exactly 9 selected artists with categories, attraction scores, and deltas
 
-#### Stage 3: Scoring & Selection (Score)
+#### Stage 3: Track Fetching (Fetch Tracks)
 
-**Purpose:** Score candidates and select final 9 options.
+**Purpose:** Fetch tracks only for the 9 selected artists.
 
 **Process:**
 
-1. **Attraction Scoring:** Calculate artist-to-artist similarity for each candidate
-2. **Diversity Constraints:** Apply 3-3-3 distribution (Good/Neutral/Bad)
-3. **Final Selection:** Return exactly 9 tracks meeting all requirements
+1. **For each of 9 selected artists:**
+   - Fetch top 10 tracks using `fetchTopTracksForArtists`
+   - Uses tiered caching: Memory → Database → Spotify API
+   - Filters out: currently playing track, played tracks
+   - Randomly selects 1 track from valid tracks
+   - Queues artists with 0 valid tracks for self-healing (REQ-DAT-03)
+2. **Build Final Options:**
+   - Maps to `DgsOptionTrack` format
+   - Includes all scoring metadata from Stage 2
+   - Preserves source information for debug panel
+3. **Output:** Exactly 9 tracks (one per selected artist)
 
 #### Minimum Pool Requirements
 
-- **REQ-FUN-01:** The system must ensure the candidate pool contains at least 100 tracks before scoring and selection.
-- **REQ-FUN-01a:** Random database artists must be included as part of initial pool building (Stage 2), not as a fallback.
-- **REQ-FUN-01b:** Only fully-populated tracks (all columns present) should be included from random database selection to avoid additional API calls.
-- **Fallback Strategy:** If Stage 2 yields insufficient candidates despite random track inclusion:
-  - Stage 3 may trigger additional database fallback via `fetchRandomTracksFromDb`
-  - Fetches additional tracks from profiled artists in database
-  - Ensures minimum 9 unique artists for final selection
+- **REQ-FUN-01:** The system must ensure the candidate pool contains at least 100 artists before scoring and selection.
+- **REQ-FUN-01a:** Random database artists must be included as part of initial pool building (Stage 1), not as a fallback.
+- **REQ-FUN-01b:** Only fully-populated artists (all columns present) should be included from random database selection to avoid additional API calls.
+- **Architecture Benefits:**
+  - Stage 1 ensures exactly 100 artists (or as close as possible)
+  - Stage 2 scores artists (lightweight) before fetching tracks (heavy)
+  - Stage 3 only fetches tracks for 9 artists (90 tracks total) instead of 1000+ tracks
+  - Eliminates need for complex replacement logic
+  - Architecture matches scoring logic (artist-based, not track-based)
 
 ### 3.3 Scoring & Sorting
 
