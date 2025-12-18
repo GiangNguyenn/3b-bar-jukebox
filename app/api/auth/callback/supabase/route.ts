@@ -58,7 +58,8 @@ export async function GET(request: Request): Promise<NextResponse> {
         typeof session.expires_at === 'number'
           ? session.expires_at
           : Math.floor(Date.now() / 1000) + 3600,
-      premium_verified_at: new Date().toISOString()
+      premium_verified_at: new Date().toISOString(),
+      updated_at: new Date().toISOString()
     }
 
     // Upsert profile - this may modify the display_name if there's a conflict
