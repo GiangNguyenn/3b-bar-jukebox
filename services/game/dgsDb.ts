@@ -485,8 +485,8 @@ export async function fetchRandomArtistsFromDb({
       .not('spotify_artist_id', 'is', null)
       .not('name', 'is', null)
       .not('genres', 'is', null) // Ensure genres exist
-      .neq('genres', []) // Postgres empty array check
-      .filter('genres', 'not.cs', '{Unknown}') // Exclude artists with 'Unknown' genre
+      .filter('genres', 'neq', '{}') // Postgres empty array check
+      .filter('genres', 'not.cs', '{"Unknown"}') // Exclude artists with 'Unknown' genre
       .not('popularity', 'is', null)
       .not('follower_count', 'is', null),
     undefined,
