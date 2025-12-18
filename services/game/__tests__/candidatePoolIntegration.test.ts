@@ -164,7 +164,7 @@ test('Candidate Pool Must Have At Least 100 Tracks with 100 Unique Artists', () 
 
   // Test scenario: Only 13 related artists (matching the debug output)
   const smallPool = simulatePoolWithoutRandomArtists(13, 0, 0)
-  
+
   // This should fail - we need random artists to reach minimum
   assert.ok(
     smallPool.artists < MIN_ARTISTS,

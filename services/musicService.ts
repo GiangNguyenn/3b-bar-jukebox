@@ -172,6 +172,7 @@ export const musicService = {
     // 2. Database Cache
     const dbTracksMap = await dgsCache.batchGetTopTracksFromDb(
       [artistId],
+      token,
       statisticsTracker
     )
     const dbTracks = dbTracksMap.get(artistId)

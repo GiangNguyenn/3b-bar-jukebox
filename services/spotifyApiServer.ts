@@ -316,9 +316,10 @@ export async function getArtistTopTracksServer(
     )
 
     // Fetch full track details from DB
-    const { batchGetTrackDetailsFromDb } = await import('./game/dgsCache')
-    const trackDetailsMap = await batchGetTrackDetailsFromDb(
+    const { batchGetTrackDetailsWithCache } = await import('./game/dgsCache')
+    const trackDetailsMap = await batchGetTrackDetailsWithCache(
       dbCachedTrackIds,
+      token || '',
       statisticsTracker
     )
 
@@ -360,7 +361,7 @@ export async function getArtistTopTracksServer(
     const tracks = response.tracks || []
 
     if (statisticsTracker) {
-      statisticsTracker.recordFromSpotify('topTracks', tracks.length)
+      statisticsTracker.recordFromSpotify('topTracks', 1)
     }
 
     // FIRE-AND-FORGET: Save to database cache
@@ -376,7 +377,8 @@ export async function getArtistTopTracksServer(
   } catch (error) {
     console.error('[spotifyApiServer] getArtistTopTracksServer error:', error)
     throw new Error(
-      `Failed to fetch artist top tracks: ${error instanceof Error ? error.message : 'Unknown error'
+      `Failed to fetch artist top tracks: ${
+        error instanceof Error ? error.message : 'Unknown error'
       }`
     )
   }

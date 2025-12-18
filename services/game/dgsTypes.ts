@@ -226,15 +226,17 @@ export interface DgsDebugInfo {
    */
   candidates: Array<{
     artistName: string
+    artistId?: string
     trackName?: string
     source?: string
     simScore: number
+    delta?: number
+    category?: string
     isTargetArtist: boolean
     filtered: boolean
     rejectionReason?: string
   }>
   dbFallback?: {
-
     used: boolean
     addedTracks: number
     addedArtists: number
@@ -322,9 +324,10 @@ export interface DgsDebugInfo {
   selectedArtists?: Array<{
     artistId: string
     artistName: string
-    category: 'CLOSER' | 'NEUTRAL' | 'FURTHER'
+    category: 'CLOSER' | 'NEUTRAL' | 'FURTHER' | string
     attractionScore: number
     delta: number
+    scoreComponents?: ScoringComponents
   }>
 }
 

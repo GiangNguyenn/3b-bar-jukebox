@@ -165,14 +165,26 @@ export class ApiStatisticsTracker {
     return {
       apiCalls: this.apiCalls,
       dbQueries: this.dbQueries,
-      totalApiTimeMs: this.apiCalls.reduce((acc, call) => acc + call.durationMs, 0),
-      totalDbTimeMs: this.dbQueries.reduce((acc, query) => acc + query.durationMs, 0),
-      slowestApiCall: this.apiCalls.length > 0
-        ? this.apiCalls.reduce((prev, current) => (prev.durationMs > current.durationMs) ? prev : current)
-        : null,
-      slowestDbQuery: this.dbQueries.length > 0
-        ? this.dbQueries.reduce((prev, current) => (prev.durationMs > current.durationMs) ? prev : current)
-        : null
+      totalApiTimeMs: this.apiCalls.reduce(
+        (acc, call) => acc + call.durationMs,
+        0
+      ),
+      totalDbTimeMs: this.dbQueries.reduce(
+        (acc, query) => acc + query.durationMs,
+        0
+      ),
+      slowestApiCall:
+        this.apiCalls.length > 0
+          ? this.apiCalls.reduce((prev, current) =>
+              prev.durationMs > current.durationMs ? prev : current
+            )
+          : null,
+      slowestDbQuery:
+        this.dbQueries.length > 0
+          ? this.dbQueries.reduce((prev, current) =>
+              prev.durationMs > current.durationMs ? prev : current
+            )
+          : null
     }
   }
 

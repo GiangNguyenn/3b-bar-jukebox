@@ -69,6 +69,13 @@ interface Stage2Response {
     attractionScore: number
     delta: number
   }>
+  backupArtists?: Array<{
+    artistId: string
+    artistName: string
+    category: 'CLOSER' | 'NEUTRAL' | 'FURTHER'
+    attractionScore: number
+    delta: number
+  }>
   debugInfo: DgsDebugInfo
 }
 
@@ -266,6 +273,7 @@ export async function runGameGenerationPipeline(
     config: { signal },
     body: {
       selectedArtists: stage2Res.selectedArtists,
+      backupArtists: stage2Res.backupArtists, // Pass backups to Stage 3
       currentTrack,
       playedTrackIds,
       targetProfiles,
@@ -288,7 +296,8 @@ export async function runGameGenerationPipeline(
 
   // Use the actual total candidates from scoring debug info
   const actualPoolSize =
-    accumulatedDebug?.scoring?.totalCandidates ?? stage2Res.selectedArtists.length
+    accumulatedDebug?.scoring?.totalCandidates ??
+    stage2Res.selectedArtists.length
 
   // Construct Timing Breakdown
   if (accumulatedDebug) {
@@ -296,11 +305,17 @@ export async function runGameGenerationPipeline(
     const s2Time = stage2Res.debugInfo?.executionTimeMs ?? 0
     const s3Time = stage3Res.debugInfo?.executionTimeMs ?? 0
 
+    // Extract detailed timing from Stage 2 if available
+    const s2Timing = stage2Res.debugInfo?.timingBreakdown as any
+    const enrichmentMs = s2Timing?.enrichmentMs ?? 0
+    const targetResolutionMs = s2Timing?.targetResolutionMs ?? 0
+    const scoringMs = s2Timing?.scoringMs ?? s2Time
+
     accumulatedDebug.timingBreakdown = {
-      candidatePoolMs: s1Time, // Stage 1 covers pool & targets
-      targetResolutionMs: 0, // Included in Stage 1 for now
-      enrichmentMs: 0, // Included in Stage 1/3
-      scoringMs: s2Time, // Stage 2 is pure scoring
+      candidatePoolMs: s1Time, // Stage 1 covers pool
+      targetResolutionMs, // From Stage 2
+      enrichmentMs, // From Stage 2
+      scoringMs, // From Stage 2
       selectionMs: s3Time, // Stage 3 is selection/fetching
       totalMs: s1Time + s2Time + s3Time
     }

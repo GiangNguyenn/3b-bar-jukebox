@@ -83,7 +83,10 @@ export const mergeDebugInfo = (
     const sum = (a?: number, b?: number) => (a || 0) + (b || 0)
 
     // Helper to find slowest call
-    const getSlowest = (a?: { durationMs: number } | null, b?: { durationMs: number } | null) => {
+    const getSlowest = (
+      a?: { durationMs: number } | null,
+      b?: { durationMs: number } | null
+    ) => {
       if (a && b) return a.durationMs > b.durationMs ? a : b
       return a || b || null
     }

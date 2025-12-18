@@ -82,7 +82,10 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
         'POST'
       )
       return NextResponse.json(
-        { error: 'Invalid artist ID - database UUID detected instead of Spotify ID' },
+        {
+          error:
+            'Invalid artist ID - database UUID detected instead of Spotify ID'
+        },
         { status: 400 }
       )
     }
@@ -138,7 +141,10 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
             void enqueueLazyUpdate({
               type: 'artist_profile',
               spotifyId: seedArtistId,
-              payload: { needsRefresh: true, reason: 'related_artists_fetch_failed' }
+              payload: {
+                needsRefresh: true,
+                reason: 'related_artists_fetch_failed'
+              }
             })
           }
           return { artistIds: [], artists: [] }
@@ -210,7 +216,10 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
             void enqueueLazyUpdate({
               type: 'artist_profile',
               spotifyId: targetArtistId,
-              payload: { needsRefresh: true, reason: 'related_artists_fetch_failed' }
+              payload: {
+                needsRefresh: true,
+                reason: 'related_artists_fetch_failed'
+              }
             })
           }
           return { artistIds: [], artists: [], targetInjected: false }
@@ -223,7 +232,11 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     const targetInjected = relatedToTargetResult.targetInjected
 
     // 6. After 1.1 and 1.2 Complete, Execute Sub-call 1.3 Sequentially
-    logger('INFO', 'Executing sequential sub-call 1.3 (random artists)...', 'POST')
+    logger(
+      'INFO',
+      'Executing sequential sub-call 1.3 (random artists)...',
+      'POST'
+    )
 
     // Build exclusion set from 1.1 and 1.2 results
     const existingArtistIds = new Set<string>()
@@ -243,7 +256,11 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     }> = []
 
     if (neededRandomArtists > 0) {
-      logger('INFO', `Adding ${neededRandomArtists} random artists to reach minimum of ${MIN_TOTAL_ARTISTS} artists`, 'POST')
+      logger(
+        'INFO',
+        `Adding ${neededRandomArtists} random artists to reach minimum of ${MIN_TOTAL_ARTISTS} artists`,
+        'POST'
+      )
 
       try {
         const dbResult = await fetchRandomArtistsFromDb({
@@ -272,13 +289,21 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
           name: artist.name
         }))
 
-        logger('INFO', `Added ${randomArtists.length} random artists from database`, 'POST')
+        logger(
+          'INFO',
+          `Added ${randomArtists.length} random artists from database`,
+          'POST'
+        )
       } catch (error) {
         const errorMsg = error instanceof Error ? error.message : String(error)
         logger('ERROR', `Failed to fetch random artists: ${errorMsg}`, 'POST')
       }
     } else {
-      logger('INFO', `Already have ${currentCount} artists, no random artists needed`, 'POST')
+      logger(
+        'INFO',
+        `Already have ${currentCount} artists, no random artists needed`,
+        'POST'
+      )
     }
 
     // 7. Combine all artists and ensure uniqueness
@@ -330,7 +355,10 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
 
     return NextResponse.json({
       artistIds, // Exactly 100 unique artist IDs (or as close as possible)
-      relatedToCurrent: relatedToCurrent.map((a) => ({ name: a.name, id: a.id })),
+      relatedToCurrent: relatedToCurrent.map((a) => ({
+        name: a.name,
+        id: a.id
+      })),
       relatedToTarget: relatedToTarget.map((a) => ({ name: a.name, id: a.id })),
       randomArtists: randomArtists.map((a) => ({ name: a.name, id: a.id })),
       targetProfiles,
@@ -347,8 +375,14 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
         performanceDiagnostics: statisticsTracker.getPerformanceDiagnostics(),
         candidatePool: {
           totalUnique: finalCount,
-          relatedToCurrent: relatedToCurrent.map((a) => ({ name: a.name, id: a.id })),
-          relatedToTarget: relatedToTarget.map((a) => ({ name: a.name, id: a.id })),
+          relatedToCurrent: relatedToCurrent.map((a) => ({
+            name: a.name,
+            id: a.id
+          })),
+          relatedToTarget: relatedToTarget.map((a) => ({
+            name: a.name,
+            id: a.id
+          })),
           randomArtists: randomArtists.map((a) => ({ name: a.name, id: a.id }))
         },
         pipelineLogs

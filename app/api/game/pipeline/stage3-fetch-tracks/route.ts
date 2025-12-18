@@ -2,7 +2,13 @@ import { NextRequest, NextResponse } from 'next/server'
 import { fetchTopTracksForArtists } from '@/services/game/dgsEngine'
 import { ApiStatisticsTracker } from '@/services/game/apiStatisticsTracker'
 import { createModuleLogger } from '@/shared/utils/logger'
-import { DgsOptionTrack, PlayerId, ScoringComponents } from '@/services/game/dgsTypes'
+import {
+  DgsOptionTrack,
+  PlayerId,
+  ScoringComponents,
+  TargetProfile,
+  PipelineLogEntry
+} from '@/services/game/dgsTypes'
 import { DUMMY_COMPONENTS } from '@/services/game/dgsScoring'
 import { TrackDetails } from '@/shared/types/spotify'
 
@@ -19,9 +25,10 @@ interface SelectedArtist {
 
 interface Stage3FetchTracksRequest {
   selectedArtists: SelectedArtist[]
+  backupArtists?: SelectedArtist[]
   currentTrack: TrackDetails | null
   playedTrackIds: string[]
-  targetProfiles: Record<PlayerId, any>
+  targetProfiles: Record<PlayerId, TargetProfile | null>
   playerGravities: Record<PlayerId, number>
   currentPlayerId: PlayerId
   roundNumber: number
@@ -32,6 +39,7 @@ interface Stage3FetchTracksRequest {
 export async function POST(req: NextRequest): Promise<NextResponse> {
   const startTime = Date.now()
   const statisticsTracker = new ApiStatisticsTracker()
+  const TARGET_OPTIONS = 9
 
   try {
     const body = (await req.json()) as unknown
@@ -46,14 +54,10 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
 
     const {
       selectedArtists,
+      backupArtists = [],
       currentTrack,
       playedTrackIds = [],
-      targetProfiles,
-      playerGravities,
-      currentPlayerId,
-      roundNumber,
-      hardConvergenceActive = false,
-      ogDrift = 0
+      targetProfiles
     } = request
 
     const authHeader = req.headers.get('Authorization')
@@ -67,132 +71,216 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
 
     logger(
       'INFO',
-      `Stage 3: Fetching tracks for ${selectedArtists.length} selected artists`,
+      `Stage 3: Fetching tracks for ${selectedArtists.length} selected artists (Backup pool: ${backupArtists.length})`,
       'POST'
     )
 
-    // 1. Build exclude set for tracks
+    // 1. Build initial exclude set for tracks
     const excludeTrackIds = new Set<string>()
     if (currentTrack?.id) excludeTrackIds.add(currentTrack.id)
     playedTrackIds.forEach((id) => excludeTrackIds.add(id))
 
-    // 2. Extract artist IDs from selected artists
-    const selectedArtistIds = selectedArtists.map((a) => a.artistId)
+    // Track which artists we have successfully used
+    const usedArtistIds = new Set<string>()
+    const finalOptions: DgsOptionTrack[] = []
+    const allPipelineLogs: PipelineLogEntry[] = [] // Aggregate logs from all attempts
 
-    // 3. Fetch top tracks for all 9 artists
-    // Data Strategy: Tier 1 (Cache) → Tier 2 (DB) → Tier 3 (Spotify API)
-    // fetchTopTracksForArtists already handles lazy write-back and self-healing
-    const { seeds, failedArtists, logs } = await fetchTopTracksForArtists(
-      selectedArtistIds,
-      token,
-      statisticsTracker,
-      excludeTrackIds
+    // Track all artists we have attempted (success or failure) to avoid retrying
+    const attemptedArtistIds = new Set<string>(
+      selectedArtists.map((a) => a.artistId)
     )
 
-    if (failedArtists.length > 0) {
-      logger(
-        'WARN',
-        `${failedArtists.length} artists yielded 0 valid tracks (already queued for healing)`,
-        'POST'
-      )
-    }
+    let candidatesToTry = [...selectedArtists]
 
-    // 4. Map tracks to selected artists and build final options
-    const artistToTracksMap = new Map<string, TrackDetails[]>()
-    seeds.forEach((seed) => {
-      // Use the seed's explicitly requested artist ID
-      // This ensures we map the track back to the correct artist even if:
-      // 1. The track data is from DB and lacks artist IDs (common in our partial cache)
-      // 2. The track's primary artist is different (e.g. "feat." or various artists)
-      const artistId = seed.seedArtistId || seed.track.artists?.[0]?.id
-      if (artistId) {
-        if (!artistToTracksMap.has(artistId)) {
-          artistToTracksMap.set(artistId, [])
+    // Retry loop
+    let attempts = 0
+    const MAX_ATTEMPTS = 3 // Increased slightly to allow for better distribution filling if needed
+
+    while (finalOptions.length < TARGET_OPTIONS && attempts < MAX_ATTEMPTS) {
+      // If no candidates left to try, grab from backups intelligently
+      if (candidatesToTry.length === 0) {
+        // 1. Calculate current distribution
+        const currentCounts = { CLOSER: 0, NEUTRAL: 0, FURTHER: 0 }
+        finalOptions.forEach((opt) => {
+          const cat = (
+            opt.metrics.selectionCategory ?? 'neutral'
+          ).toUpperCase() as keyof typeof currentCounts
+          if (currentCounts[cat] !== undefined) currentCounts[cat]++
+        })
+
+        // 2. Determine shortfalls (Target 3-3-3)
+        const shortfall = {
+          CLOSER: Math.max(0, 3 - currentCounts.CLOSER),
+          NEUTRAL: Math.max(0, 3 - currentCounts.NEUTRAL),
+          FURTHER: Math.max(0, 3 - currentCounts.FURTHER)
         }
-        artistToTracksMap.get(artistId)!.push(seed.track)
-      }
-    })
 
-    // 5. For each selected artist, randomly select 1 track from their top tracks
-    const options: DgsOptionTrack[] = []
-    const missingTracks: string[] = []
+        const neededTotal = TARGET_OPTIONS - finalOptions.length
 
-    selectedArtists.forEach((selectedArtist) => {
-      const tracks = artistToTracksMap.get(selectedArtist.artistId) || []
+        // We want a batch size that covers the immediate need but provides some buffer
+        // If we have specific category needs, we prioritize those.
+        const BATCH_SIZE = Math.max(neededTotal * 2, 6)
 
-      if (tracks.length === 0) {
-        missingTracks.push(selectedArtist.artistName)
+        const nextBatch: SelectedArtist[] = []
+
+        // Local tracker for this selection pass to ensure we don't pick duplicates internally
+        // (though attemptedArtistIds handles the global state)
+
+        // Pass 1: Prioritize filling specific shortfalls
+        for (const backup of backupArtists) {
+          if (nextBatch.length >= BATCH_SIZE) break
+          if (attemptedArtistIds.has(backup.artistId)) continue
+
+          // If this backup matces a needed category
+          if (shortfall[backup.category] > 0) {
+            nextBatch.push(backup)
+            attemptedArtistIds.add(backup.artistId)
+            shortfall[backup.category]--
+          }
+        }
+
+        // Pass 2: Fill remaining batch space with any available valid backups
+        // (Only if we haven't filled the batch size yet)
+        if (nextBatch.length < BATCH_SIZE) {
+          for (const backup of backupArtists) {
+            if (nextBatch.length >= BATCH_SIZE) break
+            if (attemptedArtistIds.has(backup.artistId)) continue
+
+            // Add to batch
+            nextBatch.push(backup)
+            attemptedArtistIds.add(backup.artistId)
+          }
+        }
+
+        if (nextBatch.length === 0) {
+          logger(
+            'WARN',
+            'No more candidates available (backups exhausted).',
+            'POST'
+          )
+          break
+        }
+
+        candidatesToTry = nextBatch
         logger(
-          'WARN',
-          `No valid tracks found for artist ${selectedArtist.artistName} (${selectedArtist.artistId})`,
+          'INFO',
+          `Attempt ${attempts + 1}: Fallback to ${candidatesToTry.length} artists. Shortfall: ${JSON.stringify(shortfall)}`,
           'POST'
         )
-        return
       }
 
-      // Randomly select 1 track from available tracks
-      const randomIndex = Math.floor(Math.random() * tracks.length)
-      const selectedTrack = tracks[randomIndex]
+      const batchArtists = candidatesToTry
+      candidatesToTry = [] // Clear for next iteration
 
-      // Check if this is a target artist
-      const artistId = selectedTrack.artists?.[0]?.id || selectedArtist.artistId
-      const isTargetArtist = Object.values(targetProfiles).some((target) => {
-        if (!target) return false
-        if (target.spotifyId && artistId && target.spotifyId === artistId) {
-          return true
-        }
-        // Fallback to name match
-        const artistName = selectedTrack.artists?.[0]?.name || selectedArtist.artistName
-        return (
-          target.artist.name.toLowerCase().trim() ===
-          artistName.toLowerCase().trim()
+      const artistIds = batchArtists.map((a) => a.artistId)
+
+      // Fetch tracks
+      const { seeds, failedArtists, logs } = await fetchTopTracksForArtists(
+        artistIds,
+        token,
+        statisticsTracker,
+        excludeTrackIds
+      )
+
+      // Collect logs
+      if (logs) allPipelineLogs.push(...logs)
+
+      if (failedArtists.length > 0) {
+        logger(
+          'WARN',
+          `Attempt ${attempts + 1}: ${failedArtists.length} artists failed to yield tracks`,
+          'POST'
         )
+      }
+
+      // Process seeds onto options
+      const artistToTracksMap = new Map<string, TrackDetails[]>()
+      seeds.forEach((seed) => {
+        const artistId = seed.seedArtistId || seed.track.artists?.[0]?.id
+        if (artistId) {
+          if (!artistToTracksMap.has(artistId))
+            artistToTracksMap.set(artistId, [])
+          artistToTracksMap.get(artistId)!.push(seed.track)
+        }
       })
 
-      // Build option track with metadata from Stage 2
-      const option: DgsOptionTrack = {
-        track: selectedTrack,
-        artist: {
-          id: artistId,
-          name: selectedTrack.artists?.[0]?.name || selectedArtist.artistName
-        },
-        metrics: {
-          simScore: selectedArtist.attractionScore,
-          aAttraction: selectedArtist.attractionScore,
-          bAttraction: selectedArtist.attractionScore,
-          currentSongAttraction: 0, // Will be calculated if needed
-          delta: selectedArtist.delta,
-          selectionCategory:
-            selectedArtist.category === 'CLOSER'
-              ? 'closer'
-              : selectedArtist.category === 'NEUTRAL'
-                ? 'neutral'
-                : 'further',
-          isTargetArtist,
-          gravityScore: 0,
-          stabilizedScore: 0,
-          finalScore: selectedArtist.attractionScore,
-          scoreComponents: selectedArtist.scoreComponents || DUMMY_COMPONENTS,
-          popularityBand: 'mid' as const,
-          source: 'related_top_tracks',
-          vicinityDistances: {}
+      // Convert batch artists to options if they have tracks
+      batchArtists.forEach((artist) => {
+        if (finalOptions.length >= TARGET_OPTIONS) return
+
+        const tracks = artistToTracksMap.get(artist.artistId) || []
+        if (tracks.length === 0) {
+          // This artist failed, will attempt replacements in next loop if needed
+          return
         }
-      }
 
-      options.push(option)
-    })
+        // Pick random track
+        const randomIndex = Math.floor(Math.random() * tracks.length)
+        const selectedTrack = tracks[randomIndex]
 
-    if (missingTracks.length > 0) {
+        // Check target
+        const artistId = selectedTrack.artists?.[0]?.id ?? artist.artistId
+        const isTargetArtist = Object.values(targetProfiles).some((target) => {
+          if (!target) return false
+          if (target.spotifyId && artistId && target.spotifyId === artistId)
+            return true
+          const artistName =
+            selectedTrack.artists?.[0]?.name ?? artist.artistName
+          return (
+            target.artist.name.toLowerCase().trim() ===
+            artistName.toLowerCase().trim()
+          )
+        })
+
+        const option: DgsOptionTrack = {
+          track: selectedTrack,
+          artist: {
+            id: artistId,
+            name: selectedTrack.artists?.[0]?.name || artist.artistName
+          },
+          metrics: {
+            simScore: artist.attractionScore,
+            aAttraction: artist.attractionScore,
+            bAttraction: artist.attractionScore,
+            currentSongAttraction: 0,
+            delta: artist.delta,
+            selectionCategory:
+              artist.category === 'CLOSER'
+                ? 'closer'
+                : artist.category === 'NEUTRAL'
+                  ? 'neutral'
+                  : 'further',
+            isTargetArtist,
+            gravityScore: 0,
+            stabilizedScore: 0,
+            finalScore: artist.attractionScore,
+            scoreComponents: artist.scoreComponents ?? DUMMY_COMPONENTS,
+            popularityBand: 'mid',
+            source: 'related_top_tracks',
+            vicinityDistances: {}
+          }
+        }
+
+        finalOptions.push(option)
+        usedArtistIds.add(artist.artistId)
+        // Add selected track to exclude list for next batch to prevent duplicates
+        excludeTrackIds.add(selectedTrack.id)
+      })
+
+      attempts++
+    }
+
+    if (finalOptions.length < TARGET_OPTIONS) {
       logger(
         'WARN',
-        `Missing tracks for ${missingTracks.length} artists: ${missingTracks.join(', ')}`,
+        `Final options count ${finalOptions.length} is less than target ${TARGET_OPTIONS}`,
         'POST'
       )
     }
 
     logger(
       'INFO',
-      `Successfully built ${options.length} final options from ${selectedArtists.length} selected artists`,
+      `Successfully built ${finalOptions.length} final options`,
       'POST'
     )
 
@@ -203,22 +291,22 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       executionTimeMs: executionTime,
       caching: statisticsTracker.getStatistics(),
       performanceDiagnostics: statisticsTracker.getPerformanceDiagnostics(),
-      pipelineLogs: logs, // Pass the captured logs
+      pipelineLogs: allPipelineLogs,
       scoring: {
-        totalCandidates: options.length,
-        fallbackFetches: 0,
-        p1NonZeroAttraction: options.length,
-        p2NonZeroAttraction: options.length,
+        totalCandidates: finalOptions.length,
+        fallbackFetches: attempts - 1,
+        p1NonZeroAttraction: finalOptions.length,
+        p2NonZeroAttraction: finalOptions.length,
         zeroAttractionReasons: {
           missingArtistProfile: 0,
           nullTargetProfile: 0,
           zeroSimilarity: 0
         }
       },
-      candidates: options.map((option) => ({
+      candidates: finalOptions.map((option) => ({
         artistName: option.artist.name,
         trackName: option.track.name,
-        source: 'related_top_tracks', // Simplified - could track actual source
+        source: 'related_top_tracks',
         simScore: option.metrics.simScore,
         category:
           option.metrics.selectionCategory === 'closer'
@@ -232,7 +320,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     }
 
     return NextResponse.json({
-      options,
+      options: finalOptions,
       debugInfo
     })
   } catch (error) {

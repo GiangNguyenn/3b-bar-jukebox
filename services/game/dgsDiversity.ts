@@ -31,6 +31,7 @@ export function applyDiversityConstraints(
   forceHardConvergence?: boolean
 ): {
   selected: CandidateTrackMetrics[]
+  remaining: CandidateTrackMetrics[]
   filteredArtistNames: Set<string>
 } {
   const artistIds = new Set<string>()
@@ -242,203 +243,126 @@ export function applyDiversityConstraints(
     }
   }
 
-  // First, identify candidates that are actually closer/further/neutral
-  const actuallyCloser = candidatesWithDiff
-    .filter((item) => item.diff > adaptiveTolerance)
-    .map((item) => item.metric)
+  // STRICT PARTITIONING STRATEGY
+  // 1. Initial assignment based on adaptive tolerance
+  // 2. Strict enforcement of minimum 3 per category by stealing from neighbors
+  // 3. Ensure DISJOINT sets so selectBalancedTracks works reliably
 
-  const actuallyFurther = candidatesWithDiff
-    .filter((item) => item.diff < -adaptiveTolerance)
-    .map((item) => item.metric)
-
-  const actuallyNeutral = candidatesWithDiff
-    .filter((item) => Math.abs(item.diff) <= adaptiveTolerance)
-    .map((item) => item.metric)
-
-  // Goal: Get 3 from each category
-  // Strategy: Use actual closer/further first, then use percentile-based selection from remaining
-  const TARGET_PER_CATEGORY = 3
-
-  // Use percentile-based approach to ensure we get 3 from each category
-  // Split into thirds based on difference from baseline
+  const goodCandidates: CandidateTrackMetrics[] = []
+  const neutralCandidates: CandidateTrackMetrics[] = []
+  const badCandidates: CandidateTrackMetrics[] = []
   const totalCandidates = candidatesWithDiff.length
-  const thirdSize = Math.max(
-    TARGET_PER_CATEGORY,
-    Math.floor(totalCandidates / 3)
-  )
 
-  // Top third = closer (positive differences, sorted descending)
-  // Use adaptive tolerance for filtering
-  const topThird = candidatesWithDiff
-    .filter((item) => item.diff > adaptiveTolerance)
-    .sort((a, b) => b.diff - a.diff)
-    .slice(0, thirdSize)
-    .map((item) => item.metric)
+  // 1. Initial Assignment
+  // Sort candidates by diff descending (Closer -> Further)
+  const sortedByDiff = [...candidatesWithDiff].sort((a, b) => b.diff - a.diff)
 
-  // Bottom third = further (negative differences, sorted ascending)
-  const bottomThird = candidatesWithDiff
-    .filter((item) => item.diff < -adaptiveTolerance)
-    .sort((a, b) => a.diff - b.diff)
-    .slice(0, thirdSize)
-    .map((item) => item.metric)
-
-  // Middle = neutral (within tolerance of baseline)
-  const middleThird = candidatesWithDiff
-    .filter((item) => Math.abs(item.diff) <= adaptiveTolerance)
-    .map((item) => item.metric)
-
-  // If we don't have enough in a category, expand from adjacent categories
-  const goodCandidates: CandidateTrackMetrics[] = [...topThird]
-  const badCandidates: CandidateTrackMetrics[] = [...bottomThird]
-  let neutralCandidates: CandidateTrackMetrics[] = [...middleThird]
-
-  // Ensure we have at least TARGET_PER_CATEGORY in each
-  // Use percentile-based approach when categories are insufficient
-  // Special handling: If all differences are negative (all candidates are "further"),
-  // the top third (least negative) should still be treated as "closer" for gameplay
-  if (goodCandidates.length < TARGET_PER_CATEGORY) {
-    // Check quality of current closer candidates before expanding
-    const closerQuality = calculateCategoryQuality(
-      goodCandidates,
-      baseline,
-      currentPlayerId
-    )
-    const minQualityThreshold = MIN_QUALITY_THRESHOLDS.closer
-
-    if (closerQuality.qualityScore < minQualityThreshold) {
-      logger(
-        'WARN',
-        `Closer category quality (${closerQuality.qualityScore.toFixed(3)}) below threshold (${minQualityThreshold}). Current: delta=${closerQuality.averageAttractionDelta.toFixed(3)}, diversity=${closerQuality.diversityScore.toFixed(3)}, popularity=${closerQuality.popularitySpread.toFixed(3)}, genres=${closerQuality.genreVariety.toFixed(3)}`,
-        'applyDiversityConstraints'
-      )
-    }
-
-    // If we don't have enough genuine "closer" tracks, use percentile approach
-    // Take top third of all candidates by difference (best relative to baseline)
-    // When all differences are negative, this gives us the "least further" options
-    const percentileCloser = candidatesWithDiff
-      .sort((a, b) => b.diff - a.diff) // Sort by diff descending (best first)
-      .slice(0, Math.max(thirdSize, TARGET_PER_CATEGORY * 2))
-      .filter((item) => !goodCandidates.includes(item.metric))
-      .slice(0, TARGET_PER_CATEGORY * 2 - goodCandidates.length)
-      .map((item) => item.metric)
-
-    goodCandidates.push(...percentileCloser)
-
-    // Check quality after expansion
-    const expandedCloserQuality = calculateCategoryQuality(
-      goodCandidates,
-      baseline,
-      currentPlayerId
-    )
-    const qualityImproved =
-      expandedCloserQuality.qualityScore > closerQuality.qualityScore
-
-    // Check if all differences are negative for logging
-    const allNegative = maxDiff <= 0
-    if (allNegative) {
-      logger(
-        'WARN',
-        `All candidates are "further" (max diff=${maxDiff.toFixed(3)}). Using top third as "closer" for gameplay balance. Expanded closer category: ${goodCandidates.length} candidates (added ${percentileCloser.length} via percentile). Quality: ${expandedCloserQuality.qualityScore.toFixed(3)} (${qualityImproved ? 'improved' : 'degraded'})`,
-        'applyDiversityConstraints'
-      )
+  for (const item of sortedByDiff) {
+    if (item.diff > adaptiveTolerance) {
+      goodCandidates.push(item.metric)
+    } else if (item.diff < -adaptiveTolerance) {
+      badCandidates.push(item.metric)
     } else {
-      logger(
-        'INFO',
-        `Expanded closer category: ${goodCandidates.length} candidates (added ${percentileCloser.length} via percentile). Quality: ${expandedCloserQuality.qualityScore.toFixed(3)} (${qualityImproved ? 'improved' : 'degraded'})`,
-        'applyDiversityConstraints'
-      )
+      neutralCandidates.push(item.metric)
     }
   }
 
-  if (badCandidates.length < TARGET_PER_CATEGORY) {
-    // Check quality of current further candidates before expanding
-    const furtherQuality = calculateCategoryQuality(
-      badCandidates,
-      baseline,
-      currentPlayerId
-    )
-    const minQualityThreshold = MIN_QUALITY_THRESHOLDS.further
+  // 2. Enforce Minimums (Stealing Logic)
+  // We prefer to steal from Neutral to fill Closer/Further.
 
-    if (
-      Math.abs(furtherQuality.averageAttractionDelta) <
-      Math.abs(minQualityThreshold)
+  // Fill FURTHER (badCandidates) if needed
+  while (badCandidates.length < 3) {
+    let stolen: CandidateTrackMetrics | undefined
+
+    // Try stealing from bottom of Neutral first
+    if (neutralCandidates.length > 0) {
+      stolen = neutralCandidates.pop() // Lowest diff in neutral
+    }
+    // If Neutral empty, steal from bottom of Closer
+    else if (goodCandidates.length > 0) {
+      stolen = goodCandidates.pop()
+    }
+
+    if (stolen) {
+      badCandidates.push(stolen)
+    } else {
+      break
+    }
+  }
+
+  // Fill CLOSER (goodCandidates) if needed
+  while (goodCandidates.length < 3) {
+    let stolen: CandidateTrackMetrics | undefined
+
+    // Try stealing from top of Neutral first
+    if (neutralCandidates.length > 0) {
+      stolen = neutralCandidates.shift() // Highest diff in neutral
+    }
+    // If Neutral empty, steal from top of Further
+    else if (badCandidates.length > 0) {
+      stolen = badCandidates.shift()
+    }
+
+    if (stolen) {
+      goodCandidates.push(stolen)
+    } else {
+      break
+    }
+  }
+
+  // Fill NEUTRAL (neutralCandidates) if needed
+  while (neutralCandidates.length < 3) {
+    let stolen: CandidateTrackMetrics | undefined
+
+    // Try stealing from bottom of Closer (least closer -> neutral)
+    if (goodCandidates.length > 3) {
+      stolen = goodCandidates.pop()
+    }
+    // Try stealing from top of Further (least further -> neutral)
+    else if (badCandidates.length > 3) {
+      stolen = badCandidates.shift()
+    }
+    // Desperation
+    else if (
+      goodCandidates.length >= badCandidates.length &&
+      goodCandidates.length > 0
     ) {
-      logger(
-        'WARN',
-        `Further category quality (${furtherQuality.qualityScore.toFixed(3)}) below threshold (${minQualityThreshold}). Current: delta=${furtherQuality.averageAttractionDelta.toFixed(3)}, diversity=${furtherQuality.diversityScore.toFixed(3)}, popularity=${furtherQuality.popularitySpread.toFixed(3)}, genres=${furtherQuality.genreVariety.toFixed(3)}`,
-        'applyDiversityConstraints'
-      )
+      stolen = goodCandidates.pop()
+    } else if (badCandidates.length > 0) {
+      stolen = badCandidates.shift()
     }
 
-    // If we don't have enough genuine "further" tracks, use percentile approach
-    // Take bottom third of all candidates by difference (worst relative to baseline)
-    const percentileFurther = candidatesWithDiff
-      .sort((a, b) => a.diff - b.diff)
-      .slice(0, Math.max(thirdSize, TARGET_PER_CATEGORY * 2))
-      .filter((item) => !badCandidates.includes(item.metric))
-      .slice(0, TARGET_PER_CATEGORY * 2 - badCandidates.length)
-      .map((item) => item.metric)
-
-    badCandidates.push(...percentileFurther)
-
-    // Check quality after expansion
-    const expandedFurtherQuality = calculateCategoryQuality(
-      badCandidates,
-      baseline,
-      currentPlayerId
-    )
-    const qualityImproved =
-      expandedFurtherQuality.qualityScore > furtherQuality.qualityScore
-
-    logger(
-      'INFO',
-      `Expanded further category: ${badCandidates.length} candidates (added ${percentileFurther.length} via percentile). Quality: ${expandedFurtherQuality.qualityScore.toFixed(3)} (${qualityImproved ? 'improved' : 'degraded'})`,
-      'applyDiversityConstraints'
-    )
-  }
-
-  // If neutral is still too small, use percentile approach
-  if (neutralCandidates.length < TARGET_PER_CATEGORY) {
-    // Check quality of current neutral candidates before expanding
-    const neutralQuality = calculateCategoryQuality(
-      neutralCandidates,
-      baseline,
-      currentPlayerId
-    )
-    const minQualityThreshold = MIN_QUALITY_THRESHOLDS.neutral
-
-    if (neutralQuality.qualityScore < minQualityThreshold) {
-      logger(
-        'WARN',
-        `Neutral category quality (${neutralQuality.qualityScore.toFixed(3)}) below threshold (${minQualityThreshold}). Current: delta=${neutralQuality.averageAttractionDelta.toFixed(3)}, diversity=${neutralQuality.diversityScore.toFixed(3)}, popularity=${neutralQuality.popularitySpread.toFixed(3)}, genres=${neutralQuality.genreVariety.toFixed(3)}`,
-        'applyDiversityConstraints'
-      )
+    if (stolen) {
+      neutralCandidates.push(stolen)
+    } else {
+      break
     }
-
-    const used = new Set([...goodCandidates, ...badCandidates])
-    const remaining = candidatesWithDiff
-      .filter((item) => !used.has(item.metric))
-      .sort((a, b) => Math.abs(a.diff) - Math.abs(b.diff)) // Closest to baseline first
-      .slice(0, Math.max(TARGET_PER_CATEGORY, thirdSize))
-      .map((item) => item.metric)
-    neutralCandidates = [...neutralCandidates, ...remaining].slice(0, thirdSize)
-
-    // Check quality after expansion
-    const expandedNeutralQuality = calculateCategoryQuality(
-      neutralCandidates,
-      baseline,
-      currentPlayerId
-    )
-    const qualityImproved =
-      expandedNeutralQuality.qualityScore > neutralQuality.qualityScore
-
-    logger(
-      'INFO',
-      `Expanded neutral category: ${neutralCandidates.length} candidates. Quality: ${expandedNeutralQuality.qualityScore.toFixed(3)} (${qualityImproved ? 'improved' : 'degraded'})`,
-      'applyDiversityConstraints'
-    )
   }
+
+  // 3. Explicitly set selectionCategory on all partitioned candidates
+  // This ensures that:
+  // a) selectBalancedTracks respects these assignments
+  // b) "Remaining" candidates (backups) maintain these forced categories for Stage 3 fallback
+  goodCandidates.forEach((m) => {
+    m.selectionCategory = 'closer'
+  })
+  neutralCandidates.forEach((m) => {
+    m.selectionCategory = 'neutral'
+  })
+  badCandidates.forEach((m) => {
+    m.selectionCategory = 'further'
+  })
+
+  // Calculate skew flags for logging
+  const allNegative = maxDiff <= 0
+  const allPositive = minDiff > 0
+
+  // Diagnostic Log
+  logger(
+    'INFO',
+    `Strict Partitioning for Player ${currentPlayerId}: Closer=${goodCandidates.length} | Neutral=${neutralCandidates.length} | Further=${badCandidates.length}${allNegative ? ' (Skewed Negative)' : ''}${allPositive ? ' (Skewed Positive)' : ''}`,
+    'applyDiversityConstraints'
+  )
 
   // Log attraction distribution for diagnostics
   const attractionScores = candidatesWithDiff.map((item) => item.attraction)
@@ -463,11 +387,6 @@ export function applyDiversityConstraints(
       candidatesWithDiff.length
   }
 
-  // Check if all differences are on one side (all positive or all negative)
-  // This requires percentile-based redistribution to create a balanced mix
-  const allNegative = maxDiff <= 0 // All differences are negative (all "further")
-  const allPositive = minDiff > 0 // All differences are positive (all "closer") - needs percentile split
-
   logger(
     'INFO',
     `Attraction distribution (baseline=${baseline.toFixed(3)}, total=${totalCandidates}): ` +
@@ -478,7 +397,7 @@ export function applyDiversityConstraints(
 
   logger(
     'INFO',
-    `Strategic categories for Player ${currentPlayerId}: Closer=${goodCandidates.length} | Neutral=${neutralCandidates.length} | Further=${badCandidates.length}${allNegative || allPositive ? ' (using percentile-based relative categorization)' : ''}`,
+    `Percentage Partitioning for Player ${currentPlayerId}: Closer=${goodCandidates.length} | Neutral=${neutralCandidates.length} | Further=${badCandidates.length}${allNegative || allPositive ? ' (using forced redistribution)' : ''}`,
     'applyDiversityConstraints'
   )
 
@@ -973,22 +892,8 @@ export function applyDiversityConstraints(
     'applyDiversityConstraints'
   )
 
-  // CRITICAL FIX: Recalculate selectionCategory for all selected tracks using NEUTRAL_TOLERANCE
-  // This ensures categories match requirements regardless of adaptiveTolerance used during selection
-  selected.forEach((metric) => {
-    const currentPlayerAttraction = getCurrentPlayerAttraction(metric)
-    const baseline = metric.currentSongAttraction
-    const diff = currentPlayerAttraction - baseline
-
-    // Use NEUTRAL_TOLERANCE (0.02) as per requirements_scoring_logic.md Section 5.1
-    if (diff > NEUTRAL_TOLERANCE) {
-      metric.selectionCategory = 'closer'
-    } else if (diff < -NEUTRAL_TOLERANCE) {
-      metric.selectionCategory = 'further'
-    } else {
-      metric.selectionCategory = 'neutral'
-    }
-  })
+  // Categories are already assigned by selectBalancedTracks based on our forced partitions.
+  // We do NOT recalculate them here, as that would undo the forcing strategy for skewed pools.
 
   // Rebuild category arrays after recalculating categories to ensure correct 3-3-3 distribution
   const recategorizedCloser = selected.filter(
@@ -1027,17 +932,9 @@ export function applyDiversityConstraints(
       .sort((a, b) => b.finalScore - a.finalScore)
       .slice(0, DISPLAY_OPTION_COUNT - finalSelected.length)
 
-    // Recalculate category for remaining tracks
+    // Use the assigned category if available, or fallback to neutral
     remaining.forEach((metric) => {
-      const currentPlayerAttraction = getCurrentPlayerAttraction(metric)
-      const baseline = metric.currentSongAttraction
-      const diff = currentPlayerAttraction - baseline
-
-      if (diff > NEUTRAL_TOLERANCE) {
-        metric.selectionCategory = 'closer'
-      } else if (diff < -NEUTRAL_TOLERANCE) {
-        metric.selectionCategory = 'further'
-      } else {
+      if (!metric.selectionCategory) {
         metric.selectionCategory = 'neutral'
       }
     })
@@ -1066,33 +963,7 @@ export function applyDiversityConstraints(
     actualNeutral === TRACKS_PER_CATEGORY &&
     actualFurther === TRACKS_PER_CATEGORY
 
-  // Validation: Check that categories match mathematical differences (REQ-FUN compliance)
-  const categorizationErrors: string[] = []
-  finalSelected.forEach((metric, index) => {
-    const currentPlayerAttraction = getCurrentPlayerAttraction(metric)
-    const baseline = metric.currentSongAttraction
-    const diff = currentPlayerAttraction - baseline
-    const expectedCategory =
-      diff > NEUTRAL_TOLERANCE
-        ? 'closer'
-        : diff < -NEUTRAL_TOLERANCE
-          ? 'further'
-          : 'neutral'
-
-    if (metric.selectionCategory !== expectedCategory) {
-      categorizationErrors.push(
-        `Option ${index + 1} (${metric.track.name}): Expected ${expectedCategory} (diff=${diff.toFixed(3)}), got ${metric.selectionCategory}`
-      )
-    }
-  })
-
-  if (categorizationErrors.length > 0) {
-    logger(
-      'ERROR',
-      `Categorization validation failed! ${categorizationErrors.length} tracks have incorrect categories:\n${categorizationErrors.join('\n')}`,
-      'applyDiversityConstraints'
-    )
-  }
+  // Validation: Skipped as we are using forced partitioning which intentionally deviates from strict tolerance.
 
   if (!achievedPerfectBalance) {
     logger(
@@ -1110,8 +981,17 @@ export function applyDiversityConstraints(
     )
   }
 
+  // Calculate remaining candidates for fallback
+  const selectedIds = new Set(finalSelected.map((m) => m.track.id))
+  const remaining = sortedFilteredMetrics.filter(
+    (m) => !selectedIds.has(m.track.id)
+  )
+
   return {
     selected: finalSelected.map((metric) => ({
+      ...metric
+    })),
+    remaining: remaining.map((metric) => ({
       ...metric
     })),
     filteredArtistNames

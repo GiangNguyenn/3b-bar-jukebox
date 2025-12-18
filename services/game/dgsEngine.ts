@@ -104,7 +104,7 @@ function shuffleArray<T>(array: T[]): T[] {
   const shuffled = [...array] // Create a copy to avoid mutating the original
   for (let i = shuffled.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1))
-      ;[shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]]
+    ;[shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]]
   }
   return shuffled
 }
@@ -1223,9 +1223,9 @@ export async function scoreCandidates({
     // Calculate how many tracks we need
     const neededTracks = needsTrackFallback
       ? Math.max(
-        MIN_CANDIDATE_POOL - candidates.length,
-        MIN_STRICT_UNIQUE_ARTISTS - uniqueArtistNames.size
-      )
+          MIN_CANDIDATE_POOL - candidates.length,
+          MIN_STRICT_UNIQUE_ARTISTS - uniqueArtistNames.size
+        )
       : MIN_STRICT_UNIQUE_ARTISTS - uniqueArtistNames.size
 
     const existingTrackIds = new Set(candidates.map((c) => c.track.id))
@@ -1240,9 +1240,9 @@ export async function scoreCandidates({
       excludeSpotifyTrackIds: existingTrackIds,
       tracksPerArtist: needsTrackFallback
         ? Math.ceil(
-          neededTracks /
-          Math.max(1, MIN_STRICT_UNIQUE_ARTISTS - uniqueArtistNames.size)
-        )
+            neededTracks /
+              Math.max(1, MIN_STRICT_UNIQUE_ARTISTS - uniqueArtistNames.size)
+          )
         : 1
     })
 
@@ -1817,15 +1817,25 @@ export async function fetchTopTracksForArtists(
   const artistIdsSet = new Set(artistIds)
   const excludeSet = excludeTrackIds || new Set<string>()
 
-  const log = (level: PipelineLogEntry['level'], message: string, details?: any) => {
+  const log = (
+    level: PipelineLogEntry['level'],
+    message: string,
+    details?: any
+  ) => {
     logs.push(createPipelineLog('engine', level, message, details))
     // Also mirror to console for now
-    if (level === 'error') logger('ERROR', message, 'fetchTopTracksForArtists', details)
-    else if (level === 'warn') logger('WARN', message, 'fetchTopTracksForArtists')
+    if (level === 'error')
+      logger('ERROR', message, 'fetchTopTracksForArtists', details)
+    else if (level === 'warn')
+      logger('WARN', message, 'fetchTopTracksForArtists')
     else logger('INFO', message, 'fetchTopTracksForArtists')
   }
 
-  log('info', `fetchTopTracksForArtists: Requested ${artistIds.length} artists`, { artistIds })
+  log(
+    'info',
+    `fetchTopTracksForArtists: Requested ${artistIds.length} artists`,
+    { artistIds }
+  )
 
   // Record requests for all artists
   artistIds.forEach(() => {
@@ -1835,7 +1845,7 @@ export async function fetchTopTracksForArtists(
   // 1. Batch query DB
   const dbTopTracks = await timeDbQuery(
     `batchGetTopTracksFromDb (${artistIds.length} artists)`,
-    () => batchGetTopTracksFromDb(artistIds, statisticsTracker)
+    () => batchGetTopTracksFromDb(artistIds, token, statisticsTracker)
   )
 
   // Record cache hits for artists found in database
@@ -1847,7 +1857,10 @@ export async function fetchTopTracksForArtists(
 
   // 2. Identify missing
   const missingArtistIds = artistIds.filter((id) => !dbTopTracks.has(id))
-  log('info', `DB Cache: Found ${dbTopTracks.size} artists, Missing ${missingArtistIds.length}`)
+  log(
+    'info',
+    `DB Cache: Found ${dbTopTracks.size} artists, Missing ${missingArtistIds.length}`
+  )
 
   // 3. Fetch missing from Spotify
   if (missingArtistIds.length > 0) {
@@ -1855,10 +1868,17 @@ export async function fetchTopTracksForArtists(
     const artistsToFetch = missingArtistIds.slice(0, MAX_MISSING_TO_FETCH)
 
     if (missingArtistIds.length > MAX_MISSING_TO_FETCH) {
-      log('warn', `Too many missing artists (${missingArtistIds.length}). Only fetching first ${MAX_MISSING_TO_FETCH}.`)
+      log(
+        'warn',
+        `Too many missing artists (${missingArtistIds.length}). Only fetching first ${MAX_MISSING_TO_FETCH}.`
+      )
     }
 
-    log('info', `Fetching ${artistsToFetch.length} missing artists from Spotify`, { artistsToFetch })
+    log(
+      'info',
+      `Fetching ${artistsToFetch.length} missing artists from Spotify`,
+      { artistsToFetch }
+    )
 
     await Promise.all(
       artistsToFetch.map(async (artistId) => {
@@ -1871,17 +1891,33 @@ export async function fetchTopTracksForArtists(
           if (tracks.length === 0) {
             log('warn', `Spotify API returned 0 tracks for artist ${artistId}`)
           } else {
-            log('info', `Fetched ${tracks.length} tracks for artist ${artistId} from Spotify`)
-            void upsertTopTracks(
-              artistId,
-              tracks.map((t) => t.id)
+            log(
+              'info',
+              `Fetched ${tracks.length} tracks for artist ${artistId} from Spotify`
             )
-            void upsertTrackDetails(tracks)
+            // Fire and forget upserts but log them
+            // Ensure we catch errors in fire-and-forget to avoid unhandled rejections
+            const pUpsert = Promise.all([
+              upsertTopTracks(
+                artistId,
+                tracks.map((t) => t.id)
+              ),
+              upsertTrackDetails(tracks)
+            ]).catch((err) => {
+              logger(
+                'ERROR',
+                `Upsert failed for artist ${artistId}: ${err.message}`,
+                'fetchTopTracksForArtists'
+              )
+            })
+
             dbTopTracks.set(artistId, tracks)
           }
         } catch (e) {
           const errMsg = e instanceof Error ? e.message : String(e)
-          log('error', `Failed to fetch top tracks for artist ${artistId}`, { error: errMsg })
+          log('error', `Failed to fetch top tracks for artist ${artistId}`, {
+            error: errMsg
+          })
 
           // Queue for healing if fetch failed
           void enqueueLazyUpdate({
@@ -1906,19 +1942,51 @@ export async function fetchTopTracksForArtists(
     const topTracks = tracks.slice(0, 10)
 
     // Filter out excluded tracks (current track, played tracks)
-    const validTracks = topTracks.filter(
-      (track) => track.is_playable && !excludeSet.has(track.id)
-    )
+    // Filter out excluded tracks (current track, played tracks)
+    let playedCount = 0
+    let unplayableCount = 0
+    let currentTrackCount = 0
+
+    const validTracks = topTracks.filter((track) => {
+      // Check playability
+      if (!track.is_playable) {
+        unplayableCount++
+        return false
+      }
+
+      // Check if in exclude set
+      if (excludeSet.has(track.id)) {
+        if (token && excludeSet.has(track.id)) {
+          // Technically excludeSet doesn't know *why* it's excluded (could be current or played)
+          // But usually excludeSet = current + played.
+          // Let's assume played/current.
+          // To be precise, we can't easily distinguish 'current' vs 'played' from just the set check
+          // unless we pass them separately, but for now 'Already Played/Queued' is sufficient.
+          playedCount++
+        } else {
+          playedCount++
+        }
+        return false
+      }
+
+      return true
+    })
 
     // Log filtering results
     const excludedCount = topTracks.length - validTracks.length
     if (excludedCount > 0) {
-      log('info', `Filtered ${excludedCount}/${topTracks.length} tracks for artist ${artistId} (Played/Current/Unplayable)`)
+      log(
+        'info',
+        `Filtered ${excludedCount}/${topTracks.length} tracks for artist ${artistId}: ${unplayableCount} unplayable, ${playedCount} already played/queued`
+      )
     }
 
     // If no valid tracks, queue for healing (REQ-DAT-03: Self-Healing Queue)
     if (validTracks.length === 0) {
-      log('warn', `No valid tracks for artist ${artistId} after filtering. Total fetched: ${topTracks.length}`)
+      log(
+        'warn',
+        `No valid tracks for artist ${artistId} after filtering. Total fetched: ${topTracks.length}`
+      )
 
       // REQ-DAT-03: Queue metadata gap for asynchronous resolution
       void enqueueLazyUpdate({
@@ -1963,7 +2031,10 @@ export async function fetchTopTracksForArtists(
     }
   })
 
-  log('info', `fetchTopTracksForArtists complete. Seeds: ${seeds.length}, Failed: ${failedArtists.length}`)
+  log(
+    'info',
+    `fetchTopTracksForArtists complete. Seeds: ${seeds.length}, Failed: ${failedArtists.length}`
+  )
 
   return { seeds, failedArtists, logs }
 }

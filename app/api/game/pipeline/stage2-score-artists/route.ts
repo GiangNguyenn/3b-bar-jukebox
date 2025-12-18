@@ -70,7 +70,6 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       relatedArtistIds,
       roundNumber,
       currentPlayerId,
-      ogDrift = 0,
       hardConvergenceActive = false,
       relatedToCurrent = [],
       relatedToTarget = [],
@@ -86,7 +85,11 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     }
     const token = authHeader.split(' ')[1]
 
-    logger('INFO', `Stage 2: Received request for ${artistIds.length} artists`, 'POST')
+    logger(
+      'INFO',
+      `Stage 2: Received request for ${artistIds.length} artists`,
+      'POST'
+    )
 
     // Log first few IDs for debugging
     if (artistIds.length > 0) {
@@ -201,15 +204,18 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     }
 
     // Build source map for debug info
-    const sourceMap = new Map<string, 'related_top_tracks' | 'target_insertion' | 'embedding'>()
+    const sourceMap = new Map<
+      string,
+      'related_top_tracks' | 'target_insertion' | 'embedding'
+    >()
     relatedToCurrent.forEach((a) => sourceMap.set(a.id, 'related_top_tracks'))
     relatedToTarget.forEach((a) => sourceMap.set(a.id, 'target_insertion'))
     randomArtists.forEach((a) => sourceMap.set(a.id, 'embedding'))
 
     artistIds.forEach((artistId) => {
       const artistProfile = artistProfilesMap.get(artistId)
-      const artistName = artistProfile?.name || 'Unknown Artist'
-      const source = sourceMap.get(artistId) || 'embedding'
+      const artistName = artistProfile?.name ?? 'Unknown Artist'
+      const source = sourceMap.get(artistId) ?? 'embedding'
 
       // Track zero attraction reasons
       if (!artistProfile) {
@@ -335,11 +341,11 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
           uri: `spotify:artist:${score.artistId}`, // Placeholder URI
           artists: score.artistProfile
             ? [
-              {
-                id: score.artistProfile.id,
-                name: score.artistProfile.name
-              }
-            ]
+                {
+                  id: score.artistProfile.id,
+                  name: score.artistProfile.name
+                }
+              ]
             : [],
           album: { id: '', name: '', images: [], release_date: '2000-01-01' },
           duration_ms: 0,
@@ -365,7 +371,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
         gravityScore: 0, // Not used for artist selection
         stabilizedScore: 0, // Not used for artist selection
         finalScore: score.attractionScore, // Use attraction as final score
-        scoreComponents: score.scoreComponents || DUMMY_COMPONENTS,
+        scoreComponents: score.scoreComponents ?? DUMMY_COMPONENTS,
         popularityBand: 'mid' as const,
         vicinityDistances: {}
       }
@@ -382,33 +388,57 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     )
 
     // 8. Map back to selected artists
-    const selectedArtists = diversityResult.selected.map((metric) => {
+    const mapToSelectedArtist = (
+      metric: CandidateTrackMetrics
+    ): {
+      artistId: string
+      artistName: string
+      category: string
+      attractionScore: number
+      delta: number
+      scoreComponents: ScoringComponents
+    } => {
       // Extract artist ID from placeholder track ID or use artistId field
-      const artistIdFromPlaceholder = metric.track.id?.replace('artist-placeholder-', '')
-      const artistId = metric.artistId || artistIdFromPlaceholder || metric.track.artists?.[0]?.id
+      const artistIdFromPlaceholder = metric.track.id?.replace(
+        'artist-placeholder-',
+        ''
+      )
+      const artistId =
+        metric.artistId ||
+        artistIdFromPlaceholder ||
+        metric.track.artists?.[0]?.id
 
       const originalScore = artistScores.find(
         (s) => s.artistId === artistId || s.artistName === metric.artistName
       )
       return {
-        artistId: originalScore?.artistId || artistId || 'unknown',
-        artistName: originalScore?.artistName || metric.artistName || 'Unknown',
+        artistId: originalScore?.artistId ?? artistId ?? 'unknown',
+        artistName: originalScore?.artistName ?? metric.artistName ?? 'Unknown',
         category:
-          originalScore?.category ||
-          (metric.selectionCategory === 'closer'
+          metric.selectionCategory === 'closer'
             ? 'CLOSER'
             : metric.selectionCategory === 'neutral'
               ? 'NEUTRAL'
-              : 'FURTHER'),
-        attractionScore: originalScore?.attractionScore || metric.simScore,
-        delta: originalScore?.delta || (metric.currentSongAttraction !== undefined ? metric.aAttraction - metric.currentSongAttraction : 0),
-        scoreComponents: originalScore?.scoreComponents || metric.scoreComponents
+              : 'FURTHER',
+        attractionScore: originalScore?.attractionScore ?? metric.simScore,
+        delta:
+          originalScore?.delta ??
+          (metric.currentSongAttraction !== undefined
+            ? metric.aAttraction - metric.currentSongAttraction
+            : 0),
+        scoreComponents:
+          originalScore?.scoreComponents ??
+          metric.scoreComponents ??
+          DUMMY_COMPONENTS
       }
-    })
+    }
+
+    const selectedArtists = diversityResult.selected.map(mapToSelectedArtist)
+    const backupArtists = diversityResult.remaining.map(mapToSelectedArtist)
 
     logger(
       'INFO',
-      `Selected ${selectedArtists.length} artists: ${selectedArtists.filter((a) => a.category === 'CLOSER').length} CLOSER, ${selectedArtists.filter((a) => a.category === 'NEUTRAL').length} NEUTRAL, ${selectedArtists.filter((a) => a.category === 'FURTHER').length} FURTHER`,
+      `Selected ${selectedArtists.length} artists: ${selectedArtists.filter((a) => a.category === 'CLOSER').length} CLOSER, ${selectedArtists.filter((a) => a.category === 'NEUTRAL').length} NEUTRAL, ${selectedArtists.filter((a) => a.category === 'FURTHER').length} FURTHER. Backup candidates: ${backupArtists.length}`,
       'POST'
     )
 
@@ -422,12 +452,10 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       scoring: {
         totalCandidates: artistScores.length,
         fallbackFetches: 0,
-        p1NonZeroAttraction: artistScores.filter(
-          (s) => s.attractionScore > 0
-        ).length,
-        p2NonZeroAttraction: artistScores.filter(
-          (s) => s.attractionScore > 0
-        ).length,
+        p1NonZeroAttraction: artistScores.filter((s) => s.attractionScore > 0)
+          .length,
+        p2NonZeroAttraction: artistScores.filter((s) => s.attractionScore > 0)
+          .length,
         zeroAttractionReasons
       },
       candidates: artistScores.map((score) => ({
@@ -445,11 +473,13 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
         isTargetArtist: score.isTargetArtist,
         filtered: score.filtered
       })),
-      selectedArtists
+      selectedArtists,
+      backupArtists
     }
 
     return NextResponse.json({
       selectedArtists,
+      backupArtists,
       debugInfo
     })
   } catch (error) {

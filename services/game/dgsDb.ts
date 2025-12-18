@@ -194,8 +194,8 @@ export async function fetchRandomTracksFromDb({
       ],
       external_urls: row.spotify_url
         ? {
-          spotify: row.spotify_url
-        }
+            spotify: row.spotify_url
+          }
         : undefined,
       genre: row.genre ?? undefined
     }
@@ -416,8 +416,8 @@ export async function fetchTracksByGenreFromDb({
         ],
         external_urls: row.spotify_url
           ? {
-            spotify: row.spotify_url
-          }
+              spotify: row.spotify_url
+            }
           : undefined,
         genre: row.genre ?? undefined
       }
@@ -485,7 +485,8 @@ export async function fetchRandomArtistsFromDb({
       .not('spotify_artist_id', 'is', null)
       .not('name', 'is', null)
       .not('genres', 'is', null) // Ensure genres exist
-      .neq('genres', '{}') // Postgres empty array check
+      .neq('genres', []) // Postgres empty array check
+      .filter('genres', 'not.cs', '{Unknown}') // Exclude artists with 'Unknown' genre
       .not('popularity', 'is', null)
       .not('follower_count', 'is', null),
     undefined,
@@ -521,7 +522,9 @@ export async function fetchRandomArtistsFromDb({
   shuffleInPlace(validIds)
   const selectedIds = validIds.slice(0, limit)
 
-  log(`Randomly selected ${selectedIds.length} artists from ${validIds.length} valid candidates (filtered from ${allArtistIds.length} total, excluded ${excludeArray.length})`)
+  log(
+    `Randomly selected ${selectedIds.length} artists from ${validIds.length} valid candidates (filtered from ${allArtistIds.length} total, excluded ${excludeArray.length})`
+  )
 
   // Step 3: Fetch Details for Selected IDs
   const { data: selectedArtists, error: detailsError } = await queryWithRetry<
@@ -629,8 +632,8 @@ export async function fetchAbsoluteRandomTracks(
       ],
       external_urls: row.spotify_url
         ? {
-          spotify: row.spotify_url
-        }
+            spotify: row.spotify_url
+          }
         : undefined,
       genre: row.genre ?? undefined
     }
@@ -706,7 +709,10 @@ export async function fetchTracksCloserToTarget({
       'DGS fetch profiled artists closer to target'
     )
     const tEnd = Date.now()
-    statisticsTracker?.recordDbQuery('fetchProfiledArtistsCloser', tEnd - tStart)
+    statisticsTracker?.recordDbQuery(
+      'fetchProfiledArtistsCloser',
+      tEnd - tStart
+    )
 
     if (artistsError || !profiledArtists || profiledArtists.length === 0) {
       logger(
@@ -858,8 +864,8 @@ export async function fetchTracksCloserToTarget({
         ],
         external_urls: row.spotify_url
           ? {
-            spotify: row.spotify_url
-          }
+              spotify: row.spotify_url
+            }
           : undefined,
         genre: row.genre ?? undefined
       }
@@ -1055,8 +1061,8 @@ export async function fetchTracksFurtherFromTarget({
         ],
         external_urls: row.spotify_url
           ? {
-            spotify: row.spotify_url
-          }
+              spotify: row.spotify_url
+            }
           : undefined,
         genre: row.genre ?? undefined
       }
@@ -1407,8 +1413,8 @@ export async function fetchTracksByArtistIdsFromDb({
         ],
         external_urls: row.spotify_url
           ? {
-            spotify: row.spotify_url
-          }
+              spotify: row.spotify_url
+            }
           : undefined,
         genre: row.genre ?? undefined
       })
