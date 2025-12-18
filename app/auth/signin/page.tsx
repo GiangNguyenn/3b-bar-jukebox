@@ -44,6 +44,16 @@ export default function SignIn(): JSX.Element {
 
         const oauthRedirectUrl = getOAuthRedirectUrl()
 
+        addLog(
+          'INFO',
+          `Initiating Spotify OAuth: ${JSON.stringify({
+            redirectUrl: oauthRedirectUrl,
+            forceFresh,
+            timestamp: new Date().toISOString()
+          })}`,
+          'SignIn'
+        )
+
         const { data, error } = await supabase.auth.signInWithOAuth({
           provider: 'spotify',
           options: {
