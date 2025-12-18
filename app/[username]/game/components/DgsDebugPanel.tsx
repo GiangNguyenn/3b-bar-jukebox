@@ -657,7 +657,7 @@ function GravityBar({
       <div className='mb-1 flex justify-between'>
         <span className='text-gray-400'>
           {label}{' '}
-          <span className='ml-1 text-gray-600'>({targetName || 'None'})</span>
+          <span className='ml-1 text-gray-600'>({targetName ?? 'None'})</span>
         </span>
         <span className='font-mono text-gray-200'>{value.toFixed(3)}</span>
       </div>

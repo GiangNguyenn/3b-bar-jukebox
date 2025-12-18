@@ -404,8 +404,8 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
         ''
       )
       const artistId =
-        metric.artistId ||
-        artistIdFromPlaceholder ||
+        metric.artistId ??
+        artistIdFromPlaceholder ??
         metric.track.artists?.[0]?.id
 
       const originalScore = artistScores.find(

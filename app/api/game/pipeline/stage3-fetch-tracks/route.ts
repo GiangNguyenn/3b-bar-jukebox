@@ -208,7 +208,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       batchArtists.forEach((artist) => {
         if (finalOptions.length >= TARGET_OPTIONS) return
 
-        const tracks = artistToTracksMap.get(artist.artistId) || []
+        const tracks = artistToTracksMap.get(artist.artistId) ?? []
         if (tracks.length === 0) {
           // This artist failed, will attempt replacements in next loop if needed
           return
