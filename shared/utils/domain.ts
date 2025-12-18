@@ -17,18 +17,12 @@ export function getBaseUrl(request?: Request): string {
     return 'http://localhost:3000'
   }
 
-  // Server-side: use environment variables
-  if (process.env.VERCEL_URL) {
-    // Vercel provides the deployment URL (e.g., "my-app-git-feature-branch-username.vercel.app")
-    return `https://${process.env.VERCEL_URL}`
-  }
-
+  // 1. Explicit override (e.g., for production custom domains)
   if (process.env.NEXT_PUBLIC_BASE_URL) {
-    // Custom base URL for production
     return process.env.NEXT_PUBLIC_BASE_URL
   }
 
-  // Try to get URL from request headers (for server-side rendering)
+  // 2. Try to get URL from request headers (most accurate for server-side rendering behind proxies/Vercel)
   if (request) {
     const host = request.headers.get('host')
     const protocol = request.headers.get('x-forwarded-proto') || 'http'
@@ -43,6 +37,12 @@ export function getBaseUrl(request?: Request): string {
       const cleanHost = host.replace(':80', '').replace(':443', '')
       return `${protocol}://${cleanHost}`
     }
+  }
+
+  // 3. Vercel fallback (last resort for server-side if headers missing)
+  if (process.env.VERCEL_URL) {
+    // Vercel provides the deployment URL (e.g., "my-app-git-feature-branch-username.vercel.app")
+    return `https://${process.env.VERCEL_URL}`
   }
 
   // Production fallback - this should be overridden by environment variables

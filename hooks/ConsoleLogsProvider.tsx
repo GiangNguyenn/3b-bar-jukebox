@@ -74,8 +74,8 @@ export function ConsoleLogsProvider({
 
   const addLog = useCallback(
     (level: LogLevel, message: string, context?: string, error?: Error) => {
-      // Filter out LOG and INFO levels - only process WARN and ERROR
-      if (level === 'LOG' || level === 'INFO') {
+      // Filter out LOG level
+      if (level === 'LOG') {
         return
       }
 
@@ -100,7 +100,7 @@ export function ConsoleLogsProvider({
         return updatedLogs.slice(0, maxLogs)
       })
 
-      const consoleMethod = level.toLowerCase() as 'warn' | 'error'
+      const consoleMethod = level.toLowerCase() as 'warn' | 'error' | 'info'
       const consoleArgs = context
         ? [`[${context}]`, sanitizedMessage, error].filter(Boolean)
         : [sanitizedMessage, error].filter(Boolean)
@@ -111,6 +111,9 @@ export function ConsoleLogsProvider({
           break
         case 'error':
           console.error(...consoleArgs)
+          break
+        case 'info':
+          console.info(...consoleArgs)
           break
       }
     },

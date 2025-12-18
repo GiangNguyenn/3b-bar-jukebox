@@ -2,13 +2,32 @@
 
 import { useSearchParams } from 'next/navigation'
 import Link from 'next/link'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+import { useConsoleLogsContext } from '@/hooks/ConsoleLogsProvider'
 import { startFreshAuthentication } from '@/shared/utils/authCleanup'
 
 export default function ErrorPage(): JSX.Element {
   const searchParams = useSearchParams()
   const error = searchParams.get('error')
   const [isRetrying, setIsRetrying] = useState(false)
+  const { addLog } = useConsoleLogsContext()
+  const error_code = searchParams.get('error_code')
+  const error_description = searchParams.get('error_description')
+
+  useEffect(() => {
+    if (error) {
+      addLog(
+        'ERROR',
+        `Auth Error Page Loaded: ${JSON.stringify({
+          error,
+          error_code,
+          error_description,
+          fullUrl: typeof window !== 'undefined' ? window.location.href : ''
+        })}`,
+        'AuthErrorPage'
+      )
+    }
+  }, [error, error_code, error_description, addLog])
 
   const handleTryAgain = async (): Promise<void> => {
     setIsRetrying(true)
