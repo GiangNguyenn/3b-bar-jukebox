@@ -130,7 +130,7 @@ export default function GamePage(): JSX.Element {
   // State for difficulty level (Easy = Full Info, Medium = Artist Only, Hard = Title Only)
   const [difficulty, setDifficulty] = React.useState<
     'easy' | 'medium' | 'hard'
-  >('easy')
+  >('medium')
 
   const isInitialLoading =
     (phase === 'loading' && !nowPlaying && !error) || isLoadingArtists
@@ -153,6 +153,48 @@ export default function GamePage(): JSX.Element {
   }
 
   if (error && !nowPlaying) {
+    if (error === 'No track playing.') {
+      return (
+        <div className='flex min-h-screen items-center justify-center bg-black'>
+          {/* Background Ambience */}
+          <div className='pointer-events-none fixed inset-0 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-blue-900/20 via-black to-black' />
+
+          <div className='relative mx-auto flex w-full max-w-md flex-col items-center px-6 text-center'>
+            <div className='mb-6 rounded-full bg-blue-500/10 p-6 ring-1 ring-blue-500/20'>
+              <svg
+                className='h-12 w-12 text-blue-400'
+                fill='none'
+                viewBox='0 0 24 24'
+                stroke='currentColor'
+              >
+                <path
+                  strokeLinecap='round'
+                  strokeLinejoin='round'
+                  strokeWidth={1.5}
+                  d='M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3'
+                />
+              </svg>
+            </div>
+            <h2 className='text-white mb-2 text-2xl font-bold tracking-tight'>
+              Start Playing Music
+            </h2>
+            <p className='text-gray-400'>
+              Play a song on Jukebox to begin the game. We&apos;ll automatically
+              detect it.
+            </p>
+
+            <div className='bg-white/5 ring-white/10 mt-8 flex items-center gap-3 rounded-full px-4 py-2 text-xs font-medium text-blue-300 ring-1'>
+              <span className='relative flex h-2 w-2'>
+                <span className='absolute inline-flex h-full w-full animate-ping rounded-full bg-blue-400 opacity-75'></span>
+                <span className='relative inline-flex h-2 w-2 rounded-full bg-blue-500'></span>
+              </span>
+              Listening for playback...
+            </div>
+          </div>
+        </div>
+      )
+    }
+
     return (
       <div className='flex min-h-screen items-center justify-center bg-black'>
         <div className='w-full max-w-md px-4'>
@@ -197,23 +239,29 @@ export default function GamePage(): JSX.Element {
         <GameBoard
           nowPlaying={nowPlaying}
           options={options}
-          phase={phase}
-          pendingSelectionTrackId={pendingSelectionTrackId}
-          onSelectOption={handleSelectOption}
-          activePlayerId={activePlayerId}
-          roundTurn={roundTurn}
-          difficulty={difficulty}
-          onDifficultyChange={setDifficulty}
-          turnExpired={turnExpired}
-          turnTimeRemaining={turnTimeRemaining}
-          turnTimerActive={turnTimerActive}
-          isWaitingForFirstTrack={isWaitingForFirstTrack}
-          players={players}
-          playerNames={playerNames}
-          playerGravities={playerGravities}
-          availableArtists={availableArtists}
-          onTargetArtistChange={handleManualTargetArtistChange}
-          onPlayerNameChange={handlePlayerNameChange}
+          gameState={{
+            phase,
+            roundTurn,
+            turnExpired,
+            turnTimeRemaining,
+            turnTimerActive,
+            isWaitingForFirstTrack,
+            pendingSelectionTrackId,
+            difficulty
+          }}
+          playerState={{
+            players,
+            names: playerNames,
+            gravities: playerGravities,
+            activeId: activePlayerId,
+            targetArtists: availableArtists
+          }}
+          callbacks={{
+            onSelectOption: handleSelectOption,
+            onDifficultyChange: setDifficulty,
+            onTargetArtistChange: handleManualTargetArtistChange,
+            onPlayerNameChange: handlePlayerNameChange
+          }}
         />
 
         {isBusy && (

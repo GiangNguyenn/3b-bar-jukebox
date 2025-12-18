@@ -10,6 +10,7 @@ import {
 import type { TrackDetails } from '@/shared/types/spotify'
 import { upsertArtistProfile, upsertTopTracks } from '@/services/game/dgsCache'
 import { upsertTrackDetails } from '@/services/game/dgsDb'
+import { getArtistTopTracksServer } from '@/services/spotifyApiServer'
 import {
   getBackfillMetrics,
   processGenreBackfillBatch
@@ -66,9 +67,56 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
             follower_count: payload.follower_count as number | undefined
           })
         } else if (item.type === 'artist_top_tracks') {
-          const trackIds = extractTrackIdsFromPayload(item.payload)
-          if (trackIds.length) {
+          const payload = item.payload ?? {}
+          const trackIds = extractTrackIdsFromPayload(payload)
+          const needsRefresh = payload.needsRefresh === true
+
+          if (needsRefresh && token) {
+            // REQ-DAT-03: Self-Healing - Fetch top tracks from Spotify and store in DB
+            try {
+              const tracks = await getArtistTopTracksServer(
+                item.spotifyId,
+                token
+              )
+              if (tracks.length > 0) {
+                // Store track IDs
+                await upsertTopTracks(
+                  item.spotifyId,
+                  tracks.map((t) => t.id)
+                )
+                // Store track details
+                await upsertTrackDetails(tracks)
+                logger(
+                  'INFO',
+                  `Healed artist ${item.spotifyId}: Fetched and stored ${tracks.length} top tracks`,
+                  'lazy-update-tick'
+                )
+              } else {
+                logger(
+                  'WARN',
+                  `Artist ${item.spotifyId} has no top tracks available from Spotify`,
+                  'lazy-update-tick'
+                )
+              }
+            } catch (error) {
+              logger(
+                'WARN',
+                `Failed to heal artist ${item.spotifyId}: ${error instanceof Error ? error.message : String(error)}`,
+                'lazy-update-tick',
+                error instanceof Error ? error : undefined
+              )
+              throw error // Re-throw to mark as failed
+            }
+          } else if (trackIds.length) {
+            // Existing track IDs provided - just store them
             await upsertTopTracks(item.spotifyId, trackIds)
+          } else if (needsRefresh && !token) {
+            logger(
+              'WARN',
+              `Cannot heal artist ${item.spotifyId}: No token provided`,
+              'lazy-update-tick'
+            )
+            throw new Error('No token provided for healing')
           }
         } else if (item.type === 'track_details') {
           const tracks = extractTrackDetailsFromPayload(item.payload).filter(

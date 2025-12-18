@@ -128,6 +128,8 @@ export interface CandidateTrackMetrics {
   forceReason?: 'vicinity' | 'hard_convergence'
   currentSongAttraction: number // Baseline attraction of currently playing song to active player's target
   selectionCategory?: 'closer' | 'neutral' | 'further' // Category assigned during selection
+  delta?: number // Attraction delta from previous track
+  isTargetArtist?: boolean // Whether this track belongs to a target artist
 }
 
 export interface DgsOptionTrack extends GameOptionTrack {
@@ -178,7 +180,16 @@ export interface CategoryQuality {
   qualityScore: number
 }
 
+export interface PipelineLogEntry {
+  stage: 'stage1' | 'stage2' | 'stage3' | 'engine'
+  level: 'info' | 'warn' | 'error'
+  message: string
+  details?: any
+  timestamp: number
+}
+
 export interface DgsDebugInfo {
+  pipelineLogs?: PipelineLogEntry[]
   targetProfiles: {
     player1: {
       resolved: boolean
@@ -210,13 +221,20 @@ export interface DgsDebugInfo {
       zeroSimilarity: number
     }
   }
+  /**
+   * @deprecated Used by legacy pipeline. Use selectedArtists instead.
+   */
   candidates: Array<{
     artistName: string
+    artistId?: string
     trackName?: string
     source?: string
     simScore: number
+    delta?: number
+    category?: string
     isTargetArtist: boolean
     filtered: boolean
+    rejectionReason?: string
   }>
   dbFallback?: {
     used: boolean
@@ -235,13 +253,13 @@ export interface DgsDebugInfo {
     totalMs: number
   }
   performanceDiagnostics?: {
-    dbQueries: Array<{ operation: string; durationMs: number }>
-    apiCalls: Array<{ operation: string; durationMs: number }>
-    totalDbTimeMs: number
-    totalApiTimeMs: number
-    slowestDbQuery: { operation: string; durationMs: number } | null
-    slowestApiCall: { operation: string; durationMs: number } | null
-    bottleneckPhase: string
+    dbQueries?: Array<{ operation: string; durationMs: number }>
+    apiCalls?: Array<{ operation: string; durationMs: number }>
+    totalDbTimeMs?: number
+    totalApiTimeMs?: number
+    slowestDbQuery?: { operation: string; durationMs: number } | null
+    slowestApiCall?: { operation: string; durationMs: number } | null
+    bottleneckPhase?: string
   }
   caching: {
     // Top Tracks
@@ -297,7 +315,20 @@ export interface DgsDebugInfo {
     totalUnique: number
     seedArtists?: Array<{ name: string; id: string }>
     targetArtists?: Array<{ name: string; id: string }>
+    // New architecture: Artist pool grouped by source
+    relatedToCurrent?: Array<{ name: string; id: string }>
+    relatedToTarget?: Array<{ name: string; id: string }>
+    randomArtists?: Array<{ name: string; id: string }>
   }
+  // New architecture: Selected artists from Stage 2
+  selectedArtists?: Array<{
+    artistId: string
+    artistName: string
+    category: 'CLOSER' | 'NEUTRAL' | 'FURTHER' | string
+    attractionScore: number
+    delta: number
+    scoreComponents?: ScoringComponents
+  }>
 }
 
 export interface DualGravityResponse {
@@ -321,6 +352,7 @@ export const MAX_ARTIST_REPETITIONS = 2
 export interface CandidateSeed {
   track: TrackDetails
   source: CandidateSource
+  seedArtistId: string // Spotify artist ID that generated this seed
 }
 
 export interface ArtistProfile {

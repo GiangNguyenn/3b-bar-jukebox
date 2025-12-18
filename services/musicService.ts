@@ -109,12 +109,34 @@ export const musicService = {
     trackId: string,
     token: string
   ): Promise<DataResponse<TrackDetails | null>> {
+    // 1. Database Cache (Tier 2)
+    try {
+      const dbTrack = await dgsDb.getTrackByIdFromDb(trackId)
+      if (dbTrack) {
+        return { data: dbTrack, source: DataSource.Database }
+      }
+    } catch (error) {
+      logger(
+        'WARN',
+        `DB cache check failed for track ${trackId}`,
+        'getTrack',
+        error as Error
+      )
+    }
+
+    // 2. Spotify API (Tier 3)
     try {
       const track = await sendApiRequest<TrackDetails>({
         path: `/tracks/${trackId}`,
         method: 'GET',
         token
       })
+
+      // 3. Lazy Write-Back (REQ-DAT-01)
+      if (track) {
+        void dgsCache.upsertTrackDetails([track])
+      }
+
       return { data: track, source: DataSource.SpotifyAPI }
     } catch (error) {
       logger(
@@ -148,7 +170,11 @@ export const musicService = {
     }
 
     // 2. Database Cache
-    const dbTracksMap = await dgsCache.batchGetTopTracksFromDb([artistId])
+    const dbTracksMap = await dgsCache.batchGetTopTracksFromDb(
+      [artistId],
+      token,
+      statisticsTracker
+    )
     const dbTracks = dbTracksMap.get(artistId)
 
     if (dbTracks && dbTracks.length > 0) {

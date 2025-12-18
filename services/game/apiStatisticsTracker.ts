@@ -82,6 +82,9 @@ export class ApiStatisticsTracker {
     artistSearchesApiCalls: 0
   }
 
+  private apiCalls: Array<{ operation: string; durationMs: number }> = []
+  private dbQueries: Array<{ operation: string; durationMs: number }> = []
+
   /**
    * Record that a request was made for a specific operation type
    */
@@ -106,8 +109,18 @@ export class ApiStatisticsTracker {
   /**
    * Record an API call for a specific operation type
    */
-  recordApiCall(operationType: OperationType): void {
+  recordApiCall(operationType: OperationType, durationMs: number = 0): void {
     this.stats[`${operationType}ApiCalls`]++
+    if (durationMs > 0) {
+      this.apiCalls.push({ operation: operationType, durationMs })
+    }
+  }
+
+  /**
+   * Record a DB query
+   */
+  recordDbQuery(operation: string, durationMs: number): void {
+    this.dbQueries.push({ operation, durationMs })
   }
 
   /**
@@ -142,6 +155,36 @@ export class ApiStatisticsTracker {
       cacheHitRate: Math.min(1.0, cacheHitRate), // Cap at 1.0 (100%)
       totalApiCalls,
       totalCacheHits: totalCached
+    }
+  }
+
+  /**
+   * Get performance diagnostics including detailed API calls and DB queries
+   */
+  getPerformanceDiagnostics() {
+    return {
+      apiCalls: this.apiCalls,
+      dbQueries: this.dbQueries,
+      totalApiTimeMs: this.apiCalls.reduce(
+        (acc, call) => acc + call.durationMs,
+        0
+      ),
+      totalDbTimeMs: this.dbQueries.reduce(
+        (acc, query) => acc + query.durationMs,
+        0
+      ),
+      slowestApiCall:
+        this.apiCalls.length > 0
+          ? this.apiCalls.reduce((prev, current) =>
+              prev.durationMs > current.durationMs ? prev : current
+            )
+          : null,
+      slowestDbQuery:
+        this.dbQueries.length > 0
+          ? this.dbQueries.reduce((prev, current) =>
+              prev.durationMs > current.durationMs ? prev : current
+            )
+          : null
     }
   }
 

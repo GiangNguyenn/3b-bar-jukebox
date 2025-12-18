@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Database cache layer for DGS engine
  * Provides DB-first lookups for artist data to minimize Spotify API calls
  *
@@ -551,6 +551,7 @@ export async function batchGetArtistProfilesWithCache(
     follower_count: number | null
     cached_at: string | null
   }
+  const tStart = Date.now()
   const { data: cachedProfiles } = await queryWithRetry<ArtistProfileSelect[]>(
     supabase
       .from('artists')
@@ -561,6 +562,8 @@ export async function batchGetArtistProfilesWithCache(
     undefined,
     `Batch get cached artists (${spotifyArtistIds.length} IDs)`
   )
+  const tEnd = Date.now()
+  statisticsTracker?.recordDbQuery('batchGetArtistProfiles', tEnd - tStart)
 
   const cachedMap = new Map<string, CachedArtistProfile>()
   const missingIds: string[] = []
@@ -777,7 +780,9 @@ export async function getTopTracksWithCache(
  * Returns a map of artist ID -> track details array
  */
 export async function batchGetTopTracksFromDb(
-  spotifyArtistIds: string[]
+  spotifyArtistIds: string[],
+  token: string,
+  statisticsTracker?: ApiStatisticsTracker
 ): Promise<Map<string, TrackDetails[]>> {
   const result = new Map<string, TrackDetails[]>()
 
@@ -785,6 +790,7 @@ export async function batchGetTopTracksFromDb(
 
   try {
     // Query all top tracks for all artists in one query
+    const tStart = Date.now()
     const { data, error } = await queryWithRetry(
       supabase
         .from('artist_top_tracks')
@@ -794,6 +800,8 @@ export async function batchGetTopTracksFromDb(
       undefined,
       'Batch get top tracks from DB'
     )
+    const tEnd = Date.now()
+    statisticsTracker?.recordDbQuery('batchGetTopTracks', tEnd - tStart)
 
     if (error || !data) return result
 
@@ -809,18 +817,40 @@ export async function batchGetTopTracksFromDb(
       trackIdsByArtist.get(row.spotify_artist_id)!.push(row.spotify_track_id)
     }
 
-    // Now fetch full track details from tracks table
+    // Now fetch full track details from tracks table (with Spotify fallback)
     const allTrackIds = Array.from(
       new Set(Array.from(trackIdsByArtist.values()).flat())
     )
 
     if (allTrackIds.length > 0) {
-      const trackDetailsMap = await batchGetTrackDetailsFromDb(allTrackIds)
+      // Record track details requests
+      allTrackIds.forEach(() => {
+        statisticsTracker?.recordRequest('trackDetails')
+      })
+
+      const trackDetailsMap = await batchGetTrackDetailsWithCache(
+        allTrackIds,
+        token,
+        statisticsTracker
+      )
 
       // Reconstruct artist -> tracks mapping
       trackIdsByArtist.forEach((trackIds, artistId) => {
         const tracks = trackIds
-          .map((id) => trackDetailsMap.get(id))
+          .map((id) => {
+            const track = trackDetailsMap.get(id)
+            if (!track) return undefined
+            // INJECT ARTIST ID: The tracks table does not store spotify_artist_id,
+            // so we must inject it here using the artistId we started with.
+            if (
+              track.artists &&
+              track.artists.length > 0 &&
+              !track.artists[0].id
+            ) {
+              track.artists[0].id = artistId
+            }
+            return track
+          })
           .filter((t): t is TrackDetails => t !== undefined)
         if (tracks.length > 0) {
           result.set(artistId, tracks)
@@ -845,17 +875,24 @@ export async function batchGetTopTracksFromDb(
 }
 
 /**
- * Batch get track details from database
+ * Batch get track details with DB cache fallback
  * Returns a map of track ID -> track details
  */
-export async function batchGetTrackDetailsFromDb(
-  spotifyTrackIds: string[]
+export async function batchGetTrackDetailsWithCache(
+  spotifyTrackIds: string[],
+  token: string,
+  statisticsTracker?: ApiStatisticsTracker
 ): Promise<Map<string, TrackDetails>> {
   const result = new Map<string, TrackDetails>()
 
   if (spotifyTrackIds.length === 0) return result
 
+  // 1. Check DB Cache
+  const cachedMap = new Map<string, TrackDetails>()
+  const missingIds: string[] = []
+
   try {
+    const tStart = Date.now()
     const { data, error } = await queryWithRetry(
       supabase
         .from('tracks')
@@ -864,61 +901,154 @@ export async function batchGetTrackDetailsFromDb(
       undefined,
       'Batch get track details from DB'
     )
+    const tEnd = Date.now()
+    statisticsTracker?.recordDbQuery('batchGetTrackDetails', tEnd - tStart)
 
-    if (error || !data) return result
+    if (data && !error) {
+      // Process cached results
+      data.forEach((row) => {
+        // Skip tracks with missing or empty critical metadata
+        const trackName = row.name?.trim()
+        const trackId = row.spotify_track_id?.trim()
+        const artistName = row.artist?.trim()
 
-    data.forEach((row) => {
-      // Skip tracks with missing or empty critical metadata
-      const trackName = row.name?.trim()
-      const trackId = row.spotify_track_id?.trim()
-      const artistName = row.artist?.trim()
+        if (!trackName || !trackId || !artistName) {
+          // Logic to treat as cache miss if critical data is missing
+          return
+        }
 
-      if (!trackName || !trackId || !artistName) {
-        logger(
-          'WARN',
-          `Skipping track with missing/empty metadata from DB: name="${row.name ?? 'missing'}", id="${row.spotify_track_id ?? 'missing'}", artist="${row.artist ?? 'missing'}"`,
-          'batchGetTrackDetailsFromDb'
-        )
-        return
-      }
+        const track: TrackDetails = {
+          id: row.spotify_track_id,
+          uri: `spotify:track:${row.spotify_track_id}`,
+          name: row.name,
+          duration_ms: row.duration_ms,
+          popularity: row.popularity,
+          preview_url: null,
+          is_playable: true,
+          explicit: false,
+          album: {
+            name: row.album,
+            images: [],
+            release_date: ''
+          },
+          artists: [{ name: row.artist, id: '' }],
+          external_urls: row.spotify_url
+            ? { spotify: row.spotify_url }
+            : undefined,
+          genre: row.genre ?? undefined
+        }
 
-      const track: TrackDetails = {
-        id: row.spotify_track_id,
-        uri: `spotify:track:${row.spotify_track_id}`,
-        name: row.name,
-        duration_ms: row.duration_ms,
-        popularity: row.popularity,
-        preview_url: null,
-        is_playable: true,
-        explicit: false,
-        album: {
-          name: row.album,
-          images: [],
-          release_date: ''
-        },
-        artists: [{ name: row.artist, id: '' }],
-        external_urls: row.spotify_url
-          ? { spotify: row.spotify_url }
-          : undefined,
-        genre: row.genre ?? undefined
-      }
-      result.set(row.spotify_track_id, track)
-    })
+        cachedMap.set(row.spotify_track_id, track)
+        result.set(row.spotify_track_id, track)
 
-    logger(
-      'INFO',
-      `Fetched ${result.size}/${spotifyTrackIds.length} track details from DB`
-    )
-    return result
-  } catch (error) {
+        if (statisticsTracker) {
+          statisticsTracker.recordCacheHit('trackDetails', 'database')
+        }
+      })
+    }
+  } catch (err) {
     logger(
       'WARN',
-      'Failed to batch get track details',
+      'Error querying tracks from DB',
       undefined,
-      error instanceof Error ? error : undefined
+      err instanceof Error ? err : undefined
     )
+  }
+
+  // 2. Identify Missing
+  for (const id of spotifyTrackIds) {
+    if (!cachedMap.has(id)) {
+      missingIds.push(id)
+    }
+  }
+
+  if (missingIds.length === 0) {
     return result
   }
+
+  // 3. Fetch Missing from Spotify
+  logger(
+    'INFO',
+    `Fetching ${missingIds.length} missing tracks from Spotify`,
+    'batchGetTrackDetailsWithCache'
+  )
+
+  const chunks: string[][] = []
+  const chunkSize = 50
+  for (let i = 0; i < missingIds.length; i += chunkSize) {
+    chunks.push(missingIds.slice(i, i + chunkSize))
+  }
+
+  for (const chunk of chunks) {
+    try {
+      const idsParam = chunk.join(',')
+      const response = await sendApiRequest<{ tracks: any[] }>({
+        path: `/tracks?ids=${idsParam}`,
+        method: 'GET',
+        token,
+        statisticsTracker
+      })
+
+      if (response.tracks) {
+        const validTracks = response.tracks.filter((t) => !!t)
+
+        if (statisticsTracker) {
+          statisticsTracker.recordFromSpotify(
+            'trackDetails',
+            validTracks.length
+          )
+        }
+
+        const tracksToUpsert: TrackDetails[] = []
+        for (const t of validTracks) {
+          // Map Spotify track to TrackDetails
+          // Note: The API response might have different structure than we expect if explicit type isn't perfectly matching,
+          // but we likely use a shared type or just cast.
+          // Assuming standard Spotify Track Object
+          const track: TrackDetails = {
+            id: t.id,
+            uri: t.uri,
+            name: t.name,
+            duration_ms: t.duration_ms,
+            popularity: t.popularity,
+            preview_url: t.preview_url,
+            is_playable: t.is_playable,
+            explicit: t.explicit,
+            album: {
+              name: t.album?.name,
+              images: t.album?.images || [],
+              release_date: t.album?.release_date || ''
+            },
+            artists: t.artists.map((artist: any) => ({
+              id: artist.id,
+              name: artist.name
+            })),
+            external_urls: t.external_urls
+            // genre is not on track object usually, handled separately?
+            // For now checking DGS expectations.
+            // DB row has genre. Track object from API typically doesn't.
+            // We can accept it as undefined.
+          }
+
+          result.set(t.id, track)
+          tracksToUpsert.push(track)
+        }
+
+        if (tracksToUpsert.length > 0) {
+          void upsertTrackDetails(tracksToUpsert)
+        }
+      }
+    } catch (err) {
+      logger(
+        'WARN',
+        `Failed to fetch missing track details chunk`,
+        undefined,
+        err instanceof Error ? err : undefined
+      )
+    }
+  }
+
+  return result
 }
 
 /**
