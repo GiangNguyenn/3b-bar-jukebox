@@ -3,13 +3,14 @@ import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
 import { subscriptionService } from '@/services/subscriptionService'
 import { createModuleLogger } from '@/shared/utils/logger'
+import type { Database } from '@/types/supabase'
 
 const logger = createModuleLogger('PaymentSuccess')
 
 export async function GET(request: NextRequest): Promise<NextResponse> {
   try {
     const cookieStore = cookies()
-    const supabase = createServerClient(
+    const supabase = createServerClient<Database>(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
       {
@@ -62,7 +63,6 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     }
 
     // Get user profile
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
     const { data: profile } = await supabase
       .from('profiles')
       .select('*')
@@ -78,7 +78,6 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     const success =
       await subscriptionService.updateSubscriptionFromStripeSession(
         sessionId,
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-unsafe-member-access
         profile.id,
         supabase
       )
@@ -97,8 +96,9 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     )
 
     // Redirect to admin page with success message
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
-    const adminUrl = `${request.nextUrl.origin}/${profile.display_name ?? user.email?.split('@')[0] ?? 'user'}/admin?payment=success`
+    const displayName =
+      profile.display_name ?? user.email?.split('@')[0] ?? 'user'
+    const adminUrl = `${request.nextUrl.origin}/${encodeURIComponent(displayName)}/admin?payment=success`
     return NextResponse.redirect(adminUrl)
   } catch (error) {
     logger(
