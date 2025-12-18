@@ -72,7 +72,9 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     // Set default URLs if not provided
     const defaultSuccessUrl = `${request.nextUrl.origin}/api/subscriptions/payment-success?session_id={CHECKOUT_SESSION_ID}`
     // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
-    const defaultCancelUrl = `${request.nextUrl.origin}/${profile.display_name ?? user.email?.split('@')[0] ?? 'user'}/admin?payment=cancelled`
+    const displayName =
+      profile.display_name ?? user.email?.split('@')[0] ?? 'user'
+    const defaultCancelUrl = `${request.nextUrl.origin}/${encodeURIComponent(displayName)}/admin?payment=cancelled`
     const finalSuccessUrl = successUrl ?? defaultSuccessUrl
     const finalCancelUrl = cancelUrl ?? defaultCancelUrl
 

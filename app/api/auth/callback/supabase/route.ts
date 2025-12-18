@@ -66,7 +66,7 @@ export async function GET(request: Request): Promise<NextResponse> {
 
     // Use the potentially modified display_name for redirect
     const redirectUrl = isPremium
-      ? `/${profileData.display_name}/admin`
+      ? `/${encodeURIComponent(profileData.display_name)}/admin`
       : '/premium-required'
 
     return NextResponse.redirect(`${getBaseUrl(request)}${redirectUrl}`)

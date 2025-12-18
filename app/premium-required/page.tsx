@@ -58,7 +58,7 @@ export default function PremiumRequiredPage(): JSX.Element {
             .single()
 
           if (profile?.display_name) {
-            router.push(`/${profile.display_name}/admin`)
+            router.push(`/${encodeURIComponent(profile.display_name)}/admin`)
           }
         }
       }
