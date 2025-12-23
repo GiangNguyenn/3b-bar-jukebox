@@ -164,7 +164,7 @@ export function useNowPlayingTrack({
           // This prevents UI from showing "No track" when there's a temporary API issue
           setError(
             errorData?.error ||
-            `HTTP ${apiResponse.status}: ${apiResponse.statusText}`
+              `HTTP ${apiResponse.status}: ${apiResponse.statusText}`
           )
           // Don't clear data - keep showing last known track
           return

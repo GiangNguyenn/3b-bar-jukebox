@@ -35,10 +35,7 @@ export function usePlaylistData(username?: string) {
 
   // Fetch queue data from API
   const fetchQueue = useCallback(
-    async (
-      isBackgroundRefresh = false,
-      bypassCache = false
-    ): Promise<void> => {
+    async (isBackgroundRefresh = false, bypassCache = false): Promise<void> => {
       if (!username) return
 
       try {
@@ -50,10 +47,16 @@ export function usePlaylistData(username?: string) {
         }
 
         // Use fetchWithRetry for automatic retry on network failures
-        const url = `/api/playlist/${username}${bypassCache ? `?t=${Date.now()}` : ''
-          }`
+        const url = `/api/playlist/${username}${
+          bypassCache ? `?t=${Date.now()}` : ''
+        }`
 
-        const response = await fetchWithRetry(url, undefined, undefined, `Queue fetch for ${username}`)
+        const response = await fetchWithRetry(
+          url,
+          undefined,
+          undefined,
+          `Queue fetch for ${username}`
+        )
 
         // Read response body once - cannot be read multiple times
         const data = (await response.json()) as
