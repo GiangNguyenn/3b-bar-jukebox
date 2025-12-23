@@ -35,7 +35,10 @@ export function usePlaylistData(username?: string) {
 
   // Fetch queue data from API
   const fetchQueue = useCallback(
-    async (isBackgroundRefresh = false): Promise<void> => {
+    async (
+      isBackgroundRefresh = false,
+      bypassCache = false
+    ): Promise<void> => {
       if (!username) return
 
       try {
@@ -47,12 +50,10 @@ export function usePlaylistData(username?: string) {
         }
 
         // Use fetchWithRetry for automatic retry on network failures
-        const response = await fetchWithRetry(
-          `/api/playlist/${username}`,
-          undefined,
-          undefined,
-          `Queue fetch for ${username}`
-        )
+        const url = `/api/playlist/${username}${bypassCache ? `?t=${Date.now()}` : ''
+          }`
+
+        const response = await fetchWithRetry(url, undefined, undefined, `Queue fetch for ${username}`)
 
         // Read response body once - cannot be read multiple times
         const data = (await response.json()) as
@@ -282,7 +283,7 @@ export function usePlaylistData(username?: string) {
               // is fully committed and visible. This prevents race conditions where
               // the fetch happens before the new track appears in query results.
               realtimeFetchTimeoutRef.current = setTimeout(() => {
-                void fetchQueue(true)
+                void fetchQueue(true, true) // Bypass cache on realtime update
                 realtimeFetchTimeoutRef.current = null
               }, 500) // 500ms delay to allow transaction commit
             }
@@ -396,7 +397,7 @@ export function usePlaylistData(username?: string) {
 
   // Manual refresh function
   const mutate = useCallback(async (): Promise<void> => {
-    await fetchQueue(true) // Background refresh
+    await fetchQueue(true, true) // Background refresh + bypass cache
   }, [fetchQueue])
 
   // Return queue state which is now synced with queueManager

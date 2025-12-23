@@ -18,10 +18,16 @@ export function useNowPlayingTrack({
   const intervalRef = useRef<NodeJS.Timeout | null>(null)
   const lastTrackId = useRef<string | null>(null)
   const abortControllerRef = useRef<AbortController | null>(null)
+  const backoffUntilRef = useRef<number>(0)
 
   const fetchCurrentlyPlaying = useCallback(async () => {
     if (!enabled) {
       setData(null)
+      return
+    }
+
+    // Check if we are in a backoff period (e.g. due to 429s)
+    if (Date.now() < backoffUntilRef.current) {
       return
     }
 
@@ -58,6 +64,21 @@ export function useNowPlayingTrack({
             signal: abortController.signal
           }
         )
+
+        // Handle 429 Too Many Requests
+        if (fetchResponse.status === 429) {
+          const retryAfterHeader = fetchResponse.headers.get('Retry-After')
+          const retryAfterSeconds = retryAfterHeader
+            ? parseInt(retryAfterHeader, 10)
+            : 5 // Default to 5 seconds if header missing
+
+          // Set backoff timestamp
+          backoffUntilRef.current = Date.now() + retryAfterSeconds * 1000
+
+          setError(`Rate limited. Retrying after ${retryAfterSeconds}s`)
+          // Don't clear data - keep showing last known track
+          return
+        }
 
         // Handle 204 No Content (no currently playing track)
         if (fetchResponse.status === 204) {
@@ -107,6 +128,14 @@ export function useNowPlayingTrack({
           signal: abortController.signal
         })
 
+        // Handle 429 Too Many Requests from our proxy
+        if (apiResponse.status === 429) {
+          // Backoff for 5 seconds (proxy might not send Retry-After)
+          backoffUntilRef.current = Date.now() + 5000
+          setError('Rate limited. Retrying shortly.')
+          return
+        }
+
         // Handle 204 No Content (no currently playing track)
         if (apiResponse.status === 204) {
           setData(null)
@@ -135,7 +164,7 @@ export function useNowPlayingTrack({
           // This prevents UI from showing "No track" when there's a temporary API issue
           setError(
             errorData?.error ||
-              `HTTP ${apiResponse.status}: ${apiResponse.statusText}`
+            `HTTP ${apiResponse.status}: ${apiResponse.statusText}`
           )
           // Don't clear data - keep showing last known track
           return
