@@ -9,11 +9,9 @@ import type { User } from '@supabase/supabase-js'
 import { Loading } from '@/components/ui/loading'
 import {
   FaSpotify,
-  FaMusic,
   FaUsers,
   FaChartLine,
   FaPalette,
-  FaCrown,
   FaPlay,
   FaHeadphones,
   FaTrophy
@@ -78,6 +76,9 @@ export default function Home(): JSX.Element {
 
               {/* Main Value Proposition */}
               <div className='mx-auto mb-12 max-w-4xl'>
+                <div className='mb-6 inline-block rounded-full bg-yellow-500/20 px-4 py-1 text-sm font-semibold text-yellow-300 backdrop-blur-sm'>
+                  Private Beta — Not Currently For Sale
+                </div>
                 <h1 className='text-white mb-6 text-2xl font-bold md:text-3xl'>
                   Jukebox for Spotify - The Ultimate Shared Playlist Experience
                 </h1>
@@ -85,20 +86,30 @@ export default function Home(): JSX.Element {
                   Create the perfect collaborative playlist with our Spotify
                   jukebox. Whether you&apos;re hosting a party with friends or
                   just hanging out, our intelligent jukebox system connects
-                  directly to Spotify, letting everyone contribute to the music
-                  and build unforgettable atmospheres. The best jukebox for
-                  Spotify shared playlists.
+                  directly to Spotify.
+                </p>
+                <p className='mt-4 text-lg text-gray-400'>
+                  Access represents a private deployment for testing and
+                  personal use.
                 </p>
               </div>
 
-              {/* CTA Button */}
-              <div className='mb-16'>
+              {/* CTA Buttons */}
+              <div className='mb-16 flex flex-col items-center justify-center gap-4 sm:flex-row'>
+                <a
+                  href='https://www.offshoresoftware.dev/'
+                  target='_blank'
+                  rel='noopener noreferrer'
+                  className='text-white inline-flex transform items-center rounded-lg bg-blue-600 px-8 py-4 text-lg font-bold shadow-lg transition-all duration-200 hover:scale-105 hover:bg-blue-700'
+                >
+                  Contact for Access
+                </a>
                 <a
                   href='/auth/signin'
-                  className='text-white inline-flex transform items-center rounded-lg bg-green-600 px-8 py-4 text-lg font-bold shadow-lg transition-all duration-200 hover:scale-105 hover:bg-green-700'
+                  className='text-white inline-flex transform items-center rounded-lg border border-gray-600 bg-gray-800/50 px-8 py-4 text-lg font-bold shadow-lg backdrop-blur-sm transition-all duration-200 hover:scale-105 hover:bg-gray-700'
                 >
                   <FaSpotify className='mr-3 text-xl' />
-                  Start Your Jukebox
+                  Existing User Sign In
                 </a>
               </div>
             </div>
@@ -230,90 +241,7 @@ export default function Home(): JSX.Element {
           </div>
         </div>
 
-        {/* Pricing Section */}
-        <div className='bg-gray-900/50 py-20'>
-          <div className='mx-auto max-w-7xl px-4 sm:px-6 lg:px-8'>
-            <div className='mb-16 text-center'>
-              <h2 className='text-white mb-4 text-3xl font-bold md:text-4xl'>
-                Simple, Transparent Pricing
-              </h2>
-              <p className='text-xl text-gray-300'>
-                Start free with our Spotify jukebox, upgrade when you&apos;re
-                ready
-              </p>
-            </div>
-
-            <div className='mx-auto grid max-w-4xl gap-8 md:grid-cols-2'>
-              {/* Free Tier */}
-              <div className='rounded-lg border border-gray-700 bg-gray-800/50 p-8'>
-                <div className='mb-6 text-center'>
-                  <h4 className='text-white mb-2 text-2xl font-bold'>Free</h4>
-                  <p className='text-gray-300'>Perfect for getting started</p>
-                </div>
-                <ul className='mb-8 space-y-3 text-gray-300'>
-                  <li className='flex items-center'>
-                    <FaMusic className='mr-3 text-green-400' />
-                    Basic jukebox functionality
-                  </li>
-                  <li className='flex items-center'>
-                    <FaUsers className='mr-3 text-green-400' />
-                    Up to 10 connected devices
-                  </li>
-                  <li className='flex items-center'>
-                    <FaPlay className='mr-3 text-green-400' />
-                    Spotify integration
-                  </li>
-                  <li className='flex items-center'>
-                    <FaHeadphones className='mr-3 text-green-400' />
-                    Queue management
-                  </li>
-                </ul>
-              </div>
-
-              {/* Premium Tier */}
-              <div className='relative rounded-lg border border-green-500 bg-gradient-to-br from-green-600/20 to-green-800/20 p-8'>
-                <div className='absolute -top-4 left-1/2 -translate-x-1/2 transform'>
-                  <span className='text-white rounded-full bg-green-500 px-4 py-1 text-sm font-bold'>
-                    MOST POPULAR
-                  </span>
-                </div>
-                <div className='mb-6 text-center'>
-                  <h4 className='text-white mb-2 text-2xl font-bold'>
-                    Premium
-                  </h4>
-                  <p className='text-white mb-2 text-4xl font-bold'>
-                    $1<span className='text-xl text-gray-300'>/month</span>
-                  </p>
-                  <p className='text-gray-300'>
-                    Support the developers & get advanced features
-                  </p>
-                </div>
-                <ul className='mb-8 space-y-3 text-gray-300'>
-                  <li className='flex items-center'>
-                    <FaCrown className='mr-3 text-green-400' />
-                    Everything in Free
-                  </li>
-                  <li className='flex items-center'>
-                    <FaChartLine className='mr-3 text-green-400' />
-                    Advanced analytics & insights
-                  </li>
-                  <li className='flex items-center'>
-                    <FaPalette className='mr-3 text-green-400' />
-                    Custom branding & themes
-                  </li>
-                  <li className='flex items-center'>
-                    <FaUsers className='mr-3 text-green-400' />
-                    Unlimited connected devices
-                  </li>
-                  <li className='flex items-center'>
-                    <FaMusic className='mr-3 text-green-400' />
-                    Advanced song suggestions
-                  </li>
-                </ul>
-              </div>
-            </div>
-          </div>
-        </div>
+        {/* Pricing Section Removed - Product Not For Sale */}
 
         {/* Final CTA */}
         <div className='bg-black/50 py-16'>
@@ -326,13 +254,22 @@ export default function Home(): JSX.Element {
               jukebox to create unforgettable collaborative playlist
               experiences.
             </p>
-            <a
-              href='/auth/signin'
-              className='text-white inline-flex transform items-center rounded-lg bg-green-600 px-8 py-4 text-lg font-bold shadow-lg transition-all duration-200 hover:scale-105 hover:bg-green-700'
-            >
-              <FaSpotify className='mr-3 text-xl' />
-              Start Your Jukebox Now
-            </a>
+            <div className='flex flex-col items-center justify-center gap-4 sm:flex-row'>
+              <a
+                href='https://www.offshoresoftware.dev/'
+                target='_blank'
+                rel='noopener noreferrer'
+                className='text-white inline-flex transform items-center rounded-lg bg-blue-600 px-8 py-4 text-lg font-bold shadow-lg transition-all duration-200 hover:scale-105 hover:bg-blue-700'
+              >
+                Contact for Access
+              </a>
+              <a
+                href='/auth/signin'
+                className='text-white inline-flex transform items-center rounded-lg border border-gray-600 bg-gray-800/50 px-8 py-4 text-lg font-bold shadow-lg backdrop-blur-sm transition-all duration-200 hover:scale-105 hover:bg-gray-700'
+              >
+                Sign In
+              </a>
+            </div>
           </div>
         </div>
 

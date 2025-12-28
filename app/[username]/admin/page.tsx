@@ -16,8 +16,7 @@ import { TrackSuggestionsTab } from './components/track-suggestions/track-sugges
 import { PlaylistDisplay } from './components/playlist/playlist-display'
 import { AnalyticsTab } from './components/analytics/analytics-tab'
 import { BrandingTab } from './components/branding/branding-tab'
-import { SubscriptionTab } from './components/subscription/subscription-tab'
-import { PremiumNotice } from './components/PremiumNotice'
+// PremiumNotice removed to fix lint
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 
 import { type TrackSuggestionsState } from '@/shared/types/trackSuggestions'
@@ -28,7 +27,6 @@ import { queueManager } from '@/services/queueManager'
 import { AutoFillNotification } from '@/components/ui/auto-fill-notification'
 import { getAutoPlayService } from '@/services/autoPlayService'
 
-import { useSubscription } from '@/hooks/useSubscription'
 import { useGetProfile } from '@/hooks/useGetProfile'
 import { startFreshAuthentication } from '@/shared/utils/authCleanup'
 import { ArrowRightOnRectangleIcon } from '@heroicons/react/24/outline'
@@ -47,13 +45,7 @@ export default function AdminPage(): JSX.Element {
   const [error, setError] = useState<string | null>(null)
   const [isSigningOut, setIsSigningOut] = useState(false)
   const [activeTab, setActiveTab] = useState<
-    | 'dashboard'
-    | 'playlist'
-    | 'settings'
-    | 'logs'
-    | 'analytics'
-    | 'branding'
-    | 'subscription'
+    'dashboard' | 'playlist' | 'settings' | 'logs' | 'analytics' | 'branding'
   >('dashboard')
   const [copied, setCopied] = useState(false)
   const [showQRCode, setShowQRCode] = useState(false)
@@ -135,16 +127,7 @@ export default function AdminPage(): JSX.Element {
   }
 
   // Get premium status
-  const { profile, loading: profileLoading } = useGetProfile()
-
-  const { hasPremiumAccess, isLoading: subscriptionLoading } = useSubscription(
-    profile?.id
-  )
-
-  // Determine if premium features should be disabled
-  // Only disable if we're not loading AND the user doesn't have premium access
-  const isPremiumDisabled =
-    !subscriptionLoading && !profileLoading && !hasPremiumAccess
+  const { profile } = useGetProfile()
 
   // Extract token health from healthStatus to avoid duplicate API calls
   const tokenHealth = {
@@ -237,7 +220,6 @@ export default function AdminPage(): JSX.Element {
         | 'logs'
         | 'analytics'
         | 'branding'
-        | 'subscription'
     )
   }, [])
 
@@ -400,12 +382,6 @@ export default function AdminPage(): JSX.Element {
             >
               Branding
             </TabsTrigger>
-            <TabsTrigger
-              value='subscription'
-              className='data-[state=active]:text-white data-[state=active]:bg-gray-700 data-[state=active]:font-semibold'
-            >
-              Subscription
-            </TabsTrigger>
           </TabsList>
 
           <TabsContent value='dashboard'>
@@ -543,22 +519,10 @@ export default function AdminPage(): JSX.Element {
           </TabsContent>
 
           <TabsContent value='settings'>
-            {isPremiumDisabled ? (
-              <div className='space-y-4'>
-                <PremiumNotice />
-                <div className='pointer-events-none opacity-50'>
-                  <TrackSuggestionsTab
-                    onStateChange={handleTrackSuggestionsStateChange}
-                    initialState={{ maxOffset: 10 }}
-                  />
-                </div>
-              </div>
-            ) : (
-              <TrackSuggestionsTab
-                onStateChange={handleTrackSuggestionsStateChange}
-                initialState={{ maxOffset: 10 }}
-              />
-            )}
+            <TrackSuggestionsTab
+              onStateChange={handleTrackSuggestionsStateChange}
+              initialState={{ maxOffset: 10 }}
+            />
           </TabsContent>
 
           <TabsContent value='playlist'>
@@ -573,33 +537,11 @@ export default function AdminPage(): JSX.Element {
           </TabsContent>
 
           <TabsContent value='analytics'>
-            {isPremiumDisabled ? (
-              <div className='space-y-4'>
-                <PremiumNotice />
-                <div className='pointer-events-none opacity-50'>
-                  <AnalyticsTab username={username} />
-                </div>
-              </div>
-            ) : (
-              <AnalyticsTab username={username} />
-            )}
+            <AnalyticsTab username={username} />
           </TabsContent>
 
           <TabsContent value='branding'>
-            {isPremiumDisabled ? (
-              <div className='space-y-4'>
-                <PremiumNotice />
-                <div className='pointer-events-none opacity-50'>
-                  <BrandingTab />
-                </div>
-              </div>
-            ) : (
-              <BrandingTab />
-            )}
-          </TabsContent>
-
-          <TabsContent value='subscription'>
-            <SubscriptionTab />
+            <BrandingTab />
           </TabsContent>
         </Tabs>
       </div>

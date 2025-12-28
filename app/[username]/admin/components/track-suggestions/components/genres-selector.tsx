@@ -1,22 +1,21 @@
 'use client'
 
-import { useState, Fragment } from 'react'
+import { useState, useEffect, Fragment } from 'react'
 import { Combobox, Transition } from '@headlessui/react'
 import {
   CheckIcon,
   ChevronUpDownIcon,
   XMarkIcon
 } from '@heroicons/react/20/solid'
-import {
-  POPULAR_GENRES,
-  ALL_SPOTIFY_GENRES,
-  type Genre
-} from '@/shared/constants/trackSuggestion'
+
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { createModuleLogger } from '@/shared/utils/logger'
+
+const logger = createModuleLogger('GenresSelector')
 
 interface GenresSelectorProps {
-  selectedGenres: Genre[]
-  onGenresChange: (genres: Genre[]) => void
+  selectedGenres: string[]
+  onGenresChange: (genres: string[]) => void
 }
 
 export function GenresSelector({
@@ -24,13 +23,44 @@ export function GenresSelector({
   onGenresChange
 }: GenresSelectorProps): JSX.Element {
   const [query, setQuery] = useState('')
+  const [allGenres, setAllGenres] = useState<string[]>([])
+  const [isLoading, setIsLoading] = useState(true)
+
+  // Fetch genres from API on mount
+  useEffect(() => {
+    const fetchGenres = async (): Promise<void> => {
+      try {
+        const response = await fetch('/api/genres')
+        if (response.ok) {
+          const data = (await response.json()) as {
+            success: boolean
+            genres: string[]
+          }
+          if (data.success && Array.isArray(data.genres)) {
+            setAllGenres(data.genres)
+          }
+        }
+      } catch (error) {
+        logger(
+          'ERROR',
+          'Failed to fetch genres from API',
+          undefined,
+          error instanceof Error ? error : undefined
+        )
+      } finally {
+        setIsLoading(false)
+      }
+    }
+    void fetchGenres()
+  }, [])
 
   const filteredGenres =
     query.length === 0
-      ? [...POPULAR_GENRES]
-      : ALL_SPOTIFY_GENRES.filter((genre) => {
-          return genre.toLowerCase().includes(query.toLowerCase())
-        })
+      ? allGenres
+      : allGenres
+          .filter((genre) => {
+            return genre.toLowerCase().includes(query.toLowerCase())
+          })
           .sort((a, b) => {
             const queryLower = query.toLowerCase()
             const aLower = a.toLowerCase()
@@ -48,9 +78,8 @@ export function GenresSelector({
 
             return aLower.localeCompare(bLower)
           })
-          .slice(0, 50)
 
-  const removeGenre = (genreToRemove: Genre): void => {
+  const removeGenre = (genreToRemove: string): void => {
     onGenresChange(selectedGenres.filter((genre) => genre !== genreToRemove))
   }
 
@@ -96,8 +125,12 @@ export function GenresSelector({
                 <Combobox.Input
                   className='w-full border-none py-2 pl-3 pr-10 text-sm leading-5 text-foreground focus:ring-0'
                   onChange={(event) => setQuery(event.target.value)}
-                  displayValue={() => ''}
-                  placeholder='Search genres...'
+                  displayValue={(): string => ''}
+                  placeholder={
+                    isLoading
+                      ? 'Loading genres...'
+                      : 'Search genres in database...'
+                  }
                 />
                 <Combobox.Button className='absolute inset-y-0 right-0 flex items-center pr-2'>
                   <ChevronUpDownIcon
@@ -111,19 +144,23 @@ export function GenresSelector({
                 leave='transition ease-in duration-100'
                 leaveFrom='opacity-100'
                 leaveTo='opacity-0'
-                afterLeave={() => setQuery('')}
+                afterLeave={(): void => setQuery('')}
               >
                 <Combobox.Options className='absolute z-10 mt-1 max-h-60 w-full overflow-auto rounded-md bg-[#080a0f] py-1 text-base shadow-md ring-1 ring-black ring-opacity-5 focus:outline-none sm:text-sm'>
-                  {filteredGenres.length === 0 ? (
+                  {isLoading ? (
                     <div className='relative cursor-default select-none px-4 py-2 text-muted-foreground'>
-                      Nothing found.
+                      Loading...
+                    </div>
+                  ) : filteredGenres.length === 0 ? (
+                    <div className='relative cursor-default select-none px-4 py-2 text-muted-foreground'>
+                      Nothing found in database.
                     </div>
                   ) : (
                     filteredGenres.map((genre) => (
                       <Combobox.Option
                         key={genre}
                         value={genre}
-                        className={({ active }) =>
+                        className={({ active }): string =>
                           `relative cursor-pointer select-none py-2 pl-10 pr-4 ${
                             active
                               ? 'bg-accent/50 text-accent-foreground'
@@ -131,7 +168,7 @@ export function GenresSelector({
                           }`
                         }
                       >
-                        {({ selected, active }) => (
+                        {({ selected, active }): JSX.Element => (
                           <>
                             <span
                               className={`block truncate ${selected ? 'font-medium' : 'font-normal'}`}

@@ -30,36 +30,39 @@ export class SubscriptionQueryUtils {
     try {
       const { data, error } = await this.supabase
         .from('profiles')
-        .select(
-          `
-          *,
-          subscriptions!inner(*)
-        `
-        )
+        .select('*')
         .eq('id', profileId)
-        .in('subscriptions.status', ['active', 'canceling'])
         .single()
 
       if (error) {
-        // If no active subscription found, return free plan
         return {
           profile: null,
           subscription: null,
-          planType: 'free',
-          hasPremiumAccess: false
+          planType: 'premium',
+          hasPremiumAccess: true
         }
       }
 
-      const profile = data as Profile
-      const subscription = (data as any).subscriptions as Subscription
+      // Mock a premium subscription structure
+      const mockSubscription: any = {
+        id: 'mock_prem_sub_' + profileId,
+        profile_id: profileId,
+        plan_type: 'premium',
+        payment_type: 'monthly',
+        status: 'active',
+        current_period_start: new Date().toISOString(),
+        current_period_end: new Date(
+          Date.now() + 30 * 24 * 60 * 60 * 1000
+        ).toISOString(),
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      }
 
       return {
-        profile,
-        subscription,
-        planType: (subscription?.plan_type || 'free') as 'free' | 'premium',
-        hasPremiumAccess:
-          subscription?.plan_type === 'premium' &&
-          subscription?.status === 'active'
+        profile: data as Profile,
+        subscription: mockSubscription,
+        planType: 'premium',
+        hasPremiumAccess: true
       }
     } catch (error) {
       logger(
@@ -71,8 +74,8 @@ export class SubscriptionQueryUtils {
       return {
         profile: null,
         subscription: null,
-        planType: 'free',
-        hasPremiumAccess: false
+        planType: 'premium',
+        hasPremiumAccess: true
       }
     }
   }
@@ -91,14 +94,8 @@ export class SubscriptionQueryUtils {
     try {
       const { data, error } = await this.supabase
         .from('profiles')
-        .select(
-          `
-          *,
-          subscriptions!inner(*)
-        `
-        )
+        .select('*')
         .in('id', profileIds)
-        .in('subscriptions.status', ['active', 'canceling'])
 
       if (error) {
         logger(
@@ -112,28 +109,33 @@ export class SubscriptionQueryUtils {
 
       const result: { [key: string]: any } = {}
 
-      // Initialize all requested users with free plan
+      // Initialize all requested users with premium plan
       profileIds.forEach((id) => {
+        // Mock sub per user
+        const mockSubscription: any = {
+          id: 'mock_prem_sub_' + id,
+          profile_id: id,
+          plan_type: 'premium',
+          payment_type: 'monthly',
+          status: 'active',
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        }
+
         result[id] = {
           profile: null,
-          subscription: null,
-          planType: 'free',
-          hasPremiumAccess: false
+          subscription: mockSubscription,
+          planType: 'premium',
+          hasPremiumAccess: true
         }
       })
 
-      // Update with actual data
+      // Update with actual profile data
       data?.forEach((item: any) => {
         const profile = item as Profile
-        const subscription = item.subscriptions as Subscription
 
-        result[profile.id] = {
-          profile,
-          subscription,
-          planType: subscription?.plan_type || 'free',
-          hasPremiumAccess:
-            subscription?.plan_type === 'premium' &&
-            subscription?.status === 'active'
+        if (result[profile.id]) {
+          result[profile.id].profile = profile
         }
       })
 
@@ -349,46 +351,13 @@ export class SubscriptionQueryUtils {
   async batchCheckPremiumAccess(
     profileIds: string[]
   ): Promise<{ [profileId: string]: boolean }> {
-    try {
-      const { data, error } = await this.supabase
-        .from('subscriptions')
-        .select('profile_id')
-        .in('profile_id', profileIds)
-        .eq('plan_type', 'premium')
-        .eq('status', 'active')
+    const result: { [key: string]: boolean } = {}
 
-      if (error) {
-        logger(
-          'ERROR',
-          'Error batch checking premium access',
-          'SubscriptionQueries',
-          error as Error
-        )
-        return {}
-      }
+    profileIds.forEach((id) => {
+      result[id] = true
+    })
 
-      const result: { [key: string]: boolean } = {}
-
-      // Initialize all as false
-      profileIds.forEach((id) => {
-        result[id] = false
-      })
-
-      // Set premium users to true
-      data?.forEach((subscription) => {
-        result[subscription.profile_id] = true
-      })
-
-      return result
-    } catch (error) {
-      logger(
-        'ERROR',
-        'Error batch checking premium access',
-        'SubscriptionQueries',
-        error as Error
-      )
-      return {}
-    }
+    return result
   }
 }
 

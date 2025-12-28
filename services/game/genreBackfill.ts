@@ -181,7 +181,7 @@ async function getGenresFromRelatedArtists(
 /**
  * Fetch genres from MusicBrainz for an artist
  */
-async function fetchGenresFromMusicBrainz(
+export async function fetchGenresFromMusicBrainz(
   artistName: string
 ): Promise<string[]> {
   try {

@@ -1,7 +1,3 @@
-'use client'
-
-import { useEffect, useState } from 'react'
-import { createBrowserClient } from '@supabase/ssr'
 import type { Database } from '@/types/supabase'
 
 type Subscription = Database['public']['Tables']['subscriptions']['Row']
@@ -16,86 +12,34 @@ interface UseSubscriptionReturn {
 }
 
 export function useSubscription(profileId?: string): UseSubscriptionReturn {
-  const [planType, setPlanType] = useState<'free' | 'premium' | null>(null)
-  const [hasPremiumAccess, setHasPremiumAccess] = useState(false)
-  const [subscription, setSubscription] = useState<Subscription | null>(null)
-  const [isLoading, setIsLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-
-  const supabase = createBrowserClient<Database>(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-  )
-
-  const fetchSubscriptionData = async () => {
-    if (!profileId) {
-      setIsLoading(false)
-      return
-    }
-
-    try {
-      setIsLoading(true)
-      setError(null)
-
-      // Get user's current plan type
-      const { data: planTypeData, error: planTypeError } = await supabase.rpc(
-        'get_user_plan_type',
-        { user_profile_id: profileId }
-      )
-
-      if (planTypeError) {
-        console.error('Error getting plan type:', planTypeError)
-        setError('Failed to get subscription plan')
-        setPlanType('free')
-        setHasPremiumAccess(false)
-      } else {
-        const currentPlanType = (planTypeData as 'free' | 'premium') || 'free'
-        setPlanType(currentPlanType)
-        setHasPremiumAccess(currentPlanType === 'premium')
-      }
-
-      // Get active or canceling subscription details
-      const { data: subscriptionData, error: subscriptionError } =
-        await supabase
-          .from('subscriptions')
-          .select('*')
-          .eq('profile_id', profileId)
-          .in('status', ['active', 'canceling'])
-          .order('created_at', { ascending: false })
-          .limit(1)
-
-      if (subscriptionError) {
-        console.error('Error getting subscription:', subscriptionError)
-        setError('Failed to get subscription details')
-      } else {
-        // subscriptionData will be an array, take the first item or null
-        setSubscription(subscriptionData?.[0] || null)
-      }
-    } catch (err) {
-      console.error('Error in fetchSubscriptionData:', err)
-      setError('Failed to load subscription data')
-      setPlanType('free')
-      setHasPremiumAccess(false)
-    } finally {
-      setIsLoading(false)
-    }
-  }
-
-  useEffect(() => {
-    void fetchSubscriptionData()
-  }, [profileId])
-
-  const refetch = async () => {
-    await fetchSubscriptionData()
-  }
-
+  // Always return mocked premium status
   return {
-    planType,
-    hasPremiumAccess,
-    subscription,
-    isLoading,
-    error,
-    refetch
+    planType: 'premium',
+    hasPremiumAccess: true,
+    subscription: {
+      id: 'mock-sub-id',
+      profile_id: profileId ?? 'mock-profile-id',
+      status: 'active',
+      current_period_end: new Date(
+        Date.now() + 30 * 24 * 60 * 60 * 1000
+      ).toISOString(),
+      current_period_start: new Date().toISOString(),
+      cancel_at_period_end: false,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+      stripe_customer_id: 'mock_cust_123',
+      stripe_subscription_id: 'mock_sub_123',
+      plan_id: 'price_premium_mock',
+      trial_start: null,
+      trial_end: null,
+      payment_type: 'stripe',
+      plan_type: 'premium'
+    } as Subscription,
+    isLoading: false,
+    error: null,
+    refetch: async () => {
+      /* No-op */
+    }
   }
 }
 
@@ -104,21 +48,11 @@ export function useFeatureAccess(
   profileId?: string,
   requiredPlan: 'free' | 'premium' = 'free'
 ) {
-  const { planType, hasPremiumAccess, isLoading } = useSubscription(profileId)
-
-  const hasAccess = () => {
-    if (isLoading || !planType) return false
-
-    if (requiredPlan === 'free') return true
-    if (requiredPlan === 'premium') return hasPremiumAccess
-
-    return false
-  }
-
+  // Always return true access for everything
   return {
-    hasAccess: hasAccess(),
-    isLoading,
-    planType
+    hasAccess: true,
+    isLoading: false,
+    planType: 'premium' as const
   }
 }
 

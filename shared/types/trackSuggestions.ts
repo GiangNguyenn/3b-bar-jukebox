@@ -3,10 +3,10 @@ export interface TrackSuggestionsState {
   genres: string[]
   yearRange: [number, number]
   popularity: number
-  allowExplicit: boolean
   maxSongLength: number
-  maxOffset: number
   autoFillTargetSize: number
+  allowExplicit: boolean
+  maxOffset: number
 }
 
 // Type definition for the last suggested track information
@@ -35,9 +35,9 @@ export function isValidTrackSuggestionsState(
     typeof s.yearRange[0] === 'number' &&
     typeof s.yearRange[1] === 'number' &&
     typeof s.popularity === 'number' &&
-    typeof s.allowExplicit === 'boolean' &&
     typeof s.maxSongLength === 'number' &&
-    typeof s.maxOffset === 'number' &&
-    typeof s.autoFillTargetSize === 'number'
+    typeof s.autoFillTargetSize === 'number' &&
+    typeof s.allowExplicit === 'boolean' &&
+    typeof s.maxOffset === 'number'
   )
 }
