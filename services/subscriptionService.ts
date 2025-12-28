@@ -334,34 +334,14 @@ export class SubscriptionService {
    * Get user's current plan type (optimized with caching)
    */
   async getUserPlanType(profileId: string): Promise<'free' | 'premium'> {
-    try {
-      return await subscriptionCache.getUserPlanType(profileId)
-    } catch (error) {
-      logger(
-        'ERROR',
-        'Error getting user plan type',
-        'SubscriptionService',
-        error as Error
-      )
-      return 'free'
-    }
+    return 'premium'
   }
 
   /**
    * Check if user has premium access (optimized with caching)
    */
   async hasPremiumAccess(profileId: string): Promise<boolean> {
-    try {
-      return await subscriptionCache.hasPremiumAccess(profileId)
-    } catch (error) {
-      logger(
-        'ERROR',
-        'Error checking premium access',
-        'SubscriptionService',
-        error as Error
-      )
-      return false
-    }
+    return true
   }
 
   /**
