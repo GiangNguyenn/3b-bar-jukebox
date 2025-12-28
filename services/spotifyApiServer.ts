@@ -383,3 +383,11 @@ export async function getArtistTopTracksServer(
     )
   }
 }
+
+/**
+ * Dummy export to satisfy legacy scripts.
+ * @deprecated Use proper token management.
+ */
+export async function getAdminSpotifyCredentials() {
+  return { spotify_access_token: '' }
+}

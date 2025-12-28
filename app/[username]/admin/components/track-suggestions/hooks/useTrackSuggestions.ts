@@ -1,9 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
-import {
-  FALLBACK_GENRES,
-  type Genre,
-  DEFAULT_MAX_OFFSET
-} from '@/shared/constants/trackSuggestion'
+import { FALLBACK_GENRES, type Genre } from '@/shared/constants/trackSuggestion'
 import { type TrackSuggestionsState } from '@/shared/types/trackSuggestions'
 
 const STORAGE_KEY = 'track-suggestions-state'
@@ -15,10 +11,10 @@ const getInitialState = (
     genres: [...FALLBACK_GENRES.slice(0, 10)],
     yearRange: [1950, new Date().getFullYear()],
     popularity: 50,
-    allowExplicit: false,
     maxSongLength: 10,
-    maxOffset: Math.max(1, DEFAULT_MAX_OFFSET),
     autoFillTargetSize: 10,
+    allowExplicit: true,
+    maxOffset: 50,
     ...initialState
   }
 
@@ -33,8 +29,7 @@ const getInitialState = (
       const parsed = JSON.parse(savedState) as TrackSuggestionsState
       return {
         ...defaultState,
-        ...parsed,
-        maxOffset: Math.max(1, parsed.maxOffset ?? defaultState.maxOffset)
+        ...parsed
       }
     } catch (error) {
       console.error('[TrackSuggestions] Failed to parse localStorage:', error)
@@ -50,9 +45,7 @@ interface UseTrackSuggestionsReturn {
   setGenres: (genres: Genre[]) => void
   setYearRange: (yearRange: [number, number]) => void
   setPopularity: (popularity: number) => void
-  setAllowExplicit: (allowExplicit: boolean) => void
   setMaxSongLength: (maxSongLength: number) => void
-  setMaxOffset: (maxOffset: number) => void
   setAutoFillTargetSize: (autoFillTargetSize: number) => void
 }
 
@@ -112,23 +105,9 @@ export function useTrackSuggestions(
     [updateState]
   )
 
-  const setAllowExplicit = useCallback(
-    (allowExplicit: boolean): void => {
-      updateState({ allowExplicit })
-    },
-    [updateState]
-  )
-
   const setMaxSongLength = useCallback(
     (maxSongLength: number): void => {
       updateState({ maxSongLength })
-    },
-    [updateState]
-  )
-
-  const setMaxOffset = useCallback(
-    (maxOffset: number): void => {
-      updateState({ maxOffset: Math.max(1, maxOffset) })
     },
     [updateState]
   )
@@ -146,9 +125,7 @@ export function useTrackSuggestions(
     setGenres,
     setYearRange,
     setPopularity,
-    setAllowExplicit,
     setMaxSongLength,
-    setMaxOffset,
     setAutoFillTargetSize
   }
 }

@@ -791,6 +791,10 @@ export type Database = {
           spotify_token_expires_at: number
         }[]
       }
+      get_unique_genres: {
+        Args: Record<PropertyKey, never>
+        Returns: { genre: string }[]
+      }
       get_track_popularity_histogram: {
         Args: { p_user_id: string }
         Returns: {

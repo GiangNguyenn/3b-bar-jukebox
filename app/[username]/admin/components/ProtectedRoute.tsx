@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { createBrowserClient } from '@supabase/ssr'
 import type { Database } from '@/types/supabase'
 import { Loading } from '@/components/ui/loading'
+import { useMetadataBackfill } from '@/hooks/useMetadataBackfill'
 
 export function ProtectedRoute({
   children
@@ -88,6 +89,9 @@ export function ProtectedRoute({
 
     void checkSessionAndPremium()
   }, [router, supabase, missingEnv])
+
+  // Run metadata backfill in background for authenticated admins
+  useMetadataBackfill()
 
   if (missingEnv) {
     return (

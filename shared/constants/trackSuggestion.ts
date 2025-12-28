@@ -1419,8 +1419,8 @@ export const ALL_SPOTIFY_GENRES = [
   'Zydeco'
 ] as const
 
-// Genre type represents any valid Spotify genre
-export type Genre = (typeof ALL_SPOTIFY_GENRES)[number]
+// Genre type represents any valid Spotify// Genre type
+export type Genre = string
 
 // Curated, popular genre set used by admin Suggestions UI (Option A)
 // Keep this list small and broadly representative. Review quarterly.

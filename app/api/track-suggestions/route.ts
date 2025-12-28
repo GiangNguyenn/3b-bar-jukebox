@@ -35,9 +35,7 @@ const refreshRequestSchema = z.object({
     z.number().max(new Date().getFullYear())
   ]),
   popularity: z.number().min(0).max(100),
-  allowExplicit: z.boolean(),
   maxSongLength: z.number().min(3).max(20), // In minutes
-  maxOffset: z.number().min(1).max(10000),
   excludedTrackIds: z.array(z.string()).optional() // Optional array of track IDs to exclude
 })
 
@@ -57,7 +55,6 @@ interface RefreshResponse {
       isExcluded: boolean
       isPlayable: boolean
       duration_ms: number
-      explicit: boolean
     }>
     suggestions?: string[]
   }
@@ -128,9 +125,7 @@ export async function POST(
         genres: validatedData.genres,
         yearRange: validatedData.yearRange,
         popularity: validatedData.popularity,
-        allowExplicit: validatedData.allowExplicit,
-        maxSongLength: validatedData.maxSongLength,
-        maxOffset: validatedData.maxOffset
+        maxSongLength: validatedData.maxSongLength
       },
       true // Use app token for server-side operations
     )
