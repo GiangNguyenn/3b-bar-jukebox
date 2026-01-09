@@ -275,8 +275,16 @@ export async function findSuggestedTrack(
         .lte('release_year', endYear)
     }
 
-    // Fetch random tracks
-    const { data: dbTracks, error } = await dbQuery.limit(50) // Get top 50 matches (limit is necessary for performance)
+    // Generate a random offset to vary the result set
+    // Use a larger pool and random offset for better variety
+    const maxOffset = 500 // Maximum offset to use (prevents querying too far into results)
+    const randomOffset = Math.floor(Math.random() * maxOffset)
+
+    // Fetch random tracks using offset-based randomization with larger pool
+    const { data: dbTracks, error } = await dbQuery.range(
+      randomOffset,
+      randomOffset + 99
+    ) // Get 100 tracks starting at random offset
 
     if (error) {
       throw error
@@ -284,7 +292,7 @@ export async function findSuggestedTrack(
 
     logger(
       'INFO',
-      `[findSuggestedTrack] DB Query result: Found ${dbTracks?.length ?? 0} tracks matching criteria before client-side filtering.`
+      `[findSuggestedTrack] DB Query result: Found ${dbTracks?.length ?? 0} tracks (offset: ${randomOffset}) matching criteria before client-side filtering.`
     )
 
     // Log sample if empty to help debugging
