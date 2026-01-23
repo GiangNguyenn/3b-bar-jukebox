@@ -83,11 +83,11 @@ class PlayerLifecycleService {
     new TrackDuplicateDetector()
   private addLog:
     | ((
-        level: LogLevel,
-        message: string,
-        context?: string,
-        error?: Error
-      ) => void)
+      level: LogLevel,
+      message: string,
+      context?: string,
+      error?: Error
+    ) => void)
     | null = null
   private navigationCallback: NavigationCallback | null = null
 
@@ -678,7 +678,7 @@ class PlayerLifecycleService {
     const isNearEnd =
       state.duration > 0 &&
       state.duration - state.position <
-        PLAYER_LIFECYCLE_CONFIG.TRACK_END_THRESHOLD_MS
+      PLAYER_LIFECYCLE_CONFIG.TRACK_END_THRESHOLD_MS
 
     const hasStalled =
       !this.lastKnownState.paused &&
@@ -845,13 +845,13 @@ class PlayerLifecycleService {
       // Set up device management logger
       setDeviceManagementLogger(
         this.addLog ??
-          ((level, message, _context, error) => {
-            if (level === 'WARN') {
-              console.warn(`[DeviceManagement] ${message}`, error)
-            } else if (level === 'ERROR') {
-              console.error(`[DeviceManagement] ${message}`, error)
-            }
-          })
+        ((level, message, _context, error) => {
+          if (level === 'WARN') {
+            console.warn(`[DeviceManagement] ${message}`, error)
+          } else if (level === 'ERROR') {
+            console.error(`[DeviceManagement] ${message}`, error)
+          }
+        })
       )
 
       // Clear any existing cleanup timeout
@@ -1015,7 +1015,13 @@ class PlayerLifecycleService {
             'WARN',
             'Received null state in player_state_changed event. Device is likely inactive.'
           )
-          onStatusChange('reconnecting', 'Device became inactive')
+          // Actively trigger recovery instead of just setting status to reconnecting
+          void this.handleAuthenticationError(
+            'Device became inactive',
+            onStatusChange,
+            onDeviceIdChange,
+            onPlaybackStateChange
+          )
           return
         }
 

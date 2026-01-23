@@ -214,12 +214,12 @@ export default function AdminPage(): JSX.Element {
   const handleTabChange = useCallback((value: string): void => {
     setActiveTab(
       value as
-        | 'dashboard'
-        | 'playlist'
-        | 'settings'
-        | 'logs'
-        | 'analytics'
-        | 'branding'
+      | 'dashboard'
+      | 'playlist'
+      | 'settings'
+      | 'logs'
+      | 'analytics'
+      | 'branding'
     )
   }, [])
 
@@ -289,6 +289,7 @@ export default function AdminPage(): JSX.Element {
     tokenHealthStatus: tokenHealth.status,
     isLoading,
     isReady,
+    playerStatus,
     handleTokenError,
     addLog
   })

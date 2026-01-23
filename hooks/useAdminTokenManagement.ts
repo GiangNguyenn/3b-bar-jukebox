@@ -6,6 +6,7 @@ export interface UseAdminTokenManagementParams {
   tokenHealthStatus: 'valid' | 'error' | 'unknown' | 'expired'
   isLoading: boolean
   isReady: boolean
+  playerStatus: 'initializing' | 'ready' | 'reconnecting' | 'error' | 'disconnected' | 'verifying'
   handleTokenError: () => Promise<void>
   addLog: (
     level: 'WARN' | 'ERROR' | 'INFO' | 'LOG',
@@ -22,18 +23,22 @@ export interface UseAdminTokenManagementParams {
 export function useAdminTokenManagement(
   params: UseAdminTokenManagementParams
 ): void {
-  const { tokenHealthStatus, isLoading, isReady, handleTokenError, addLog } =
+  const { tokenHealthStatus, isLoading, isReady, playerStatus, handleTokenError, addLog } =
     params
 
   // Use ref instead of isMounted pattern for better React practices
   const isMountedRef = useRef(true)
 
   // Handle token errors when health status indicates an error
+  // Allow recovery even if player is not ready (reconnecting/error states need recovery)
   useEffect(() => {
-    if (tokenHealthStatus === 'error' && !isLoading && isReady) {
+    const shouldAttemptRecovery = tokenHealthStatus === 'error' && !isLoading &&
+      (isReady || playerStatus === 'reconnecting' || playerStatus === 'error')
+
+    if (shouldAttemptRecovery) {
       void handleTokenError()
     }
-  }, [tokenHealthStatus, isLoading, isReady, handleTokenError])
+  }, [tokenHealthStatus, isLoading, isReady, playerStatus, handleTokenError])
 
   // Proactive token refresh
   useEffect(() => {
