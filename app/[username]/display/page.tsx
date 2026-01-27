@@ -5,7 +5,7 @@ import { useRef, useEffect } from 'react'
 import type { ReactElement } from 'react'
 import { useNowPlayingTrack } from '@/hooks/useNowPlayingTrack'
 import { useAlbumColors } from '@/hooks/useAlbumColors'
-import { useAudioFeatures } from '@/hooks/useAudioFeatures'
+
 import VisualizationContainer from '@/components/Display/VisualizationContainer'
 import TrackMetadata from '@/components/Display/TrackMetadata'
 import ColorBackground from '@/components/Display/ColorBackground'
@@ -32,7 +32,6 @@ export default function DisplayPage(): ReactElement {
   // Extract track values with proper dependency management
   const trackItem = playbackState?.item
   const albumArtUrl = trackItem?.album?.images?.[0]?.url
-  const trackId = trackItem?.id ?? null
   const trackName = trackItem?.name ?? ''
   const artistName = trackItem?.artists?.[0]?.name ?? ''
   const albumName = trackItem?.album?.name ?? ''
@@ -40,8 +39,8 @@ export default function DisplayPage(): ReactElement {
 
   const { colors, error: colorsError } = useAlbumColors(albumArtUrl)
 
-  // Get audio features for the current track (hook already handles trackId changes)
-  const { features: audioFeatures } = useAudioFeatures(trackId)
+  // Get audio features - feature removed due to API deprecation
+  // const { features: audioFeatures } = useAudioFeatures(trackId)
 
   // Preload album art image for faster loading
   useEffect(() => {
@@ -153,7 +152,7 @@ export default function DisplayPage(): ReactElement {
           {/* Multi-layered Visualization - takes up entire screen */}
           <div className='absolute inset-0'>
             <VisualizationContainer
-              audioFeatures={audioFeatures}
+              audioFeatures={undefined}
               colors={colors}
               isPlaying={isPlaying}
             />
