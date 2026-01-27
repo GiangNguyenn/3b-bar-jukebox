@@ -158,6 +158,9 @@ export default function AdminPage(): JSX.Element {
     autoPlayService.setUsername(username)
     autoPlayService.setDeviceId(deviceId)
 
+    // Set logger for diagnostics
+    autoPlayService.setLogger(addLog)
+
     // Start the service if not already running
     if (!autoPlayService.isActive()) {
       autoPlayService.start()
@@ -180,6 +183,29 @@ export default function AdminPage(): JSX.Element {
       // The service is a singleton and should persist across re-renders
     }
   }, [username, deviceId, isReady, queue, trackSuggestions.state, addLog])
+
+  // Monitor connection status and trigger auto-fill on reconnection
+  useEffect(() => {
+    if (healthStatus.connection === 'connected' && username) {
+      const autoPlayService = getAutoPlayService()
+      if (autoPlayService.isActive()) {
+        // Trigger immediate check when connection is restored
+        // This minimizes downtime after a disconnection
+        addLog(
+          'INFO',
+          'Connection restored - triggering auto-fill check',
+          'AdminPage'
+        )
+
+        // Use type assertion to access private/protected method if needed,
+        // or rely on the fact that we can call public methods that trigger it.
+        // updateQueue triggers a check, so we can pass the current queue.
+        if (queue) {
+          autoPlayService.updateQueue(queue)
+        }
+      }
+    }
+  }, [healthStatus.connection, username, queue, addLog])
 
   // Initialize the player when the component mounts
   useEffect(() => {

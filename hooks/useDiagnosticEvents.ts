@@ -133,7 +133,8 @@ export function useDiagnosticEvents(): DiagnosticEvent[] {
             'PlaybackRecovery',
             'DeviceHealth',
             'TokenHealth',
-            'SpotifyPlayer'
+            'SpotifyPlayer',
+            'AutoPlayService'
           ].includes(log.context)
       )
       .slice(0, 5) // Only process most recent 5

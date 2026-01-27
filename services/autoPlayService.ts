@@ -2,6 +2,7 @@ import { JukeboxQueueItem } from '@/shared/types/queue'
 import { sendApiRequest } from '@/shared/api'
 import { QueueManager } from './queueManager'
 import { createModuleLogger } from '@/shared/utils/logger'
+import { LogLevel } from '@/hooks/ConsoleLogsProvider'
 import { SpotifyPlaybackState } from '@/shared/types/spotify'
 import {
   FALLBACK_GENRES,
@@ -55,6 +56,14 @@ class AutoPlayService {
   private trackSuggestionsState: TrackSuggestionsState | null = null // User's track suggestions configuration
   private isAutoPlayDisabled: boolean = false // Flag to temporarily disable auto-play during manual operations
   private isInitialized: boolean = false // Flag to track if the service is properly initialized
+  private addLog:
+    | ((
+        level: LogLevel,
+        message: string,
+        context?: string,
+        error?: Error
+      ) => void)
+    | null = null
 
   constructor(config: AutoPlayServiceConfig = {}) {
     this.checkInterval = config.checkInterval || 1000 // Increased to 1000ms baseline to reduce API calls
@@ -140,6 +149,17 @@ class AutoPlayService {
 
   public setUsername(username: string | null): void {
     this.username = username
+  }
+
+  public setLogger(
+    logger: (
+      level: LogLevel,
+      message: string,
+      context?: string,
+      error?: Error
+    ) => void
+  ): void {
+    this.addLog = logger
   }
 
   public updateQueue(queue: JukeboxQueueItem[]): void {
@@ -830,10 +850,15 @@ class AutoPlayService {
           )
 
           if (!response.ok) {
-            logger(
-              'ERROR',
-              `[AutoFill] Attempt ${attempts} - REQUEST FAILED - Status: ${response.status}`
-            )
+            const statusMessage = `REQUEST FAILED - Status: ${response.status}`
+            logger('ERROR', `[AutoFill] Attempt ${attempts} - ${statusMessage}`)
+            if (this.addLog) {
+              this.addLog(
+                'ERROR',
+                `Auto-fill request failed: ${response.status}`,
+                'AutoPlayService'
+              )
+            }
 
             try {
               errorBody = await response.json()
@@ -915,10 +940,16 @@ class AutoPlayService {
             throw new Error('Failed to get track suggestions for auto-fill.')
           }
         } catch (fetchError) {
-          logger(
-            'ERROR',
-            `[AutoFill] Attempt ${attempts} - FETCH ERROR: ${fetchError}`
-          )
+          const errorMessage = `FETCH ERROR: ${fetchError}`
+          logger('ERROR', `[AutoFill] Attempt ${attempts} - ${errorMessage}`)
+          if (this.addLog) {
+            this.addLog(
+              'ERROR',
+              'Network error fetching track suggestions',
+              'AutoPlayService',
+              fetchError instanceof Error ? fetchError : undefined
+            )
+          }
           throw new Error('Failed to get track suggestions for auto-fill.')
         }
 
@@ -1149,12 +1180,21 @@ class AutoPlayService {
             // Show popup notification for auto-added track
             this.showAutoFillNotification(notificationMetadata)
           } catch (error) {
+            const errorMessage = `Failed to add track ${track.id} to queue`
             logger(
               'ERROR',
-              `[AutoFill] Attempt ${attempts} - Failed to add track ${track.id} to queue`,
+              `[AutoFill] Attempt ${attempts} - ${errorMessage}`,
               undefined,
               error as Error
             )
+            if (this.addLog) {
+              this.addLog(
+                'ERROR',
+                errorMessage,
+                'AutoPlayService',
+                error instanceof Error ? error : undefined
+              )
+            }
           }
         }
 
@@ -1397,6 +1437,14 @@ class AutoPlayService {
           undefined,
           error as Error
         )
+        if (this.addLog) {
+          this.addLog(
+            'ERROR',
+            'Fallback to random track failed',
+            'AutoPlayService',
+            error instanceof Error ? error : undefined
+          )
+        }
       }
     }
     logger(

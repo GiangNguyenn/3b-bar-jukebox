@@ -40,8 +40,14 @@ export function useConnectionHealth(): ConnectionStatus {
     }
   }
 
+  // Adaptive polling: check more frequently when disconnected to detect recovery faster
+  const interval =
+    connectionStatus === 'connected'
+      ? 60000 // 60 seconds when healthy
+      : 10000 // 10 seconds when disconnected
+
   useHealthInterval(updateConnectionStatus, {
-    interval: CONNECTION_CHECK_INTERVAL,
+    interval,
     enabled: true
   })
 
