@@ -347,32 +347,48 @@ class PlayerLifecycleService {
     )
   }
 
+  /**
+   * Returns current internal state diagnostics
+   */
+  getDiagnostics(): { authRetryCount: number; activeTimeouts: string[] } {
+    return {
+      authRetryCount: this.authRetryCount,
+      activeTimeouts: this.timeoutManager.getActiveKeys()
+    }
+  }
+
   private async verifyDeviceWithTimeout(deviceId: string): Promise<boolean> {
-    return new Promise((resolve) => {
-      const timeoutKey = 'deviceVerification'
+    const timeoutKey = 'deviceVerification'
+    const TIMEOUT_MS = PLAYER_LIFECYCLE_CONFIG.GRACE_PERIODS.verificationTimeout // 5000ms
 
-      // Clear any existing timeout first
-      this.timeoutManager.clear(timeoutKey)
-
-      const timeout = setTimeout(() => {
-        this.log('WARN', 'Device verification timed out')
-        this.timeoutManager.clear(timeoutKey)
-        resolve(false)
-      }, PLAYER_LIFECYCLE_CONFIG.GRACE_PERIODS.verificationTimeout)
-
-      this.timeoutManager.set(timeoutKey, timeout)
-
-      validateDevice(deviceId)
-        .then((result) => {
-          this.timeoutManager.clear(timeoutKey)
-          resolve(result.isValid && !(result.device?.isRestricted ?? false))
-        })
-        .catch((error) => {
-          this.timeoutManager.clear(timeoutKey)
-          this.log('ERROR', 'Device verification failed', error)
-          resolve(false)
-        })
+    // Create a strict timeout promise
+    let timeoutId: NodeJS.Timeout
+    const timeoutPromise = new Promise<boolean>((resolve) => {
+      timeoutId = setTimeout(() => {
+        this.log('WARN', `Device verification timed out after ${TIMEOUT_MS}ms`)
+        resolve(false) // Timed out
+      }, TIMEOUT_MS)
+      this.timeoutManager.set(timeoutKey, timeoutId)
     })
+
+    // Create the verification promise
+    const verificationPromise = validateDevice(deviceId)
+      .then(
+        (result) => result.isValid && !(result.device?.isRestricted ?? false)
+      )
+      .catch((error) => {
+        this.log('ERROR', 'Device verification failed', error)
+        return false
+      })
+
+    try {
+      // Race them
+      const result = await Promise.race([verificationPromise, timeoutPromise])
+      return result
+    } finally {
+      // Always cleanup
+      this.timeoutManager.clear(timeoutKey)
+    }
   }
 
   private handleNotReady(
@@ -923,8 +939,10 @@ class PlayerLifecycleService {
           if (!deviceVerified) {
             this.log(
               'WARN',
-              'Device setup verification failed, but proceeding anyway'
+              'Device setup verification failed/timed-out. Proceeding optimistically.'
             )
+            // We used to fail here or just log. Now we proceed because 'ready' event fired.
+            // If the device is truly broken, transferPlaybackToDevice will fail next.
           }
 
           this.deviceId = device_id
@@ -933,7 +951,7 @@ class PlayerLifecycleService {
           const transferSuccess = await transferPlaybackToDevice(device_id)
           if (!transferSuccess) {
             this.log('ERROR', 'Failed to transfer playback to new device')
-            onStatusChange('error', 'Failed to transfer playback')
+            onStatusChange('error', 'Failed to transfer playback to new device')
             return
           }
 

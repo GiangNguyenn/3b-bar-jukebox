@@ -3,6 +3,7 @@
 import { useMemo } from 'react'
 import pkg from '@/package.json'
 import { useSpotifyPlayerStore } from './useSpotifyPlayer'
+import { playerLifecycleService } from '@/services/playerLifecycle'
 import {
   useTokenHealth,
   useDeviceHealth,
@@ -175,7 +176,11 @@ export function useSpotifyHealthMonitor(): HealthStatus {
         lastError,
         lastStatusChange
       ),
-      systemInfo: getSystemInfo()
+      systemInfo: getSystemInfo(),
+      internalState:
+        typeof window !== 'undefined'
+          ? playerLifecycleService.getDiagnostics()
+          : undefined
     }
   }, [
     deviceId,

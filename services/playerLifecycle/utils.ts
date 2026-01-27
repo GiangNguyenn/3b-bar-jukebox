@@ -44,6 +44,13 @@ export class TimeoutManager {
   has(key: string): boolean {
     return this.timeouts.has(key)
   }
+
+  /**
+   * Get list of all active timeout keys
+   */
+  getActiveKeys(): string[] {
+    return Array.from(this.timeouts.keys())
+  }
 }
 
 /**

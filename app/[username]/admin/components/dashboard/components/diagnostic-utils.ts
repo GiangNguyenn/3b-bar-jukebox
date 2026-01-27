@@ -233,6 +233,15 @@ function formatTechnicalDetails(
       )
     }
   }
+
+  if (healthStatus.internalState) {
+    lines.push('')
+    lines.push('--- INTERNAL STATE ---')
+    lines.push(`Auth Retry Count: ${healthStatus.internalState.authRetryCount}`)
+    lines.push(
+      `Active Timeouts: ${healthStatus.internalState.activeTimeouts.length > 0 ? healthStatus.internalState.activeTimeouts.join(', ') : 'None'}`
+    )
+  }
   return lines
 }
 

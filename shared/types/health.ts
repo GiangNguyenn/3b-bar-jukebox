@@ -19,6 +19,10 @@ export interface HealthStatus {
   queueState?: QueueState
   failureMetrics?: FailureMetrics
   systemInfo?: SystemInfo
+  internalState?: {
+    authRetryCount: number
+    activeTimeouts: string[]
+  }
 }
 
 // System information for diagnostics
