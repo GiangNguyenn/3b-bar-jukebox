@@ -5,12 +5,12 @@ export interface HealthStatus {
   token: 'valid' | 'expired' | 'error' | 'unknown'
   tokenExpiringSoon: boolean
   connection:
-  | 'connected'
-  | 'disconnected'
-  | 'good'
-  | 'poor'
-  | 'unstable'
-  | 'unknown'
+    | 'connected'
+    | 'disconnected'
+    | 'good'
+    | 'poor'
+    | 'unstable'
+    | 'unknown'
   // Diagnostic fields
   lastError?: string
   lastErrorTimestamp?: number

@@ -364,10 +364,10 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     const errorDetails =
       error instanceof Error
         ? {
-          message: error.message,
-          stack: error.stack,
-          name: error.name
-        }
+            message: error.message,
+            stack: error.stack,
+            name: error.name
+          }
         : { message: String(error) }
 
     logger(

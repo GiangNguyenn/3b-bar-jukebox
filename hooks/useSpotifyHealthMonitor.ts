@@ -44,11 +44,11 @@ function buildPlaybackDetails(
   return {
     currentTrack: playbackState.item
       ? {
-        id: playbackState.item.id,
-        name: playbackState.item.name,
-        artist: playbackState.item.artists.map((a) => a.name).join(', '),
-        uri: playbackState.item.uri
-      }
+          id: playbackState.item.id,
+          name: playbackState.item.name,
+          artist: playbackState.item.artists.map((a) => a.name).join(', '),
+          uri: playbackState.item.uri
+        }
       : undefined,
     progress: playbackState.progress_ms ?? undefined,
     duration: playbackState.item?.duration_ms ?? undefined,
@@ -68,11 +68,11 @@ function buildQueueState(): QueueState {
   return {
     nextTrack: nextTrack
       ? {
-        id: nextTrack.tracks.spotify_track_id,
-        name: nextTrack.tracks.name,
-        artist: nextTrack.tracks.artist,
-        queueId: nextTrack.id
-      }
+          id: nextTrack.tracks.spotify_track_id,
+          name: nextTrack.tracks.name,
+          artist: nextTrack.tracks.artist,
+          queueId: nextTrack.id
+        }
       : undefined,
     queueLength: queue.length,
     isEmpty: queue.length === 0,
