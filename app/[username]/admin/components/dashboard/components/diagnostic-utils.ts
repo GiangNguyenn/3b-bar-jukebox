@@ -50,6 +50,24 @@ export function formatEventType(type: string): string {
     .join(' ')
 }
 
+function formatSystemInfo(healthStatus: HealthStatus): string[] {
+  const lines: string[] = []
+  if (!healthStatus.systemInfo) {
+    return lines
+  }
+
+  const { systemInfo } = healthStatus
+  lines.push('--- SYSTEM INFO ---')
+  lines.push(`App Version: ${systemInfo.appVersion}`)
+  lines.push(`User Agent: ${systemInfo.userAgent}`)
+  lines.push(`Platform: ${systemInfo.platform}`)
+  lines.push(`Screen Resolution: ${systemInfo.screenResolution}`)
+  lines.push(`Window Size: ${systemInfo.windowSize}`)
+  lines.push(`Timezone: ${systemInfo.timezone}`)
+  lines.push(`Connection Type: ${systemInfo.connectionType}`)
+  return lines
+}
+
 function formatSystemStatus(
   healthStatus: HealthStatus,
   playerStatus: PlayerStatus | undefined,
@@ -229,6 +247,12 @@ export function formatDiagnosticsForClipboard(
   lines.push('=== SYSTEM DIAGNOSTICS ===')
   lines.push(`Generated: ${new Date().toISOString()}`)
   lines.push('')
+
+  const systemInfo = formatSystemInfo(healthStatus)
+  if (systemInfo.length > 0) {
+    lines.push(...systemInfo)
+    lines.push('')
+  }
 
   lines.push(...formatSystemStatus(healthStatus, playerStatus, isReady))
   lines.push('')

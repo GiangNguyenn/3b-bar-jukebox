@@ -5,12 +5,12 @@ export interface HealthStatus {
   token: 'valid' | 'expired' | 'error' | 'unknown'
   tokenExpiringSoon: boolean
   connection:
-    | 'connected'
-    | 'disconnected'
-    | 'good'
-    | 'poor'
-    | 'unstable'
-    | 'unknown'
+  | 'connected'
+  | 'disconnected'
+  | 'good'
+  | 'poor'
+  | 'unstable'
+  | 'unknown'
   // Diagnostic fields
   lastError?: string
   lastErrorTimestamp?: number
@@ -18,6 +18,18 @@ export interface HealthStatus {
   playbackDetails?: PlaybackDetails
   queueState?: QueueState
   failureMetrics?: FailureMetrics
+  systemInfo?: SystemInfo
+}
+
+// System information for diagnostics
+export interface SystemInfo {
+  userAgent: string
+  platform: string
+  screenResolution: string
+  windowSize: string
+  timezone: string
+  connectionType: string
+  appVersion: string
 }
 
 // Additional health-related types

@@ -18,24 +18,12 @@ const nextConfig = {
   experimental: {
     serverComponentsExternalPackages: []
   },
-  // Vercel-specific configuration
-  ...(process.env.VERCEL
-    ? {
-        functions: {
-          'app/api/game/init-round/route.ts': {
-            maxDuration: 30 // 30 seconds for Pro plan
-          }
-        }
-      }
-    : {})
-  // async rewrites() {
-  //   return [
-  //     {
-  //       source: '/api/auth/:path*',
-  //       destination: '/api/auth'
-  //     }
-  //   ]
-  // }
+  webpack: (config) => {
+    config.ignoreWarnings = [
+      { module: /node_modules\/@supabase\/realtime-js/ }
+    ]
+    return config
+  }
 }
 
 export default nextConfig

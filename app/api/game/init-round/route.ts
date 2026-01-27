@@ -25,7 +25,9 @@ type CacheValue = {
 const initRoundCache = new Map<string, CacheValue>()
 
 // Add caching to reduce redundant DGS engine runs for same track
+// Add caching to reduce redundant DGS engine runs for same track
 export const revalidate = 30 // 30-second cache
+export const maxDuration = 30 // 30 seconds for Pro plan
 
 const targetArtistSchema = z.object({
   id: z.string().optional(),
@@ -362,10 +364,10 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     const errorDetails =
       error instanceof Error
         ? {
-            message: error.message,
-            stack: error.stack,
-            name: error.name
-          }
+          message: error.message,
+          stack: error.stack,
+          name: error.name
+        }
         : { message: String(error) }
 
     logger(

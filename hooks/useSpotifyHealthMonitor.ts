@@ -1,4 +1,7 @@
+'use client'
+
 import { useMemo } from 'react'
+import pkg from '@/package.json'
 import { useSpotifyPlayerStore } from './useSpotifyPlayer'
 import {
   useTokenHealth,
@@ -11,7 +14,8 @@ import {
   HealthStatus,
   PlaybackDetails,
   QueueState,
-  FailureMetrics
+  FailureMetrics,
+  SystemInfo
 } from '@/shared/types/health'
 import { queueManager } from '@/services/queueManager'
 import {
@@ -40,11 +44,11 @@ function buildPlaybackDetails(
   return {
     currentTrack: playbackState.item
       ? {
-          id: playbackState.item.id,
-          name: playbackState.item.name,
-          artist: playbackState.item.artists.map((a) => a.name).join(', '),
-          uri: playbackState.item.uri
-        }
+        id: playbackState.item.id,
+        name: playbackState.item.name,
+        artist: playbackState.item.artists.map((a) => a.name).join(', '),
+        uri: playbackState.item.uri
+      }
       : undefined,
     progress: playbackState.progress_ms ?? undefined,
     duration: playbackState.item?.duration_ms ?? undefined,
@@ -64,11 +68,11 @@ function buildQueueState(): QueueState {
   return {
     nextTrack: nextTrack
       ? {
-          id: nextTrack.tracks.spotify_track_id,
-          name: nextTrack.tracks.name,
-          artist: nextTrack.tracks.artist,
-          queueId: nextTrack.id
-        }
+        id: nextTrack.tracks.spotify_track_id,
+        name: nextTrack.tracks.name,
+        artist: nextTrack.tracks.artist,
+        queueId: nextTrack.id
+      }
       : undefined,
     queueLength: queue.length,
     isEmpty: queue.length === 0,
@@ -96,6 +100,38 @@ function buildFailureMetrics(
     consecutiveFailures,
     lastFailureTimestamp: hasValidError ? lastStatusChange : undefined,
     lastSuccessfulOperation: hasValidSuccess ? lastStatusChange : undefined
+  }
+}
+
+/**
+ * Captures system information
+ */
+function getSystemInfo(): SystemInfo {
+  if (typeof window === 'undefined') {
+    return {
+      userAgent: 'SSR',
+      platform: 'Server',
+      screenResolution: 'unknown',
+      windowSize: 'unknown',
+      timezone: 'UTC',
+      connectionType: 'unknown',
+      appVersion: pkg.version
+    }
+  }
+
+  const conn =
+    (navigator as any).connection ||
+    (navigator as any).mozConnection ||
+    (navigator as any).webkitConnection
+
+  return {
+    userAgent: navigator.userAgent,
+    platform: navigator.platform,
+    screenResolution: `${window.screen.width}x${window.screen.height}`,
+    windowSize: `${window.innerWidth}x${window.innerHeight}`,
+    timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+    connectionType: conn ? conn.effectiveType || 'unknown' : 'unknown',
+    appVersion: pkg.version
   }
 }
 
@@ -138,7 +174,8 @@ export function useSpotifyHealthMonitor(): HealthStatus {
         playerStatus,
         lastError,
         lastStatusChange
-      )
+      ),
+      systemInfo: getSystemInfo()
     }
   }, [
     deviceId,
