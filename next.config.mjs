@@ -19,9 +19,7 @@ const nextConfig = {
     serverComponentsExternalPackages: []
   },
   webpack: (config) => {
-    config.ignoreWarnings = [
-      { module: /node_modules\/@supabase\/realtime-js/ }
-    ]
+    config.ignoreWarnings = [{ module: /node_modules\/@supabase\/realtime-js/ }]
     return config
   }
 }

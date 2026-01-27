@@ -45,12 +45,22 @@ export async function updateTokenInDatabase(
     spotify_token_expires_at: newExpiresAt
   }
 
+  /*
+   * Optimistic Concurrency Control (OCC):
+   * Only update if the current refresh token matches what we expect.
+   * This prevents race conditions where multiple requests try to refresh the token simultaneously.
+   * If another request has already refreshed the token, this update will affect 0 rows.
+   */
   const result = await updateWithRetry(
     supabase,
     'profiles',
     async (builder) => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      return await builder.update(updateData as any).eq('id', profileId)
+      return await builder
+        .update(updateData as any)
+        .eq('id', profileId)
+        .eq('spotify_refresh_token', tokenData.currentRefreshToken) // OCC Check
+        .select() // Return updated rows to check if update actually happened
     },
     undefined, // Use default retry config
     `Update token for profile ${profileId}`
@@ -83,6 +93,22 @@ export async function updateTokenInDatabase(
             ? result.error.message
             : 'Failed to update token in database',
         isRecoverable
+      }
+    }
+  }
+
+  // Check if update actually happened (OCC)
+  if (Array.isArray(result.data) && result.data.length === 0) {
+    logger(
+      'WARN',
+      `Token update skipped (Race Condition): Database token changed since read. Profile: ${profileId}`
+    )
+    return {
+      success: false,
+      error: {
+        code: 'RACE_CONDITION',
+        message: 'Token was updated by another process',
+        isRecoverable: true // Retry will fetch the new token
       }
     }
   }

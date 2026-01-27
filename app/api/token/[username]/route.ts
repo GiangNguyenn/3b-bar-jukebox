@@ -3,11 +3,7 @@ import { cookies } from 'next/headers'
 import { NextResponse } from 'next/server'
 import type { Database } from '@/types/supabase'
 import { createModuleLogger } from '@/shared/utils/logger'
-import {
-  refreshTokenWithRetry,
-  isNetworkErrorRecoverable
-} from '@/recovery/tokenRecovery'
-import { updateTokenInDatabase } from '@/recovery/tokenDatabaseUpdate'
+import { TokenService } from '@/services/tokenService'
 
 const logger = createModuleLogger('API Token')
 
@@ -20,25 +16,7 @@ interface ErrorResponse {
 
 interface TokenResponse {
   access_token: string
-  refresh_token: string
   expires_in: number
-}
-
-interface UserProfile {
-  id: string
-  spotify_access_token: string | null
-  spotify_refresh_token: string | null
-  spotify_token_expires_at: number | null
-}
-
-// Environment variables
-const SPOTIFY_CLIENT_ID = process.env.SPOTIFY_CLIENT_ID
-const SPOTIFY_CLIENT_SECRET = process.env.SPOTIFY_CLIENT_SECRET
-
-if (!SPOTIFY_CLIENT_ID || !SPOTIFY_CLIENT_SECRET) {
-  throw new Error(
-    'Missing required environment variables: SPOTIFY_CLIENT_ID and/or SPOTIFY_CLIENT_SECRET'
-  )
 }
 
 export const dynamic = 'force-dynamic'
@@ -65,176 +43,66 @@ export async function GET(
               )
             } catch {
               // The `setAll` method was called from a Server Component.
-              // This can be ignored if you have middleware refreshing
-              // user sessions.
             }
           }
         }
       }
     )
 
-    // Get the user's profile from database by display_name
-    const { data: userProfile, error: profileError } = await supabase
-      .from('profiles')
-      .select(
-        'id, spotify_access_token, spotify_refresh_token, spotify_token_expires_at'
-      )
-      .ilike('display_name', params.username)
-      .single()
+    // 1. Enforce Authentication
+    const {
+      data: { user },
+      error: authError
+    } = await supabase.auth.getUser()
 
-    if (profileError || !userProfile) {
-      logger(
-        'ERROR',
-        `Error fetching user profile for username: "${params.username}"`,
-        JSON.stringify(profileError, null, 2)
-      )
+    if (authError || !user) {
+      logger('WARN', `Unauthenticated access attempt for ${params.username}`)
       return NextResponse.json(
         {
-          error: 'Failed to get user credentials',
-          code: 'USER_PROFILE_ERROR',
-          status: 500
+          error: 'Unauthorized',
+          code: 'UNAUTHORIZED',
+          status: 401
         },
-        { status: 500 }
+        { status: 401 }
       )
     }
 
-    // Type guard to ensure userProfile has required fields
-    const typedProfile = userProfile as UserProfile
-    if (
-      !typedProfile.spotify_access_token ||
-      !typedProfile.spotify_refresh_token ||
-      typedProfile.spotify_token_expires_at === null
-    ) {
-      return NextResponse.json(
-        {
-          error: 'Invalid user profile data - missing Spotify credentials',
-          code: 'INVALID_PROFILE_DATA',
-          status: 500
-        },
-        { status: 500 }
-      )
-    }
+    // Optional: Enforce that user can only request their own token?
+    // For now, consistent with plan, we just enforce they are a logged-in user at all.
+    // Ideally checks if user.id matches the profile of params.username, or if user is admin.
 
-    // Check if token needs refresh
-    const tokenExpiresAt = typedProfile.spotify_token_expires_at
-    const now = Math.floor(Date.now() / 1000)
+    // 2. Use TokenService to get valid token
+    const tokenService = new TokenService(supabase)
 
-    if (tokenExpiresAt <= now) {
-      // Token is expired, refresh it
-      if (!SPOTIFY_CLIENT_ID || !SPOTIFY_CLIENT_SECRET) {
-        logger('ERROR', 'Missing Spotify client credentials')
-        return NextResponse.json(
-          {
-            error: 'Server configuration error',
-            code: 'INVALID_CLIENT_CREDENTIALS',
-            status: 500
-          },
-          { status: 500 }
-        )
-      }
-
-      // Use recovery module for token refresh with retry logic
-      const refreshResult = await refreshTokenWithRetry(
-        typedProfile.spotify_refresh_token,
-        SPOTIFY_CLIENT_ID,
-        SPOTIFY_CLIENT_SECRET
+    try {
+      const tokenResult = await tokenService.getValidTokenByUsername(
+        params.username
       )
 
-      if (!refreshResult.success || !refreshResult.accessToken) {
-        const errorCode = refreshResult.error?.code ?? 'TOKEN_REFRESH_ERROR'
-        const errorMessage =
-          refreshResult.error?.message ?? 'Failed to refresh token'
-
-        logger('ERROR', `Token refresh failed: ${errorCode} - ${errorMessage}`)
-
-        return NextResponse.json(
-          {
-            error: errorMessage,
-            code: errorCode,
-            status: refreshResult.error?.isRecoverable ? 503 : 500
-          },
-          { status: refreshResult.error?.isRecoverable ? 503 : 500 }
-        )
-      }
-
-      // Update the token in the database with retry logic
-      // This is critical - if database update fails, we should not return the token
-      const updateResult = await updateTokenInDatabase(
-        supabase,
-        String(userProfile.id),
-        {
-          accessToken: refreshResult.accessToken,
-          refreshToken: refreshResult.refreshToken,
-          expiresIn: refreshResult.expiresIn,
-          currentRefreshToken: typedProfile.spotify_refresh_token
-        }
-      )
-
-      if (!updateResult.success) {
-        const errorCode = updateResult.error?.code ?? 'DATABASE_UPDATE_ERROR'
-        const errorMessage =
-          updateResult.error?.message ?? 'Failed to update token in database'
-
-        logger(
-          'ERROR',
-          `Token refresh succeeded but database update failed: ${errorCode} - ${errorMessage}`
-        )
-
-        // Return error - don't return token if we can't persist it
-        return NextResponse.json(
-          {
-            error: errorMessage,
-            code: errorCode,
-            status: updateResult.error?.isRecoverable ? 503 : 500
-          },
-          { status: updateResult.error?.isRecoverable ? 503 : 500 }
-        )
-      }
-
-      // Calculate expires_in (seconds remaining) - use refreshResult.expiresIn if available
-      // If expiresIn is undefined, use a safe default (3600 seconds = 1 hour)
-      // Don't use tokenExpiresAt as fallback since it's already expired
-      const expiresIn = refreshResult.expiresIn ?? 3600 // Default to 1 hour if expiresIn is not provided
-
+      // 3. Return ONLY access_token (No refresh_token leakage)
       return NextResponse.json({
-        access_token: refreshResult.accessToken,
-        refresh_token:
-          refreshResult.refreshToken ?? typedProfile.spotify_refresh_token,
-        expires_in: expiresIn
+        access_token: tokenResult.accessToken,
+        expires_in: tokenResult.expiresIn
       })
+    } catch (error) {
+      // Handle known errors (like user not found)
+      const message = error instanceof Error ? error.message : 'Unknown error'
+
+      if (message.includes('User') && message.includes('not found')) {
+        return NextResponse.json(
+          {
+            error: 'User not found',
+            code: 'USER_NOT_FOUND',
+            status: 404
+          },
+          { status: 404 }
+        )
+      }
+
+      throw error // Let the outer catch handle it
     }
-
-    // Token is still valid, calculate expires_in (seconds remaining)
-    const expiresIn = Math.max(
-      0,
-      tokenExpiresAt - Math.floor(Date.now() / 1000)
-    )
-
-    return NextResponse.json({
-      access_token: typedProfile.spotify_access_token,
-      refresh_token: typedProfile.spotify_refresh_token,
-      expires_in: expiresIn
-    })
   } catch (error) {
-    // Check if it's a network error that might be recoverable
-    if (isNetworkErrorRecoverable(error)) {
-      logger(
-        'WARN',
-        'Network error in token endpoint (potentially recoverable)',
-        'TokenUsername',
-        error instanceof Error ? error : undefined
-      )
-      return NextResponse.json(
-        {
-          error: 'Network error. Please try again.',
-          code: 'NETWORK_ERROR',
-          status: 503
-        },
-        { status: 503 }
-      )
-    }
-
-    logger('ERROR', 'Error in GET request', undefined, error as Error)
+    logger('ERROR', 'Error in token endpoint', undefined, error as Error)
     return NextResponse.json(
       {
         error: 'Internal server error',

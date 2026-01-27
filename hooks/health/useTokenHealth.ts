@@ -34,14 +34,120 @@ export function useTokenHealth(): TokenHealthStatus {
       return
     }
 
-    try {
-      const response = await fetch('/api/token', {
-        method: 'GET',
-        cache: 'no-cache',
-        signal
-      })
+    // Retry logic for transient network errors
+    const MAX_RETRIES = 3
+    let lastError: unknown = null
+    let response: Response | null = null
 
-      if (!response.ok) {
+    for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+      try {
+        response = await fetch('/api/token', {
+          method: 'GET',
+          cache: 'no-cache',
+          signal
+        })
+
+        if (!response.ok) {
+          // HTTP errors (400, 401, 403, 500, etc.) are not retried
+          // These indicate a real problem with the token or server
+          safeUpdateStatus({
+            status: 'error',
+            expiringSoon: false
+          })
+          if (!isAborted()) {
+            addLog(
+              'ERROR',
+              `Token validation failed: ${response.status} ${response.statusText}`,
+              'TokenHealth'
+            )
+          }
+          return
+        }
+
+        // Success - proceed with parsing
+        lastError = null
+        break
+      } catch (error) {
+        // Network errors (fetch failed, timeout, etc.) are retried
+        lastError = error
+        response = null
+
+        // Don't retry if aborted
+        if (isAbortError(error) || isAborted()) {
+          return
+        }
+
+        // If this was the last attempt, fall through to error handling
+        if (attempt === MAX_RETRIES - 1) {
+          break
+        }
+
+        // Exponential backoff: 1s, 2s
+        const delay = 1000 * Math.pow(2, attempt)
+        if (!isAborted()) {
+          addLog(
+            'WARN',
+            `Token validation attempt ${attempt + 1}/${MAX_RETRIES} failed. Retrying in ${delay}ms...`,
+            'TokenHealth'
+          )
+        }
+
+        // Wait before retrying
+        await new Promise((resolve) => setTimeout(resolve, delay))
+
+        // Check if aborted during delay
+        if (isAborted()) {
+          return
+        }
+      }
+    }
+
+    // If we still have an error after all retries, handle it
+    if (lastError || !response) {
+      safeUpdateStatus({
+        status: 'error',
+        expiringSoon: false
+      })
+      if (lastError) {
+        handleHealthError(
+          lastError,
+          addLog,
+          'TokenHealth',
+          'Token validation error'
+        )
+      }
+      return
+    }
+
+    // Parse the response
+    try {
+      const dataRaw = await response.json()
+      const parseResult = safeParseTokenHealthResponse(dataRaw)
+
+      if (!parseResult.success) {
+        safeUpdateStatus({
+          status: 'error',
+          expiringSoon: false
+        })
+        if (!isAborted()) {
+          addLog('ERROR', 'Invalid token health response format', 'TokenHealth')
+        }
+        return
+      }
+
+      const data: TokenHealthResponse = parseResult.data
+
+      // Check expiresIn or expires_in (API may return either)
+      const expiresIn = data.expiresIn ?? data.expires_in ?? undefined
+
+      if (expiresIn === undefined) {
+        // No expiry info, assume valid
+        safeUpdateStatus({ status: 'valid', expiringSoon: false })
+        return
+      }
+
+      // Validate expiresIn is a number
+      if (typeof expiresIn !== 'number' || expiresIn < 0) {
         safeUpdateStatus({
           status: 'error',
           expiringSoon: false
@@ -49,109 +155,51 @@ export function useTokenHealth(): TokenHealthStatus {
         if (!isAborted()) {
           addLog(
             'ERROR',
-            `Token validation failed: ${response.status} ${response.statusText}`,
+            `Invalid expiresIn value: ${expiresIn}`,
             'TokenHealth'
           )
         }
         return
       }
 
-      try {
-        const dataRaw = await response.json()
-        const parseResult = safeParseTokenHealthResponse(dataRaw)
-
-        if (!parseResult.success) {
-          safeUpdateStatus({
-            status: 'error',
-            expiringSoon: false
-          })
-          if (!isAborted()) {
-            addLog(
-              'ERROR',
-              'Invalid token health response format',
-              'TokenHealth'
-            )
-          }
-          return
-        }
-
-        const data: TokenHealthResponse = parseResult.data
-
-        // Check expiresIn or expires_in (API may return either)
-        const expiresIn = data.expiresIn ?? data.expires_in ?? undefined
-
-        if (expiresIn === undefined) {
-          // No expiry info, assume valid
-          safeUpdateStatus({ status: 'valid', expiringSoon: false })
-          return
-        }
-
-        // Validate expiresIn is a number
-        if (typeof expiresIn !== 'number' || expiresIn < 0) {
-          safeUpdateStatus({
-            status: 'error',
-            expiringSoon: false
-          })
-          if (!isAborted()) {
-            addLog(
-              'ERROR',
-              `Invalid expiresIn value: ${expiresIn}`,
-              'TokenHealth'
-            )
-          }
-          return
-        }
-
-        if (expiresIn < TOKEN_EXPIRY_THRESHOLDS.CRITICAL) {
-          safeUpdateStatus({
-            status: 'valid',
-            expiringSoon: true
-          })
-          if (!isAborted()) {
-            addLog(
-              'ERROR',
-              `Token expiring critically soon: ${expiresIn}s remaining`,
-              'TokenHealth'
-            )
-          }
-        } else if (expiresIn < TOKEN_EXPIRY_THRESHOLDS.WARNING) {
-          safeUpdateStatus({
-            status: 'valid',
-            expiringSoon: true
-          })
-          if (!isAborted()) {
-            addLog(
-              'WARN',
-              `Token expiring soon: ${expiresIn}s remaining`,
-              'TokenHealth'
-            )
-          }
-        } else {
-          safeUpdateStatus({ status: 'valid', expiringSoon: false })
-        }
-      } catch (parseError) {
+      if (expiresIn < TOKEN_EXPIRY_THRESHOLDS.CRITICAL) {
         safeUpdateStatus({
-          status: 'error',
-          expiringSoon: false
+          status: 'valid',
+          expiringSoon: true
         })
-        handleHealthError(
-          parseError,
-          addLog,
-          'TokenHealth',
-          'Failed to parse token health response'
-        )
+        if (!isAborted()) {
+          addLog(
+            'ERROR',
+            `Token expiring critically soon: ${expiresIn}s remaining`,
+            'TokenHealth'
+          )
+        }
+      } else if (expiresIn < TOKEN_EXPIRY_THRESHOLDS.WARNING) {
+        safeUpdateStatus({
+          status: 'valid',
+          expiringSoon: true
+        })
+        if (!isAborted()) {
+          addLog(
+            'WARN',
+            `Token expiring soon: ${expiresIn}s remaining`,
+            'TokenHealth'
+          )
+        }
+      } else {
+        safeUpdateStatus({ status: 'valid', expiringSoon: false })
       }
-    } catch (error) {
-      // Handle AbortError silently (component unmounted)
-      if (isAbortError(error)) {
-        return
-      }
-
+    } catch (parseError) {
       safeUpdateStatus({
         status: 'error',
         expiringSoon: false
       })
-      handleHealthError(error, addLog, 'TokenHealth', 'Token validation error')
+      handleHealthError(
+        parseError,
+        addLog,
+        'TokenHealth',
+        'Failed to parse token health response'
+      )
     }
   }
 
