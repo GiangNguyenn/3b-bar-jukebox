@@ -87,7 +87,34 @@ function isWikidataResponse(data: unknown): data is WikidataResponse {
   )
 }
 
-// Helper for retrying fetches
+// Simple in-memory cache for Wikidata responses
+interface CacheEntry {
+  data: WikidataResponse
+  timestamp: number
+}
+
+const wikidataCache = new Map<string, CacheEntry>()
+const CACHE_TTL = 60 * 60 * 1000 // 1 hour
+
+function getCachedWikidata(wikidataId: string): WikidataResponse | null {
+  const cached = wikidataCache.get(wikidataId)
+  if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
+    return cached.data
+  }
+  if (cached) {
+    wikidataCache.delete(wikidataId) // Remove stale entry
+  }
+  return null
+}
+
+function cacheWikidata(wikidataId: string, data: WikidataResponse): void {
+  wikidataCache.set(wikidataId, {
+    data,
+    timestamp: Date.now()
+  })
+}
+
+// Helper for retrying fetches with special handling for rate limits
 async function fetchWithRetry(
   url: string,
   options: RequestInit = {},
@@ -107,7 +134,11 @@ async function fetchWithRetry(
       lastError = error
       // Don't wait on the last attempt
       if (i < retries - 1) {
-        const delay = baseDelay * Math.pow(2, i)
+        // Use longer delays for 429 rate limit errors
+        const is429 = error instanceof Error && error.message.includes('429')
+        const delay = is429
+          ? 5000 * (i + 1) // 5s, 10s, 15s for rate limits
+          : baseDelay * Math.pow(2, i) // 1s, 2s, 4s for other errors
         console.warn(
           `Fetch to ${url} failed (attempt ${i + 1}/${retries}). Retrying in ${delay}ms...`,
           error
@@ -222,21 +253,33 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
           const wikidataId = wikipediaRelation.url.resource.split('/').pop()
           if (wikidataId) {
             try {
-              const wikidataResponse = await fetchWithRetry(
-                `https://www.wikidata.org/w/api.php?action=wbgetentities&ids=${wikidataId}&format=json&props=sitelinks`
-              )
-              if (wikidataResponse.ok) {
-                const wikidataData: unknown = await wikidataResponse.json()
-                if (isWikidataResponse(wikidataData)) {
-                  const sitelink =
-                    wikidataData.entities[wikidataId]?.sitelinks?.enwiki
-                  if (sitelink) {
-                    // Construct the URL from the sitelink title
-                    wikipediaUrl = `https://en.wikipedia.org/wiki/${sitelink.title.replace(
-                      / /g,
-                      '_'
-                    )}`
+              // Check cache first
+              let wikidataData = getCachedWikidata(wikidataId)
+
+              if (!wikidataData) {
+                // Cache miss - fetch from API
+                const wikidataResponse = await fetchWithRetry(
+                  `https://www.wikidata.org/w/api.php?action=wbgetentities&ids=${wikidataId}&format=json&props=sitelinks`
+                )
+                if (wikidataResponse.ok) {
+                  const fetchedData: unknown = await wikidataResponse.json()
+                  if (isWikidataResponse(fetchedData)) {
+                    wikidataData = fetchedData
+                    // Cache the successful response
+                    cacheWikidata(wikidataId, fetchedData)
                   }
+                }
+              }
+
+              if (wikidataData) {
+                const sitelink =
+                  wikidataData.entities[wikidataId]?.sitelinks?.enwiki
+                if (sitelink) {
+                  // Construct the URL from the sitelink title
+                  wikipediaUrl = `https://en.wikipedia.org/wiki/${sitelink.title.replace(
+                    / /g,
+                    '_'
+                  )}`
                 }
               }
             } catch (err) {
@@ -300,7 +343,74 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
 
     return NextResponse.json({ extract: summaryData.extract })
   } catch (error) {
-    console.error('Unexpected error in artist-extract:', error)
+    // Type for Node.js system errors
+    interface SystemError {
+      code?: string
+      syscall?: string
+      errno?: number
+    }
+
+    // Detailed error logging for diagnostics
+    const errorCause = error instanceof Error ? error.cause : undefined
+    const systemError = errorCause as SystemError | undefined
+
+    const errorDetails = {
+      timestamp: new Date().toISOString(),
+      artistName,
+      error: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined,
+      cause: errorCause
+    }
+
+    // Classify error type for better diagnostics
+    if (error instanceof Error) {
+      const errorMessage = error.message.toLowerCase()
+
+      // Network/connectivity errors
+      if (
+        systemError?.code === 'ECONNRESET' ||
+        systemError?.code === 'ETIMEDOUT' ||
+        systemError?.code === 'ENOTFOUND' ||
+        systemError?.code === 'ECONNREFUSED' ||
+        errorMessage.includes('fetch failed') ||
+        errorMessage.includes('network')
+      ) {
+        console.error('[ARTIST-EXTRACT] Network connectivity error:', {
+          ...errorDetails,
+          errorType: 'NETWORK_ERROR',
+          errorCode: systemError?.code,
+          syscall: systemError?.syscall
+        })
+      }
+      // Rate limiting errors
+      else if (
+        errorMessage.includes('429') ||
+        errorMessage.includes('rate limit')
+      ) {
+        console.error('[ARTIST-EXTRACT] Rate limit exceeded:', {
+          ...errorDetails,
+          errorType: 'RATE_LIMIT_ERROR'
+        })
+      }
+      // Service unavailable errors
+      else if (errorMessage.includes('500') || errorMessage.includes('503')) {
+        console.error('[ARTIST-EXTRACT] External service error:', {
+          ...errorDetails,
+          errorType: 'SERVICE_ERROR'
+        })
+      }
+      // All other errors
+      else {
+        console.error('[ARTIST-EXTRACT] Unexpected error:', {
+          ...errorDetails,
+          errorType: 'UNKNOWN_ERROR'
+        })
+      }
+    } else {
+      console.error('[ARTIST-EXTRACT] Non-standard error:', errorDetails)
+    }
+
+    // Generic user-facing error message
     return NextResponse.json(
       { error: 'An unexpected error occurred' },
       { status: 500 }
