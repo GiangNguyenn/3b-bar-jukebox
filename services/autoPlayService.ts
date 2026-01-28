@@ -33,6 +33,7 @@ interface AutoPlayServiceConfig {
   username?: string | null // Username for auto-fill operations
   autoFillTargetSize?: number // Target number of tracks for auto-fill (default: 10)
   autoFillMaxAttempts?: number // Maximum attempts for auto-fill (default: 20)
+  queueCheckInterval?: number // How often to check queue for auto-fill (default: 10000ms)
 }
 
 class AutoPlayService {
@@ -56,6 +57,9 @@ class AutoPlayService {
   private trackSuggestionsState: TrackSuggestionsState | null = null // User's track suggestions configuration
   private isAutoPlayDisabled: boolean = false // Flag to temporarily disable auto-play during manual operations
   private isInitialized: boolean = false // Flag to track if the service is properly initialized
+  private isPolling = false // Guard flag to prevent overlapping requests
+  private lastQueueCheckTime = 0
+  private readonly QUEUE_CHECK_INTERVAL: number // Check queue periodically, not every poll
   private addLog:
     | ((
         level: LogLevel,
@@ -75,6 +79,7 @@ class AutoPlayService {
     this.username = config.username || null
     this.autoFillTargetSize = config.autoFillTargetSize || 10 // Default fallback, will be overridden by track suggestions state
     this.autoFillMaxAttempts = config.autoFillMaxAttempts || 20
+    this.QUEUE_CHECK_INTERVAL = config.queueCheckInterval || 10000 // Default to 10 seconds
     this.queueManager = QueueManager.getInstance()
   }
 
@@ -85,6 +90,7 @@ class AutoPlayService {
     }
 
     this.isRunning = true
+    this.isPolling = false // Reset polling state
 
     // Start with the configured check interval
     this.startPolling()
@@ -136,6 +142,7 @@ class AutoPlayService {
     }
 
     this.isRunning = false
+    this.isPolling = false
 
     if (this.intervalRef) {
       clearInterval(this.intervalRef)
@@ -242,12 +249,29 @@ class AutoPlayService {
   }
 
   private async checkPlaybackState(): Promise<void> {
+    // Prevent overlapping polling requests to avoid race conditions
+    if (this.isPolling) {
+      logger(
+        'WARN',
+        'Skipping playback check - previous check still in progress'
+      )
+      return
+    }
+
+    this.isPolling = true
+
     try {
       const currentState = await this.getCurrentPlaybackState()
 
-      // Periodically check if queue needs auto-fill (even when no playback state)
-      // This ensures auto-fill happens even if playback is stopped or no device is active
-      if (this.isInitialized && this.username) {
+      // Throttled queue checks - only check queue periodically instead of every playback poll
+      // This reduces unnecessary API calls and improves performance
+      const now = Date.now()
+      if (
+        this.isInitialized &&
+        this.username &&
+        now - this.lastQueueCheckTime > this.QUEUE_CHECK_INTERVAL
+      ) {
+        this.lastQueueCheckTime = now
         void this.checkAndAutoFillQueue()
       }
 
@@ -326,6 +350,8 @@ class AutoPlayService {
         undefined,
         error as Error
       )
+    } finally {
+      this.isPolling = false
     }
   }
 
@@ -794,7 +820,14 @@ class AutoPlayService {
               `[AutoFill] Exclusions total after cooldown merge: ${excludedTrackIds.length}`
             )
           }
-        } catch {}
+        } catch (error) {
+          // Non-critical: Cooldown loading failure doesn't prevent auto-fill,
+          // we just won't exclude tracks in cooldown this time
+          logger(
+            'LOG',
+            `[AutoFill] Failed to load cooldown exclusions: ${error instanceof Error ? error.message : 'Unknown error'}`
+          )
+        }
 
         logger(
           'INFO',
@@ -1087,7 +1120,14 @@ class AutoPlayService {
                   'INFO',
                   `[AutoFill] Recorded track addition to 24-hour cooldown (context=${contextId}, trackId=${trackDetails.id}, totalTracked=${Object.keys(updated.trackTimestamps).length})`
                 )
-              } catch {}
+              } catch (error) {
+                // Non-critical: Cooldown recording failure doesn't prevent track addition,
+                // we just won't track this particular track in the cooldown
+                logger(
+                  'LOG',
+                  `[AutoFill] Failed to record track in cooldown: ${error instanceof Error ? error.message : 'Unknown error'}`
+                )
+              }
             }
 
             // Update the last suggested track cache
@@ -1288,7 +1328,14 @@ class AutoPlayService {
           new Set([...excludedTrackIds, ...tracksInCooldown])
         )
       }
-    } catch {}
+    } catch (error) {
+      // Non-critical: Cooldown loading failure doesn't prevent fallback track selection,
+      // we just won't exclude tracks in cooldown this time
+      logger(
+        'LOG',
+        `[Fallback] Failed to load cooldown exclusions: ${error instanceof Error ? error.message : 'Unknown error'}`
+      )
+    }
 
     let attempts = 0
     const maxAttempts = 5
@@ -1411,7 +1458,14 @@ class AutoPlayService {
               'INFO',
               `[Fallback] Recorded track addition to 24-hour cooldown (trackId=${result.track.spotify_track_id})`
             )
-          } catch {}
+          } catch (error) {
+            // Non-critical: Cooldown recording failure doesn't prevent track addition,
+            // we just won't track this particular track in the cooldown
+            logger(
+              'LOG',
+              `[Fallback] Failed to record track in cooldown: ${error instanceof Error ? error.message : 'Unknown error'}`
+            )
+          }
 
           // Show popup notification for fallback track
           this.showAutoFillNotification({

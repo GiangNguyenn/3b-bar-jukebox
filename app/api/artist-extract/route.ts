@@ -201,7 +201,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
         continue
       }
 
-      if (!relationsResponse || !relationsResponse.ok) {
+      if (!relationsResponse?.ok) {
         console.warn(`Could not fetch relations for MBID ${mbid}, skipping.`)
         continue
       }
