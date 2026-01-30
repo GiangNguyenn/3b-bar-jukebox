@@ -148,16 +148,37 @@ class TokenManager {
     return { error: null, code: undefined }
   }
 
+  private async fetchWithTimeout(
+    url: string,
+    options: RequestInit = {},
+    timeout: number = 10000
+  ): Promise<Response> {
+    const controller = new AbortController()
+    const timeoutId = setTimeout(() => controller.abort(), timeout)
+    try {
+      const response = await fetch(url, {
+        ...options,
+        signal: controller.signal
+      })
+      return response
+    } finally {
+      clearTimeout(timeoutId)
+    }
+  }
+
   private async refreshToken(): Promise<string> {
     let lastError: Error | null = null
     let lastErrorCode: string | undefined
 
     try {
       // Try user-specific token first
-      const tryUser = await fetch(`${this.config.baseUrl}/api/token`, {
-        cache: 'no-store',
-        headers: { 'Content-Type': 'application/json' }
-      })
+      const tryUser = await this.fetchWithTimeout(
+        `${this.config.baseUrl}/api/token`,
+        {
+          cache: 'no-store',
+          headers: { 'Content-Type': 'application/json' }
+        }
+      )
       if (tryUser.ok) {
         try {
           const dataRaw = await tryUser.json()
@@ -184,9 +205,12 @@ class TokenManager {
       }
 
       // Fallback 1: admin token endpoint
-      const tryAdmin = await fetch(`${this.config.baseUrl}/api/auth/token`, {
-        cache: 'no-store'
-      })
+      const tryAdmin = await this.fetchWithTimeout(
+        `${this.config.baseUrl}/api/auth/token`,
+        {
+          cache: 'no-store'
+        }
+      )
       if (tryAdmin.ok) {
         try {
           const adminDataRaw = await tryAdmin.json()
@@ -217,7 +241,7 @@ class TokenManager {
       // Only attempt if username is configured
       if (this.config.publicTokenUsername) {
         try {
-          const tryPublic = await fetch(
+          const tryPublic = await this.fetchWithTimeout(
             `${this.config.baseUrl}/api/token/${encodeURIComponent(this.config.publicTokenUsername)}`,
             { cache: 'no-store' }
           )

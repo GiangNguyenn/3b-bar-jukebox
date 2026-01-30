@@ -116,7 +116,8 @@ function getSystemInfo(): SystemInfo {
       windowSize: 'unknown',
       timezone: 'UTC',
       connectionType: 'unknown',
-      appVersion: pkg.version
+      appVersion: pkg.version,
+      uptime: 0
     }
   }
 
@@ -132,7 +133,8 @@ function getSystemInfo(): SystemInfo {
     windowSize: `${window.innerWidth}x${window.innerHeight}`,
     timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
     connectionType: conn ? conn.effectiveType || 'unknown' : 'unknown',
-    appVersion: pkg.version
+    appVersion: pkg.version,
+    uptime: performance.now() / 1000
   }
 }
 

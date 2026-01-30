@@ -54,6 +54,7 @@ interface ApiProps {
   public?: boolean
   token?: string
   statisticsTracker?: ApiStatisticsTracker
+  timeout?: number
 }
 
 const SPOTIFY_API_URL =
@@ -174,7 +175,8 @@ export const sendApiRequest = async <T>({
   useAppToken = false,
   token: providedToken,
   debounceTime = DEFAULT_DEBOUNCE_TIME,
-  statisticsTracker
+  statisticsTracker,
+  timeout = 15000 // Default 15s timeout
 }: ApiProps): Promise<T> => {
   // 1. Circuit Breaker: Fail fast if globally rate limited
   if (!isLocalApi && isRateLimited()) {
@@ -224,12 +226,21 @@ export const sendApiRequest = async <T>({
       }
 
       const startTime = Date.now()
-      const response = await fetch(url, {
-        method,
-        headers,
-        body: body ? JSON.stringify(body) : undefined,
-        ...config
-      })
+      const controller = new AbortController()
+      const timeoutId = setTimeout(() => controller.abort(), timeout)
+
+      let response: Response
+      try {
+        response = await fetch(url, {
+          method,
+          headers,
+          body: body ? JSON.stringify(body) : undefined,
+          signal: controller.signal,
+          ...config
+        })
+      } finally {
+        clearTimeout(timeoutId)
+      }
       const durationMs = Date.now() - startTime
 
       // Track API calls using the statistics tracker
@@ -393,7 +404,7 @@ export const sendApiRequest = async <T>({
       const data = await response.json()
 
       return data as T
-    } catch (error) {
+    } catch (error: unknown) {
       if (apiLogger) {
         apiLogger('ERROR', `[API Exception] ${method}: ${url}`, 'API', error)
       } else {
@@ -401,6 +412,12 @@ export const sendApiRequest = async <T>({
       }
       if (error instanceof ApiError) {
         throw error
+      }
+      // Handle abort (timeout) errors specifically
+      if (error instanceof Error && error.name === 'AbortError') {
+        throw new ApiError(`Request timed out after ${timeout}ms`, {
+          status: 408 // Request Timeout
+        })
       }
       throw new ApiError(
         error instanceof Error

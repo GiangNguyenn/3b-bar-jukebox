@@ -34,6 +34,7 @@ export interface SystemInfo {
   timezone: string
   connectionType: string
   appVersion: string
+  uptime: number
 }
 
 // Additional health-related types

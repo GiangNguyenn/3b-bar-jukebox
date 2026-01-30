@@ -50,6 +50,13 @@ export function formatEventType(type: string): string {
     .join(' ')
 }
 
+function formatUptime(seconds: number): string {
+  const h = Math.floor(seconds / 3600)
+  const m = Math.floor((seconds % 3600) / 60)
+  const s = Math.floor(seconds % 60)
+  return `${h}h ${m}m ${s}s`
+}
+
 function formatSystemInfo(healthStatus: HealthStatus): string[] {
   const lines: string[] = []
   if (!healthStatus.systemInfo) {
@@ -65,6 +72,9 @@ function formatSystemInfo(healthStatus: HealthStatus): string[] {
   lines.push(`Window Size: ${systemInfo.windowSize}`)
   lines.push(`Timezone: ${systemInfo.timezone}`)
   lines.push(`Connection Type: ${systemInfo.connectionType}`)
+  if (systemInfo.uptime !== undefined) {
+    lines.push(`System Uptime: ${formatUptime(systemInfo.uptime)}`)
+  }
   return lines
 }
 
