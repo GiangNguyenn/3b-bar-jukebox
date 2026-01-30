@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { useHealthInterval } from './utils/useHealthInterval'
 
 type ConnectionStatus = 'connected' | 'disconnected'
@@ -50,6 +50,29 @@ export function useConnectionHealth(): ConnectionStatus {
     interval,
     enabled: true
   })
+
+  // Listen for browser online/offline events for immediate updates
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+
+    const handleOnline = () => {
+      // Small delay to allow network to stabilize
+      setTimeout(updateConnectionStatus, 1000)
+    }
+
+    const handleOffline = () => {
+      setConnectionStatus('disconnected')
+      lastConnectionStatus.current = 'disconnected'
+    }
+
+    window.addEventListener('online', handleOnline)
+    window.addEventListener('offline', handleOffline)
+
+    return () => {
+      window.removeEventListener('online', handleOnline)
+      window.removeEventListener('offline', handleOffline)
+    }
+  }, [])
 
   return connectionStatus
 }

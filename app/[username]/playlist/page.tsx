@@ -338,7 +338,7 @@ export default function PlaylistPage(): JSX.Element {
     )
   }
 
-  if (playlistError) {
+  if (playlistError && (!queue || queue.length === 0)) {
     const errorMessage = hasErrorMessage(playlistError)
       ? playlistError.message
       : 'An unknown error occurred while fetching the playlist.'
@@ -449,6 +449,18 @@ export default function PlaylistPage(): JSX.Element {
           variant={voteFeedback.variant}
           autoDismissMs={3000}
         />
+      )}
+
+      {/* Offline/Error Warning Banner */}
+      {playlistError && queue && queue.length > 0 && (
+        <div className='text-white fixed left-0 right-0 top-0 z-50 flex items-center justify-center bg-yellow-600/90 px-4 py-2 backdrop-blur-sm'>
+          <p className='text-center text-sm font-medium'>
+            {hasErrorMessage(playlistError)
+              ? playlistError.message
+              : 'Connection issue'}{' '}
+            - Showing cached playlist
+          </p>
+        </div>
       )}
 
       {/* Custom Header with Branding */}
