@@ -22,15 +22,24 @@ export function useBackgroundUpdates() {
           return
         }
 
-        const response = await fetch('/api/game/lazy-update-tick', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({
-            token
+        const controller = new AbortController()
+        const timeoutId = setTimeout(() => controller.abort(), 10000)
+
+        let response: Response
+        try {
+          response = await fetch('/api/game/lazy-update-tick', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+              token
+            }),
+            signal: controller.signal
           })
-        })
+        } finally {
+          clearTimeout(timeoutId)
+        }
 
         if (response.ok) {
           await response.json()

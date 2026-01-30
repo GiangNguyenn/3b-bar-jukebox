@@ -90,9 +90,18 @@ class QueueManager {
 
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
       try {
-        const response = await fetch(`/api/queue/${queueId}`, {
-          method: 'DELETE'
-        })
+        const controller = new AbortController()
+        const timeoutId = setTimeout(() => controller.abort(), 10000) // 10s timeout
+        let response: Response
+
+        try {
+          response = await fetch(`/api/queue/${queueId}`, {
+            method: 'DELETE',
+            signal: controller.signal
+          })
+        } finally {
+          clearTimeout(timeoutId)
+        }
 
         if (response.ok) {
           // Success - remove from pending deletes

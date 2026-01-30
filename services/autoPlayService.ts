@@ -509,7 +509,17 @@ class AutoPlayService {
     }
 
     try {
-      const response = await fetch(`/api/playlist/${this.username}`)
+      const controller = new AbortController()
+      const timeoutId = setTimeout(() => controller.abort(), 10000) // 10s timeout
+
+      let response: Response
+      try {
+        response = await fetch(`/api/playlist/${this.username}`, {
+          signal: controller.signal
+        })
+      } finally {
+        clearTimeout(timeoutId)
+      }
 
       if (!response.ok) {
         logger(
@@ -868,14 +878,22 @@ class AutoPlayService {
         let errorBody: any
 
         try {
-          response = await fetch('/api/track-suggestions', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              ...requestBody,
-              excludedTrackIds
+          const controller = new AbortController()
+          const timeoutId = setTimeout(() => controller.abort(), 15000) // 15s timeout for AI generation
+
+          try {
+            response = await fetch('/api/track-suggestions', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                ...requestBody,
+                excludedTrackIds
+              }),
+              signal: controller.signal
             })
-          })
+          } finally {
+            clearTimeout(timeoutId)
+          }
 
           logger(
             'INFO',
@@ -1056,18 +1074,24 @@ class AutoPlayService {
             )
 
             // Add track to queue
-            const playlistResponse = await fetch(
-              `/api/playlist/${this.username}`,
-              {
+            const controller = new AbortController()
+            const timeoutId = setTimeout(() => controller.abort(), 10000) // 10s timeout
+            let playlistResponse: Response
+
+            try {
+              playlistResponse = await fetch(`/api/playlist/${this.username}`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                   tracks: trackDetails,
                   initialVotes: 1, // Auto-fill tracks get 1 vote
                   source: 'system' // Mark as system-initiated
-                })
-              }
-            )
+                }),
+                signal: controller.signal
+              })
+            } finally {
+              clearTimeout(timeoutId)
+            }
 
             if (!playlistResponse.ok) {
               const playlistError = await playlistResponse.json()
@@ -1138,18 +1162,24 @@ class AutoPlayService {
                 if (trackDetails.artists && trackDetails.artists.length > 0) {
                   const artistId = trackDetails.artists[0].id
                   if (artistId && artistId.trim() !== '') {
-                    const artistResponse = await fetch(
-                      `https://api.spotify.com/v1/artists/${artistId}`,
-                      {
-                        headers: {
-                          Authorization: `Bearer ${await this.getAccessToken()}`
+                    const controller = new AbortController()
+                    const timeoutId = setTimeout(() => controller.abort(), 5000)
+                    try {
+                      const artistResponse = await fetch(
+                        `https://api.spotify.com/v1/artists/${artistId}`,
+                        {
+                          headers: {
+                            Authorization: `Bearer ${await this.getAccessToken()}`
+                          },
+                          signal: controller.signal
                         }
+                      )
+                      if (artistResponse.ok) {
+                        const artistData = await artistResponse.json()
+                        artistGenres = artistData.genres || []
                       }
-                    )
-
-                    if (artistResponse.ok) {
-                      const artistData = await artistResponse.json()
-                      artistGenres = artistData.genres || []
+                    } finally {
+                      clearTimeout(timeoutId)
                     }
                   }
                 }
@@ -1161,20 +1191,27 @@ class AutoPlayService {
                 // Continue with empty genres array if fetch fails
               }
 
-              await fetch('/api/track-suggestions', {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                  name: trackDetails.name,
-                  artist: trackDetails.artists[0]?.name || 'Unknown Artist',
-                  album: trackDetails.album.name,
-                  uri: trackDetails.uri,
-                  popularity: trackDetails.popularity,
-                  duration_ms: trackDetails.duration_ms,
-                  preview_url: null, // Spotify API doesn't return preview_url in track details
-                  genres: artistGenres
+              const controller = new AbortController()
+              const timeoutId = setTimeout(() => controller.abort(), 5000)
+              try {
+                await fetch('/api/track-suggestions', {
+                  method: 'PUT',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                    name: trackDetails.name,
+                    artist: trackDetails.artists[0]?.name || 'Unknown Artist',
+                    album: trackDetails.album.name,
+                    uri: trackDetails.uri,
+                    popularity: trackDetails.popularity,
+                    duration_ms: trackDetails.duration_ms,
+                    preview_url: null, // Spotify API doesn't return preview_url in track details
+                    genres: artistGenres
+                  }),
+                  signal: controller.signal
                 })
-              })
+              } finally {
+                clearTimeout(timeoutId)
+              }
               logger(
                 'INFO',
                 `[AutoFill] Attempt ${attempts} - Updated last suggested track cache: ${trackDetails.name}`
@@ -1348,11 +1385,20 @@ class AutoPlayService {
           `[Fallback] Sending random track request (attempt ${attempts}): ${JSON.stringify(requestBody)}`
         )
 
-        const response = await fetch('/api/random-track', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(requestBody)
-        })
+        const controller = new AbortController()
+        const timeoutId = setTimeout(() => controller.abort(), 10000)
+        let response: Response
+
+        try {
+          response = await fetch('/api/random-track', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(requestBody),
+            signal: controller.signal
+          })
+        } finally {
+          clearTimeout(timeoutId)
+        }
 
         if (!response.ok) {
           const errorBody = await response.json()
@@ -1402,9 +1448,15 @@ class AutoPlayService {
           )
 
           // Add the random track to the queue
-          const playlistResponse = await fetch(
-            `/api/playlist/${this.username}`,
-            {
+          const playlistController = new AbortController()
+          const playlistTimeoutId = setTimeout(
+            () => playlistController.abort(),
+            10000
+          )
+          let playlistResponse: Response
+
+          try {
+            playlistResponse = await fetch(`/api/playlist/${this.username}`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
@@ -1419,9 +1471,12 @@ class AutoPlayService {
                 },
                 initialVotes: 1, // Fallback tracks get 1 vote
                 source: 'fallback' // Mark as fallback-initiated
-              })
-            }
-          )
+              }),
+              signal: playlistController.signal
+            })
+          } finally {
+            clearTimeout(playlistTimeoutId)
+          }
 
           if (!playlistResponse.ok) {
             const playlistError = await playlistResponse.json()
