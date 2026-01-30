@@ -3,6 +3,7 @@ import { z } from 'zod'
 import { supabase, queryWithRetry } from '@/lib/supabase'
 import { createModuleLogger } from '@/shared/utils/logger'
 import { parseWithType } from '@/shared/types/utils'
+import { supabaseAdmin } from '@/lib/supabase-admin'
 import type { JukeboxQueueItem } from '@/shared/types/queue'
 
 const logger = createModuleLogger('API Playlist')
@@ -316,7 +317,7 @@ export async function POST(
     const upsertResult = await queryWithRetry<{
       id: string
     }>(
-      supabase
+      supabaseAdmin
         .from('tracks')
         .upsert(
           {

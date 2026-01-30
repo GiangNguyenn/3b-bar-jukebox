@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { sendApiRequest } from '@/shared/api'
-import { supabase } from '@/lib/supabase'
+import { supabaseAdmin } from '@/lib/supabase-admin'
 import { createModuleLogger } from '@/shared/utils/logger'
 import {
   safeBackfillTrackGenre,
@@ -111,7 +111,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     }
 
     // Upsert track to Supabase tracks table
-    const { error: upsertError } = await supabase.from('tracks').upsert(
+    const { error: upsertError } = await supabaseAdmin.from('tracks').upsert(
       {
         spotify_track_id: trackData.id,
         name: trackData.name,

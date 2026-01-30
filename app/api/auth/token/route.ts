@@ -1,7 +1,9 @@
 import { NextResponse } from 'next/server'
+import { createServerClient } from '@supabase/ssr'
+import { cookies } from 'next/headers'
 import { createModuleLogger } from '@/shared/utils/logger'
 import { TokenService } from '@/services/tokenService'
-import { createClient } from '@/utils/supabase/server'
+import { supabaseAdmin } from '@/lib/supabase-admin'
 
 const logger = createModuleLogger('AuthToken')
 
@@ -27,8 +29,48 @@ export async function GET(): Promise<
   NextResponse<TokenResponse | ErrorResponse>
 > {
   try {
-    const supabase = createClient()
-    const tokenService = new TokenService(supabase)
+    const cookieStore = cookies()
+
+    const supabase = createServerClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      {
+        cookies: {
+          getAll() {
+            return cookieStore.getAll()
+          },
+          setAll(cookiesToSet) {
+            try {
+              cookiesToSet.forEach(({ name, value, options }) =>
+                cookieStore.set(name, value, options)
+              )
+            } catch {
+              // The `setAll` method was called from a Server Component.
+            }
+          }
+        }
+      }
+    )
+
+    // Enforce Authentication
+    const {
+      data: { user },
+      error: authError
+    } = await supabase.auth.getUser()
+
+    if (authError || !user) {
+      logger('WARN', 'Unauthenticated access attempt for admin token endpoint')
+      return NextResponse.json(
+        {
+          error: 'Unauthorized',
+          code: 'UNAUTHORIZED',
+          status: 401
+        },
+        { status: 401 }
+      )
+    }
+
+    const tokenService = new TokenService(supabaseAdmin)
 
     // Prefer environment variable, fallback to default '3B'
     const adminUsername = process.env.NEXT_PUBLIC_ADMIN_USERNAME || DEFAULT_ID
