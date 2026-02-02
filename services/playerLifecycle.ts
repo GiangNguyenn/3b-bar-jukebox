@@ -38,15 +38,7 @@ interface PlayerSDKState {
       duration_ms: number
     } | null
   }
-  disallows?: {
-    pausing: boolean
-    peeking_next: boolean
-    peeking_prev: boolean
-    resuming: boolean
-    seeking: boolean
-    skipping_next: boolean
-    skipping_prev: boolean
-  }
+  // Phase 3: Removed unused disallows field
 }
 
 // Type guard for runtime validation of PlayerSDKState
@@ -93,6 +85,18 @@ class PlayerLifecycleService {
   private stateChangeInProgress: boolean = false
   private pendingState: PlayerSDKState | null = null
   private consecutiveNullStates: number = 0
+  // Phase 1: Memory leak prevention
+  private pendingPromiseCleanup: (() => void) | null = null
+  // Phase 1: Playback operation locking
+  private playbackOperationInProgress: boolean = false
+  private playbackOperationId: number = 0
+  // Phase 3: Track state tracking
+  private lastStateUpdateTime: number = 0
+  // Phase 2: Force recovery flag
+  private isRecoveryNeeded: boolean = false
+  // Phase 2: Device ready resolvers
+  private deviceReadyResolver: ((deviceId: string) => void) | null = null
+  private deviceErrorResolver: ((error: Error) => void) | null = null
 
   setLogger(
     logger: (
@@ -128,6 +132,40 @@ class PlayerLifecycleService {
       } else if (level === 'ERROR') {
         console.error(`[PlayerLifecycle] ${message}`, error)
       }
+    }
+  }
+
+  /**
+   * Phase 1: Playback operation locking to prevent state mutation race conditions
+   */
+  private async withPlaybackLock<T>(
+    operation: () => Promise<T>,
+    operationName: string
+  ): Promise<T | null> {
+    if (this.playbackOperationInProgress) {
+      this.log(
+        'WARN',
+        `${operationName} skipped - playback operation already in progress`
+      )
+      return null
+    }
+
+    this.playbackOperationInProgress = true
+    const operationId = ++this.playbackOperationId
+
+    try {
+      this.log(
+        'INFO',
+        `[${operationName}:${operationId}] Starting playback operation`
+      )
+      const result = await operation()
+      this.log(
+        'INFO',
+        `[${operationName}:${operationId}] Completed playback operation`
+      )
+      return result
+    } finally {
+      this.playbackOperationInProgress = false
     }
   }
 
@@ -188,7 +226,18 @@ class PlayerLifecycleService {
     return false
   }
 
-  private async playNextTrack(track: JukeboxQueueItem): Promise<void> {
+  /**
+   * Play next track from queue with retry logic and duplicate detection.
+   * Phase 1: Wrapped with playback lock to prevent concurrent modifications.
+   */
+  async playNextTrack(track: JukeboxQueueItem): Promise<void> {
+    await this.withPlaybackLock(
+      async () => this.playNextTrackImpl(track),
+      'playNextTrack'
+    )
+  }
+
+  private async playNextTrackImpl(track: JukeboxQueueItem): Promise<void> {
     if (!this.deviceId) {
       this.log('ERROR', 'No device ID available to play next track')
       return
@@ -198,28 +247,21 @@ class PlayerLifecycleService {
     const MAX_ATTEMPTS = 10 // Safety limit to prevent infinite loops
     let currentTrack: JukeboxQueueItem | null = track
     let attempts = 0
-    let lastPlayingTrackId: string | null = null
 
-    // Get current playing track ID for duplicate detection
-    try {
-      const playbackState = await sendApiRequest<{
-        item?: { id: string }
-      }>({
-        path: 'me/player',
-        method: 'GET'
-      })
-      lastPlayingTrackId = playbackState?.item?.id ?? null
-    } catch (error) {
-      // If we can't get playback state, continue anyway
-      this.log(
-        'WARN',
-        'Failed to get current playback state for duplicate detection, continuing anyway',
-        error
-      )
-    }
+    // Phase 2: Use local state instead of API call (Issue #9)
+    const lastPlayingTrackId =
+      this.lastKnownState?.track_window?.current_track?.id ?? null
 
-    while (currentTrack && attempts < MAX_ATTEMPTS) {
+    // Phase 2: Loop detection (Issue #8)
+    const seenTrackIds = new Set<string>()
+
+    while (
+      currentTrack &&
+      attempts < MAX_ATTEMPTS &&
+      !seenTrackIds.has(currentTrack.tracks.spotify_track_id)
+    ) {
       attempts++
+      seenTrackIds.add(currentTrack.tracks.spotify_track_id)
 
       this.log(
         'INFO',
@@ -292,6 +334,14 @@ class PlayerLifecycleService {
 
       // Get next track from queue
       currentTrack = queueManager.getNextTrack() ?? null
+    }
+
+    // Phase 2: Diagnostic logging for loop detection
+    if (seenTrackIds.size < attempts) {
+      this.log(
+        'ERROR',
+        `Loop detected in playNextTrack: ${attempts} attempts but only ${seenTrackIds.size} unique tracks. Queue may be corrupted.`
+      )
     }
 
     if (attempts >= MAX_ATTEMPTS) {
@@ -522,7 +572,18 @@ class PlayerLifecycleService {
     return validTrack
   }
 
+  /**
+   * Handle track finished event.
+   * Phase 1: Wrapped with playback lock to prevent race conditions.
+   */
   private async handleTrackFinished(state: PlayerSDKState): Promise<void> {
+    await this.withPlaybackLock(
+      async () => this.handleTrackFinishedImpl(state),
+      'handleTrackFinished'
+    )
+  }
+
+  private async handleTrackFinishedImpl(state: PlayerSDKState): Promise<void> {
     const currentTrack = state.track_window?.current_track
 
     if (!currentTrack?.id) {
@@ -569,7 +630,7 @@ class PlayerLifecycleService {
         'INFO',
         `[handleTrackFinished] Playing next track: ${nextTrack.tracks.name} (${nextTrack.tracks.spotify_track_id}), Queue ID: ${nextTrack.id}`
       )
-      await this.playNextTrack(nextTrack)
+      await this.playNextTrackImpl(nextTrack)
     } else {
       this.currentQueueTrack = null
       this.log(
@@ -579,7 +640,16 @@ class PlayerLifecycleService {
     }
   }
 
+  /**
+   * Phase 3: Simplified queue synchronization with playback state.
+   * Skips sync if playback operation is in progress to prevent race conditions.
+   */
   private syncQueueWithPlayback(state: PlayerSDKState): void {
+    // Phase 1: Don't sync if playback operation in progress
+    if (this.playbackOperationInProgress) {
+      return
+    }
+
     const currentSpotifyTrack = state.track_window?.current_track
 
     // Update duplicate detector when a new track starts playing
@@ -596,33 +666,47 @@ class PlayerLifecycleService {
       }
     }
 
-    if (currentSpotifyTrack && !state.paused) {
-      // Update queue manager with currently playing track so getNextTrack() excludes it
-      queueManager.setCurrentlyPlayingTrack(currentSpotifyTrack.id)
-
-      const queue = queueManager.getQueue()
-      const matchingQueueItem = queue.find(
-        (item) => item.tracks.spotify_track_id === currentSpotifyTrack.id
-      )
-
-      if (
-        matchingQueueItem &&
-        this.currentQueueTrack?.id !== matchingQueueItem.id
-      ) {
-        this.currentQueueTrack = matchingQueueItem
-      } else if (!matchingQueueItem && this.currentQueueTrack) {
-        this.currentQueueTrack = null
-      } else if (
-        !matchingQueueItem &&
-        !this.currentQueueTrack &&
-        queue.length > 0
-      ) {
-        const firstInQueue = queue[0]
-        this.currentQueueTrack = firstInQueue
-      }
-    } else if (!currentSpotifyTrack || state.paused) {
-      // Clear currently playing track when paused or no track
+    // Early exit: No track or paused
+    if (!currentSpotifyTrack || state.paused) {
       queueManager.setCurrentlyPlayingTrack(null)
+      return
+    }
+
+    // Track is playing - update queue manager
+    queueManager.setCurrentlyPlayingTrack(currentSpotifyTrack.id)
+
+    // Sync internal queue track reference
+    const queue = queueManager.getQueue()
+    const matchingQueueItem = queue.find(
+      (item) => item.tracks.spotify_track_id === currentSpotifyTrack.id
+    )
+
+    if (matchingQueueItem) {
+      // Case 1: Current track found in queue - sync to it
+      if (this.currentQueueTrack?.id !== matchingQueueItem.id) {
+        this.log(
+          'INFO',
+          `Syncing queue: Current track changed from ${this.currentQueueTrack?.id ?? 'none'} to ${matchingQueueItem.id}`
+        )
+        this.currentQueueTrack = matchingQueueItem
+      }
+    } else {
+      // Case 2: Current track NOT in queue
+      if (this.currentQueueTrack) {
+        // Playing track is external - clear queue reference
+        this.log(
+          'WARN',
+          `Playing track ${currentSpotifyTrack.id} not found in queue - clearing queue reference`
+        )
+        this.currentQueueTrack = null
+      } else if (queue.length > 0) {
+        // No queue reference but queue exists - assume first track
+        this.log(
+          'INFO',
+          `No queue reference but queue exists - using first track: ${queue[0].id}`
+        )
+        this.currentQueueTrack = queue[0]
+      }
     }
   }
 
@@ -679,24 +763,34 @@ class PlayerLifecycleService {
       return false
     }
 
+    // Tracks must be the same
+    if (lastTrack.uri !== currentTrack.uri) {
+      return false
+    }
+
+    // Condition 1: Clean track finish (paused at position 0)
     const trackJustFinished =
-      !this.lastKnownState.paused &&
-      state.paused &&
-      state.position === 0 &&
-      lastTrack.uri === currentTrack.uri
+      !this.lastKnownState.paused && state.paused && state.position === 0
+
+    if (trackJustFinished) {
+      return true
+    }
 
     const isNearEnd =
       state.duration > 0 &&
       state.duration - state.position <
         PLAYER_LIFECYCLE_CONFIG.TRACK_END_THRESHOLD_MS
 
-    const hasStalled =
-      !this.lastKnownState.paused &&
-      state.paused &&
-      state.position === this.lastKnownState.position &&
-      lastTrack.uri === currentTrack.uri
+    const positionUnchanged = state.position === this.lastKnownState.position
 
-    return trackJustFinished || (isNearEnd && hasStalled)
+    const wasPlayingButNowPaused = !this.lastKnownState.paused && state.paused
+
+    // Add time-based check to distinguish stalls from user pauses
+    const timeSinceLastUpdate = Date.now() - this.lastStateUpdateTime
+    const hasStalled =
+      positionUnchanged && wasPlayingButNowPaused && timeSinceLastUpdate > 2000
+
+    return isNearEnd && hasStalled
   }
 
   private async handlePlayerStateChanged(
@@ -738,6 +832,9 @@ class PlayerLifecycleService {
     state: PlayerSDKState,
     onPlaybackStateChange: (state: SpotifyPlaybackState) => void
   ): Promise<void> {
+    // Phase 3: Track time for stall detection
+    this.lastStateUpdateTime = Date.now()
+
     // Serialization: If a state change is already being processed, queue this one
     if (this.stateChangeInProgress) {
       // Only keep the most recent pending state (debouncing)
@@ -755,6 +852,7 @@ class PlayerLifecycleService {
       while (this.pendingState) {
         const nextState = this.pendingState
         this.pendingState = null
+        this.lastStateUpdateTime = Date.now() // Update time for each state
         await this.handlePlayerStateChanged(nextState, onPlaybackStateChange)
       }
     } finally {
@@ -779,8 +877,9 @@ class PlayerLifecycleService {
       )
       onStatusChange(
         'error',
-        `Authentication failed after ${this.authRetryCount} attempts. Please reconnect your Spotify account.`
+        `Authentication failed after ${this.authRetryCount} attempts. Click to reload player.`
       )
+      this.isRecoveryNeeded = true
       return
     }
 
@@ -808,8 +907,9 @@ class PlayerLifecycleService {
         onPlaybackStateChange
       )
 
-      // Reset retry count on success
+      // Reset retry count and recovery flag on success
       this.authRetryCount = 0
+      this.isRecoveryNeeded = false
     } catch (error) {
       this.log('ERROR', 'Failed to recover from authentication error', error)
 
@@ -832,17 +932,27 @@ class PlayerLifecycleService {
         errorMessage.includes('NO_REFRESH_TOKEN') ||
         errorMessage.includes('NOT_AUTHENTICATED')
 
-      if (needsUserAction) {
-        onStatusChange(
-          'error',
-          'Please reconnect your Spotify account to continue playback.'
-        )
+      if (
+        needsUserAction ||
+        this.authRetryCount >= PLAYER_LIFECYCLE_CONFIG.MAX_AUTH_RETRY_ATTEMPTS
+      ) {
+        // Last resort: require manual recovery
+        onStatusChange('error', 'Player recovery failed. Click to reload.')
+        this.isRecoveryNeeded = true
       } else {
-        // For recoverable errors, show retry message
+        // Schedule retry for recoverable errors
         onStatusChange(
           'error',
           `Authentication error (attempt ${this.authRetryCount}/${PLAYER_LIFECYCLE_CONFIG.MAX_AUTH_RETRY_ATTEMPTS}). Retrying...`
         )
+        setTimeout(() => {
+          void this.handleAuthenticationError(
+            message,
+            onStatusChange,
+            onDeviceIdChange,
+            onPlaybackStateChange
+          )
+        }, 5000)
       }
     }
   }
@@ -867,6 +977,32 @@ class PlayerLifecycleService {
         )
         window.location.href = '/premium-required'
       }
+    }
+  }
+
+  /**
+   * Phase 2: Force recovery method for unrecoverable states.
+   * Provides escape hatch when automatic recovery fails.
+   */
+  async forceRecovery(
+    onStatusChange: (status: string, error?: string) => void,
+    onDeviceIdChange: (deviceId: string) => void,
+    onPlaybackStateChange: (state: SpotifyPlaybackState) => void
+  ): Promise<void> {
+    this.log('INFO', 'Force recovery initiated by user')
+    this.authRetryCount = 0
+    this.isRecoveryNeeded = false
+
+    try {
+      await this.reloadSDK()
+      await this.createPlayer(
+        onStatusChange,
+        onDeviceIdChange,
+        onPlaybackStateChange
+      )
+    } catch (error) {
+      this.log('ERROR', 'Force recovery failed', error)
+      onStatusChange('error', 'Recovery failed. Please refresh the page.')
     }
   }
 
@@ -961,15 +1097,27 @@ class PlayerLifecycleService {
         volume: 0.5
       })
 
-      // Set up event listeners
+      // Phase 1 & 2: Set up event listeners with consolidated promise resolution
       player.addListener('ready', ({ device_id }) => {
         void (async () => {
+          // Phase 1: Guard - Check player exists before starting
+          if (!this.playerRef) {
+            this.log('WARN', 'Player destroyed before ready handler - aborting')
+            return
+          }
+
           // Consolidate verification and transfer logic to prevent race conditions
           this.timeoutManager.clear('notReady')
           onStatusChange('verifying')
 
           // Step 1: Verify the device exists and is accessible
           const deviceExisted = await this.verifyDeviceWithTimeout(device_id)
+
+          // Phase 1: Guard - Re-check after async operation
+          if (!this.playerRef) {
+            this.log('WARN', 'Player destroyed during device verification')
+            return
+          }
 
           if (!deviceExisted) {
             this.log(
@@ -988,6 +1136,12 @@ class PlayerLifecycleService {
           // Note: transferPlaybackToDevice handles its own maxAttempts/retries.
           const transferSuccess = await transferPlaybackToDevice(device_id)
 
+          // Phase 1: Guard - Re-check after async operation
+          if (!this.playerRef) {
+            this.log('WARN', 'Player destroyed during playback transfer')
+            return
+          }
+
           if (!transferSuccess) {
             this.log('ERROR', 'Failed to transfer playback to new device')
             onStatusChange('error', 'Failed to transfer playback to new device')
@@ -998,6 +1152,13 @@ class PlayerLifecycleService {
           onStatusChange('ready')
           // Reset auth retry count on successful connection
           this.authRetryCount = 0
+
+          // Phase 2: Resolve promise if resolver exists
+          if (this.deviceReadyResolver) {
+            this.deviceReadyResolver(device_id)
+            this.deviceReadyResolver = null
+            this.deviceErrorResolver = null
+          }
         })()
       })
 
@@ -1034,6 +1195,13 @@ class PlayerLifecycleService {
           'error',
           `Initialization error: ${message}. Check console for details.`
         )
+
+        // Phase 2: Resolve error promise if resolver exists
+        if (this.deviceErrorResolver) {
+          this.deviceErrorResolver(new Error(message))
+          this.deviceErrorResolver = null
+          this.deviceReadyResolver = null
+        }
       })
 
       player.addListener('authentication_error', ({ message }) => {
@@ -1137,27 +1305,16 @@ class PlayerLifecycleService {
       }, PLAYER_LIFECYCLE_CONFIG.CLEANUP_TIMEOUT_MS)
       this.timeoutManager.set('cleanup', cleanupTimeout)
 
-      // Return device ID when ready event fires
-      // Store cleanup function to prevent memory leaks
-      let cleanup: (() => void) | null = null
-
+      // Phase 2: Return promise using resolvers set in event listeners
+      // This avoids duplicate event listener registration
       return new Promise<string>((resolve, reject) => {
-        const readyHandler = (event: { device_id: string }): void => {
-          cleanup?.() // Remove listeners to prevent memory leaks
-          resolve(event.device_id)
-        }
-        const errorHandler = (event: { message: string }): void => {
-          cleanup?.() // Remove listeners to prevent memory leaks
-          reject(new Error(event.message))
-        }
+        this.deviceReadyResolver = resolve
+        this.deviceErrorResolver = reject
 
-        player.addListener('ready', readyHandler)
-        player.addListener('initialization_error', errorHandler)
-
-        // Store cleanup function
-        cleanup = (): void => {
-          player.removeListener('ready', readyHandler)
-          player.removeListener('initialization_error', errorHandler)
+        // Phase 1: Store cleanup function to prevent memory leaks
+        this.pendingPromiseCleanup = () => {
+          this.deviceReadyResolver = null
+          this.deviceErrorResolver = null
         }
       })
     } catch (error) {
@@ -1169,6 +1326,19 @@ class PlayerLifecycleService {
 
   destroyPlayer(): void {
     this.clearAllTimeouts()
+
+    // Phase 1: Clean up pending promise handlers
+    if (this.pendingPromiseCleanup) {
+      this.pendingPromiseCleanup()
+      this.pendingPromiseCleanup = null
+    }
+
+    // Phase 2: Clean up device ready resolvers
+    if (this.deviceErrorResolver) {
+      this.deviceErrorResolver(new Error('Player destroyed'))
+      this.deviceErrorResolver = null
+      this.deviceReadyResolver = null
+    }
 
     if (this.playerRef) {
       this.playerRef.disconnect()
