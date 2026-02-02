@@ -252,7 +252,7 @@ class AutoPlayService {
     // Prevent overlapping polling requests to avoid race conditions
     if (this.isPolling) {
       logger(
-        'WARN',
+        'INFO',
         'Skipping playback check - previous check still in progress'
       )
       return

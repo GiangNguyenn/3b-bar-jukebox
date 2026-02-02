@@ -41,6 +41,29 @@ export async function validateDevice(
     const targetDevice = await findDevice(deviceId)
 
     if (!targetDevice) {
+      // Fallback: Check if the device is actually active via playback state
+      // This handles cases where "me/player/devices" is stale or incomplete
+      // but the device is actually playing music
+      const playbackState = await getPlaybackState()
+
+      if (
+        playbackState?.device?.id === deviceId &&
+        playbackState.device.is_active
+      ) {
+        // Device is active and playing, so it's valid despite not being in the list
+        return {
+          isValid: true,
+          errors: [],
+          warnings: [], // No warnings, as it's working
+          device: {
+            id: playbackState.device.id,
+            name: playbackState.device.name,
+            isActive: true,
+            isRestricted: false // Assume safe if played by us
+          }
+        }
+      }
+
       errors.push('Device not found in available devices')
       return { isValid: false, errors, warnings }
     }
