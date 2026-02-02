@@ -387,6 +387,15 @@ class PlayerLifecycleService {
 
     const timeout = setTimeout(() => {
       void (async () => {
+        // Guard: Check if player was destroyed while we were waiting
+        if (!this.playerRef) {
+          this.log(
+            'WARN',
+            'Player destroyed during recovery grace period - cancelling recovery'
+          )
+          return
+        }
+
         this.log(
           'INFO',
           'Attempting background recovery: transferring playback to device'
@@ -394,6 +403,15 @@ class PlayerLifecycleService {
 
         // Try to transfer playback back to this device
         const transferred = await transferPlaybackToDevice(deviceId)
+
+        // Re-check player existence after async operation
+        if (!this.playerRef) {
+          this.log(
+            'WARN',
+            'Player destroyed during recovery transfer - ignoring result'
+          )
+          return
+        }
 
         if (transferred) {
           this.log(
@@ -946,45 +964,37 @@ class PlayerLifecycleService {
       // Set up event listeners
       player.addListener('ready', ({ device_id }) => {
         void (async () => {
+          // Consolidate verification and transfer logic to prevent race conditions
           this.timeoutManager.clear('notReady')
-
           onStatusChange('verifying')
 
-          const deviceVerified = await this.verifyDeviceWithTimeout(device_id)
-          if (!deviceVerified) {
+          // Step 1: Verify the device exists and is accessible
+          const deviceExisted = await this.verifyDeviceWithTimeout(device_id)
+
+          if (!deviceExisted) {
             this.log(
               'WARN',
-              'Device setup verification failed/timed-out. Attempting background recovery.'
+              'Device verification failed/timed-out. Attempting direct playback transfer as recovery.'
             )
-
-            // Non-blocking background recovery: Try to transfer playback
-            // Don't await - let it happen in background
-            void (async () => {
-              const transferred = await transferPlaybackToDevice(device_id)
-              if (transferred) {
-                this.log(
-                  'INFO',
-                  'Background device transfer successful after verification failure'
-                )
-              } else {
-                this.log(
-                  'WARN',
-                  'Background device transfer failed - playback may require manual intervention'
-                )
-              }
-            })()
           }
 
+          // Step 2: Set local ID
           this.deviceId = device_id
           onDeviceIdChange(device_id)
 
+          // Step 3: Transfer playback (this is the real "activation")
+          // If verification failed earlier, this acts as the recovery mechanism.
+          // If verification passed, this ensures we are the active device.
+          // Note: transferPlaybackToDevice handles its own maxAttempts/retries.
           const transferSuccess = await transferPlaybackToDevice(device_id)
+
           if (!transferSuccess) {
             this.log('ERROR', 'Failed to transfer playback to new device')
             onStatusChange('error', 'Failed to transfer playback to new device')
             return
           }
 
+          // Step 4: Success
           onStatusChange('ready')
           // Reset auth retry count on successful connection
           this.authRetryCount = 0
