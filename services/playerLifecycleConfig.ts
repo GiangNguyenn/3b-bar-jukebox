@@ -20,7 +20,16 @@ export const PLAYER_LIFECYCLE_CONFIG = {
   TRACK_START_THRESHOLD_MS: 1000, // Start playing 1s before end (reduced from 1500ms)
   // Timeouts
   CLEANUP_TIMEOUT_MS: 5 * 60 * 1000, // 5 minutes
-  SDK_RELOAD_TIMEOUT_MS: 10000 // 10 seconds
+  SDK_RELOAD_TIMEOUT_MS: 10000, // 10 seconds
+  // Issue #9: Additional constants for magic numbers
+  PLAYBACK_RETRY: {
+    initialBackoffMs: 500,
+    maxBackoffMultiplier: 3 // Results in backoffs: 500ms, 1000ms, 2000ms
+  },
+  STATE_MONITORING: {
+    stallDetectionMs: 2000, // Time to wait before considering playback stalled
+    nullStateThreshold: 3 // Number of consecutive null states before triggering recovery
+  }
 } as const
 
 export type PlayerLifecycleConfig = typeof PLAYER_LIFECYCLE_CONFIG
