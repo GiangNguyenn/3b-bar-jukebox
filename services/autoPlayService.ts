@@ -62,11 +62,11 @@ class AutoPlayService {
   private readonly QUEUE_CHECK_INTERVAL: number // Check queue periodically, not every poll
   private addLog:
     | ((
-      level: LogLevel,
-      message: string,
-      context?: string,
-      error?: Error
-    ) => void)
+        level: LogLevel,
+        message: string,
+        context?: string,
+        error?: Error
+      ) => void)
     | null = null
 
   constructor(config: AutoPlayServiceConfig = {}) {
@@ -711,31 +711,31 @@ class AutoPlayService {
         const mergedTrackSuggestions = {
           genres:
             Array.isArray(this.trackSuggestionsState?.genres) &&
-              this.trackSuggestionsState.genres.length > 0
+            this.trackSuggestionsState.genres.length > 0
               ? this.trackSuggestionsState.genres.filter(
-                (genre: any) => typeof genre === 'string'
-              )
+                  (genre: any) => typeof genre === 'string'
+                )
               : [...FALLBACK_GENRES],
           yearRange: Array.isArray(this.trackSuggestionsState?.yearRange)
             ? ([
-              Math.max(
-                1900,
-                Math.min(
-                  new Date().getFullYear(),
-                  Math.floor(this.trackSuggestionsState.yearRange[0] ?? 1900)
-                )
-              ),
-              Math.max(
-                1900,
-                Math.min(
-                  new Date().getFullYear(),
-                  Math.floor(
-                    this.trackSuggestionsState.yearRange[1] ??
-                    new Date().getFullYear()
+                Math.max(
+                  1900,
+                  Math.min(
+                    new Date().getFullYear(),
+                    Math.floor(this.trackSuggestionsState.yearRange[0] ?? 1900)
+                  )
+                ),
+                Math.max(
+                  1900,
+                  Math.min(
+                    new Date().getFullYear(),
+                    Math.floor(
+                      this.trackSuggestionsState.yearRange[1] ??
+                        new Date().getFullYear()
+                    )
                   )
                 )
-              )
-            ] as [number, number])
+              ] as [number, number])
             : DEFAULT_YEAR_RANGE,
           popularity: Math.max(
             0,
@@ -752,7 +752,7 @@ class AutoPlayService {
             Math.min(
               20,
               this.trackSuggestionsState?.maxSongLength ??
-              DEFAULT_MAX_SONG_LENGTH_MINUTES
+                DEFAULT_MAX_SONG_LENGTH_MINUTES
             )
           ),
           maxOffset: Math.max(

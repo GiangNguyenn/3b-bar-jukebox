@@ -38,7 +38,6 @@ import { QRCodeComponent } from '@/components/ui'
 import { useAdminTokenManagement } from '@/hooks/useAdminTokenManagement'
 import { usePlaybackEnforcer } from '@/hooks/usePlaybackEnforcer'
 
-
 // Recovery removed
 
 export default function AdminPage(): JSX.Element {
@@ -242,12 +241,12 @@ export default function AdminPage(): JSX.Element {
   const handleTabChange = useCallback((value: string): void => {
     setActiveTab(
       value as
-      | 'dashboard'
-      | 'playlist'
-      | 'settings'
-      | 'logs'
-      | 'analytics'
-      | 'branding'
+        | 'dashboard'
+        | 'playlist'
+        | 'settings'
+        | 'logs'
+        | 'analytics'
+        | 'branding'
     )
   }, [])
 
