@@ -428,7 +428,29 @@ export const sendApiRequest = async <T>({
   }
 
   const promise = new Promise<T>((resolve, reject) => {
-    requestQueue.push(() => makeRequest().then(resolve).catch(reject))
+    // Create an overall timeout for the request (queueing + execution)
+    const queueTimeoutId = setTimeout(() => {
+      // If the request is still in the queue or executing when this fires,
+      // fail the external promise. The background request may still complete
+      // but its result will be ignored.
+      reject(
+        new ApiError(`Request timed out after ${timeout}ms`, {
+          status: 408 // Request Timeout
+        })
+      )
+    }, timeout)
+
+    requestQueue.push(() =>
+      makeRequest()
+        .then((result) => {
+          clearTimeout(queueTimeoutId)
+          resolve(result)
+        })
+        .catch((error) => {
+          clearTimeout(queueTimeoutId)
+          reject(error)
+        })
+    )
     void processRequestQueue()
   })
 
