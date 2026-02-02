@@ -18,6 +18,11 @@ import {
   withErrorHandling,
   TimeoutManager
 } from './playerLifecycle/utils'
+import {
+  spotifyPlayer,
+  playbackService,
+  recoveryManager
+} from '@/services/player'
 
 // Type for internal SDK state tracking - composed instead of extended
 // to properly represent the actual SDK state structure
@@ -104,7 +109,7 @@ class PlayerLifecycleService {
   private currentQueueTrack: JukeboxQueueItem | null = null
   private deviceId: string | null = null
   private timeoutManager: TimeoutManager = new TimeoutManager()
-  private authRetryCount: number = 0
+  // Phase 3: authRetryCount removed - using recoveryManager instead
   private duplicateDetector: TrackDuplicateDetector =
     new TrackDuplicateDetector()
   private addLog:
@@ -122,8 +127,7 @@ class PlayerLifecycleService {
   // Phase 1: Memory leak prevention
   private pendingPromiseCleanup: (() => void) | null = null
   // Phase 1: Playback operation locking
-  private playbackOperationInProgress: boolean = false
-  private playbackOperationId: number = 0
+  // Phase 2: Lock variables removed - using playbackService for serialization
   // Phase 3: Track state tracking
   private lastStateUpdateTime: number = 0
   // Phase 2: Force recovery flag
@@ -141,6 +145,14 @@ class PlayerLifecycleService {
     ) => void
   ): void {
     this.addLog = logger
+    // Phase 1: Set logger for spotifyPlayer service
+    spotifyPlayer.setLogger(logger)
+    // Phase 2: Set logger for playbackService
+    playbackService.setLogger(logger)
+    // Phase 3: Set logger for recoveryManager
+    recoveryManager.setLogger(logger)
+    // Set logger for device management
+    setDeviceManagementLogger(logger)
   }
 
   setNavigationCallback(callback: NavigationCallback): void {
@@ -169,39 +181,7 @@ class PlayerLifecycleService {
     }
   }
 
-  /**
-   * Phase 1: Playback operation locking to prevent state mutation race conditions
-   */
-  private async withPlaybackLock<T>(
-    operation: () => Promise<T>,
-    operationName: string
-  ): Promise<T | null> {
-    if (this.playbackOperationInProgress) {
-      this.log(
-        'WARN',
-        `${operationName} skipped - playback operation already in progress`
-      )
-      return null
-    }
-
-    this.playbackOperationInProgress = true
-    const operationId = ++this.playbackOperationId
-
-    try {
-      this.log(
-        'INFO',
-        `[${operationName}:${operationId}] Starting playback operation`
-      )
-      const result = await operation()
-      this.log(
-        'INFO',
-        `[${operationName}:${operationId}] Completed playback operation`
-      )
-      return result
-    } finally {
-      this.playbackOperationInProgress = false
-    }
-  }
+  // Phase 2: withPlaybackLock removed - using playbackService.executePlayback() instead
 
   private async playTrackWithRetry(
     trackUri: string,
@@ -264,11 +244,11 @@ class PlayerLifecycleService {
 
   /**
    * Play next track from queue with retry logic and duplicate detection.
-   * Phase 1: Wrapped with playback lock to prevent concurrent modifications.
+   * Phase 2: Uses playbackService for promise-chain serialization (no locks needed).
    */
   async playNextTrack(track: JukeboxQueueItem): Promise<void> {
-    await this.withPlaybackLock(
-      async () => this.playNextTrackImpl(track),
+    await playbackService.executePlayback(
+      () => this.playNextTrackImpl(track),
       'playNextTrack'
     )
   }
@@ -412,6 +392,16 @@ class PlayerLifecycleService {
       return
     }
 
+    // Phase 2: Check if playbackService has operation in progress
+    // This helps avoid state conflicts during active playback operations
+    if (playbackService.isOperationInProgress()) {
+      this.log(
+        'WARN',
+        '[syncQueueWithPlayback] Playback operation in progress - state will sync after completion'
+      )
+      return
+    }
+
     await withErrorHandling(
       async () => {
         await queueManager.markAsPlayed(currentTrack.id)
@@ -428,7 +418,7 @@ class PlayerLifecycleService {
    */
   getDiagnostics(): { authRetryCount: number; activeTimeouts: string[] } {
     return {
-      authRetryCount: this.authRetryCount,
+      authRetryCount: recoveryManager.getRetryCount(),
       activeTimeouts: this.timeoutManager.getActiveKeys()
     }
   }
@@ -620,11 +610,11 @@ class PlayerLifecycleService {
 
   /**
    * Handle track finished event.
-   * Phase 1: Wrapped with playback lock to prevent race conditions.
+   * Phase 2: Uses playbackService for promise-chain serialization (no locks needed).
    */
   private async handleTrackFinished(state: PlayerSDKState): Promise<void> {
-    await this.withPlaybackLock(
-      async () => this.handleTrackFinishedImpl(state),
+    await playbackService.executePlayback(
+      () => this.handleTrackFinishedImpl(state),
       'handleTrackFinished'
     )
   }
@@ -688,11 +678,15 @@ class PlayerLifecycleService {
 
   /**
    * Phase 3: Simplified queue synchronization with playback state.
-   * Skips sync if playback operation is in progress to prevent race conditions.
+   * Phase 2: Skips sync if playback operation is in progress to prevent race conditions.
    */
   private syncQueueWithPlayback(state: PlayerSDKState): void {
-    // Phase 1: Don't sync if playback operation in progress
-    if (this.playbackOperationInProgress) {
+    // Phase 2: Check if playbackService has operation in progress
+    if (playbackService.isOperationInProgress()) {
+      this.log(
+        'WARN',
+        '[syncQueueWithPlayback] Playback operation in progress - state will sync after completion'
+      )
       return
     }
 
@@ -906,22 +900,22 @@ class PlayerLifecycleService {
   ): Promise<void> {
     this.log('ERROR', `Failed to authenticate: ${message}`)
 
-    if (
-      this.authRetryCount >= PLAYER_LIFECYCLE_CONFIG.MAX_AUTH_RETRY_ATTEMPTS
-    ) {
+    // Phase 3: Check if recovery is possible
+    if (!recoveryManager.canAttemptRecovery()) {
       this.log(
         'ERROR',
-        `Authentication retry limit reached (${this.authRetryCount} attempts)`
+        `Authentication retry limit reached (${recoveryManager.getRetryCount()} attempts)`
       )
       onStatusChange(
         'error',
-        `Authentication failed after ${this.authRetryCount} attempts. Click to reload player.`
+        `Authentication failed after ${recoveryManager.getRetryCount()} attempts. Click to reload player.`
       )
       this.isRecoveryNeeded = true
       return
     }
 
-    this.authRetryCount++
+    // Phase 3: Record recovery attempt
+    recoveryManager.recordAttempt()
 
     try {
       tokenManager.clearCache()
@@ -935,7 +929,7 @@ class PlayerLifecycleService {
 
       onStatusChange(
         'initializing',
-        `Refreshing authentication (attempt ${this.authRetryCount}/${PLAYER_LIFECYCLE_CONFIG.MAX_AUTH_RETRY_ATTEMPTS})`
+        `Refreshing authentication (attempt ${recoveryManager.getRetryCount()}/${PLAYER_LIFECYCLE_CONFIG.MAX_AUTH_RETRY_ATTEMPTS})`
       )
 
       this.destroyPlayer()
@@ -945,8 +939,8 @@ class PlayerLifecycleService {
         onPlaybackStateChange
       )
 
-      // Reset retry count and recovery flag on success
-      this.authRetryCount = 0
+      // Phase 3: Reset recovery state on success
+      recoveryManager.recordSuccess()
       this.isRecoveryNeeded = false
     } catch (error) {
       this.log('ERROR', 'Failed to recover from authentication error', error)
@@ -970,10 +964,8 @@ class PlayerLifecycleService {
         errorMessage.includes('NO_REFRESH_TOKEN') ||
         errorMessage.includes('NOT_AUTHENTICATED')
 
-      if (
-        needsUserAction ||
-        this.authRetryCount >= PLAYER_LIFECYCLE_CONFIG.MAX_AUTH_RETRY_ATTEMPTS
-      ) {
+      // Phase 3: Check if recovery should stop
+      if (needsUserAction || !recoveryManager.canAttemptRecovery()) {
         // Last resort: require manual recovery
         onStatusChange('error', 'Player recovery failed. Click to reload.')
         this.isRecoveryNeeded = true
@@ -981,7 +973,7 @@ class PlayerLifecycleService {
         // Schedule retry for recoverable errors
         onStatusChange(
           'error',
-          `Authentication error (attempt ${this.authRetryCount}/${PLAYER_LIFECYCLE_CONFIG.MAX_AUTH_RETRY_ATTEMPTS}). Retrying...`
+          `Authentication error (attempt ${recoveryManager.getRetryCount()}/${PLAYER_LIFECYCLE_CONFIG.MAX_AUTH_RETRY_ATTEMPTS}). Retrying...`
         )
         const timeout = setTimeout(() => {
           void this.handleAuthenticationError(
@@ -1028,7 +1020,8 @@ class PlayerLifecycleService {
     onPlaybackStateChange: (state: SpotifyPlaybackState) => void
   ): Promise<void> {
     this.log('INFO', 'Force recovery initiated by user')
-    this.authRetryCount = 0
+    // Phase 3: Reset recovery state on device ready
+    recoveryManager.recordSuccess()
     this.isRecoveryNeeded = false
 
     try {
@@ -1175,7 +1168,8 @@ class PlayerLifecycleService {
             // Step 4: Success
             onStatusChange('ready')
             // Reset auth retry count on successful connection
-            this.authRetryCount = 0
+            // Phase 3: Reset recovery state on transfer success
+            recoveryManager.recordSuccess()
 
             // Phase 2: Resolve promise if resolver exists
             if (this.deviceReadyResolver) {
@@ -1406,9 +1400,14 @@ class PlayerLifecycleService {
       this.playerRef = null
     }
 
+    // Phase 1: Delegate cleanup to spotifyPlayer service
+    // This ensures proper event listener and timeout cleanup
+    spotifyPlayer.destroy()
+
     // Reset state
     this.duplicateDetector.reset()
-    this.authRetryCount = 0
+    // Phase 3: Reset recovery state on destroy
+    recoveryManager.reset()
     this.consecutiveNullStates = 0
   }
 
@@ -1440,85 +1439,13 @@ class PlayerLifecycleService {
   }
 
   async reloadSDK(): Promise<void> {
+    // Phase 1: Delegate SDK reloading to spotifyPlayer service
+    await spotifyPlayer.reloadSDK()
+    // Clear local player reference
     this.playerRef = null
-
     if (typeof window !== 'undefined') {
       window.spotifyPlayerInstance = null
     }
-
-    const existingScript = document.querySelector(
-      'script[src*="spotify-player.js"]'
-    )
-    if (existingScript) {
-      existingScript.remove()
-    }
-
-    await new Promise((resolve) => setTimeout(resolve, 100))
-
-    return new Promise((resolve, reject) => {
-      if (typeof window === 'undefined') {
-        reject(new Error('Window not available'))
-        return
-      }
-
-      let timeoutId: NodeJS.Timeout | null = null
-      let isResolved = false
-
-      const cleanup = (): void => {
-        if (timeoutId) {
-          clearTimeout(timeoutId)
-          timeoutId = null
-        }
-      }
-
-      // eslint-disable-next-line @typescript-eslint/unbound-method
-      const originalReady = window.onSpotifyWebPlaybackSDKReady
-      window.onSpotifyWebPlaybackSDKReady = (): void => {
-        cleanup() // Clear timeout if script loads successfully
-        if (originalReady) {
-          originalReady()
-        }
-        if (!isResolved) {
-          isResolved = true
-          resolve()
-        }
-      }
-
-      const originalError = window.onSpotifyWebPlaybackSDKError
-      window.onSpotifyWebPlaybackSDKError = (error: unknown): void => {
-        cleanup() // Clear timeout on error
-        this.log('ERROR', 'Failed to reload Spotify SDK', error)
-        if (originalError) {
-          // Call original function - use call with null to avoid unbound method warning
-          originalError.call(undefined, error)
-        }
-        if (!isResolved) {
-          isResolved = true
-          reject(new Error(`SDK reload failed: ${String(error)}`))
-        }
-      }
-
-      const script = document.createElement('script')
-      script.src = 'https://sdk.scdn.co/spotify-player.js'
-      script.async = true
-      script.onerror = () => {
-        cleanup() // Clear timeout on script error
-        this.log('ERROR', 'Failed to load Spotify SDK script')
-        if (!isResolved) {
-          isResolved = true
-          reject(new Error('Failed to load Spotify SDK script'))
-        }
-      }
-
-      document.body.appendChild(script)
-
-      timeoutId = setTimeout(() => {
-        if (!isResolved) {
-          isResolved = true
-          reject(new Error('SDK reload timeout'))
-        }
-      }, PLAYER_LIFECYCLE_CONFIG.SDK_RELOAD_TIMEOUT_MS)
-    })
   }
 }
 

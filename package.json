@@ -5,7 +5,7 @@
   "scripts": {
     "dev": "next dev",
     "build": "npm run test && next build",
-    "test": "cross-env SPOTIFY_CLIENT_ID=mock SPOTIFY_CLIENT_SECRET=mock NEXT_PUBLIC_BASE_URL=http://localhost:3000 NEXT_PUBLIC_SUPABASE_URL=http://localhost:54321 NEXT_PUBLIC_SUPABASE_ANON_KEY=mock tsx --test services/game/__tests__/*.test.ts",
+    "test": "cross-env SPOTIFY_CLIENT_ID=mock SPOTIFY_CLIENT_SECRET=mock NEXT_PUBLIC_BASE_URL=http://localhost:3000 NEXT_PUBLIC_SUPABASE_URL=http://localhost:54321 NEXT_PUBLIC_SUPABASE_ANON_KEY=mock tsx --test services/game/__tests__/*.test.ts services/player/__tests__/*.test.ts services/__tests__/*.test.ts",
     "start": "next start",
     "lint:check": "next lint",
     "lint:fix": "next lint --fix",
