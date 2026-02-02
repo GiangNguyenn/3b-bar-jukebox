@@ -21,6 +21,7 @@ export const PLAYER_LIFECYCLE_CONFIG = {
   // Timeouts
   CLEANUP_TIMEOUT_MS: 5 * 60 * 1000, // 5 minutes
   SDK_RELOAD_TIMEOUT_MS: 10000, // 10 seconds
+  INITIALIZATION_TIMEOUT_MS: 15000, // 15 seconds - strict timeout for player ready event
   // Issue #9: Additional constants for magic numbers
   PLAYBACK_RETRY: {
     initialBackoffMs: 500,

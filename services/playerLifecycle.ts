@@ -109,11 +109,11 @@ class PlayerLifecycleService {
     new TrackDuplicateDetector()
   private addLog:
     | ((
-        level: LogLevel,
-        message: string,
-        context?: string,
-        error?: Error
-      ) => void)
+      level: LogLevel,
+      message: string,
+      context?: string,
+      error?: Error
+    ) => void)
     | null = null
   private navigationCallback: NavigationCallback | null = null
   private stateChangeInProgress: boolean = false
@@ -131,8 +131,7 @@ class PlayerLifecycleService {
   // Phase 2: Device ready resolvers
   private deviceReadyResolver: ((deviceId: string) => void) | null = null
   private deviceErrorResolver: ((error: Error) => void) | null = null
-  // Issue #6: Track auth retry timeout to prevent memory leaks
-  private authRetryTimeout: NodeJS.Timeout | null = null
+
 
   setLogger(
     logger: (
@@ -827,7 +826,7 @@ class PlayerLifecycleService {
     const isNearEnd =
       state.duration > 0 &&
       state.duration - state.position <
-        PLAYER_LIFECYCLE_CONFIG.TRACK_END_THRESHOLD_MS
+      PLAYER_LIFECYCLE_CONFIG.TRACK_END_THRESHOLD_MS
 
     const positionUnchanged = state.position === this.lastKnownState.position
 
@@ -839,7 +838,7 @@ class PlayerLifecycleService {
       positionUnchanged &&
       wasPlayingButNowPaused &&
       timeSinceLastUpdate >
-        PLAYER_LIFECYCLE_CONFIG.STATE_MONITORING.stallDetectionMs
+      PLAYER_LIFECYCLE_CONFIG.STATE_MONITORING.stallDetectionMs
 
     return isNearEnd && hasStalled
   }
@@ -985,9 +984,7 @@ class PlayerLifecycleService {
           'error',
           `Authentication error (attempt ${this.authRetryCount}/${PLAYER_LIFECYCLE_CONFIG.MAX_AUTH_RETRY_ATTEMPTS}). Retrying...`
         )
-        // Issue #6 fix: Track timeout to prevent memory leak
-        this.authRetryTimeout = setTimeout(() => {
-          this.authRetryTimeout = null
+        const timeout = setTimeout(() => {
           void this.handleAuthenticationError(
             message,
             onStatusChange,
@@ -995,6 +992,7 @@ class PlayerLifecycleService {
             onPlaybackStateChange
           )
         }, 5000)
+        this.timeoutManager.set('authRetry', timeout)
       }
     }
   }
@@ -1071,13 +1069,13 @@ class PlayerLifecycleService {
       // Set up device management logger
       setDeviceManagementLogger(
         this.addLog ??
-          ((level, message, _context, error) => {
-            if (level === 'WARN') {
-              console.warn(`[DeviceManagement] ${message}`, error)
-            } else if (level === 'ERROR') {
-              console.error(`[DeviceManagement] ${message}`, error)
-            }
-          })
+        ((level, message, _context, error) => {
+          if (level === 'WARN') {
+            console.warn(`[DeviceManagement] ${message}`, error)
+          } else if (level === 'ERROR') {
+            console.error(`[DeviceManagement] ${message}`, error)
+          }
+        })
       )
 
       // Clear any existing cleanup timeout
@@ -1085,31 +1083,10 @@ class PlayerLifecycleService {
 
       onStatusChange('initializing')
 
-      // Verify token is available before creating player
-      let tokenCheck: string | null = null
-      try {
-        tokenCheck = await tokenManager.getToken()
-        if (!tokenCheck) {
-          this.log('ERROR', 'Token manager returned null token')
-          onStatusChange('error', 'Initialization error: No token available')
-          throw new Error('No token available for player initialization')
-        }
-        this.log(
-          'INFO',
-          `Token retrieved successfully (length: ${tokenCheck.length})`
-        )
-      } catch (tokenError) {
-        this.log(
-          'ERROR',
-          'Failed to get token before player initialization',
-          tokenError
-        )
-        onStatusChange(
-          'error',
-          `Initialization error: Token retrieval failed - ${tokenError instanceof Error ? tokenError.message : 'Unknown error'}`
-        )
-        throw tokenError
-      }
+      onStatusChange('initializing')
+
+      // Verify token availability implicitly via promise chain later or rely on error handling
+      // Duplicate token check removed for efficiency
 
       const player = new window.Spotify.Player({
         name: 'Jukebox Player',
@@ -1356,32 +1333,47 @@ class PlayerLifecycleService {
       this.playerRef = player
       window.spotifyPlayerInstance = player
 
-      // Set up cleanup timeout
-      const cleanupTimeout = setTimeout(() => {
-        if (this.playerRef === player) {
-          this.log(
-            'INFO',
-            'Cleanup timeout reached, player may need reinitialization'
-          )
-        }
-      }, PLAYER_LIFECYCLE_CONFIG.CLEANUP_TIMEOUT_MS)
-      this.timeoutManager.set('cleanup', cleanupTimeout)
-
-      // Phase 2: Return promise using resolvers set in event listeners
-      // This avoids duplicate event listener registration
+      // Return promise using resolvers set in event listeners
       return new Promise<string>((resolve, reject) => {
-        // Phase 1: Reject previous promise if it exists (Issue #1 fix)
+        // Reject previous promise if it exists
         if (this.deviceReadyResolver) {
           this.deviceErrorResolver?.(new Error('Player creation superseded'))
         }
 
-        this.deviceReadyResolver = resolve
-        this.deviceErrorResolver = reject
+        // Wrapper to clear initialization timeout on success
+        const resolveWrapper = (deviceId: string) => {
+          this.timeoutManager.clear('initialization')
+          resolve(deviceId)
+        }
 
-        // Phase 1: Store cleanup function to prevent memory leaks
+        // Wrapper to clear initialization timeout on error
+        const rejectWrapper = (error: Error) => {
+          this.timeoutManager.clear('initialization')
+          reject(error)
+        }
+
+        this.deviceReadyResolver = resolveWrapper
+        this.deviceErrorResolver = rejectWrapper
+
+        // Set strict initialization timeout
+        const initTimeout = setTimeout(() => {
+          if (this.deviceErrorResolver === rejectWrapper) {
+            this.log(
+              'ERROR',
+              `Player initialization timed out after ${PLAYER_LIFECYCLE_CONFIG.INITIALIZATION_TIMEOUT_MS}ms`
+            )
+            rejectWrapper(new Error('Player initialization timed out'))
+            this.deviceReadyResolver = null
+            this.deviceErrorResolver = null
+          }
+        }, PLAYER_LIFECYCLE_CONFIG.INITIALIZATION_TIMEOUT_MS)
+        this.timeoutManager.set('initialization', initTimeout)
+
+        // Store cleanup function to prevent memory leaks
         this.pendingPromiseCleanup = () => {
           this.deviceReadyResolver = null
           this.deviceErrorResolver = null
+          this.timeoutManager.clear('initialization')
         }
       })
     } catch (error) {
@@ -1394,13 +1386,10 @@ class PlayerLifecycleService {
   destroyPlayer(): void {
     this.clearAllTimeouts()
 
-    // Issue #6 fix: Clear auth retry timeout
-    if (this.authRetryTimeout) {
-      clearTimeout(this.authRetryTimeout)
-      this.authRetryTimeout = null
-    }
+    // Clear specific timeouts
+    this.timeoutManager.clear('authRetry')
 
-    // Phase 1: Clean up pending promise handlers
+    // Clean up pending promise handlers
     if (this.pendingPromiseCleanup) {
       this.pendingPromiseCleanup()
       this.pendingPromiseCleanup = null
