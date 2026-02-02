@@ -109,11 +109,11 @@ class PlayerLifecycleService {
     new TrackDuplicateDetector()
   private addLog:
     | ((
-      level: LogLevel,
-      message: string,
-      context?: string,
-      error?: Error
-    ) => void)
+        level: LogLevel,
+        message: string,
+        context?: string,
+        error?: Error
+      ) => void)
     | null = null
   private navigationCallback: NavigationCallback | null = null
   private stateChangeInProgress: boolean = false
@@ -131,7 +131,6 @@ class PlayerLifecycleService {
   // Phase 2: Device ready resolvers
   private deviceReadyResolver: ((deviceId: string) => void) | null = null
   private deviceErrorResolver: ((error: Error) => void) | null = null
-
 
   setLogger(
     logger: (
@@ -826,7 +825,7 @@ class PlayerLifecycleService {
     const isNearEnd =
       state.duration > 0 &&
       state.duration - state.position <
-      PLAYER_LIFECYCLE_CONFIG.TRACK_END_THRESHOLD_MS
+        PLAYER_LIFECYCLE_CONFIG.TRACK_END_THRESHOLD_MS
 
     const positionUnchanged = state.position === this.lastKnownState.position
 
@@ -838,7 +837,7 @@ class PlayerLifecycleService {
       positionUnchanged &&
       wasPlayingButNowPaused &&
       timeSinceLastUpdate >
-      PLAYER_LIFECYCLE_CONFIG.STATE_MONITORING.stallDetectionMs
+        PLAYER_LIFECYCLE_CONFIG.STATE_MONITORING.stallDetectionMs
 
     return isNearEnd && hasStalled
   }
@@ -1069,13 +1068,13 @@ class PlayerLifecycleService {
       // Set up device management logger
       setDeviceManagementLogger(
         this.addLog ??
-        ((level, message, _context, error) => {
-          if (level === 'WARN') {
-            console.warn(`[DeviceManagement] ${message}`, error)
-          } else if (level === 'ERROR') {
-            console.error(`[DeviceManagement] ${message}`, error)
-          }
-        })
+          ((level, message, _context, error) => {
+            if (level === 'WARN') {
+              console.warn(`[DeviceManagement] ${message}`, error)
+            } else if (level === 'ERROR') {
+              console.error(`[DeviceManagement] ${message}`, error)
+            }
+          })
       )
 
       // Clear any existing cleanup timeout
