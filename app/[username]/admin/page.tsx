@@ -36,6 +36,8 @@ import { QRCodeComponent } from '@/components/ui'
 // Autoplay helper removed
 
 import { useAdminTokenManagement } from '@/hooks/useAdminTokenManagement'
+import { usePlaybackEnforcer } from '@/hooks/usePlaybackEnforcer'
+
 
 // Recovery removed
 
@@ -240,12 +242,12 @@ export default function AdminPage(): JSX.Element {
   const handleTabChange = useCallback((value: string): void => {
     setActiveTab(
       value as
-        | 'dashboard'
-        | 'playlist'
-        | 'settings'
-        | 'logs'
-        | 'analytics'
-        | 'branding'
+      | 'dashboard'
+      | 'playlist'
+      | 'settings'
+      | 'logs'
+      | 'analytics'
+      | 'branding'
     )
   }, [])
 
@@ -321,6 +323,9 @@ export default function AdminPage(): JSX.Element {
   })
 
   // Recovery removed
+
+  // Enforce single-device playback
+  usePlaybackEnforcer(true) // Always enabled when admin page is loaded
 
   // Only show loading if we have no queue data at all
   if (queueLoading && (!queue || queue.length === 0) && !playlistError) {
