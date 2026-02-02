@@ -87,14 +87,26 @@ export async function attemptDeviceRecovery(
     if (isNetworkError(error)) {
       networkError = error instanceof Error ? error : new Error(String(error))
       const categorized = categorizeNetworkError(error)
+
+      // FAST RETRY LOGIC:
+      // If it's a network error, we don't want to wait 30 seconds.
+      // We want to retry quickly (e.g. 1s, 2s, 5s) because it might be a blip.
+      // However, we don't want to spam.
+
+      // If consecutive failures are low, use a short cooldown
+      let nextAllowedAt = Date.now() + BASE_COOLDOWN_MS
+      if (consecutiveFailures < 3) {
+        nextAllowedAt = Date.now() + 2000 // Retry in 2 seconds for first few failures
+      }
+
       logger(
         'WARN',
-        `Network error detected, skipping device recovery: ${categorized.message}`
+        `Network error detected, scheduling fast retry: ${categorized.message}`
       )
       if (addLog) {
         addLog(
           'WARN',
-          `Network error detected, skipping device recovery: ${categorized.message}`,
+          `Network error detected, scheduling fast retry: ${categorized.message}`,
           'DeviceRecovery',
           networkError
         )
@@ -104,8 +116,8 @@ export async function attemptDeviceRecovery(
         skipped: true,
         reason: 'Network error',
         error: networkError,
-        consecutiveFailures,
-        nextAttemptAllowedAt: Date.now() + BASE_COOLDOWN_MS
+        consecutiveFailures, // Don't increment failures for transient network errors to avoid long backoff
+        nextAttemptAllowedAt: nextAllowedAt
       }
     }
   }

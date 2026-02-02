@@ -108,73 +108,78 @@ export async function transferPlaybackToDevice(
         continue
       }
 
-      // Wait for transfer to complete
-      await new Promise((resolve) => setTimeout(resolve, 1000))
-
       // Verify transfer by checking playback state (with retry and fallback)
+      // POLLING LOOP: Check multiple times to allow for API propagation delay
       let verificationSucceeded = false
       let verificationError: unknown = null
 
-      try {
-        const state = await sendApiRequest<{
-          device: { id: string; name: string }
-        }>({
-          path: 'me/player?market=from_token',
-          method: 'GET'
-        })
+      const verificationAttempts = 4
+      const verificationInterval = 500 // 500ms
 
-        if (!state?.device) {
-          if (addLog) {
-            addLog(
-              'WARN',
-              'No device in playback state after transfer - verification failed',
-              'DeviceTransfer'
-            )
-          }
-          verificationError = new Error('No device in playback state')
-        } else if (state.device.id !== deviceId) {
-          if (addLog) {
-            addLog(
-              'WARN',
-              `Device ID mismatch after transfer: expected ${deviceId}, got ${state.device.id}`,
-              'DeviceTransfer'
-            )
-          }
-          verificationError = new Error(
-            `Device ID mismatch: expected ${deviceId}, got ${state.device.id}`
-          )
-        } else {
-          verificationSucceeded = true
-        }
-      } catch (verifyError) {
-        verificationError = verifyError
-        const isNetworkErr = isNetworkError(verifyError)
+      for (let vObj = 0; vObj < verificationAttempts; vObj++) {
+        // Wait before checking
+        await new Promise((resolve) =>
+          setTimeout(resolve, verificationInterval)
+        )
 
-        if (addLog) {
-          addLog(
-            isNetworkErr ? 'WARN' : 'ERROR',
-            `Device state verification failed: ${isNetworkErr ? 'network error (ERR_CONNECTION_CLOSED or similar)' : 'API error'}`,
-            'DeviceTransfer',
-            verifyError instanceof Error ? verifyError : undefined
-          )
-        }
+        try {
+          const state = await sendApiRequest<{
+            device: { id: string; name: string }
+          }>({
+            path: 'me/player?market=from_token',
+            method: 'GET'
+          })
 
-        // If it's a network error and we're configured to skip verification, treat as success
-        if (
-          isNetworkErr &&
-          skipVerificationOnNetworkError &&
-          transferApiSucceeded
-        ) {
-          if (addLog) {
-            addLog(
-              'WARN',
-              'Skipping device state verification due to network error - transfer API succeeded, assuming success',
-              'DeviceTransfer'
+          if (!state?.device) {
+            verificationError = new Error('No device in playback state')
+            // Continue polling
+          } else if (state.device.id !== deviceId) {
+            verificationError = new Error(
+              `Device ID mismatch: expected ${deviceId}, got ${state.device.id}`
             )
+            // Continue polling
+          } else {
+            verificationSucceeded = true
+            break // Success!
           }
-          return true
+        } catch (verifyError) {
+          verificationError = verifyError
+          // If network error, might be transient, keep polling or accept success if transfer worked
+          if (
+            isNetworkError(verifyError) &&
+            transferApiSucceeded &&
+            skipVerificationOnNetworkError
+          ) {
+            if (addLog) {
+              addLog(
+                'WARN',
+                'Network error during verification - treating transfer as success',
+                'DeviceTransfer'
+              )
+            }
+            return true
+          }
         }
       }
+
+      if (!verificationSucceeded) {
+        if (addLog) {
+          addLog(
+            'WARN',
+            `Device verification failed after transfer: ${verificationError instanceof Error ? verificationError.message : 'Unknown error'}`,
+            'DeviceTransfer'
+          )
+        }
+      } else {
+        // Explicit return on success
+        return true
+      }
+
+      // If we are here, verification failed after all attempts.
+      // But if transfer API succeeded and we had a network error during verification loop,
+      // we might want to trust it.
+      // However, the loop logic above returns early on network error if configured.
+      // So if we are here, either we didn't have a network error (just invalid state) or we don't skip on network error.
 
       // If verification succeeded, we're done
       if (verificationSucceeded) {

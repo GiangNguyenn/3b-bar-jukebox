@@ -65,6 +65,16 @@ export async function validateDevice(
       }
 
       errors.push('Device not found in available devices')
+
+      // STRICT JUKEBOX LOGIC:
+      // If we are looking for a specific device ID (which we are, the one we just created),
+      // and it's not in the list, it might just be hidden/inactive in the API but locally "Ready".
+      // We should be careful about failing validation too aggressively here.
+      // However, if we can't see it, we can't transfer to it usually.
+      // But let's add a log warning instead of a hard error if it matches our expected ID
+      // to allow "blind transfers" which sometimes work.
+      // For now, we'll keep it as an error but ensure the caller handles "Device not found"
+      // by triggering the new self-healing logic.
       return { isValid: false, errors, warnings }
     }
 
