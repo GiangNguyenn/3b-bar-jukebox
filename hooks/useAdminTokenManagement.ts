@@ -1,18 +1,13 @@
 import { useEffect, useRef } from 'react'
 import { tokenManager } from '@/shared/token/tokenManager'
 import { TOKEN_REFRESH_CHECK_INTERVAL } from '@/shared/constants/token'
+import type { PlayerStatus } from './useSpotifyPlayer'
 
 export interface UseAdminTokenManagementParams {
   tokenHealthStatus: 'valid' | 'error' | 'unknown' | 'expired'
   isLoading: boolean
   isReady: boolean
-  playerStatus:
-    | 'initializing'
-    | 'ready'
-    | 'reconnecting'
-    | 'error'
-    | 'disconnected'
-    | 'verifying'
+  playerStatus: PlayerStatus
   handleTokenError: () => Promise<void>
   addLog: (
     level: 'WARN' | 'ERROR' | 'INFO' | 'LOG',

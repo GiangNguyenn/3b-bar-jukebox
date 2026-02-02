@@ -13,6 +13,7 @@ export type PlayerStatus =
   | 'error' // Permanent error state
   | 'disconnected' // User manually disconnected
   | 'verifying' // Device verification in progress
+  | 'recovery_needed' // Signal to UI that player needs to be recreated
 
 interface PlayerStatusState {
   status: PlayerStatus
@@ -36,7 +37,8 @@ const ALLOWED_TRANSITIONS: Record<PlayerStatus, PlayerStatus[]> = {
   reconnecting: ['ready', 'error', 'initializing'],
   error: ['initializing', 'ready', 'disconnected'],
   disconnected: ['initializing', 'ready'],
-  verifying: ['ready', 'error', 'initializing', 'disconnected']
+  verifying: ['ready', 'error', 'initializing', 'disconnected'],
+  recovery_needed: ['initializing', 'error', 'disconnected'] // Can only go to initializing (recreation) or error
 }
 
 // Helper function to check if a transition is allowed
@@ -192,6 +194,26 @@ export function useSpotifyPlayerHook(
     try {
       const deviceId = await playerLifecycleService.createPlayer(
         (status, error) => {
+          // Check if we need to recover
+          if (status === 'recovery_needed') {
+            addLog(
+              'WARN',
+              'Player signaled recovery needed, recreating...',
+              'SpotifyPlayer'
+            )
+            // Don't set status to recovery_needed, just trigger recreation
+            // But we need to update status to something transitional?
+            // Actually, destroyPlayer sets status to disconnected.
+            // Let's float a promise to recreate
+            void (async () => {
+              destroyPlayer()
+              // Short delay to ensure cleanup
+              await new Promise((resolve) => setTimeout(resolve, 100))
+              await createPlayer()
+            })()
+            return
+          }
+
           // Validate status is a valid PlayerStatus before setting
           const validStatuses: PlayerStatus[] = [
             'initializing',

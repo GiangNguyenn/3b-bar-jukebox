@@ -405,43 +405,34 @@ class PlayerLifecycleService {
 
     // Instead of looking for other devices, we assume the player is broken and needs to be recreated.
     // This enforces the "Single Device" policy.
-    void (async () => {
-      onStatusChange(
-        'reconnecting',
-        'Player encountered an error. Reinitializing...'
-      )
+    // Add a grace period before triggering self-healing to avoid thrashing
+    const RECOVERY_GRACE_PERIOD_MS = 2000
 
-      try {
-        // Reload SDK and recreate player
-        this.destroyPlayer()
-        await this.reloadSDK()
-        // The page will likely need to re-initialize the player after SDK reload.
-        // We can trigger this via the status change or a callback if needed,
-        // but for now, signaling 'error' with a specific message might be the best way
-        // to trigger the frontend to call createPlayer again.
-        // However, since we are inside the service, we can try to facilitate it.
-        // Note: The UI usually reacts to 'error' by showing a button or auto-retrying.
-        // Let's perform the reload and then signal a fatal error that requires restart,
-        // or if we have the callbacks, try to recreate it ourselves.
-        // Since createPlayer takes callbacks that we don't have stored permanently here (only passed in),
-        // we can't easily call createPlayer again without refactoring to store those callbacks.
-
-        // Strategy: Signal a specific error state that the UI hooks can listen for to trigger a rebuild.
+    const timeout = setTimeout(() => {
+      void (async () => {
         onStatusChange(
-          'error',
-          'Player connection lost. System attempting to recover...'
+          'reconnecting',
+          'Player encountered an error. Preparing to recover...'
         )
 
-        // In a real "self-healing" scenario, the UI hook useSpotifyPlayer would handle the re-creation.
-        // We ensure the SDK is fresh for the next attempt.
-      } catch (error) {
-        this.log('ERROR', 'Self-healing failed', error)
-        onStatusChange(
-          'error',
-          'Critical player error. Please refresh the page.'
-        )
-      }
-    })()
+        try {
+          // Signal that recovery is needed - the UI hook should handle the recreation
+          // This maintains the contract that the service manages the instance, but the UI hook manages the lifecycle/subscription
+          onStatusChange(
+            'recovery_needed',
+            'Player connection lost. Requesting recovery...'
+          )
+        } catch (error) {
+          this.log('ERROR', 'Self-healing signal failed', error)
+          onStatusChange(
+            'error',
+            'Critical player error. Please refresh the page.'
+          )
+        }
+      })()
+    }, RECOVERY_GRACE_PERIOD_MS)
+
+    this.timeoutManager.set(timeoutKey, timeout)
   }
 
   private async markFinishedTrackAsPlayed(

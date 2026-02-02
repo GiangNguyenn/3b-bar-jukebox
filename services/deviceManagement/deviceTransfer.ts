@@ -28,7 +28,7 @@ export async function transferPlaybackToDevice(
   maxAttempts: number = 3,
   delayBetweenAttempts: number = 1000,
   skipVerificationOnNetworkError: boolean = true,
-  shouldPlay: boolean | null = false // Default to false (pause) to maintain legacy behavior
+  shouldPlay: boolean | null = null // Default to null (maintain current state)
 ): Promise<boolean> {
   if (!deviceId) {
     if (addLog) {
@@ -40,11 +40,10 @@ export async function transferPlaybackToDevice(
   }
 
   let attempts = 0
-  let transferApiSucceeded = false
 
   while (attempts < maxAttempts) {
     try {
-      // Validate device first
+      // Validate device first - early exit if device is gone
       const validation = await validateDevice(deviceId)
 
       if (!validation.isValid) {
@@ -80,7 +79,6 @@ export async function transferPlaybackToDevice(
           method: 'PUT',
           body
         })
-        transferApiSucceeded = true
 
         if (addLog) {
           addLog(
@@ -90,7 +88,7 @@ export async function transferPlaybackToDevice(
           )
         }
       } catch (transferError) {
-        // If transfer API call itself fails, retry
+        // If transfer API call itself fails, retry the whole loop
         const isNetworkErr = isNetworkError(transferError)
         if (addLog) {
           addLog(
@@ -104,17 +102,22 @@ export async function transferPlaybackToDevice(
         if (attempts < maxAttempts) {
           const backoffDelay = delayBetweenAttempts * attempts
           await new Promise((resolve) => setTimeout(resolve, backoffDelay))
+          continue // Retry the main loop
         }
-        continue
+        return false // Exhausted retries on transfer API
       }
 
-      // Verify transfer by checking playback state (with retry and fallback)
-      // POLLING LOOP: Check multiple times to allow for API propagation delay
+      // Transfer API succeeded. Now verify.
+      // We decouple this from the main retry loop to avoid spamming the Transfer API
+      // if the API call worked but verification is just lagging.
+
       let verificationSucceeded = false
       let verificationError: unknown = null
 
-      const verificationAttempts = 4
-      const verificationInterval = 500 // 500ms
+      // Extended polling: 10 attempts * 500ms = 5 seconds
+      // This handles slow propagation of device state
+      const verificationAttempts = 10
+      const verificationInterval = 500
 
       for (let vObj = 0; vObj < verificationAttempts; vObj++) {
         // Wait before checking
@@ -135,7 +138,7 @@ export async function transferPlaybackToDevice(
             // Continue polling
           } else if (state.device.id !== deviceId) {
             verificationError = new Error(
-              `Device ID mismatch: expected ${deviceId}, got ${state.device.id}`
+              `Device ID mismatch: expected ${deviceId}, got ${state.device.id} (${state.device.name})`
             )
             // Continue polling
           } else {
@@ -144,12 +147,9 @@ export async function transferPlaybackToDevice(
           }
         } catch (verifyError) {
           verificationError = verifyError
-          // If network error, might be transient, keep polling or accept success if transfer worked
-          if (
-            isNetworkError(verifyError) &&
-            transferApiSucceeded &&
-            skipVerificationOnNetworkError
-          ) {
+
+          // on network error during verification, we might want to just trust the transfer
+          if (isNetworkError(verifyError) && skipVerificationOnNetworkError) {
             if (addLog) {
               addLog(
                 'WARN',
@@ -162,64 +162,44 @@ export async function transferPlaybackToDevice(
         }
       }
 
-      if (!verificationSucceeded) {
-        if (addLog) {
-          addLog(
-            'WARN',
-            `Device verification failed after transfer: ${verificationError instanceof Error ? verificationError.message : 'Unknown error'}`,
-            'DeviceTransfer'
-          )
-        }
-      } else {
-        // Explicit return on success
-        return true
-      }
-
-      // If we are here, verification failed after all attempts.
-      // But if transfer API succeeded and we had a network error during verification loop,
-      // we might want to trust it.
-      // However, the loop logic above returns early on network error if configured.
-      // So if we are here, either we didn't have a network error (just invalid state) or we don't skip on network error.
-
-      // If verification succeeded, we're done
       if (verificationSucceeded) {
         return true
       }
 
-      // If verification failed but transfer API succeeded, and we're not skipping verification,
-      // retry the entire process
-      if (transferApiSucceeded && !skipVerificationOnNetworkError) {
-        attempts++
-        if (attempts < maxAttempts) {
-          const backoffDelay = delayBetweenAttempts * attempts
-          if (addLog) {
-            addLog(
-              'WARN',
-              `Retrying device transfer (attempt ${attempts + 1}/${maxAttempts}) after verification failure`,
-              'DeviceTransfer'
-            )
-          }
-          await new Promise((resolve) => setTimeout(resolve, backoffDelay))
-          continue
-        }
-      }
-
-      // If we get here, verification failed and we've exhausted retries or can't skip
+      // Verification failed after all polling attempts
       if (addLog) {
         addLog(
-          'ERROR',
-          `Device transfer verification failed after ${attempts + 1} attempts`,
-          'DeviceTransfer',
-          verificationError instanceof Error ? verificationError : undefined
+          'WARN',
+          `Device verification failed after transfer: ${verificationError instanceof Error ? verificationError.message : String(verificationError)}`,
+          'DeviceTransfer'
         )
       }
+
+      // If we are here, Transfer API said 204 OK, but State API says "Not Active".
+      // We can try to retry the Transfer command ONE more time if we haven't exhausted maxAttempts.
+      // But we shouldn't spam it.
+      attempts++
+      if (attempts < maxAttempts) {
+        const backoffDelay = delayBetweenAttempts * attempts
+        if (addLog) {
+          addLog(
+            'WARN',
+            `Retrying device transfer (attempt ${attempts + 1}/${maxAttempts}) after verification timeout`,
+            'DeviceTransfer'
+          )
+        }
+        await new Promise((resolve) => setTimeout(resolve, backoffDelay))
+        continue
+      }
+
       return false
     } catch (error) {
+      // Catch-all for unexpected errors in the outer loop
       const isNetworkErr = isNetworkError(error)
       if (addLog) {
         addLog(
           isNetworkErr ? 'WARN' : 'ERROR',
-          `Transfer failed: ${isNetworkErr ? 'network error' : 'unexpected error'}`,
+          `Transfer process failed: ${isNetworkErr ? 'network error' : 'unexpected error'}`,
           'DeviceTransfer',
           error instanceof Error ? error : undefined
         )
@@ -232,18 +212,6 @@ export async function transferPlaybackToDevice(
         await new Promise((resolve) => setTimeout(resolve, backoffDelay))
       }
     }
-  }
-
-  // If transfer API succeeded but verification failed and we can skip, return true
-  if (transferApiSucceeded && skipVerificationOnNetworkError) {
-    if (addLog) {
-      addLog(
-        'WARN',
-        'Device transfer API succeeded but verification failed - returning success due to network error tolerance',
-        'DeviceTransfer'
-      )
-    }
-    return true
   }
 
   return false
