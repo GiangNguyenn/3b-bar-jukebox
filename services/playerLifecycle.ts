@@ -155,7 +155,7 @@ class PlayerLifecycleService {
     setDeviceManagementLogger(logger)
   }
 
-  setNavigationCallback(callback: NavigationCallback): void {
+  setNavigationCallback(callback: NavigationCallback | null): void {
     this.navigationCallback = callback
   }
 
@@ -1379,8 +1379,8 @@ class PlayerLifecycleService {
   destroyPlayer(): void {
     this.clearAllTimeouts()
 
-    // Clear specific timeouts
-    this.timeoutManager.clear('authRetry')
+    // Clear all timeouts from TimeoutManager to prevent memory leaks
+    this.timeoutManager.clearAll()
 
     // Clean up pending promise handlers
     if (this.pendingPromiseCleanup) {

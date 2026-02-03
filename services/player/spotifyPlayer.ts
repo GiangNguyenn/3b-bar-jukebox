@@ -204,11 +204,14 @@ export class SpotifyPlayer {
       }
 
       // eslint-disable-next-line @typescript-eslint/unbound-method
-      const originalReady = window.onSpotifyWebPlaybackSDKReady
+      let originalReady = window.onSpotifyWebPlaybackSDKReady
       window.onSpotifyWebPlaybackSDKReady = (): void => {
         cleanup()
-        if (originalReady) {
-          originalReady()
+        // Call original handler if exists, then set to undefined to break closure chain
+        const tempReady = originalReady
+        originalReady = undefined // Break closure chain to prevent memory leak
+        if (tempReady) {
+          tempReady()
         }
         if (!isResolved) {
           isResolved = true
@@ -216,12 +219,15 @@ export class SpotifyPlayer {
         }
       }
 
-      const originalError = window.onSpotifyWebPlaybackSDKError
+      let originalError = window.onSpotifyWebPlaybackSDKError
       window.onSpotifyWebPlaybackSDKError = (error: unknown): void => {
         cleanup()
         this.log('ERROR', 'Failed to reload Spotify SDK', error)
-        if (originalError) {
-          originalError.call(undefined, error)
+        // Call original handler if exists, then set to undefined to break closure chain
+        const tempError = originalError
+        originalError = undefined // Break closure chain to prevent memory leak
+        if (tempError) {
+          tempError.call(undefined, error)
         }
         if (!isResolved) {
           isResolved = true
@@ -358,6 +364,10 @@ export class SpotifyPlayer {
       })
     } catch (error) {
       this.clearAllTimeouts()
+      // Clean up any event listeners that may have been registered before the error
+      // This prevents memory leaks from partial initialization
+      this.eventCleanup.forEach((cleanup) => cleanup())
+      this.eventCleanup = []
       this.log('ERROR', 'Error creating player', error)
       this.status = 'error'
       throw error
@@ -543,6 +553,14 @@ export class SpotifyPlayer {
     if (this.player) {
       this.player.disconnect()
       this.player = null
+    }
+
+    // Clean up window references to prevent memory leaks
+    if (typeof window !== 'undefined') {
+      window.spotifyPlayerInstance = null
+      // Defensively clear SDK callbacks
+      window.onSpotifyWebPlaybackSDKReady = undefined
+      window.onSpotifyWebPlaybackSDKError = undefined
     }
 
     // Reset state

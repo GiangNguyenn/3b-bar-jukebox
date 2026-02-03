@@ -102,7 +102,17 @@ class AutoPlayService {
     }
 
     this.intervalRef = setInterval(() => {
-      void this.checkPlaybackState()
+      // Wrap in error handler to prevent interval from continuing on fatal errors
+      void this.checkPlaybackState().catch((error) => {
+        logger(
+          'ERROR',
+          'Fatal error in checkPlaybackState - stopping service',
+          undefined,
+          error as Error
+        )
+        // Stop the service on fatal error to prevent memory leaks
+        this.stop()
+      })
     }, this.checkInterval)
   }
 
@@ -340,8 +350,19 @@ class AutoPlayService {
       // Adjust polling interval based on track progress
       this.adjustPollingInterval(currentState)
 
-      // Update last known state
-      this.lastPlaybackState = currentState
+      // Update last known state - only store essential fields to minimize memory usage
+      // This prevents accumulation of image URLs and other metadata
+      this.lastPlaybackState = {
+        is_playing: currentState.is_playing,
+        progress_ms: currentState.progress_ms,
+        item: currentState.item
+          ? {
+              id: currentState.item.id,
+              duration_ms: currentState.item.duration_ms,
+              name: currentState.item.name
+            }
+          : null
+      } as SpotifyPlaybackState
       this.lastTrackId = currentTrackId || null
     } catch (error) {
       logger(

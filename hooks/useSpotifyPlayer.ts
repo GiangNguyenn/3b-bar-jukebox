@@ -152,6 +152,10 @@ export function useSpotifyPlayerHook(
     if (onNavigate) {
       playerLifecycleService.setNavigationCallback(onNavigate)
     }
+    // Clean up callback on unmount to prevent memory leaks
+    return () => {
+      playerLifecycleService.setNavigationCallback(null)
+    }
   }, [onNavigate])
 
   const destroyPlayer = useCallback(() => {

@@ -13,6 +13,8 @@ import type { Logger } from './types'
 export class PlaybackService {
   private operationQueue: Promise<void> = Promise.resolve()
   private logger: Logger | null = null
+  private operationCount: number = 0
+  private readonly RESET_THRESHOLD = 100 // Reset chain every 100 operations
 
   /**
    * Set logger for this service
@@ -50,6 +52,23 @@ export class PlaybackService {
     operation: () => Promise<void>,
     operationName: string = 'unknown'
   ): Promise<void> {
+    // Increment operation counter
+    this.operationCount++
+
+    // Periodically reset the promise chain to prevent unbounded growth
+    // This prevents memory accumulation in long-running sessions
+    if (this.operationCount % this.RESET_THRESHOLD === 0) {
+      this.log(
+        'INFO',
+        `Resetting promise chain after ${this.operationCount} operations`
+      )
+      // Wait for current chain to complete, then reset
+      await this.operationQueue.catch(() => {
+        // Ignore errors from previous chain
+      })
+      this.operationQueue = Promise.resolve()
+    }
+
     // Chain this operation onto the queue
     // Each operation waits for the previous one to complete
     this.operationQueue = this.operationQueue
