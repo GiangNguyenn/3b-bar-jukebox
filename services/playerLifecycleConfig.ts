@@ -25,7 +25,11 @@ export const PLAYER_LIFECYCLE_CONFIG = {
   // Issue #9: Additional constants for magic numbers
   PLAYBACK_RETRY: {
     initialBackoffMs: 500,
-    maxBackoffMultiplier: 3 // Results in backoffs: 500ms, 1000ms, 2000ms
+    maxBackoffMultiplier: 3, // Results in backoffs: 500ms, 1000ms, 2000ms
+    maxAttempts: 10, // Maximum track attempts in playNextTrackImpl loop
+    maxRetriesPerTrack: 3, // Maximum retries for a single track playback
+    duplicateCheckRetries: 3, // Maximum retries when removing duplicates
+    recoveryGracePeriodMs: 2000 // Grace period before triggering device recovery
   },
   STATE_MONITORING: {
     stallDetectionMs: 2000, // Time to wait before considering playback stalled

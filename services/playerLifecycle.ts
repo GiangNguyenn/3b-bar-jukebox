@@ -86,7 +86,38 @@ function isPlayerSDKState(state: unknown): state is PlayerSDKState {
 // Type for the navigation callback
 export type NavigationCallback = (path: string) => void
 
-// Player lifecycle management service
+/**
+ * Phase 4: PlayerLifecycleService
+ * 
+ * Manages the complete lifecycle of the Spotify Web Playback SDK player.
+ * Responsibilities:
+ * - Player initialization and teardown
+ * - Device state management and recovery
+ * - Queue playback orchestration
+ * - Error handling and retry logic
+ * - State synchronization with Spotify SDK
+ * 
+ * Key improvements:
+ * - Queue-based state change processing to prevent race conditions
+ * - Extracted event handlers for better testability
+ * - Consistent error handling for all async operations
+ * - Configuration-driven retry and timeout behavior
+ * 
+ * @example
+ * ```typescript
+ * import { playerLifecycleService } from '@/services/playerLifecycle'
+ * 
+ * // Initialize player
+ * await playerLifecycleService.createPlayer(
+ *   onStatusChange,
+ *   onDeviceIdChange,
+ *   onPlaybackStateChange
+ * )
+ * 
+ * // Play next track
+ * await playerLifecycleService.playNextTrack()
+ * ```
+ */
 class PlayerLifecycleService {
   private playerRef: Spotify.Player | null = null
   private lastKnownState: PlayerSDKState | null = null
@@ -114,15 +145,16 @@ class PlayerLifecycleService {
     new TrackDuplicateDetector()
   private addLog:
     | ((
-        level: LogLevel,
-        message: string,
-        context?: string,
-        error?: Error
-      ) => void)
+      level: LogLevel,
+      message: string,
+      context?: string,
+      error?: Error
+    ) => void)
     | null = null
   private navigationCallback: NavigationCallback | null = null
   private stateChangeInProgress: boolean = false
-  private pendingState: PlayerSDKState | null = null
+  private pendingStates: PlayerSDKState[] = [] // Queue for state changes that arrive during processing
+  private readonly MAX_PENDING_STATES = 10 // Prevent memory issues during rapid state changes
   private consecutiveNullStates: number = 0
   // Phase 1: Memory leak prevention
   private pendingPromiseCleanup: (() => void) | null = null
@@ -186,7 +218,7 @@ class PlayerLifecycleService {
   private async playTrackWithRetry(
     trackUri: string,
     deviceId: string,
-    maxRetries = 3
+    maxRetries = PLAYER_LIFECYCLE_CONFIG.PLAYBACK_RETRY.maxRetriesPerTrack
   ): Promise<boolean> {
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
       try {
@@ -260,7 +292,7 @@ class PlayerLifecycleService {
     }
 
     // Iterative approach: try tracks from queue until success or exhaustion
-    const MAX_ATTEMPTS = 10 // Safety limit to prevent infinite loops
+    const MAX_ATTEMPTS = PLAYER_LIFECYCLE_CONFIG.PLAYBACK_RETRY.maxAttempts // Safety limit to prevent infinite loops
     let currentTrack: JukeboxQueueItem | null = track
     let attempts = 0
 
@@ -289,7 +321,7 @@ class PlayerLifecycleService {
         const validTrack = await ensureTrackNotDuplicate(
           currentTrack,
           lastPlayingTrackId,
-          3,
+          PLAYER_LIFECYCLE_CONFIG.PLAYBACK_RETRY.duplicateCheckRetries,
           this.addLog ?? undefined
         )
 
@@ -315,7 +347,11 @@ class PlayerLifecycleService {
         `[playNextTrack] Attempting to play track URI: ${trackUri} on device: ${this.deviceId}`
       )
 
-      const success = await this.playTrackWithRetry(trackUri, this.deviceId, 3)
+      const success = await this.playTrackWithRetry(
+        trackUri,
+        this.deviceId,
+        PLAYER_LIFECYCLE_CONFIG.PLAYBACK_RETRY.maxRetriesPerTrack
+      )
 
       if (success) {
         // TypeScript guard: currentTrack should still be defined here
@@ -469,52 +505,57 @@ class PlayerLifecycleService {
 
     // Background recovery: Try to reactivate the device without destroying the player
     // Add a grace period before triggering recovery to avoid thrashing
-    const RECOVERY_GRACE_PERIOD_MS = 2000
+    const RECOVERY_GRACE_PERIOD_MS =
+      PLAYER_LIFECYCLE_CONFIG.PLAYBACK_RETRY.recoveryGracePeriodMs
 
     const timeout = setTimeout(() => {
       void (async () => {
-        // Guard: Check if player was destroyed while we were waiting
-        if (!this.playerRef) {
-          this.log(
-            'WARN',
-            'Player destroyed during recovery grace period - cancelling recovery'
-          )
-          return
-        }
+        try {
+          // Guard: Check if player was destroyed while we were waiting
+          if (!this.playerRef) {
+            this.log(
+              'WARN',
+              'Player destroyed during recovery grace period - cancelling recovery'
+            )
+            return
+          }
 
-        this.log(
-          'INFO',
-          'Attempting background recovery: transferring playback to device'
-        )
-
-        // Try to transfer playback back to this device
-        const transferred = await transferPlaybackToDevice(deviceId)
-
-        // Re-check player existence after async operation
-        if (!this.playerRef) {
-          this.log(
-            'WARN',
-            'Player destroyed during recovery transfer - ignoring result'
-          )
-          return
-        }
-
-        if (transferred) {
           this.log(
             'INFO',
-            'Background recovery successful - device reactivated'
+            'Attempting background recovery: transferring playback to device'
           )
-          onStatusChange('ready', undefined)
-        } else {
-          this.log(
-            'ERROR',
-            'Background recovery failed - device could not be reactivated'
-          )
-          // Only trigger full recovery if background transfer fails
-          onStatusChange(
-            'recovery_needed',
-            'Device recovery failed. Player may need to be recreated.'
-          )
+
+          // Try to transfer playback back to this device
+          const transferred = await transferPlaybackToDevice(deviceId)
+
+          // Re-check player existence after async operation
+          if (!this.playerRef) {
+            this.log(
+              'WARN',
+              'Player destroyed during recovery transfer - ignoring result'
+            )
+            return
+          }
+
+          if (transferred) {
+            this.log(
+              'INFO',
+              'Background recovery successful - device reactivated'
+            )
+            onStatusChange('ready', undefined)
+          } else {
+            this.log(
+              'ERROR',
+              'Background recovery failed - device could not be reactivated'
+            )
+            // Only trigger full recovery if background transfer fails
+            onStatusChange(
+              'recovery_needed',
+              'Device recovery failed. Player may need to be recreated.'
+            )
+          }
+        } catch (error) {
+          this.log('ERROR', 'Error in not_ready background recovery', error)
         }
       })()
     }, RECOVERY_GRACE_PERIOD_MS)
@@ -572,7 +613,7 @@ class PlayerLifecycleService {
     const validTrack = await ensureTrackNotDuplicate(
       nextTrack,
       finishedTrackId,
-      3,
+      PLAYER_LIFECYCLE_CONFIG.PLAYBACK_RETRY.duplicateCheckRetries,
       this.addLog ?? undefined
     )
 
@@ -819,7 +860,7 @@ class PlayerLifecycleService {
     const isNearEnd =
       state.duration > 0 &&
       state.duration - state.position <
-        PLAYER_LIFECYCLE_CONFIG.TRACK_END_THRESHOLD_MS
+      PLAYER_LIFECYCLE_CONFIG.TRACK_END_THRESHOLD_MS
 
     const positionUnchanged = state.position === this.lastKnownState.position
 
@@ -831,7 +872,7 @@ class PlayerLifecycleService {
       positionUnchanged &&
       wasPlayingButNowPaused &&
       timeSinceLastUpdate >
-        PLAYER_LIFECYCLE_CONFIG.STATE_MONITORING.stallDetectionMs
+      PLAYER_LIFECYCLE_CONFIG.STATE_MONITORING.stallDetectionMs
 
     return isNearEnd && hasStalled
   }
@@ -869,8 +910,18 @@ class PlayerLifecycleService {
 
     // Serialization: If a state change is already being processed, queue this one
     if (this.stateChangeInProgress) {
-      // Only keep the most recent pending state (debouncing)
-      this.pendingState = state
+      // Add to queue, but limit size to prevent memory issues
+      if (this.pendingStates.length < this.MAX_PENDING_STATES) {
+        this.pendingStates.push(state)
+      } else {
+        this.log(
+          'WARN',
+          `State change queue full (${this.MAX_PENDING_STATES}), dropping oldest state`
+        )
+        // Drop oldest state and add new one
+        this.pendingStates.shift()
+        this.pendingStates.push(state)
+      }
       return
     }
 
@@ -880,10 +931,9 @@ class PlayerLifecycleService {
       // Process current state
       await this.handlePlayerStateChanged(state, onPlaybackStateChange)
 
-      // Process any pending state that arrived while we were working
-      while (this.pendingState) {
-        const nextState = this.pendingState
-        this.pendingState = null
+      // Process all pending states that arrived while we were working
+      while (this.pendingStates.length > 0) {
+        const nextState = this.pendingStates.shift()!
         this.lastStateUpdateTime = Date.now() // Update time for each state
         await this.handlePlayerStateChanged(nextState, onPlaybackStateChange)
       }
@@ -1041,6 +1091,195 @@ class PlayerLifecycleService {
     this.timeoutManager.clearAll()
   }
 
+  /**
+   * Phase 2: Handle device ready event
+   * Extracted from createPlayer to reduce complexity
+   */
+  private async handleDeviceReady(
+    deviceId: string,
+    onStatusChange: (status: string, error?: string) => void,
+    onDeviceIdChange: (deviceId: string) => void
+  ): Promise<void> {
+    // Guard: Check player exists before starting
+    if (!this.playerRef) {
+      this.log('WARN', 'Player destroyed before ready handler - aborting')
+      return
+    }
+
+    // Consolidate verification and transfer logic to prevent race conditions
+    this.timeoutManager.clear('notReady')
+    onStatusChange('verifying')
+
+    // Step 1: Verify the device exists and is accessible
+    const deviceExisted = await this.verifyDeviceWithTimeout(deviceId)
+
+    // Guard: Re-check after async operation
+    if (!this.playerRef) {
+      this.log('WARN', 'Player destroyed during device verification')
+      return
+    }
+
+    if (!deviceExisted) {
+      this.log(
+        'WARN',
+        'Device verification failed/timed-out. Attempting direct playback transfer as recovery.'
+      )
+    }
+
+    // Step 2: Set local ID
+    this.deviceId = deviceId
+    onDeviceIdChange(deviceId)
+
+    // Step 3: Transfer playback (this is the real "activation")
+    const transferSuccess = await transferPlaybackToDevice(deviceId)
+
+    // Guard: Re-check after async operation
+    if (!this.playerRef) {
+      this.log('WARN', 'Player destroyed during playback transfer')
+      return
+    }
+
+    if (!transferSuccess) {
+      this.log('ERROR', 'Failed to transfer playback to new device')
+      onStatusChange('error', 'Failed to transfer playback to new device')
+      return
+    }
+
+    // Success
+    onStatusChange('ready')
+    recoveryManager.recordSuccess()
+
+    // Resolve promise if resolver exists
+    if (this.deviceReadyResolver) {
+      this.deviceReadyResolver(deviceId)
+      this.deviceReadyResolver = null
+      this.deviceErrorResolver = null
+    }
+  }
+
+  /**
+   * Phase 2: Handle initialization error
+   * Extracted from createPlayer to reduce complexity
+   */
+  private handleInitializationError(
+    message: string,
+    onStatusChange: (status: string, error?: string) => void
+  ): void {
+    // Get additional context for better diagnostics
+    const sdkAvailable = typeof window.Spotify !== 'undefined'
+    const tokenCheck = tokenManager.getToken().catch(() => null)
+
+    void tokenCheck.then((token) => {
+      const errorDetails = {
+        sdkMessage: message,
+        sdkAvailable,
+        hasToken: !!token,
+        tokenLength: token?.length ?? 0,
+        userAgent:
+          typeof navigator !== 'undefined' ? navigator.userAgent : 'unknown',
+        timestamp: new Date().toISOString()
+      }
+
+      this.log(
+        'ERROR',
+        `Failed to initialize player: ${message}. Context: SDK=${sdkAvailable}, Token=${!!token}, TokenLength=${token?.length ?? 0}`,
+        new Error(JSON.stringify(errorDetails, null, 2))
+      )
+    })
+
+    onStatusChange(
+      'error',
+      `Initialization error: ${message}. Check console for details.`
+    )
+
+    // Resolve error promise if resolver exists
+    if (this.deviceErrorResolver) {
+      this.deviceErrorResolver(new Error(message))
+      this.deviceErrorResolver = null
+      this.deviceReadyResolver = null
+    }
+  }
+
+  /**
+   * Phase 2: Handle playback error
+   * Extracted from createPlayer to reduce complexity
+   */
+  private handlePlaybackError(message: string): void {
+    this.log('ERROR', `Playback error: ${message}`)
+
+    if (message.includes('Restriction violated')) {
+      this.log(
+        'WARN',
+        'Restriction violated error detected - removing problematic track and playing next'
+      )
+      void this.handleRestrictionViolatedError().catch((error) =>
+        this.log('ERROR', 'Error handling restriction violated error', error)
+      )
+    } else {
+      this.log(
+        'WARN',
+        'Playback error occurred, but error handling is managed by health monitor'
+      )
+    }
+  }
+
+  /**
+   * Phase 2: Handle player state change event
+   * Extracted from createPlayer to reduce complexity
+   */
+  private handlePlayerStateChangeEvent(
+    state: unknown,
+    onPlaybackStateChange: (state: SpotifyPlaybackState) => void,
+    onStatusChange: (status: string, error?: string) => void,
+    onDeviceIdChange: (deviceId: string) => void
+  ): void {
+    if (!state) {
+      // Lightweight recovery: Don't immediately recreate player
+      this.consecutiveNullStates++
+
+      const NULL_STATE_THRESHOLD =
+        PLAYER_LIFECYCLE_CONFIG.STATE_MONITORING.nullStateThreshold
+
+      if (this.consecutiveNullStates >= NULL_STATE_THRESHOLD) {
+        this.log(
+          'ERROR',
+          `Received ${this.consecutiveNullStates} consecutive null states. Device is persistently inactive. Triggering recovery.`
+        )
+        this.consecutiveNullStates = 0
+
+        void this.handleAuthenticationError(
+          'Device persistently inactive',
+          onStatusChange,
+          onDeviceIdChange,
+          onPlaybackStateChange
+        ).catch((error) =>
+          this.log('ERROR', 'Error in authentication error handler', error)
+        )
+      } else {
+        this.log(
+          'WARN',
+          `Received null state in player_state_changed event (${this.consecutiveNullStates}/${NULL_STATE_THRESHOLD}). Device may be temporarily inactive.`
+        )
+      }
+      return
+    }
+
+    // Reset null state counter on successful state
+    this.consecutiveNullStates = 0
+
+    // Runtime validation
+    if (!isPlayerSDKState(state)) {
+      this.log(
+        'ERROR',
+        'Invalid state shape received in player_state_changed',
+        new Error('Invalid state structure')
+      )
+      return
+    }
+
+    void this.processStateChange(state, onPlaybackStateChange)
+  }
+
   async createPlayer(
     onStatusChange: (status: string, error?: string) => void,
     onDeviceIdChange: (deviceId: string) => void,
@@ -1061,13 +1300,13 @@ class PlayerLifecycleService {
       // Set up device management logger
       setDeviceManagementLogger(
         this.addLog ??
-          ((level, message, _context, error) => {
-            if (level === 'WARN') {
-              console.warn(`[DeviceManagement] ${message}`, error)
-            } else if (level === 'ERROR') {
-              console.error(`[DeviceManagement] ${message}`, error)
-            }
-          })
+        ((level, message, _context, error) => {
+          if (level === 'WARN') {
+            console.warn(`[DeviceManagement] ${message}`, error)
+          } else if (level === 'ERROR') {
+            console.error(`[DeviceManagement] ${message}`, error)
+          }
+        })
       )
 
       // Clear any existing cleanup timeout
@@ -1108,77 +1347,16 @@ class PlayerLifecycleService {
       })
 
       // Phase 1 & 2: Set up event listeners with consolidated promise resolution
+      // Note: Spotify SDK's player.disconnect() handles listener cleanup automatically
       player.addListener('ready', ({ device_id }) => {
         void (async () => {
           try {
-            // Phase 1: Guard - Check player exists before starting
-            if (!this.playerRef) {
-              this.log(
-                'WARN',
-                'Player destroyed before ready handler - aborting'
-              )
-              return
-            }
-
-            // Consolidate verification and transfer logic to prevent race conditions
-            this.timeoutManager.clear('notReady')
-            onStatusChange('verifying')
-
-            // Step 1: Verify the device exists and is accessible
-            const deviceExisted = await this.verifyDeviceWithTimeout(device_id)
-
-            // Phase 1: Guard - Re-check after async operation
-            if (!this.playerRef) {
-              this.log('WARN', 'Player destroyed during device verification')
-              return
-            }
-
-            if (!deviceExisted) {
-              this.log(
-                'WARN',
-                'Device verification failed/timed-out. Attempting direct playback transfer as recovery.'
-              )
-            }
-
-            // Step 2: Set local ID
-            this.deviceId = device_id
-            onDeviceIdChange(device_id)
-
-            // Step 3: Transfer playback (this is the real "activation")
-            // If verification failed earlier, this acts as the recovery mechanism.
-            // If verification passed, this ensures we are the active device.
-            // Note: transferPlaybackToDevice handles its own maxAttempts/retries.
-            const transferSuccess = await transferPlaybackToDevice(device_id)
-
-            // Phase 1: Guard - Re-check after async operation
-            if (!this.playerRef) {
-              this.log('WARN', 'Player destroyed during playback transfer')
-              return
-            }
-
-            if (!transferSuccess) {
-              this.log('ERROR', 'Failed to transfer playback to new device')
-              onStatusChange(
-                'error',
-                'Failed to transfer playback to new device'
-              )
-              return
-            }
-
-            // Step 4: Success
-            onStatusChange('ready')
-            // Reset auth retry count on successful connection
-            // Phase 3: Reset recovery state on transfer success
-            recoveryManager.recordSuccess()
-
-            // Phase 2: Resolve promise if resolver exists
-            if (this.deviceReadyResolver) {
-              this.deviceReadyResolver(device_id)
-              this.deviceReadyResolver = null
-              this.deviceErrorResolver = null
-            }
+            await this.handleDeviceReady(
+              device_id,
+              onStatusChange,
+              onDeviceIdChange
+            )
           } catch (error) {
-            // Issue #2 fix: Catch unhandled errors in ready handler
             this.log('ERROR', 'Ready handler failed', error)
             if (this.deviceErrorResolver) {
               this.deviceErrorResolver(
@@ -1197,41 +1375,7 @@ class PlayerLifecycleService {
       })
 
       player.addListener('initialization_error', ({ message }) => {
-        // Get additional context for better diagnostics
-        const sdkAvailable = typeof window.Spotify !== 'undefined'
-        const tokenCheck = tokenManager.getToken().catch(() => null)
-
-        void tokenCheck.then((token) => {
-          const errorDetails = {
-            sdkMessage: message,
-            sdkAvailable,
-            hasToken: !!token,
-            tokenLength: token?.length ?? 0,
-            userAgent:
-              typeof navigator !== 'undefined'
-                ? navigator.userAgent
-                : 'unknown',
-            timestamp: new Date().toISOString()
-          }
-
-          this.log(
-            'ERROR',
-            `Failed to initialize player: ${message}. Context: SDK=${sdkAvailable}, Token=${!!token}, TokenLength=${token?.length ?? 0}`,
-            new Error(JSON.stringify(errorDetails, null, 2))
-          )
-        })
-
-        onStatusChange(
-          'error',
-          `Initialization error: ${message}. Check console for details.`
-        )
-
-        // Phase 2: Resolve error promise if resolver exists
-        if (this.deviceErrorResolver) {
-          this.deviceErrorResolver(new Error(message))
-          this.deviceErrorResolver = null
-          this.deviceReadyResolver = null
-        }
+        this.handleInitializationError(message, onStatusChange)
       })
 
       player.addListener('authentication_error', ({ message }) => {
@@ -1249,71 +1393,16 @@ class PlayerLifecycleService {
       })
 
       player.addListener('playback_error', ({ message }) => {
-        this.log('ERROR', `Playback error: ${message}`)
-
-        if (message.includes('Restriction violated')) {
-          this.log(
-            'WARN',
-            'Restriction violated error detected - removing problematic track and playing next'
-          )
-          void this.handleRestrictionViolatedError()
-        } else {
-          this.log(
-            'WARN',
-            'Playback error occurred, but error handling is managed by health monitor'
-          )
-        }
+        this.handlePlaybackError(message)
       })
 
       player.addListener('player_state_changed', (state) => {
-        if (!state) {
-          // Lightweight recovery: Don't immediately recreate player
-          // Track consecutive null states and only trigger full recovery if persistent
-          this.consecutiveNullStates++
-
-          // Issue #9: Use config for null state threshold
-          const NULL_STATE_THRESHOLD =
-            PLAYER_LIFECYCLE_CONFIG.STATE_MONITORING.nullStateThreshold
-
-          if (this.consecutiveNullStates >= NULL_STATE_THRESHOLD) {
-            this.log(
-              'ERROR',
-              `Received ${this.consecutiveNullStates} consecutive null states. Device is persistently inactive. Triggering recovery.`
-            )
-            this.consecutiveNullStates = 0 // Reset counter
-
-            // Only now trigger full recovery
-            void this.handleAuthenticationError(
-              'Device persistently inactive',
-              onStatusChange,
-              onDeviceIdChange,
-              onPlaybackStateChange
-            )
-          } else {
-            this.log(
-              'WARN',
-              `Received null state in player_state_changed event (${this.consecutiveNullStates}/${NULL_STATE_THRESHOLD}). Device may be temporarily inactive.`
-            )
-            // Don't interrupt playback - just log and wait for next state update
-          }
-          return
-        }
-
-        // Reset null state counter on successful state
-        this.consecutiveNullStates = 0
-
-        // Runtime validation instead of unsafe type assertion
-        if (!isPlayerSDKState(state)) {
-          this.log(
-            'ERROR',
-            'Invalid state shape received in player_state_changed',
-            new Error('Invalid state structure')
-          )
-          return
-        }
-
-        // Use processStateChange instead of handlePlayerStateChanged to serialize state updates
-        void this.processStateChange(state, onPlaybackStateChange)
+        this.handlePlayerStateChangeEvent(
+          state,
+          onPlaybackStateChange,
+          onStatusChange,
+          onDeviceIdChange
+        )
       })
 
       // Connect to Spotify
@@ -1395,6 +1484,8 @@ class PlayerLifecycleService {
       this.deviceReadyResolver = null
     }
 
+    // Phase 1: Disconnect player and cleanup listeners
+    // Note: Spotify SDK's disconnect() automatically removes all event listeners
     if (this.playerRef) {
       this.playerRef.disconnect()
       this.playerRef = null
@@ -1451,3 +1542,7 @@ class PlayerLifecycleService {
 
 // Export singleton instance
 export const playerLifecycleService = new PlayerLifecycleService()
+
+// Phase 4: Export class for testing
+// This allows tests to create isolated instances with mocked dependencies
+export { PlayerLifecycleService }
