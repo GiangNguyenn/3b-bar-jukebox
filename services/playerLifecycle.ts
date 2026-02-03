@@ -88,7 +88,7 @@ export type NavigationCallback = (path: string) => void
 
 /**
  * Phase 4: PlayerLifecycleService
- * 
+ *
  * Manages the complete lifecycle of the Spotify Web Playback SDK player.
  * Responsibilities:
  * - Player initialization and teardown
@@ -96,24 +96,24 @@ export type NavigationCallback = (path: string) => void
  * - Queue playback orchestration
  * - Error handling and retry logic
  * - State synchronization with Spotify SDK
- * 
+ *
  * Key improvements:
  * - Queue-based state change processing to prevent race conditions
  * - Extracted event handlers for better testability
  * - Consistent error handling for all async operations
  * - Configuration-driven retry and timeout behavior
- * 
+ *
  * @example
  * ```typescript
  * import { playerLifecycleService } from '@/services/playerLifecycle'
- * 
+ *
  * // Initialize player
  * await playerLifecycleService.createPlayer(
  *   onStatusChange,
  *   onDeviceIdChange,
  *   onPlaybackStateChange
  * )
- * 
+ *
  * // Play next track
  * await playerLifecycleService.playNextTrack()
  * ```
@@ -145,11 +145,11 @@ class PlayerLifecycleService {
     new TrackDuplicateDetector()
   private addLog:
     | ((
-      level: LogLevel,
-      message: string,
-      context?: string,
-      error?: Error
-    ) => void)
+        level: LogLevel,
+        message: string,
+        context?: string,
+        error?: Error
+      ) => void)
     | null = null
   private navigationCallback: NavigationCallback | null = null
   private stateChangeInProgress: boolean = false
@@ -860,7 +860,7 @@ class PlayerLifecycleService {
     const isNearEnd =
       state.duration > 0 &&
       state.duration - state.position <
-      PLAYER_LIFECYCLE_CONFIG.TRACK_END_THRESHOLD_MS
+        PLAYER_LIFECYCLE_CONFIG.TRACK_END_THRESHOLD_MS
 
     const positionUnchanged = state.position === this.lastKnownState.position
 
@@ -872,7 +872,7 @@ class PlayerLifecycleService {
       positionUnchanged &&
       wasPlayingButNowPaused &&
       timeSinceLastUpdate >
-      PLAYER_LIFECYCLE_CONFIG.STATE_MONITORING.stallDetectionMs
+        PLAYER_LIFECYCLE_CONFIG.STATE_MONITORING.stallDetectionMs
 
     return isNearEnd && hasStalled
   }
@@ -1300,13 +1300,13 @@ class PlayerLifecycleService {
       // Set up device management logger
       setDeviceManagementLogger(
         this.addLog ??
-        ((level, message, _context, error) => {
-          if (level === 'WARN') {
-            console.warn(`[DeviceManagement] ${message}`, error)
-          } else if (level === 'ERROR') {
-            console.error(`[DeviceManagement] ${message}`, error)
-          }
-        })
+          ((level, message, _context, error) => {
+            if (level === 'WARN') {
+              console.warn(`[DeviceManagement] ${message}`, error)
+            } else if (level === 'ERROR') {
+              console.error(`[DeviceManagement] ${message}`, error)
+            }
+          })
       )
 
       // Clear any existing cleanup timeout
