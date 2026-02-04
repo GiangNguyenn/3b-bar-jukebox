@@ -875,6 +875,28 @@ class PlayerLifecycleService {
       !this.lastKnownState.paused && state.paused && state.position === 0
 
     if (trackJustFinished) {
+      this.log(
+        'INFO',
+        '[isTrackFinished] Detected clean track finish (paused at 0)'
+      )
+      return true
+    }
+
+    // Condition 2: Wrap-around detection (for when Repeat Mode is mistakenly active)
+    // If the track seamlessly repeats, the position will jump from near-end to near-start
+    // without ever pausing.
+    const wasNearEnd =
+      this.lastKnownState.duration > 0 &&
+      this.lastKnownState.position > this.lastKnownState.duration * 0.9 // > 90% complete
+
+    const isNowNearStart = state.position < 3000 // < 3 seconds into the track
+
+    // Ensure we are actually playing and it's likely a wrap-around
+    if (wasNearEnd && isNowNearStart && !state.paused) {
+      this.log(
+        'WARN',
+        `[isTrackFinished] Detected track wrap-around (seamless repeat). Last pos: ${this.lastKnownState.position}, New pos: ${state.position}. Forcing track finish.`
+      )
       return true
     }
 
@@ -1175,6 +1197,23 @@ class PlayerLifecycleService {
       this.deviceReadyResolver(deviceId)
       this.deviceReadyResolver = null
       this.deviceErrorResolver = null
+    }
+
+    // Phase 4: Enforce Repeat Mode 'off' after device is ready
+    // This prevents tracks from seamlessly looping, which would bypass our track finish detection.
+    try {
+      this.log('INFO', 'Enforcing Repeat Mode: off')
+      // Import dynamically to avoid circular dependencies if any, or just use existing import if clean
+      const SpotifyApiService = (await import('@/services/spotifyApi'))
+        .SpotifyApiService
+      await SpotifyApiService.getInstance().setRepeatMode('off', deviceId)
+    } catch (error) {
+      // Log warning but don't fail initialization
+      this.log(
+        'WARN',
+        'Failed to enforce repeat mode off during initialization',
+        error
+      )
     }
   }
 

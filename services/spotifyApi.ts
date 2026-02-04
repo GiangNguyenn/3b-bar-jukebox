@@ -76,6 +76,10 @@ export interface SpotifyApiClient {
   addTrackToQueue(trackUri: string): Promise<void>
   getCurrentQueue(): Promise<SpotifyPlayerQueue>
   seekToPosition(position_ms: number, deviceId?: string): Promise<void>
+  setRepeatMode(
+    state: 'track' | 'context' | 'off',
+    deviceId?: string
+  ): Promise<void>
 }
 
 export class SpotifyApiService implements SpotifyApiClient {
@@ -410,6 +414,39 @@ export class SpotifyApiService implements SpotifyApiClient {
           retryConfig: this.retryConfig
         }),
       'SpotifyApi.seekToPosition'
+    )
+  }
+
+  async setRepeatMode(
+    state: 'track' | 'context' | 'off',
+    deviceId?: string
+  ): Promise<void> {
+    // Always require the app's device ID - never fallback
+    let appDeviceId = deviceId
+    if (!appDeviceId) {
+      const store = getPlayerStore()
+      if (!store) {
+        throw new Error(
+          'Player store is not available. This method can only be called from client-side code.'
+        )
+      }
+      appDeviceId = store.getState().deviceId || undefined
+    }
+
+    if (!appDeviceId) {
+      throw new Error(
+        'App device ID is not available. Please ensure the Spotify player is initialized.'
+      )
+    }
+
+    return handleOperationError(
+      async () =>
+        this.apiClient({
+          path: `me/player/repeat?state=${state}&device_id=${appDeviceId}`,
+          method: 'PUT',
+          retryConfig: this.retryConfig
+        }),
+      'SpotifyApi.setRepeatMode'
     )
   }
 }
