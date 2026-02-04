@@ -2,6 +2,7 @@ import { createModuleLogger } from './logger'
 import { calculateBackoffDelay } from './retryHelpers'
 import { isRetryableNetworkError } from './networkErrorDetection'
 import { type RetryConfig, DEFAULT_RETRY_CONFIG } from './retryConfig'
+import { connectivityInvestigator } from './connectivityInvestigator'
 
 const logger = createModuleLogger('FetchRetry')
 
@@ -85,6 +86,26 @@ export async function fetchWithRetry(
     } catch (error) {
       // Handle network errors and exceptions
       lastError = error instanceof Error ? error : new Error(String(error))
+
+      // Trigger connectivity investigation on first failure (background, non-blocking)
+      if (attempt === 0 && isRetryableNetworkError(error)) {
+        void connectivityInvestigator
+          .investigate(error, {
+            url,
+            method: init?.method || 'GET',
+            timestamp: Date.now(),
+            headers: init?.headers as Record<string, string> | undefined
+          })
+          .catch((err) => {
+            // Log investigation errors but don't throw
+            logger(
+              'WARN',
+              'Connectivity investigation failed',
+              undefined,
+              err as Error
+            )
+          })
+      }
 
       // Check if we should retry
       if (!isRetryableNetworkError(error)) {

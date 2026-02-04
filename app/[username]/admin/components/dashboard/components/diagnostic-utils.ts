@@ -1,5 +1,9 @@
 import type { HealthStatus } from '@/shared/types/health'
 import type { PlayerStatus } from '@/hooks/useSpotifyPlayer'
+import type {
+  FailedRequestInfo,
+  ConnectivityInvestigation
+} from '@/shared/types/connectivity'
 import { formatDuration, formatAbsoluteTime } from '@/lib/utils'
 
 export function hasErrorStatus(healthStatus: HealthStatus): boolean {
@@ -255,6 +259,83 @@ function formatTechnicalDetails(
   return lines
 }
 
+function formatConnectivityInvestigation(healthStatus: HealthStatus): string[] {
+  const lines: string[] = []
+  if (!healthStatus.connectivityInvestigation) {
+    return lines
+  }
+
+  const {
+    protocolStatus,
+    suspectedIssues,
+    lastInvestigation,
+    recentFailures
+  }: ConnectivityInvestigation = healthStatus.connectivityInvestigation
+  lines.push('--- CONNECTIVITY INVESTIGATION ---')
+
+  // Protocol Status
+  lines.push('Protocol Status:')
+  lines.push(
+    `  IPv4: ${protocolStatus.ipv4.tested ? (protocolStatus.ipv4.available ? '✓ Available' : '✗ Unavailable') : 'Not Tested'}${protocolStatus.ipv4.latency ? ` (${protocolStatus.ipv4.latency}ms)` : ''}`
+  )
+  if (protocolStatus.ipv4.error) {
+    lines.push(`    Error: ${protocolStatus.ipv4.error}`)
+  }
+  lines.push(
+    `  IPv6: ${protocolStatus.ipv6.tested ? (protocolStatus.ipv6.available ? '✓ Available' : '✗ Unavailable') : 'Not Tested'}${protocolStatus.ipv6.latency ? ` (${protocolStatus.ipv6.latency}ms)` : ''}`
+  )
+  if (protocolStatus.ipv6.error) {
+    lines.push(`    Error: ${protocolStatus.ipv6.error}`)
+  }
+  lines.push(`  Last Tested: ${formatAbsoluteTime(protocolStatus.lastTested)}`)
+
+  // Suspected Issues
+  if (suspectedIssues.length > 0) {
+    lines.push('')
+    lines.push('Suspected Issues:')
+    suspectedIssues.forEach((issue: string) => {
+      lines.push(`  - ${issue}`)
+    })
+  }
+
+  // Last Investigation
+  if (lastInvestigation) {
+    lines.push('')
+    lines.push('Last Investigation:')
+    lines.push(`  Time: ${formatAbsoluteTime(lastInvestigation.timestamp)}`)
+    lines.push(
+      `  Failed Request: ${lastInvestigation.trigger.method} ${lastInvestigation.trigger.url}`
+    )
+    lines.push(`  Error: ${lastInvestigation.trigger.error}`)
+    lines.push(`  Error Type: ${lastInvestigation.trigger.errorType}`)
+
+    if (lastInvestigation.recommendations.length > 0) {
+      lines.push('  Recommendations:')
+      lastInvestigation.recommendations.forEach((rec: string) => {
+        lines.push(`    - ${rec}`)
+      })
+    }
+  }
+
+  // Recent Failures
+  if (recentFailures.length > 0) {
+    lines.push('')
+    lines.push(`Recent Failed Requests (${recentFailures.length}):`)
+    recentFailures
+      .slice(0, 5)
+      .forEach((failure: FailedRequestInfo, index: number) => {
+        lines.push(`  [${index + 1}] ${failure.method} ${failure.url}`)
+        lines.push(`      Time: ${formatAbsoluteTime(failure.timestamp)}`)
+        lines.push(`      Error: ${failure.error}`)
+      })
+    if (recentFailures.length > 5) {
+      lines.push(`  ... and ${recentFailures.length - 5} more`)
+    }
+  }
+
+  return lines
+}
+
 export function formatDiagnosticsForClipboard(
   healthStatus: HealthStatus,
   isReady: boolean,
@@ -297,6 +378,13 @@ export function formatDiagnosticsForClipboard(
   const recentEvents = formatRecentEvents(healthStatus)
   if (recentEvents.length > 0) {
     lines.push(...recentEvents)
+  }
+
+  const connectivityInvestigation =
+    formatConnectivityInvestigation(healthStatus)
+  if (connectivityInvestigation.length > 0) {
+    lines.push(...connectivityInvestigation)
+    lines.push('')
   }
 
   lines.push(...formatTechnicalDetails(healthStatus, currentPlayerStatus))

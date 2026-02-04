@@ -1,3 +1,5 @@
+import type { ConnectivityInvestigation } from './connectivity'
+
 export interface HealthStatus {
   deviceId: string | null
   device: 'healthy' | 'unresponsive' | 'disconnected' | 'unknown' | 'error'
@@ -19,6 +21,7 @@ export interface HealthStatus {
   queueState?: QueueState
   failureMetrics?: FailureMetrics
   systemInfo?: SystemInfo
+  connectivityInvestigation?: ConnectivityInvestigation
   internalState?: {
     authRetryCount: number
     activeTimeouts: string[]
@@ -59,6 +62,8 @@ export type DiagnosticEventType =
   | 'device_event'
   | 'queue_operation'
   | 'token_event'
+  | 'connectivity_investigation'
+  | 'network_failure'
 
 export interface DiagnosticEvent {
   type: DiagnosticEventType
@@ -103,3 +108,6 @@ export interface FailureMetrics {
   lastFailureTimestamp?: number
   totalFailures?: number
 }
+
+// Re-export connectivity types for convenience
+export type { ConnectivityInvestigation }

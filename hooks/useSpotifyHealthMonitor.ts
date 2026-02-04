@@ -11,6 +11,7 @@ import {
   usePlaybackHealth
 } from './health'
 import { useDiagnosticEvents } from './useDiagnosticEvents'
+import { useConnectivityInvestigator } from './useConnectivityInvestigator'
 import {
   HealthStatus,
   PlaybackDetails,
@@ -154,6 +155,8 @@ export function useSpotifyHealthMonitor(): HealthStatus {
   const connectionHealth = useConnectionHealth()
   const playbackHealth = usePlaybackHealth()
   const recentEvents = useDiagnosticEvents()
+  const { investigation: connectivityInvestigation } =
+    useConnectivityInvestigator()
 
   // Map the new health status to the enhanced interface structure
   const healthStatus = useMemo((): HealthStatus => {
@@ -179,6 +182,7 @@ export function useSpotifyHealthMonitor(): HealthStatus {
         lastStatusChange
       ),
       systemInfo: getSystemInfo(),
+      connectivityInvestigation: connectivityInvestigation ?? undefined,
       internalState:
         typeof window !== 'undefined'
           ? playerLifecycleService.getDiagnostics()
@@ -195,7 +199,8 @@ export function useSpotifyHealthMonitor(): HealthStatus {
     lastError,
     lastStatusChange,
     consecutiveFailures,
-    playerStatus
+    playerStatus,
+    connectivityInvestigation
   ])
 
   return healthStatus

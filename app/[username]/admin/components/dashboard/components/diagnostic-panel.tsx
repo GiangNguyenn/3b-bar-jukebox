@@ -21,6 +21,7 @@ import {
   PlaybackStateSection,
   QueueInformationSection,
   RecentEventsSection,
+  ConnectivityInvestigationSection,
   TechnicalDetailsSection
 } from './diagnostic-sections'
 
@@ -112,6 +113,11 @@ export function DiagnosticPanel({
           />
 
           <RecentEventsSection
+            healthStatus={healthStatus}
+            hasErrors={hasErrors}
+          />
+
+          <ConnectivityInvestigationSection
             healthStatus={healthStatus}
             hasErrors={hasErrors}
           />
