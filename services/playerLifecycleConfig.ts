@@ -3,7 +3,7 @@ export const PLAYER_LIFECYCLE_CONFIG = {
   // Grace periods (how long to wait before considering a state change permanent)
   GRACE_PERIODS: {
     notReadyToReconnecting: 3000, // 3 seconds before considering device lost
-    reconnectingToError: 15000, // 15 seconds before giving up on reconnection
+    reconnectingToError: 30000, // 30 seconds before giving up on reconnection
     verificationTimeout: 5000 // 5 seconds for device verification
   },
   // Retry limits
@@ -21,7 +21,7 @@ export const PLAYER_LIFECYCLE_CONFIG = {
   // Timeouts
   CLEANUP_TIMEOUT_MS: 5 * 60 * 1000, // 5 minutes
   SDK_RELOAD_TIMEOUT_MS: 10000, // 10 seconds
-  INITIALIZATION_TIMEOUT_MS: 15000, // 15 seconds - strict timeout for player ready event
+  INITIALIZATION_TIMEOUT_MS: 30000, // 30 seconds - strict timeout for player ready event
   // Issue #9: Additional constants for magic numbers
   PLAYBACK_RETRY: {
     initialBackoffMs: 500,

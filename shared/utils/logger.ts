@@ -1,5 +1,3 @@
-import { LogEntry } from '@/hooks/ConsoleLogsProvider'
-
 export type LogFunction = (
   level: 'LOG' | 'INFO' | 'WARN' | 'ERROR',
   message: string,

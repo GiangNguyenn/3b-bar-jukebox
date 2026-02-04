@@ -13,7 +13,7 @@ export function useConnectionHealth(): ConnectionStatus {
   const testConnection = async (): Promise<boolean> => {
     try {
       const controller = new AbortController()
-      const timeoutId = setTimeout(() => controller.abort(), 3000) // 3 second timeout
+      const timeoutId = setTimeout(() => controller.abort(), 10000) // 10 second timeout for IPv6 fallback
 
       const response = await fetch('/api/ping', {
         method: 'HEAD',

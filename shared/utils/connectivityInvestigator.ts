@@ -16,7 +16,7 @@ import { categorizeNetworkError } from './networkErrorDetection'
 
 const MAX_RECENT_FAILURES = 10
 const INVESTIGATION_THROTTLE_MS = 30000 // 30 seconds
-const PROTOCOL_TEST_TIMEOUT_MS = 3000
+const PROTOCOL_TEST_TIMEOUT_MS = 10000
 
 class ConnectivityInvestigatorService {
   private recentFailures: FailedRequestInfo[] = []

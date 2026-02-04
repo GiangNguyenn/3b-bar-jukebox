@@ -176,7 +176,7 @@ export const sendApiRequest = async <T>({
   token: providedToken,
   debounceTime = DEFAULT_DEBOUNCE_TIME,
   statisticsTracker,
-  timeout = 15000 // Default 15s timeout
+  timeout = 30000 // Default 30s timeout to allow for IPv6 fallback
 }: ApiProps): Promise<T> => {
   // 1. Circuit Breaker: Fail fast if globally rate limited
   if (!isLocalApi && isRateLimited()) {
