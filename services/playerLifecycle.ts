@@ -139,6 +139,12 @@ class PlayerLifecycleService {
    */
   private currentQueueTrack: JukeboxQueueItem | null = null
   private deviceId: string | null = null
+  /**
+   * Tracks if the playback was paused manually by the user via the Jukebox UI.
+   * This is used to differentiate between system-initiated pauses (errors, etc.)
+   * and intentional user actions.
+   */
+  private isManualPause: boolean = false
   private timeoutManager: TimeoutManager = new TimeoutManager()
   // Phase 3: authRetryCount removed - using recoveryManager instead
   private duplicateDetector: TrackDuplicateDetector =
@@ -235,6 +241,9 @@ class PlayerLifecycleService {
           }
         })
 
+        // Reset manual pause flag on successful playback start
+        this.isManualPause = false
+
         return true
       } catch (error) {
         const errorMessage =
@@ -279,10 +288,11 @@ class PlayerLifecycleService {
    * Phase 2: Uses playbackService for promise-chain serialization (no locks needed).
    */
   async playNextTrack(track: JukeboxQueueItem): Promise<void> {
-    await playbackService.executePlayback(
-      () => this.playNextTrackImpl(track),
-      'playNextTrack'
-    )
+    await playbackService.executePlayback(() => {
+      // Reset manual pause flag when starting next track
+      this.isManualPause = false
+      return this.playNextTrackImpl(track)
+    }, 'playNextTrack')
   }
 
   private async playNextTrackImpl(track: JukeboxQueueItem): Promise<void> {
@@ -773,6 +783,24 @@ class PlayerLifecycleService {
       }
     } else {
       // Case 2: Current track NOT in queue
+
+      // Issue #12: Enforce queue order
+      // If the current track is not in the queue, and we have tracks in the queue,
+      // we should skip the current track and play the next one from the queue.
+      if (queue.length > 0 && !state.paused) {
+        const expectedTrack = this.currentQueueTrack || queue[0]
+
+        this.log(
+          'WARN',
+          `[syncQueueWithPlayback] Enforcing queue order: Track ${currentSpotifyTrack.name} (${currentSpotifyTrack.id}) is playing but not in queue. Jukebox expected: ${expectedTrack.tracks.name}`
+        )
+
+        // Force skip to the correct track
+        void this.playNextTrack(expectedTrack)
+        return
+      }
+
+      // If queue is empty, just clear our tracking
       if (this.currentQueueTrack) {
         // Playing track is external - clear queue reference
         this.log(
@@ -780,13 +808,6 @@ class PlayerLifecycleService {
           `Playing track ${currentSpotifyTrack.id} not found in queue - clearing queue reference`
         )
         this.currentQueueTrack = null
-      } else if (queue.length > 0) {
-        // No queue reference but queue exists - assume first track
-        this.log(
-          'INFO',
-          `No queue reference but queue exists - using first track: ${queue[0].id}`
-        )
-        this.currentQueueTrack = queue[0]
       }
     }
   }
@@ -1536,6 +1557,41 @@ class PlayerLifecycleService {
     this.playerRef = null
     if (typeof window !== 'undefined') {
       window.spotifyPlayerInstance = null
+    }
+  }
+
+  /**
+   * Set the manual pause state.
+   * Call this when the user explicitly pauses playback via the Jukebox UI.
+   */
+  public setManualPause(isManualPause: boolean): void {
+    this.isManualPause = isManualPause
+    this.log('INFO', `Manual pause state set to: ${isManualPause}`)
+  }
+
+  /**
+   * Get the current manual pause state.
+   */
+  public getIsManualPause(): boolean {
+    return this.isManualPause
+  }
+
+  /**
+   * Resume playback and clear manual pause state.
+   */
+  public async resumePlayback(): Promise<void> {
+    if (!this.deviceId) {
+      this.log('WARN', '[resumePlayback] No device ID available')
+      return
+    }
+
+    this.log('INFO', '[resumePlayback] Resuming playback')
+    try {
+      await spotifyPlayer.resume()
+      this.isManualPause = false
+    } catch (error) {
+      this.log('ERROR', '[resumePlayback] Failed to resume playback', error)
+      throw error
     }
   }
 }

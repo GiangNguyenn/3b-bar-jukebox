@@ -45,11 +45,18 @@ export function usePlaybackControls(): {
       const spotifyApi = SpotifyApiService.getInstance()
 
       if (isPlaying) {
+        // Set manual pause flag BEFORE calling API to prevent auto-resume race conditions
+        playerLifecycleService.setManualPause(true)
         const result = await spotifyApi.pausePlayback(deviceId)
         if (!result.success) {
+          // Revert flag on failure
+          playerLifecycleService.setManualPause(false)
           throw new Error('Failed to pause playback')
         }
       } else {
+        // Clear manual pause flag when resuming
+        playerLifecycleService.setManualPause(false)
+
         // Get the current track's position if available
         const currentPosition = playbackState.progress_ms || 0
         const result = await spotifyApi.resumePlayback(currentPosition)

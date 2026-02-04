@@ -372,6 +372,42 @@ class AutoPlayService {
         error as Error
       )
     } finally {
+      // Auto-Resume Logic (Issue #12)
+      // Check if we need to auto-resume playback if it was paused without user interaction
+      if (
+        this.lastPlaybackState &&
+        !this.lastPlaybackState.is_playing &&
+        !playerLifecycleService.getIsManualPause() &&
+        this.isInitialized &&
+        this.username &&
+        !this.isAutoPlayDisabled
+      ) {
+        // Only attempt auto-resume if device is active/ready
+        // If device is not active, that's a recovery scenario handled by handleNotReady/recoveryManager
+        // checking !this.lastPlaybackState.item is handled by hasTrackFinished check above
+        // We only want to resume if we have an item (paused mid-track)
+        if (this.lastPlaybackState.item) {
+          // Double check we haven't just finished a track (which is handled separately)
+          if (!this.hasTrackFinished(this.lastPlaybackState)) {
+            logger(
+              'INFO',
+              '[checkPlaybackState] Auto-resuming playback (paused without user interaction)'
+            )
+            try {
+              // Use playerLifecycleService to resume so it can manage state (conceptually, though resumePlayback just calls spotifyPlayer)
+              await playerLifecycleService.resumePlayback()
+            } catch (resumeError) {
+              logger(
+                'WARN',
+                '[checkPlaybackState] Failed to auto-resume playback',
+                undefined,
+                resumeError as Error
+              )
+            }
+          }
+        }
+      }
+
       this.isPolling = false
     }
   }
