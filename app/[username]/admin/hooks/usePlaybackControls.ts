@@ -54,6 +54,33 @@ export function usePlaybackControls(): {
           throw new Error('Failed to pause playback')
         }
       } else {
+        // Enforce Queue Logic: If resuming a track that is NOT in the queue, skip it.
+        const queue = queueManager.getQueue()
+        const currentTrackId = playbackState?.item?.id
+
+        const isTrackInQueue = currentTrackId
+          ? queue.some(
+              (item) => item.tracks.spotify_track_id === currentTrackId
+            )
+          : false
+
+        // If queue has tracks but current track isn't one of them, skip instead of resume
+        if (queue.length > 0 && currentTrackId && !isTrackInQueue) {
+          addLog(
+            'WARN',
+            '[handlePlayPause] Enforcing queue: Current track not in queue, skipping to next track.',
+            'Playback'
+          )
+
+          // Play next track from queue
+          await playerLifecycleService.playNextFromQueue()
+
+          // Ensure manual pause flag is cleared (handled by playNextTrack, but good for safety)
+          playerLifecycleService.setManualPause(false)
+          setIsLoading(false)
+          return
+        }
+
         // Clear manual pause flag when resuming
         playerLifecycleService.setManualPause(false)
 
