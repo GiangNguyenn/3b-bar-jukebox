@@ -11,6 +11,7 @@ import { upsertPlayedTrack } from '@/lib/trackUpsert'
 import { tokenManager } from '@/shared/token/tokenManager'
 import { queueManager } from '@/services/queueManager'
 import { PLAYER_LIFECYCLE_CONFIG } from './playerLifecycleConfig'
+import { LogEntry } from '@/shared/types/health'
 import { TrackDuplicateDetector } from '@/shared/utils/trackDuplicateDetector'
 import { buildTrackUri } from '@/shared/utils/spotifyUri'
 import {
@@ -162,6 +163,10 @@ class PlayerLifecycleService {
   private pendingStates: PlayerSDKState[] = [] // Queue for state changes that arrive during processing
   private readonly MAX_PENDING_STATES = 10 // Prevent memory issues during rapid state changes
   private consecutiveNullStates: number = 0
+
+  // Phase 4: Internal Log History (Circular Buffer)
+  private internalLogBuffer: LogEntry[] = []
+  private readonly MAX_LOG_HISTORY = 100
   // Phase 1: Memory leak prevention
   private pendingPromiseCleanup: (() => void) | null = null
   // Phase 1: Playback operation locking
@@ -202,6 +207,22 @@ class PlayerLifecycleService {
   }
 
   private log(level: LogLevel, message: string, error?: unknown): void {
+    // Capture to internal buffer
+    const entry: LogEntry = {
+      timestamp: Date.now(),
+      level: level as LogEntry['level'],
+      message,
+      details:
+        error instanceof Error
+          ? { message: error.message, stack: error.stack }
+          : error
+    }
+
+    this.internalLogBuffer.push(entry)
+    if (this.internalLogBuffer.length > this.MAX_LOG_HISTORY) {
+      this.internalLogBuffer.shift()
+    }
+
     if (this.addLog) {
       this.addLog(
         level,
@@ -462,10 +483,15 @@ class PlayerLifecycleService {
   /**
    * Returns current internal state diagnostics
    */
-  getDiagnostics(): { authRetryCount: number; activeTimeouts: string[] } {
+  getDiagnostics(): {
+    authRetryCount: number
+    activeTimeouts: string[]
+    internalLogs: LogEntry[]
+  } {
     return {
       authRetryCount: recoveryManager.getRetryCount(),
-      activeTimeouts: this.timeoutManager.getActiveKeys()
+      activeTimeouts: this.timeoutManager.getActiveKeys(),
+      internalLogs: [...this.internalLogBuffer].reverse() // Newest first
     }
   }
 

@@ -25,7 +25,15 @@ export interface HealthStatus {
   internalState?: {
     authRetryCount: number
     activeTimeouts: string[]
+    internalLogs?: LogEntry[]
   }
+}
+
+export interface LogEntry {
+  timestamp: number
+  level: 'INFO' | 'WARN' | 'ERROR' | 'DEBUG'
+  message: string
+  details?: unknown
 }
 
 // System information for diagnostics
