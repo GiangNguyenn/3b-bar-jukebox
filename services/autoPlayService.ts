@@ -388,10 +388,16 @@ class AutoPlayService {
         // We only want to resume if we have an item (paused mid-track)
         if (this.lastPlaybackState.item) {
           // Double check we haven't just finished a track (which is handled separately)
-          if (!this.hasTrackFinished(this.lastPlaybackState)) {
+          const isTrackFinished = this.hasTrackFinished(this.lastPlaybackState)
+          if (!isTrackFinished) {
             logger(
               'INFO',
-              '[checkPlaybackState] Auto-resuming playback (paused without user interaction)'
+              `[checkPlaybackState] Auto-resuming playback (paused without user interaction)
+               Details: 
+               - Track: ${this.lastPlaybackState.item.name} (${this.lastPlaybackState.item.id})
+               - Progress: ${this.lastPlaybackState.progress_ms}/${this.lastPlaybackState.item.duration_ms}
+               - ManualPause: ${playerLifecycleService.getIsManualPause()}
+               - isTrackFinished: ${isTrackFinished}`
             )
             try {
               // Use playerLifecycleService to resume so it can manage state (conceptually, though resumePlayback just calls spotifyPlayer)
@@ -404,6 +410,12 @@ class AutoPlayService {
                 resumeError as Error
               )
             }
+          } else {
+            logger(
+              'INFO',
+              `[checkPlaybackState] Auto-resume suppressed because track finished detected. 
+                  Track: ${this.lastPlaybackState.item.name}`
+            )
           }
         }
       }
@@ -437,6 +449,19 @@ class AutoPlayService {
       duration - progress < PLAYER_LIFECYCLE_CONFIG.TRACK_END_THRESHOLD_MS / 2 // Very near end
     const hasStalled = !hasProgressed && wasPlaying && isSameTrack // Track has stalled
 
+    // Detailed debug logging for tracking down Issue #12 (re-playing same song)
+    if (isNearEnd || isAtEnd || isStopped || (isPaused && wasPlaying)) {
+      logger(
+        'INFO',
+        `[hasTrackFinished] Debug: 
+            Track: ${currentState.item.name} (${currentTrackId})
+            Progress: ${progress}/${duration} (${duration - progress}ms remaining)
+            State: isPlaying=${currentState.is_playing}, wasPlaying=${wasPlaying}
+            Flags: isSameTrack=${isSameTrack}, isAtEnd=${isAtEnd}, isNearEnd=${isNearEnd}, isStopped=${isStopped}, hasStalled=${hasStalled}
+        `
+      )
+    }
+
     // Track finished if:
     // 1. We were playing, now paused/stopped, same track, near end
     // 2. Track stopped and reset to beginning (natural end)
@@ -449,6 +474,13 @@ class AutoPlayService {
       (isAtEnd && isSameTrack && !hasProgressed && wasPlaying) ||
       (isNearEnd && hasStalled) ||
       (isPaused && isNearEnd && isSameTrack)
+
+    if (finished) {
+      logger(
+        'INFO',
+        `[hasTrackFinished] Track finished detected via logic match`
+      )
+    }
 
     return finished
   }

@@ -601,7 +601,9 @@ class PlayerLifecycleService {
     } else {
       this.log(
         'WARN',
-        `[markFinishedTrackAsPlayed] No queue item found for finished track: ${trackId} (${trackName}). Track may have been manually started or already removed from queue. Queue length: ${queue.length}`
+        `[markFinishedTrackAsPlayed] No queue item found for finished track: ${trackId} (${trackName}). 
+         Queue length: ${queue.length}
+         Queue items: ${JSON.stringify(queue.map((i) => `${i.tracks.name} (${i.tracks.spotify_track_id})`))}`
       )
     }
   }
@@ -686,7 +688,8 @@ class PlayerLifecycleService {
 
     this.log(
       'INFO',
-      `[handleTrackFinished] Track finished - ID: ${currentSpotifyTrackId}, Name: ${currentTrackName}, Position: ${state.position}, Duration: ${state.duration}`
+      `[handleTrackFinished] Track finished - ID: ${currentSpotifyTrackId}, Name: ${currentTrackName}, Position: ${state.position}, Duration: ${state.duration}
+       State Debug: Paused=${state.paused}, Position=${state.position}, Duration=${state.duration}`
     )
 
     // Use shared duplicate detector to prevent duplicate processing
