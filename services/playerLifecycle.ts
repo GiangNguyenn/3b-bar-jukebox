@@ -152,11 +152,11 @@ class PlayerLifecycleService {
     new TrackDuplicateDetector()
   private addLog:
     | ((
-        level: LogLevel,
-        message: string,
-        context?: string,
-        error?: Error
-      ) => void)
+      level: LogLevel,
+      message: string,
+      context?: string,
+      error?: Error
+    ) => void)
     | null = null
   private navigationCallback: NavigationCallback | null = null
   private stateChangeInProgress: boolean = false
@@ -635,18 +635,27 @@ class PlayerLifecycleService {
         .filter((match) => match.nameMatch)
 
       if (potentialMatches.length > 0) {
+        const validMatch = potentialMatches[0].item
+
         this.log(
-          'WARN',
-          `[markFinishedTrackAsPlayed] PLAYBACK SYNC WARNING: Finished track "${trackName}" (${trackId}) not found in queue by ID, BUT found ${potentialMatches.length} items with same name.
-           Possible Spotify Track Relinking or metadata mismatch.
+          'INFO',
+          `[markFinishedTrackAsPlayed] PLAYBACK SYNC: Handling Track Relinking/ID Mismatch.
            Finished Track ID: ${trackId}
-           Queue Candidates: ${JSON.stringify(
-             potentialMatches.map((m) => ({
-               id: m.item.tracks.spotify_track_id,
-               queueId: m.item.id,
-               name: m.item.tracks.name
-             }))
-           )}`
+           Matched Queue Item: ${validMatch.tracks.name} (${validMatch.tracks.spotify_track_id})
+           Reason: Name match ("${trackName}")
+           Action: Removing matched item from queue.`
+        )
+
+        await withErrorHandling(
+          async () => {
+            await queueManager.markAsPlayed(validMatch.id)
+            this.log(
+              'INFO',
+              `[markFinishedTrackAsPlayed] Successfully removed fuzzy-matched item: ${validMatch.id}`
+            )
+          },
+          '[markFinishedTrackAsPlayed] Fuzzy removal',
+          this.addLog ?? undefined
         )
       } else {
         this.log(
@@ -960,7 +969,7 @@ class PlayerLifecycleService {
     const isNearEnd =
       state.duration > 0 &&
       state.duration - state.position <
-        PLAYER_LIFECYCLE_CONFIG.TRACK_END_THRESHOLD_MS
+      PLAYER_LIFECYCLE_CONFIG.TRACK_END_THRESHOLD_MS
 
     const positionUnchanged = state.position === this.lastKnownState.position
 
@@ -972,7 +981,7 @@ class PlayerLifecycleService {
       positionUnchanged &&
       wasPlayingButNowPaused &&
       timeSinceLastUpdate >
-        PLAYER_LIFECYCLE_CONFIG.STATE_MONITORING.stallDetectionMs
+      PLAYER_LIFECYCLE_CONFIG.STATE_MONITORING.stallDetectionMs
 
     return isNearEnd && hasStalled
   }
@@ -1417,13 +1426,13 @@ class PlayerLifecycleService {
       // Set up device management logger
       setDeviceManagementLogger(
         this.addLog ??
-          ((level, message, _context, error) => {
-            if (level === 'WARN') {
-              console.warn(`[DeviceManagement] ${message}`, error)
-            } else if (level === 'ERROR') {
-              console.error(`[DeviceManagement] ${message}`, error)
-            }
-          })
+        ((level, message, _context, error) => {
+          if (level === 'WARN') {
+            console.warn(`[DeviceManagement] ${message}`, error)
+          } else if (level === 'ERROR') {
+            console.error(`[DeviceManagement] ${message}`, error)
+          }
+        })
       )
 
       // Clear any existing cleanup timeout
@@ -1560,8 +1569,7 @@ class PlayerLifecycleService {
             const token = await tokenManager.getToken().catch(() => null)
             this.log(
               'ERROR',
-              `Player initialization timed out after ${PLAYER_LIFECYCLE_CONFIG.INITIALIZATION_TIMEOUT_MS}ms. This may due to: 1) SDK script loading failure, 2) Token issue (token length: ${
-                token?.length ?? 0
+              `Player initialization timed out after ${PLAYER_LIFECYCLE_CONFIG.INITIALIZATION_TIMEOUT_MS}ms. This may due to: 1) SDK script loading failure, 2) Token issue (token length: ${token?.length ?? 0
               }), 3) Network blocking.`
             )
             rejectWrapper(new Error('Player initialization timed out'))
