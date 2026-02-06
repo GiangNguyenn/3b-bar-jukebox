@@ -67,7 +67,7 @@ export function TechnicalDetailsSection({
               <p className='mb-2 text-xs text-gray-400'>
                 Internal Logs ({healthStatus.internalState.internalLogs.length})
               </p>
-              <div className='max-h-60 overflow-y-auto rounded bg-black/30 p-2 text-xs font-mono'>
+              <div className='max-h-60 overflow-y-auto rounded bg-black/30 p-2 font-mono text-xs'>
                 <div className='flex flex-col gap-1'>
                   {healthStatus.internalState.internalLogs.map((log, i) => (
                     <div key={i} className='flex gap-2 text-gray-300'>
