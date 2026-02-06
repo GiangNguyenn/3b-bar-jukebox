@@ -361,11 +361,11 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
           uri: `spotify:artist:${score.artistId}`, // Placeholder URI
           artists: score.artistProfile
             ? [
-              {
-                id: score.artistProfile.id,
-                name: score.artistProfile.name
-              }
-            ]
+                {
+                  id: score.artistProfile.id,
+                  name: score.artistProfile.name
+                }
+              ]
             : [],
           album: { id: '', name: '', images: [], release_date: '2000-01-01' },
           duration_ms: 0,
