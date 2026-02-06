@@ -14,6 +14,7 @@ export class PlaybackService {
   private operationQueue: Promise<void> = Promise.resolve()
   private logger: Logger | null = null
   private operationCount: number = 0
+  private pendingOperations: number = 0
   private readonly RESET_THRESHOLD = 100 // Reset chain every 100 operations
 
   /**
@@ -52,8 +53,9 @@ export class PlaybackService {
     operation: () => Promise<void>,
     operationName: string = 'unknown'
   ): Promise<void> {
-    // Increment operation counter
+    // Increment operation counter and pending count
     this.operationCount++
+    this.pendingOperations++
 
     // Periodically reset the promise chain to prevent unbounded growth
     // This prevents memory accumulation in long-running sessions
@@ -69,24 +71,43 @@ export class PlaybackService {
       this.operationQueue = Promise.resolve()
     }
 
-    // Chain this operation onto the queue
-    // Each operation waits for the previous one to complete
-    this.operationQueue = this.operationQueue
-      .then(async () => {
-        this.log('INFO', `[${operationName}] Starting operation`)
+    // Capture previous promise to wait for it safely
+    const previousOperation = this.operationQueue
+
+    // Create the new operation execution wrapper
+    const currentOperationExecution = async () => {
+      // 1. Wait for previous operation to settle (resolve OR reject)
+      // We purposefully catch errors here to ensure the chain continues
+      try {
+        await previousOperation
+      } catch {
+        // Ignore previous error, it was handled by its own caller
+      }
+
+      // 2. Execute the current operation
+      this.log('INFO', `[${operationName}] Starting operation`)
+      try {
         await operation()
         this.log('INFO', `[${operationName}] Operation completed`)
-      })
-      .catch((err) => {
-        // Log error but don't break the chain
-        this.log('ERROR', `[${operationName}] Operation failed`, err)
-        // Re-throw to propagate error to caller
-        throw err
-      })
+      } finally {
+        this.pendingOperations = Math.max(0, this.pendingOperations - 1)
+      }
+    }
 
-    // Return the queued promise
-    // Caller can await to know when their specific operation completes
-    return this.operationQueue
+    // 3. Start execution
+    const executionPromise = currentOperationExecution()
+
+    // 4. Update the queue pointer
+    // We strictly want the queue to wait for this operation to finish, AND be successful (resolved)
+    // for the NEXT item. But if this one fails, the NEXT item should still run (after this one finishes).
+    // So operationQueue should always point to a RESOLVED promise when this one is done (even if failed).
+    this.operationQueue = executionPromise.catch((err) => {
+      this.log('ERROR', `[${operationName}] Operation failed`, err)
+      // Return void to resolve the queue promise
+    })
+
+    // 5. Return the promise that actually rejects if operation failed (for the caller)
+    return executionPromise
   }
 
   /**
@@ -94,10 +115,7 @@ export class PlaybackService {
    * Useful for debugging and monitoring
    */
   isOperationInProgress(): boolean {
-    // If queue is still pending, an operation is in progress
-    // This is a best-effort check - not guaranteed to be accurate
-    // due to microtask timing
-    return this.operationQueue !== Promise.resolve()
+    return this.pendingOperations > 0
   }
 
   /**

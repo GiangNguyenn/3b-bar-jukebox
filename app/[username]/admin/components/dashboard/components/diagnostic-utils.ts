@@ -62,41 +62,81 @@ export function formatDiagnosticsForClipboard(
   currentPlayerStatus: string,
   logs: ConsoleLogEntry[] = []
 ): string {
+  const hasErrors = hasErrorStatus(healthStatus)
+  const hasWarnings = hasWarningStatus(healthStatus)
+  const overallSeverity = getOverallSeverity(hasErrors, hasWarnings)
+
   const diagnosticData = {
-    timestamp: new Date().toISOString(),
-    systemInfo: healthStatus.systemInfo,
-    systemStatus: {
-      playerStatus: playerStatus ?? (isReady ? 'ready' : 'initializing'),
-      deviceStatus: healthStatus.device,
-      playbackStatus: healthStatus.playback,
-      tokenStatus: healthStatus.token,
-      tokenExpiringSoon: healthStatus.tokenExpiringSoon,
-      connection: healthStatus.connection,
-      deviceId: healthStatus.deviceId
+    summary: {
+      status: overallSeverity,
+      timestamp: new Date().toISOString(),
+      userAgent: healthStatus.systemInfo?.userAgent,
+      uptime: healthStatus.systemInfo?.uptime,
+      device: {
+        status: healthStatus.device,
+        id: healthStatus.deviceId,
+        isReady: isReady
+      },
+      playback: {
+        status: healthStatus.playback,
+        isPlaying: healthStatus.playbackDetails?.isPlaying,
+        currentTrack: healthStatus.playbackDetails?.currentTrack?.name
+      },
+      connection: {
+        status: healthStatus.connection,
+        type: healthStatus.systemInfo?.connectionType
+      },
+      queue: {
+        length: healthStatus.queueState?.queueLength,
+        isEmpty: healthStatus.queueState?.isEmpty,
+        hasNext: healthStatus.queueState?.hasNextTrack
+      }
     },
     criticalIssues: {
-      lastError: healthStatus.lastError,
+      // Prioritize active errors
+      activeErrors: [
+        healthStatus.lastError,
+        healthStatus.device === 'error' ? 'Device Error' : null,
+        healthStatus.playback === 'error' ? 'Playback Error' : null,
+        healthStatus.token === 'error' ? 'Token Error' : null,
+        healthStatus.failureMetrics?.consecutiveFailures &&
+        healthStatus.failureMetrics.consecutiveFailures > 0
+          ? `Consecutive Failures: ${healthStatus.failureMetrics.consecutiveFailures}`
+          : null
+      ].filter(Boolean),
       lastErrorTimestamp: healthStatus.lastErrorTimestamp
         ? formatAbsoluteTime(healthStatus.lastErrorTimestamp)
         : undefined,
-      deviceError: healthStatus.device === 'error',
-      playbackError: healthStatus.playback === 'error',
-      playbackStalled: healthStatus.playback === 'stalled',
-      consecutiveFailures: healthStatus.failureMetrics?.consecutiveFailures,
-      lastFailureTimestamp: healthStatus.failureMetrics?.lastFailureTimestamp
-        ? formatAbsoluteTime(healthStatus.failureMetrics.lastFailureTimestamp)
-        : undefined
+      metrics: healthStatus.failureMetrics
     },
-    playbackDetails: healthStatus.playbackDetails,
-    queueState: healthStatus.queueState,
-    recentEvents: healthStatus.recentEvents,
-    connectivity: healthStatus.connectivityInvestigation,
-    technicalDetails: {
-      playerStatusInternal: currentPlayerStatus,
-      failureMetrics: healthStatus.failureMetrics,
-      internalState: healthStatus.internalState
+    systemState: {
+      playerStatus: playerStatus ?? (isReady ? 'ready' : 'initializing'),
+      internalPlayerStatus: currentPlayerStatus,
+      tokenStatus: healthStatus.token,
+      tokenExpiringSoon: healthStatus.tokenExpiringSoon
     },
-    logs: logs
+    details: {
+      playback: healthStatus.playbackDetails,
+      queue: healthStatus.queueState,
+      recentEvents: healthStatus.recentEvents,
+      connectivity: healthStatus.connectivityInvestigation,
+      internalState: healthStatus.internalState,
+      systemInfo: healthStatus.systemInfo
+    },
+    logs: {
+      // Include both internal component logs and console logs
+      // Limit console logs to relevant ones to avoid clipboard size issues
+      console: logs
+        .slice(0, 50)
+        .map(
+          (l) =>
+            `[${l.level}] ${l.timestamp.split('T')[1].slice(0, 12)} ${l.context ? `[${l.context}] ` : ''}${l.message}`
+        ),
+      internal: healthStatus.internalState?.internalLogs?.map(
+        (l) =>
+          `[${l.level}] ${new Date(l.timestamp).toISOString().split('T')[1].slice(0, 12)} ${l.message}`
+      )
+    }
   }
 
   return JSON.stringify(diagnosticData, null, 2)
