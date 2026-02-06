@@ -14,17 +14,65 @@ export interface PopularArtistResponse {
 
 export const dynamic = 'force-dynamic' // Ensure we don't cache static empty response
 
-export async function GET(): Promise<NextResponse> {
+import { type NextRequest } from 'next/server'
+import type { TargetArtist } from '@/services/gameService'
+
+export async function GET(request: NextRequest): Promise<NextResponse> {
   try {
-    // 1. Try fetching from DB first via Service (Efficient)
-    const { data: artists, source } = await musicService.getPopularArtists(200)
+    const url = new URL(request.url)
+    const query = url.searchParams.get('q')
 
-    // 2. If we have enough artists, return them
-    // Threshold: 20 artists is enough to start a game, but we prefer 50+
-    if (artists.length >= 20) {
-      logger('INFO', `Returning ${artists.length} artists from ${source}`)
+    let resultArtists: TargetArtist[] = []
+    let source = 'UNKNOWN'
 
-      const response: PopularArtistResponse[] = artists
+    if (query) {
+      // Search mode
+      const { data, source: searchSource } = await musicService.searchArtists(
+        query,
+        50
+      )
+      resultArtists = data
+      source = searchSource
+    } else {
+      // Default: Popular artists
+      // 1. Try fetching from DB first via Service (Efficient)
+      const { data, source: popSource } = await musicService.getPopularArtists(
+        200
+      )
+      resultArtists = data
+      source = popSource
+
+      // 3. Fallback: DB is empty or too small. Fetch from Spotify using admin token.
+      if (resultArtists.length < 20) {
+        logger(
+          'INFO',
+          `Insufficient artists in DB (${resultArtists.length}). Attempting Spotify fallback.`
+        )
+
+        const token = await getAdminToken()
+        if (token) {
+          const { data: fallbackArtists, source: fallbackSource } =
+            await musicService.getPopularArtistsWithFallback(token, 200)
+
+          resultArtists = fallbackArtists
+          source = fallbackSource
+          logger(
+            'INFO',
+            `Fallback fetch complete. Returning ${resultArtists.length} artists from ${source}`
+          )
+        } else {
+          logger('ERROR', 'Failed to get admin token for fallback fetch')
+        }
+      }
+    }
+
+    // 2. Return results (Unified response)
+    if (resultArtists.length > 0 || query) {
+      if (!query) {
+        logger('INFO', `Returning ${resultArtists.length} artists from ${source}`)
+      }
+
+      const response: PopularArtistResponse[] = resultArtists
         .filter(
           (a) => a.spotify_artist_id && !a.spotify_artist_id.includes('-')
         )
@@ -41,41 +89,8 @@ export async function GET(): Promise<NextResponse> {
       return NextResponse.json({ artists: response })
     }
 
-    // 3. Fallback: DB is empty or too small. Fetch from Spotify using admin token.
-    logger(
-      'INFO',
-      `Insufficient artists in DB (${artists.length}). Attempting Spotify fallback.`
-    )
-
-    const token = await getAdminToken()
-    if (!token) {
-      logger('ERROR', 'Failed to get admin token for fallback fetch')
-      // Return whatever we have from DB
-      return NextResponse.json({ artists: artists })
-    }
-
-    // Fetch with fallback (this seeds the DB)
-    const { data: fallbackArtists, source: fallbackSource } =
-      await musicService.getPopularArtistsWithFallback(token, 200)
-
-    logger(
-      'INFO',
-      `Fallback fetch complete. Returning ${fallbackArtists.length} artists from ${fallbackSource}`
-    )
-
-    const response: PopularArtistResponse[] = fallbackArtists
-      .filter((a) => a.spotify_artist_id && !a.spotify_artist_id.includes('-'))
-      .map((artist) => ({
-        id: artist.id,
-        name: artist.name,
-        spotify_artist_id: artist.spotify_artist_id!,
-        genre:
-          artist.genres && artist.genres.length > 0
-            ? artist.genres[0]
-            : undefined
-      }))
-
-    return NextResponse.json({ artists: response })
+    // 3. Last resort fallback (should be covered above, but safe return)
+    return NextResponse.json({ artists: [] })
   } catch (err) {
     logger(
       'ERROR',

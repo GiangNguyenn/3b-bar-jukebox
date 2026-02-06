@@ -305,6 +305,51 @@ export const musicService = {
   },
 
   /**
+   * Search Artists by Name
+   */
+  searchArtists: async (
+    query: string,
+    limit: number = 20
+  ): Promise<DataResponse<TargetArtist[]>> => {
+    // 1. Database
+    const { data: artists, error } = await supabase
+      .from('artists')
+      .select('name, spotify_artist_id, genres, popularity')
+      .ilike('name', `%${query}%`)
+      .order('popularity', { ascending: false })
+      .limit(limit)
+
+    if (error) {
+      logger(
+        'ERROR',
+        `Failed to search artists with query "${query}"`,
+        'searchArtists',
+        error as any
+      )
+      return { data: [], source: DataSource.Database }
+    }
+
+    if (artists && artists.length > 0) {
+      const mappedArtists: TargetArtist[] = artists.map((a: any) => ({
+        id: a.spotify_artist_id,
+        name: a.name,
+        spotify_artist_id: a.spotify_artist_id,
+        genres: a.genres || [],
+        popularity: a.popularity,
+        followers: 0,
+        image_url: undefined
+      }))
+
+      return {
+        data: mappedArtists,
+        source: DataSource.Database
+      }
+    }
+
+    return { data: [], source: DataSource.Database }
+  },
+
+  /**
    * Get Popular Artists WITH Token (Explicit Fallback Version)
    */
   getPopularArtistsWithFallback: async (

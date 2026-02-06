@@ -1,7 +1,7 @@
 'use client'
 
 import type { JSX } from 'react'
-import { useState, Fragment } from 'react'
+import { useState, Fragment, useEffect } from 'react'
 import { Combobox, Transition } from '@headlessui/react'
 import {
   CheckIcon,
@@ -25,26 +25,66 @@ export function ArtistSelectionModal({
   currentArtist,
   onSelect,
   playerLabel,
-  artists
+  artists: initialArtists
 }: ArtistSelectionModalProps): JSX.Element | null {
   const [query, setQuery] = useState('')
+  const [searchResults, setSearchResults] = useState<TargetArtist[]>([])
+  const [isSearching, setIsSearching] = useState(false)
+
+  // Use debounced query to trigger API calls
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      async function doSearch() {
+        if (!query.trim()) {
+          setSearchResults([])
+          return
+        }
+
+        setIsSearching(true)
+        try {
+          const res = await fetch(
+            `/api/game/artists?q=${encodeURIComponent(query)}`
+          )
+          if (!res.ok) throw new Error('Search failed')
+          const data = (await res.json()) as { artists: any[] }
+
+          // Map response to TargetArtist (aligning with usePopularArtists logic)
+          const mapped: TargetArtist[] = (data.artists || []).map((a) => ({
+            id: a.spotify_artist_id,
+            name: a.name,
+            spotify_artist_id: a.spotify_artist_id,
+            genre: a.genre
+          }))
+          setSearchResults(mapped)
+        } catch (e) {
+          console.error('Artist search error:', e)
+          setSearchResults([])
+        } finally {
+          setIsSearching(false)
+        }
+      }
+
+      void doSearch()
+    }, 500) // 500ms debounce
+
+    return () => clearTimeout(timer)
+  }, [query])
 
   if (!isOpen) {
     return null
   }
 
-  const filteredArtists =
-    query === ''
-      ? artists
-      : artists.filter((artist) =>
-          artist.name.toLowerCase().includes(query.toLowerCase())
-        )
+  // If query is empty, show initial "popular" artists.
+  // If query exists, show search results.
+  const displayedArtists =
+    query.trim() === '' ? initialArtists : searchResults
 
   const handleSelect = (artist: TargetArtist | null): void => {
     if (artist) {
       onSelect(artist)
       onClose()
       setQuery('')
+      setSearchResults([])
     }
   }
 
@@ -87,10 +127,14 @@ export function ArtistSelectionModal({
                     autoFocus
                   />
                   <Combobox.Button className='absolute inset-y-0 right-0 flex items-center pr-2'>
-                    <ChevronUpDownIcon
-                      className='h-5 w-5 text-gray-400'
-                      aria-hidden='true'
-                    />
+                    {isSearching ? (
+                      <div className='h-4 w-4 animate-spin rounded-full border-2 border-gray-400 border-t-transparent' />
+                    ) : (
+                      <ChevronUpDownIcon
+                        className='h-5 w-5 text-gray-400'
+                        aria-hidden='true'
+                      />
+                    )}
                   </Combobox.Button>
                 </div>
                 <Transition
@@ -98,22 +142,25 @@ export function ArtistSelectionModal({
                   leave='transition ease-in duration-100'
                   leaveFrom='opacity-100'
                   leaveTo='opacity-0'
-                  afterLeave={() => setQuery('')}
+                  afterLeave={() => {
+                    // Optional: clear query or keep it?
+                    // Typically we keep query so user can see what they typed if they re-open?
+                    // But here we reset on select.
+                  }}
                 >
                   <Combobox.Options className='absolute z-10 mt-1 max-h-60 w-full overflow-auto rounded-lg border border-gray-700 bg-gray-800 py-1 text-base shadow-lg ring-1 ring-black ring-opacity-5 focus:outline-none sm:text-sm'>
-                    {filteredArtists.length === 0 && query !== '' ? (
+                    {displayedArtists.length === 0 && query !== '' && !isSearching ? (
                       <div className='relative cursor-default select-none px-4 py-2 text-gray-400'>
                         No artists found.
                       </div>
                     ) : (
-                      filteredArtists.map((artist, index) => (
+                      displayedArtists.map((artist, index) => (
                         <Combobox.Option
                           key={artist.id ?? `${artist.name}-${index}`}
                           className={({ active }) =>
-                            `relative cursor-default select-none py-2 pl-10 pr-4 ${
-                              active
-                                ? 'bg-green-600/20 text-green-300'
-                                : 'text-gray-300'
+                            `relative cursor-default select-none py-2 pl-10 pr-4 ${active
+                              ? 'bg-green-600/20 text-green-300'
+                              : 'text-gray-300'
                             }`
                           }
                           value={artist}
@@ -121,17 +168,15 @@ export function ArtistSelectionModal({
                           {({ selected, active }) => (
                             <>
                               <span
-                                className={`block truncate ${
-                                  selected ? 'font-medium' : 'font-normal'
-                                }`}
+                                className={`block truncate ${selected ? 'font-medium' : 'font-normal'
+                                  }`}
                               >
                                 {artist.name}
                               </span>
                               {selected ? (
                                 <span
-                                  className={`absolute inset-y-0 left-0 flex items-center pl-3 ${
-                                    active ? 'text-green-300' : 'text-green-400'
-                                  }`}
+                                  className={`absolute inset-y-0 left-0 flex items-center pl-3 ${active ? 'text-green-300' : 'text-green-400'
+                                    }`}
                                 >
                                   <CheckIcon
                                     className='h-5 w-5'
