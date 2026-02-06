@@ -91,7 +91,7 @@ export default function AdminPage(): JSX.Element {
   )
 
   const { createPlayer } = useAdminSpotifyPlayerHook(handleNavigate)
-  const { addLog } = useConsoleLogsContext()
+  const { addLog, logs } = useConsoleLogsContext()
   // Use the enhanced playlist hook with real-time subscriptions
   const {
     data: queue,
@@ -241,12 +241,12 @@ export default function AdminPage(): JSX.Element {
   const handleTabChange = useCallback((value: string): void => {
     setActiveTab(
       value as
-        | 'dashboard'
-        | 'playlist'
-        | 'settings'
-        | 'logs'
-        | 'analytics'
-        | 'branding'
+      | 'dashboard'
+      | 'playlist'
+      | 'settings'
+      | 'logs'
+      | 'analytics'
+      | 'branding'
     )
   }, [])
 
@@ -546,6 +546,7 @@ export default function AdminPage(): JSX.Element {
               isReady={isReady}
               playerStatus={playerStatus}
               className='mt-8'
+              logs={logs}
             />
           </TabsContent>
 

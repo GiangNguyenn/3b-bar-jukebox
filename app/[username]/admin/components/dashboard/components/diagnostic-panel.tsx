@@ -8,6 +8,7 @@ import {
 } from '@/hooks/useSpotifyPlayer'
 import { cn } from '@/lib/utils'
 import { showToast } from '@/lib/toast'
+import type { LogEntry as ConsoleLogEntry } from '@/hooks/ConsoleLogsProvider'
 import {
   hasErrorStatus,
   hasWarningStatus,
@@ -31,13 +32,15 @@ interface DiagnosticPanelProps {
   isReady: boolean
   playerStatus?: PlayerStatus
   className?: string
+  logs?: ConsoleLogEntry[]
 }
 
 export function DiagnosticPanel({
   healthStatus,
   isReady,
   playerStatus,
-  className
+  className,
+  logs = []
 }: DiagnosticPanelProps): JSX.Element {
   const { status: currentPlayerStatus } = useSpotifyPlayerStore()
 
@@ -59,7 +62,8 @@ export function DiagnosticPanel({
         healthStatus,
         isReady,
         playerStatus,
-        currentPlayerStatus
+        currentPlayerStatus,
+        logs
       )
       await navigator.clipboard.writeText(diagnosticsText)
       showToast('Diagnostics copied to clipboard', 'success')
@@ -67,7 +71,7 @@ export function DiagnosticPanel({
       showToast('Failed to copy diagnostics', 'warning')
       console.error('Failed to copy diagnostics:', error)
     }
-  }, [healthStatus, isReady, playerStatus, currentPlayerStatus])
+  }, [healthStatus, isReady, playerStatus, currentPlayerStatus, logs])
 
   return (
     <div className={cn('space-y-4', className)}>
