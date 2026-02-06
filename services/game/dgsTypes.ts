@@ -116,7 +116,7 @@ export interface CandidateTrackMetrics {
   artistId?: string
   artistName?: string
   artistGenres?: string[]
-  simScore: number
+  simScore: number // Similarity to the current/seed track (used for filtering)
   scoreComponents?: ScoringComponents // Breakdown of the simScore
   aAttraction: number
   bAttraction: number

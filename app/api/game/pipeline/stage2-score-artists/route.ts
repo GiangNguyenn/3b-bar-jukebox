@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { computeAttraction } from '@/services/game/dgsScoring'
+import {
+  computeAttraction,
+  computeStrictArtistSimilarity
+} from '@/services/game/dgsScoring'
 import { applyDiversityConstraints } from '@/services/game/dgsDiversity'
 import { ApiStatisticsTracker } from '@/services/game/apiStatisticsTracker'
 import { createModuleLogger } from '@/shared/utils/logger'
@@ -45,6 +48,7 @@ interface ArtistScore {
   isTargetArtist: boolean
   filtered: boolean
   scoreComponents?: ScoringComponents
+  currentTrackSimilarity: number // Similarity to valid current track (for filtering)
 }
 
 export async function POST(req: NextRequest): Promise<NextResponse> {
@@ -235,6 +239,20 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       const attractionScore = attractionResult.score
       const scoreComponents = attractionResult.components
 
+      // ACID TEST: Calculate similarity to CURRENT artist (for filtering)
+      // This is crucial because Attraction Score (Target <-> Target) is always 1.0
+      // We must filter based on whether the target is similar to the CURRENT song.
+      let currentTrackSimilarity = 0
+      if (currentArtistProfile && artistProfile) {
+        const simResult = computeStrictArtistSimilarity(
+          currentArtistProfile,
+          artistProfile,
+          artistProfilesMap,
+          artistRelationships
+        )
+        currentTrackSimilarity = simResult.score
+      }
+
       // Calculate delta from baseline
       const delta = attractionScore - baselineAttraction
 
@@ -271,6 +289,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
         artistName,
         artistProfile,
         attractionScore,
+        currentTrackSimilarity,
         delta,
         category,
         source,
@@ -314,8 +333,9 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
         return true
       }
 
-      // If it's a target artist in early rounds, only allow if similarity is high
-      const allowed = score.attractionScore > SIMILARITY_THRESHOLD
+      // If it's a target artist in early rounds, only allow if similarity to CURRENT TRACK is high
+      // FIX: Previously used attractionScore (Target <-> Target = 1.0), which always passed
+      const allowed = score.currentTrackSimilarity > SIMILARITY_THRESHOLD
       if (!allowed) {
         score.filtered = true
       }
@@ -341,11 +361,11 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
           uri: `spotify:artist:${score.artistId}`, // Placeholder URI
           artists: score.artistProfile
             ? [
-                {
-                  id: score.artistProfile.id,
-                  name: score.artistProfile.name
-                }
-              ]
+              {
+                id: score.artistProfile.id,
+                name: score.artistProfile.name
+              }
+            ]
             : [],
           album: { id: '', name: '', images: [], release_date: '2000-01-01' },
           duration_ms: 0,
@@ -358,7 +378,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
         source: score.source, // Required field
         artistName: score.artistName,
         artistId: score.artistId,
-        simScore: score.attractionScore, // Use attraction as similarity
+        simScore: score.currentTrackSimilarity, // Use specific similarity to current track
         aAttraction: score.attractionScore,
         bAttraction: score.attractionScore,
         currentSongAttraction: baselineAttraction,
@@ -370,7 +390,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
               : 'further',
         gravityScore: 0, // Not used for artist selection
         stabilizedScore: 0, // Not used for artist selection
-        finalScore: score.attractionScore, // Use attraction as final score
+        finalScore: score.attractionScore, // Use attraction as final score (goal proximity)
         scoreComponents: score.scoreComponents ?? DUMMY_COMPONENTS,
         popularityBand: 'mid' as const,
         vicinityDistances: {}
