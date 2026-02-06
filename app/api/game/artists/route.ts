@@ -36,9 +36,8 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     } else {
       // Default: Popular artists
       // 1. Try fetching from DB first via Service (Efficient)
-      const { data, source: popSource } = await musicService.getPopularArtists(
-        200
-      )
+      const { data, source: popSource } =
+        await musicService.getPopularArtists(200)
       resultArtists = data
       source = popSource
 
@@ -69,7 +68,10 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     // 2. Return results (Unified response)
     if (resultArtists.length > 0 || query) {
       if (!query) {
-        logger('INFO', `Returning ${resultArtists.length} artists from ${source}`)
+        logger(
+          'INFO',
+          `Returning ${resultArtists.length} artists from ${source}`
+        )
       }
 
       const response: PopularArtistResponse[] = resultArtists

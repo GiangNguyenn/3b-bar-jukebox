@@ -31,8 +31,7 @@ test('BUG REPRO: searchForAndRemoveTrack handles ID mismatch (Relinking)', async
     },
     votes: 0,
 
-    queued_at: new Date().toISOString(),
-
+    queued_at: new Date().toISOString()
   }
 
   // Set the queue
