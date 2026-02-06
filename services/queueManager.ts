@@ -12,7 +12,7 @@ class QueueManager {
   // Track the currently playing track ID to exclude it from getNextTrack()
   private currentlyPlayingTrackId: string | null = null
 
-  private constructor() { }
+  private constructor() {}
 
   public static getInstance(): QueueManager {
     if (!QueueManager.instance) {
@@ -32,9 +32,9 @@ class QueueManager {
     // Always exclude the currently playing track to return the actual next scheduled track
     const availableTracks = this.currentlyPlayingTrackId
       ? this.queue.filter(
-        (track) =>
-          track.tracks.spotify_track_id !== this.currentlyPlayingTrackId
-      )
+          (track) =>
+            track.tracks.spotify_track_id !== this.currentlyPlayingTrackId
+        )
       : this.queue
 
     // Return the highest priority next track to play (ordered by votes DESC, queued_at ASC)
