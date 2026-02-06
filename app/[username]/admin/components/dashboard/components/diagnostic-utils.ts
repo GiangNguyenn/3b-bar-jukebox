@@ -53,7 +53,6 @@ export function formatEventType(type: string): string {
 
 // Helper functions removed as formatDiagnosticsForClipboard now returns JSON
 
-
 import { LogEntry as ConsoleLogEntry } from '@/hooks/ConsoleLogsProvider'
 
 export function formatDiagnosticsForClipboard(
