@@ -22,7 +22,8 @@ import {
   QueueInformationSection,
   RecentEventsSection,
   ConnectivityInvestigationSection,
-  TechnicalDetailsSection
+  TechnicalDetailsSection,
+  SystemLogsSection
 } from './diagnostic-sections'
 
 interface DiagnosticPanelProps {
@@ -120,6 +121,10 @@ export function DiagnosticPanel({
           <ConnectivityInvestigationSection
             healthStatus={healthStatus}
             hasErrors={hasErrors}
+          />
+
+          <SystemLogsSection
+            internalLogs={healthStatus.internalState?.internalLogs}
           />
 
           <TechnicalDetailsSection

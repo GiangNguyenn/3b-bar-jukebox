@@ -407,5 +407,23 @@ export function formatDiagnosticsForClipboard(
 
   lines.push(...formatTechnicalDetails(healthStatus, currentPlayerStatus))
 
+  if (
+    healthStatus.internalState?.internalLogs &&
+    healthStatus.internalState.internalLogs.length > 0
+  ) {
+    lines.push('')
+    lines.push('--- INTERNAL LOGS ---')
+    healthStatus.internalState.internalLogs.forEach((log) => {
+      lines.push(
+        `[${formatAbsoluteTime(log.timestamp)}] [${log.level}] ${log.message}`
+      )
+      if (log.details) {
+        lines.push(
+          `  Details: ${JSON.stringify(log.details, null, 2).split('\n').join('\n    ')}`
+        )
+      }
+    })
+  }
+
   return lines.join('\n')
 }

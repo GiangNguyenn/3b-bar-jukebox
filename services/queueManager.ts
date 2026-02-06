@@ -1,5 +1,9 @@
 import { JukeboxQueueItem } from '@/shared/types/queue'
 
+import { createModuleLogger } from '@/shared/utils/logger'
+
+const logger = createModuleLogger('QueueManager')
+
 class QueueManager {
   private queue: JukeboxQueueItem[] = []
   private static instance: QueueManager
@@ -8,7 +12,7 @@ class QueueManager {
   // Track the currently playing track ID to exclude it from getNextTrack()
   private currentlyPlayingTrackId: string | null = null
 
-  private constructor() {}
+  private constructor() { }
 
   public static getInstance(): QueueManager {
     if (!QueueManager.instance) {
@@ -28,9 +32,9 @@ class QueueManager {
     // Always exclude the currently playing track to return the actual next scheduled track
     const availableTracks = this.currentlyPlayingTrackId
       ? this.queue.filter(
-          (track) =>
-            track.tracks.spotify_track_id !== this.currentlyPlayingTrackId
-        )
+        (track) =>
+          track.tracks.spotify_track_id !== this.currentlyPlayingTrackId
+      )
       : this.queue
 
     // Return the highest priority next track to play (ordered by votes DESC, queued_at ASC)
@@ -67,11 +71,17 @@ class QueueManager {
     const trackToRemove = this.queue.find((track) => track.id === queueId)
 
     if (!trackToRemove) {
-      console.warn(
-        `Track ${queueId} not found in queue, may have already been removed`
+      logger(
+        'WARN',
+        `[markAsPlayed] Track ${queueId} not found in queue, may have already been removed`
       )
       return
     }
+
+    logger(
+      'INFO',
+      `[markAsPlayed] Starting removal for track: ${trackToRemove.tracks.name} (${queueId}) - optimizations enabled`
+    )
 
     // Optimistically remove from local queue immediately
     // This prevents race conditions with queue refreshes during the DELETE request
@@ -112,8 +122,9 @@ class QueueManager {
         if (response.status === 404) {
           // Track already removed from database - treat as success
           this.pendingDeletes.delete(queueId)
-          console.warn(
-            `Track ${queueId} already removed from database (404), continuing`
+          logger(
+            'WARN',
+            `[markAsPlayed] Track ${queueId} already removed from database (404), treating as success`
           )
           return
         }
@@ -121,16 +132,18 @@ class QueueManager {
         // Other errors - retry if attempts remain
         if (attempt < maxRetries) {
           const backoffMs = 500 * (attempt + 1)
-          console.warn(
-            `Failed to mark track ${queueId} as played (attempt ${attempt + 1}/${maxRetries + 1}), retrying in ${backoffMs}ms`
+          logger(
+            'WARN',
+            `[markAsPlayed] Failed to mark track ${queueId} as played (attempt ${attempt + 1}/${maxRetries + 1}), retrying in ${backoffMs}ms. Status: ${response.status}`
           )
           await new Promise((resolve) => setTimeout(resolve, backoffMs))
           continue
         }
 
         // Exhausted retries - rollback the optimistic update
-        console.error(
-          `Failed to mark track ${queueId} as played after ${maxRetries + 1} attempts, rolling back local queue`
+        logger(
+          'ERROR',
+          `[markAsPlayed] Failed to mark track ${queueId} as played after ${maxRetries + 1} attempts, rolling back local queue`
         )
 
         // Add track back to queue at the beginning (it was highest priority)
@@ -143,18 +156,22 @@ class QueueManager {
         // Network or parsing errors
         if (attempt < maxRetries) {
           const backoffMs = 500 * (attempt + 1)
-          console.warn(
-            `Error marking track ${queueId} as played (attempt ${attempt + 1}/${maxRetries + 1}), retrying in ${backoffMs}ms:`,
-            error
+          logger(
+            'WARN',
+            `[markAsPlayed] Error marking track ${queueId} as played (attempt ${attempt + 1}/${maxRetries + 1}), retrying in ${backoffMs}ms`,
+            undefined,
+            error as Error
           )
           await new Promise((resolve) => setTimeout(resolve, backoffMs))
           continue
         }
 
         // Exhausted retries - rollback the optimistic update
-        console.error(
-          `An error occurred while marking track ${queueId} as played after ${maxRetries + 1} attempts, rolling back local queue:`,
-          error
+        logger(
+          'ERROR',
+          `[markAsPlayed] Exception while marking track ${queueId} as played after ${maxRetries + 1} attempts, rolling back local queue`,
+          undefined,
+          error as Error
         )
 
         // Add track back to queue at the beginning (it was highest priority)
