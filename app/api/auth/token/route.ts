@@ -73,7 +73,7 @@ export async function GET(): Promise<
     const tokenService = new TokenService(supabaseAdmin)
 
     // Prefer environment variable, fallback to default '3B'
-    const adminUsername = process.env.NEXT_PUBLIC_ADMIN_USERNAME || DEFAULT_ID
+    const adminUsername = process.env.NEXT_PUBLIC_ADMIN_USERNAME ?? DEFAULT_ID
 
     try {
       // Get Admin Token

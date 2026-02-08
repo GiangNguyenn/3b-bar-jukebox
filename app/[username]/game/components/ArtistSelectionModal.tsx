@@ -9,6 +9,11 @@ import {
   XMarkIcon
 } from '@heroicons/react/20/solid'
 import type { TargetArtist } from '@/services/gameService'
+import type { PopularArtistResponse } from '@/app/api/game/artists/route'
+
+interface ArtistSearchResponse {
+  artists: PopularArtistResponse[]
+}
 
 interface ArtistSelectionModalProps {
   isOpen: boolean
@@ -34,7 +39,7 @@ export function ArtistSelectionModal({
   // Use debounced query to trigger API calls
   useEffect(() => {
     const timer = setTimeout(() => {
-      async function doSearch() {
+      async function doSearch(): Promise<void> {
         if (!query.trim()) {
           setSearchResults([])
           return
@@ -46,7 +51,7 @@ export function ArtistSelectionModal({
             `/api/game/artists?q=${encodeURIComponent(query)}`
           )
           if (!res.ok) throw new Error('Search failed')
-          const data = (await res.json()) as { artists: any[] }
+          const data = (await res.json()) as ArtistSearchResponse
 
           // Map response to TargetArtist (aligning with usePopularArtists logic)
           const mapped: TargetArtist[] = (data.artists || []).map((a) => ({

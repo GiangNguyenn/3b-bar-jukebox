@@ -114,7 +114,7 @@ export function ProtectedRoute({
     }
 
     void checkSessionAndPremium()
-  }, [router, supabase, missingEnv])
+  }, [router, supabase, missingEnv, username])
 
   // Run metadata backfill in background for authenticated admins
   useMetadataBackfill()
