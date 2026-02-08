@@ -38,7 +38,9 @@ test('BUG REPRO: isTrackFinished detects start-up buffering as track finish', as
 
   // We need to access private methods/propeties for this test
   // @ts-ignore
-  playerLifecycleService.lastKnownState = statePlayingAtStart
+  const queueSynchronizer = playerLifecycleService.queueSynchronizer
+  // @ts-ignore
+  queueSynchronizer.setLastKnownState(statePlayingAtStart)
 
   // 2. Simulate "Buffering" state: Paused at position 0
   // valid Spotify SDK behavior: it often pauses briefly at 0 when loading
@@ -46,7 +48,7 @@ test('BUG REPRO: isTrackFinished detects start-up buffering as track finish', as
 
   // 3. Test isTrackFinished
   // @ts-ignore
-  const isFinished = playerLifecycleService.isTrackFinished(stateBuffering)
+  const isFinished = queueSynchronizer.isTrackFinished(stateBuffering)
 
   // CURRENT BEHAVIOR (BUG): Returns true because it sees "Paused at 0" and assumes finish
   // DESIRED BEHAVIOR: Should return false because we haven't played anything yet

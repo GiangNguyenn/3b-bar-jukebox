@@ -1,6 +1,44 @@
 import type { LogLevel } from '@/hooks/ConsoleLogsProvider'
 import { JukeboxQueueItem } from '@/shared/types/queue'
 import { queueManager } from '@/services/queueManager'
+import { PLAYER_LIFECYCLE_CONFIG } from '../playerLifecycleConfig'
+
+/**
+ * Waits for the Spotify Web Playback SDK to be ready
+ */
+export function waitForSpotifySDK(): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (window.Spotify) {
+      resolve()
+      return
+    }
+
+    const { maxWaitMs, checkIntervalMs } = PLAYER_LIFECYCLE_CONFIG.SDK_LOADING
+    const startTime = Date.now()
+
+    const intervalId = setInterval(() => {
+      if (window.Spotify) {
+        clearInterval(intervalId)
+        resolve()
+        return
+      }
+
+      const elapsedTime = Date.now() - startTime
+      if (elapsedTime > maxWaitMs) {
+        clearInterval(intervalId)
+        reject(new Error(`Spotify SDK failed to load within ${maxWaitMs}ms`))
+      }
+    }, checkIntervalMs)
+
+    // Also listen for the event as a backup/faster trigger
+    const onSdkReady = () => {
+      clearInterval(intervalId)
+      window.removeEventListener('spotifySDKReady', onSdkReady)
+      resolve()
+    }
+    window.addEventListener('spotifySDKReady', onSdkReady)
+  })
+}
 
 /**
  * Manages multiple timeouts with named identifiers
