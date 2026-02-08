@@ -161,7 +161,10 @@ class AutoPlayService {
   }
 
   public setDeviceId(deviceId: string | null): void {
-    this.deviceId = deviceId
+    if (this.deviceId !== deviceId) {
+      logger('INFO', `[setDeviceId] Device ID updated to: ${deviceId}`)
+      this.deviceId = deviceId
+    }
   }
 
   public setUsername(username: string | null): void {

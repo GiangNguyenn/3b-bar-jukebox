@@ -143,29 +143,41 @@ export default function AdminPage(): JSX.Element {
     }
   }, [queue])
 
-  // Initialize AutoPlayService when username and deviceId are available
+  // Initialize AutoPlayService when username is available
   useEffect(() => {
-    if (!username || !deviceId || !isReady) {
+    if (!username) {
       return
     }
 
+    // Always get the service instance if we have a username
+    // We pass deviceId if available, but the key is to update it below
     const autoPlayService = getAutoPlayService({
       username,
-      deviceId,
+      deviceId: isReady ? deviceId : null,
       checkInterval: 500 // Reduced for predictive track start
     })
 
-    // Set username and deviceId (in case service was already created)
+    // Set username
     autoPlayService.setUsername(username)
-    autoPlayService.setDeviceId(deviceId)
 
     // Set logger for diagnostics
     autoPlayService.setLogger(addLog)
 
-    // Start the service if not already running
-    if (!autoPlayService.isActive()) {
-      autoPlayService.start()
-      autoPlayService.markAsInitialized()
+    // IMPORTANT: Explicitly sync device ID state
+    // If player is not ready or deviceId is missing, we must set it to null
+    // This prevents the service from trying to use a stale device ID
+    if (isReady && deviceId) {
+      autoPlayService.setDeviceId(deviceId)
+
+      // Start the service if not already running
+      if (!autoPlayService.isActive()) {
+        autoPlayService.start()
+        autoPlayService.markAsInitialized()
+      }
+    } else {
+      // Explicitly clear device ID if not ready
+      // This stops auto-resume logic from firing without a valid device
+      autoPlayService.setDeviceId(null)
     }
 
     // Update queue in AutoPlayService
