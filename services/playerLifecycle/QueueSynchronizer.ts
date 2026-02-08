@@ -419,6 +419,35 @@ export class QueueSynchronizer {
       if (queue.length > 0 && !state.paused) {
         const expectedTrack = this.currentQueueTrack || queue[0]
 
+        // Fix: Check for Track Relinking (Fuzzy Match)
+        // If IDs don't match but Names do, Spotify might have linked to a different version of the same track.
+        const isFuzzyMatch =
+          expectedTrack.tracks.name.toLowerCase() ===
+          currentSpotifyTrack.name.toLowerCase()
+
+        if (isFuzzyMatch) {
+          this.controller.log(
+            'INFO',
+            `[syncQueueWithPlayback] Detected Track Relinking/Fuzzy Match.
+             Expected: ${expectedTrack.tracks.name} (${expectedTrack.tracks.spotify_track_id})
+             Playing: ${currentSpotifyTrack.name} (${currentSpotifyTrack.id})
+             Action: Updating internal state to match playing track.`
+          )
+
+          // Update the queue manager with the NEW ID so future checks pass
+          // We don't change the DB ID, but we make the QueueManager aware via setCurrentlyPlayingTrack
+          // and potentially update our local reference
+          queueManager.setCurrentlyPlayingTrack(currentSpotifyTrack.id)
+
+          if (this.currentQueueTrack?.id === expectedTrack.id) {
+            // Update our local tracking to avoid repeated fuzzy checks
+            // We can't easily update the ID in the queue object without mutating it,
+            // but strictly speaking satisfy the "sync" by just NOT calling playNextTrack.
+          }
+
+          return
+        }
+
         this.controller.log(
           'WARN',
           `[syncQueueWithPlayback] Enforcing queue order: Track ${currentSpotifyTrack.name} (${currentSpotifyTrack.id}) is playing but not in queue. Jukebox expected: ${expectedTrack.tracks.name}`
