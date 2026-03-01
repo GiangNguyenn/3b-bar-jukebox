@@ -390,30 +390,41 @@ export const musicService = {
     )
 
     try {
-      const searchResults = await sendApiRequest<{ artists: { items: any[] } }>(
-        {
-          path: 'search?q=year:2022-2025&type=artist&limit=50',
+      // 2. Spotify Fallback
+      // Fetch 50 artists using 5 queries due to new limit=10 constraint
+      const searchPromises = [0, 10, 20, 30, 40].map((offset) =>
+        sendApiRequest<{ artists: { items: any[] } }>({
+          path: `search?q=year:2022-2025&type=artist&limit=10&offset=${offset}`,
           method: 'GET',
           token,
           useAppToken: !token
-        }
+        }).catch(err => {
+          logger('WARN', `Search page offset ${offset} failed`, 'getPopularArtistsWithFallback', err)
+          return null
+        })
       )
 
-      const items = searchResults?.artists?.items || []
+      const searchResults = await Promise.all(searchPromises)
+
       const fetchedArtists: TargetArtist[] = []
 
-      for (const item of items) {
-        if (!item.id) continue
+      for (const result of searchResults) {
+        if (!result) continue
+        const items = result.artists?.items || []
 
-        const artist: TargetArtist = {
-          id: item.id,
-          name: item.name,
-          genres: item.genres || [],
-          popularity: item.popularity || 50,
-          followers: item.followers?.total || 0,
-          image_url: item.images?.[0]?.url
+        for (const item of items) {
+          if (!item.id) continue
+
+          const artist: TargetArtist = {
+            id: item.id,
+            name: item.name,
+            genres: item.genres || [],
+            popularity: item.popularity || 50,
+            followers: item.followers?.total || 0,
+            image_url: item.images?.[0]?.url
+          }
+          fetchedArtists.push(artist)
         }
-        fetchedArtists.push(artist)
       }
 
       // 3. Fire-and-forget Update

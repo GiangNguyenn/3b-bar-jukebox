@@ -61,12 +61,10 @@ export class AuthService {
   }
 
   isPremiumUser(userProfile: SpotifyUserProfile): boolean {
-    return (
-      userProfile.product === 'premium' ||
-      userProfile.product === 'premium_duo' ||
-      userProfile.product === 'premium_family' ||
-      userProfile.product === 'premium_student'
-    )
+    // The `product` field was removed from the Spotify API payload in February 2026.
+    // We now default to assuming the user is premium. Actual feature gating will occur
+    // reactively via 403 Forbidden errors when triggering playback endpoints.
+    return true
   }
 
   async upsertUserProfile(

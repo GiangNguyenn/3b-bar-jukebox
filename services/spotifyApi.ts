@@ -145,7 +145,7 @@ export class SpotifyApiService implements SpotifyApiClient {
     return handleOperationError(
       async () =>
         this.apiClient({
-          path: `playlists/${playlistId}/tracks`,
+          path: `playlists/${playlistId}/items`,
           method: 'POST',
           body: {
             uris: [formattedUri]
@@ -167,7 +167,7 @@ export class SpotifyApiService implements SpotifyApiClient {
     return handleOperationError(
       async () =>
         this.apiClient({
-          path: `playlists/${playlistId}/tracks`,
+          path: `playlists/${playlistId}/items`,
           method: 'POST',
           body: {
             uris: formattedUris
@@ -250,9 +250,9 @@ export class SpotifyApiService implements SpotifyApiClient {
           resumedFrom:
             typeof position_ms === 'number'
               ? {
-                  trackUri: '',
-                  position: position_ms
-                }
+                trackUri: '',
+                position: position_ms
+              }
               : undefined
         }
       } catch (error) {
@@ -368,8 +368,7 @@ export class SpotifyApiService implements SpotifyApiClient {
 
   /**
    * Fetches the top tracks for a given artist.
-   * Returns TrackDetails so the result can be passed directly into
-   * existing playlist/queue APIs that expect this shape.
+   * Uses a fallback search for the artist's tracks since GET /artists/{id}/top-tracks is removed.
    */
   async getArtistTopTracks(artistId: string): Promise<TrackDetails[]> {
     // Validate artist ID before making API calls
@@ -378,12 +377,34 @@ export class SpotifyApiService implements SpotifyApiClient {
     }
 
     return handleOperationError(async () => {
-      const response = await this.apiClient<{ tracks: TrackDetails[] }>({
-        path: `artists/${artistId}/top-tracks?market=from_token`,
+      // 1. Fetch artist details to get their exact name
+      const artistResponse = await this.apiClient<SpotifyArtist>({
+        path: `artists/${artistId}`,
         useAppToken: true,
         retryConfig: this.retryConfig
       })
-      return response.tracks
+
+      const artistName = artistResponse.name
+
+      if (!artistName) {
+        throw new Error('Failed to retrieve artist name for search query.')
+      }
+
+      // 2. Search for tracks specifically using the artist's name
+      // The search limit is capped at 10, which matches the new limits (max 10)
+      const encodedQuery = encodeURIComponent(`artist:"${artistName}"`)
+      const searchResponse = await this.apiClient<{ tracks: { items: TrackDetails[] } }>({
+        path: `search?q=${encodedQuery}&type=track&limit=10&market=from_token`,
+        useAppToken: true,
+        retryConfig: this.retryConfig
+      })
+
+      // Sort by popularity locally since search might not be perfectly ordered
+      const sortedTracks = (searchResponse.tracks?.items || []).sort(
+        (a, b) => (b.popularity || 0) - (a.popularity || 0)
+      )
+
+      return sortedTracks
     }, 'SpotifyApi.getArtistTopTracks')
   }
 

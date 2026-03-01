@@ -1,7 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
+import https from 'https'
+
+// [... skipping interface definitions for brevity, applying changes to fetchWithRetry ...]
 
 // Type-guard for MusicBrainz Artist Search API response
 interface MusicBrainzArtist {
+  // ...
+
   id: string
   name: string
   'life-span': {
@@ -114,17 +119,62 @@ function cacheWikidata(wikidataId: string, data: WikidataResponse): void {
   })
 }
 
-// Helper for retrying fetches with special handling for rate limits
+const USER_AGENT = 'JM-Bar-Jukebox/1.0.0 ( a.j.maxwell@bigpond.com )'
+
+// Custom minimal Response mock for our https.get wrapper
+interface MockResponse {
+  ok: boolean
+  status: number
+  text: () => Promise<string>
+  json: () => Promise<any>
+}
+
+// Helper for retrying fetches with special handling for rate limits and hanging IPv6 connections
 async function fetchWithRetry(
   url: string,
   options: RequestInit = {},
   retries = 3,
-  baseDelay = 1000
-): Promise<Response> {
+  baseDelay = 1000,
+  timeoutMs = 8000
+): Promise<MockResponse> {
   let lastError: unknown
   for (let i = 0; i < retries; i++) {
     try {
-      const response = await fetch(url, options)
+      const response = await new Promise<MockResponse>((resolve, reject) => {
+        const req = https.get(
+          url,
+          {
+            headers: {
+              'User-Agent': USER_AGENT,
+              ...(options.headers as Record<string, string> || {})
+            },
+            family: 4, // Force IPv4 to bypass Node Happy Eyeballs bugs
+            timeout: timeoutMs
+          },
+          (res) => {
+            let data = ''
+            res.on('data', (chunk) => {
+              data += chunk
+            })
+            res.on('end', () => {
+              const status = res.statusCode || 200
+              resolve({
+                ok: status >= 200 && status < 300,
+                status,
+                text: async () => data,
+                json: async () => JSON.parse(data) // Throws native error if not JSON
+              })
+            })
+          }
+        )
+
+        req.on('error', reject)
+        req.on('timeout', () => {
+          req.destroy()
+          reject(new Error('AbortError')) // Matches previous fetchTimeout signature
+        })
+      })
+
       // If we get a 429 (Too Many Requests) or 5xx (Server Error), throw to trigger retry
       if (response.status === 429 || response.status >= 500) {
         throw new Error(`Request failed with status ${response.status}`)
@@ -132,6 +182,7 @@ async function fetchWithRetry(
       return response
     } catch (error) {
       lastError = error
+
       // Don't wait on the last attempt
       if (i < retries - 1) {
         // Use longer delays for 429 rate limit errors
@@ -139,9 +190,12 @@ async function fetchWithRetry(
         const delay = is429
           ? 5000 * (i + 1) // 5s, 10s, 15s for rate limits
           : baseDelay * Math.pow(2, i) // 1s, 2s, 4s for other errors
+
+        const isTimeout = error instanceof Error && error.message === 'AbortError'
+        const reason = isTimeout ? 'Timed out via https' : error
+
         console.warn(
-          `Fetch to ${url} failed (attempt ${i + 1}/${retries}). Retrying in ${delay}ms...`,
-          error
+          `Fetch to ${url} failed (attempt ${i + 1}/${retries}). Reason: ${reason}. Retrying in ${delay}ms...`
         )
         await new Promise((resolve) => setTimeout(resolve, delay))
       }
@@ -166,12 +220,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     const searchResponse = await fetchWithRetry(
       `https://musicbrainz.org/ws/2/artist/?query=artist:${encodeURIComponent(
         artistName
-      )}&fmt=json`,
-      {
-        headers: {
-          'User-Agent': 'JM-Bar-Jukebox/1.0.0 ( a.j.maxwell@bigpond.com )'
-        }
-      }
+      )}&fmt=json`
     )
 
     if (!searchResponse.ok) {
@@ -213,16 +262,11 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
 
     for (const artist of artistsToSearch) {
       const mbid = artist.id
-      let relationsResponse: Response | null = null
+      let relationsResponse: MockResponse | null = null
 
       try {
         relationsResponse = await fetchWithRetry(
-          `https://musicbrainz.org/ws/2/artist/${mbid}?inc=url-rels&fmt=json`,
-          {
-            headers: {
-              'User-Agent': 'JM-Bar-Jukebox/1.0.0 ( a.j.maxwell@bigpond.com )'
-            }
-          }
+          `https://musicbrainz.org/ws/2/artist/${mbid}?inc=url-rels&fmt=json`
         )
       } catch (err) {
         console.warn(
