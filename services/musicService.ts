@@ -398,8 +398,13 @@ export const musicService = {
           method: 'GET',
           token,
           useAppToken: !token
-        }).catch(err => {
-          logger('WARN', `Search page offset ${offset} failed`, 'getPopularArtistsWithFallback', err)
+        }).catch((err) => {
+          logger(
+            'WARN',
+            `Search page offset ${offset} failed`,
+            'getPopularArtistsWithFallback',
+            err
+          )
           return null
         })
       )

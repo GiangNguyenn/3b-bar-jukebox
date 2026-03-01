@@ -146,7 +146,7 @@ async function fetchWithRetry(
           {
             headers: {
               'User-Agent': USER_AGENT,
-              ...(options.headers as Record<string, string> || {})
+              ...((options.headers as Record<string, string>) || {})
             },
             family: 4, // Force IPv4 to bypass Node Happy Eyeballs bugs
             timeout: timeoutMs
@@ -191,7 +191,8 @@ async function fetchWithRetry(
           ? 5000 * (i + 1) // 5s, 10s, 15s for rate limits
           : baseDelay * Math.pow(2, i) // 1s, 2s, 4s for other errors
 
-        const isTimeout = error instanceof Error && error.message === 'AbortError'
+        const isTimeout =
+          error instanceof Error && error.message === 'AbortError'
         const reason = isTimeout ? 'Timed out via https' : error
 
         console.warn(

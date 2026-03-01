@@ -250,9 +250,9 @@ export class SpotifyApiService implements SpotifyApiClient {
           resumedFrom:
             typeof position_ms === 'number'
               ? {
-                trackUri: '',
-                position: position_ms
-              }
+                  trackUri: '',
+                  position: position_ms
+                }
               : undefined
         }
       } catch (error) {
@@ -393,7 +393,9 @@ export class SpotifyApiService implements SpotifyApiClient {
       // 2. Search for tracks specifically using the artist's name
       // The search limit is capped at 10, which matches the new limits (max 10)
       const encodedQuery = encodeURIComponent(`artist:"${artistName}"`)
-      const searchResponse = await this.apiClient<{ tracks: { items: TrackDetails[] } }>({
+      const searchResponse = await this.apiClient<{
+        tracks: { items: TrackDetails[] }
+      }>({
         path: `search?q=${encodedQuery}&type=track&limit=10&market=from_token`,
         useAppToken: true,
         retryConfig: this.retryConfig
