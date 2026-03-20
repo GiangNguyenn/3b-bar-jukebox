@@ -192,7 +192,6 @@ class AutoPlayService {
   }
 
   public setTrackSuggestionsState(state: TrackSuggestionsState | null): void {
-
     // Validate state before setting
     if (state && !isValidTrackSuggestionsState(state)) {
       return
@@ -253,7 +252,6 @@ class AutoPlayService {
       }
 
       if (!currentState) {
-
         // Proactive safety net: if the service is initialized, auto-play is
         // enabled, and there are tracks waiting in the jukebox queue, delegate
         // starting the next track to PlayerLifecycleService so that all
@@ -263,8 +261,7 @@ class AutoPlayService {
           if (nextTrack) {
             try {
               await playerLifecycleService.skipToTrack(nextTrack)
-            } catch (error) {
-            }
+            } catch (error) {}
           }
         }
 
@@ -286,8 +283,7 @@ class AutoPlayService {
       if (this.hasTrackFinished(currentState)) {
         try {
           await this.handleTrackFinished(currentTrackId)
-        } catch (error) {
-        }
+        } catch (error) {}
       }
 
       // Adjust polling interval based on track progress
@@ -330,8 +326,7 @@ class AutoPlayService {
             try {
               // Use playerLifecycleService to resume so it can manage state (conceptually, though resumePlayback just calls spotifyPlayer)
               await playerLifecycleService.resumePlayback()
-            } catch (resumeError) {
-            }
+            } catch (resumeError) {}
           } else {
           }
         }
@@ -392,7 +387,6 @@ class AutoPlayService {
   private async handleTrackFinished(
     trackId: string | undefined
   ): Promise<void> {
-
     if (!trackId) {
       return
     }
@@ -425,8 +419,7 @@ class AutoPlayService {
               const freshQueueLength = await this.refreshQueueFromAPI()
               if (freshQueueLength !== null) {
               }
-            } catch (refreshError) {
-            }
+            } catch (refreshError) {}
           }
         } catch (error) {
           // Continue with next track even if marking as played fails
@@ -448,8 +441,7 @@ class AutoPlayService {
       if (!nextTrack) {
         this.onQueueEmpty?.()
       }
-    } catch (error) {
-    }
+    } catch (error) {}
   }
 
   private async refreshQueueFromAPI(): Promise<number | null> {
@@ -478,7 +470,6 @@ class AutoPlayService {
       const cachedQueueLength = this.queueManager.getQueue().length
 
       this.queueManager.updateQueue(queue)
-
 
       return queue.length
     } catch (error) {
@@ -567,7 +558,6 @@ class AutoPlayService {
       if (!this.isInitialized) {
         reasons.push('service not initialized')
       }
-
     }
   }
 
@@ -703,7 +693,6 @@ class AutoPlayService {
           // we just won't exclude tracks in cooldown this time
         }
 
-
         let response: Response
         let errorBody: any
 
@@ -725,7 +714,6 @@ class AutoPlayService {
             clearTimeout(timeoutId)
           }
 
-
           if (!response.ok) {
             const statusMessage = `REQUEST FAILED - Status: ${response.status}`
             if (this.addLog) {
@@ -742,12 +730,10 @@ class AutoPlayService {
               if (response.status === 400 && errorBody.errors) {
                 // Log validation errors
                 if (Array.isArray(errorBody.errors)) {
-                  errorBody.errors.forEach((error: any, index: number) => {
-                  })
+                  errorBody.errors.forEach((error: any, index: number) => {})
                 }
               }
-            } catch (parseError) {
-            }
+            } catch (parseError) {}
 
             // Handle different types of 400 errors
             if (response.status === 400) {
@@ -764,7 +750,6 @@ class AutoPlayService {
                 // No suitable tracks found - log the detailed error and inform user
 
                 if (errorBody.searchDetails) {
-
                   if (errorBody.searchDetails.suggestions) {
                   }
                 }
@@ -772,7 +757,6 @@ class AutoPlayService {
                 // Inform user about why no tracks were found
                 const errorMessage = errorBody.message
                 const suggestions = errorBody.searchDetails?.suggestions || []
-
 
                 // Don't try with different parameters - just inform the user
                 throw new Error(
@@ -800,7 +784,6 @@ class AutoPlayService {
           tracks: { id: string }[]
         }
 
-
         // If no tracks were suggested, try fallback
         if (!suggestions.tracks || suggestions.tracks.length === 0) {
           throw new Error('No track suggestions available')
@@ -817,7 +800,6 @@ class AutoPlayService {
           }
 
           try {
-
             // Fetch full track details from Spotify
             const trackDetails = await sendApiRequest<{
               id: string
@@ -836,7 +818,6 @@ class AutoPlayService {
               path: `tracks/${track.id}`,
               method: 'GET'
             })
-
 
             // Add track to queue
             const controller = new AbortController()
@@ -865,7 +846,6 @@ class AutoPlayService {
               if (playlistResponse.status === 409) {
                 continue // Skip this track and try the next one
               }
-
             } else {
               tracksAdded++
 
@@ -949,8 +929,7 @@ class AutoPlayService {
               } finally {
                 clearTimeout(timeoutId)
               }
-            } catch (cacheError) {
-            }
+            } catch (cacheError) {}
 
             // Extract metadata for notification
             const albumArtUrl =
@@ -970,7 +949,6 @@ class AutoPlayService {
               isFallback: false
             }
 
-
             // Show popup notification for auto-added track
             this.showAutoFillNotification(notificationMetadata)
           } catch (error) {
@@ -989,7 +967,6 @@ class AutoPlayService {
         // Small delay between attempts to avoid overwhelming the API
         await new Promise((resolve) => setTimeout(resolve, 1000))
       } catch (error) {
-
         // Fallback: Get a random track from the database
         const fallbackSuccess = await this.fallbackToRandomTrack()
 
@@ -1020,7 +997,6 @@ class AutoPlayService {
     if (!this.username) {
       return false
     }
-
 
     // Get current queue to exclude existing tracks
     const currentQueue = this.queueManager.getQueue()
@@ -1091,13 +1067,11 @@ class AutoPlayService {
           }
         }
 
-
         if (result.success && result.track) {
           // Double-check exclusion (shouldn't be needed, but just in case)
           if (excludedTrackIds.includes(result.track.spotify_track_id)) {
             continue
           }
-
 
           // Add the random track to the queue
           const playlistController = new AbortController()
@@ -1257,7 +1231,6 @@ class AutoPlayService {
           const retryDelay = 1000 * transferAttempt // Exponential backoff: 1s, 2s
           await new Promise((resolve) => setTimeout(resolve, retryDelay))
         } else {
-
           // Fallback: Check if device is already active via alternative method
           try {
             const playbackState = await sendApiRequest<{
@@ -1267,7 +1240,6 @@ class AutoPlayService {
               path: 'me/player',
               method: 'GET'
             })
-
 
             if (
               playbackState?.device?.id === this.deviceId &&
@@ -1309,8 +1281,7 @@ class AutoPlayService {
         // Remove duplicate track from queue and try next track
         try {
           await this.queueManager.markAsPlayed(track.id)
-        } catch (error) {
-        }
+        } catch (error) {}
 
         // Attempt to play the next track instead of returning early
         const nextTrack = this.queueManager.getNextTrack()
@@ -1332,7 +1303,6 @@ class AutoPlayService {
     try {
       const trackUri = buildTrackUri(track.tracks.spotify_track_id)
 
-
       await sendApiRequest({
         path: 'me/player/play',
         method: 'PUT',
@@ -1341,7 +1311,6 @@ class AutoPlayService {
           uris: [trackUri]
         }
       })
-
 
       // Update queue manager with currently playing track so getNextTrack() excludes it
       this.queueManager.setCurrentlyPlayingTrack(track.tracks.spotify_track_id)
@@ -1390,8 +1359,7 @@ class AutoPlayService {
           return
         } else {
         }
-      } catch (recoveryError) {
-      }
+      } catch (recoveryError) {}
 
       // Only reset predictive state if no recovery was possible
       if (isPredictive) {

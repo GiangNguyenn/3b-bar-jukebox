@@ -60,8 +60,7 @@ export class QueueSynchronizer {
       message: string,
       context?: string,
       error?: Error
-    ) => {
-    }
+    ) => {}
   }
 
   /**
@@ -96,7 +95,6 @@ export class QueueSynchronizer {
       attempts++
       seenTrackIds.add(currentTrack.tracks.spotify_track_id)
 
-
       if (lastPlayingTrackId) {
         const validTrack = await ensureTrackNotDuplicate(
           currentTrack,
@@ -114,7 +112,6 @@ export class QueueSynchronizer {
 
       const trackUri = buildTrackUri(currentTrack.tracks.spotify_track_id)
 
-
       const success = await this.controller.playTrackWithRetry(
         trackUri,
         deviceId,
@@ -125,7 +122,6 @@ export class QueueSynchronizer {
         if (!currentTrack) {
           return
         }
-
 
         const trackIdForUpsert = currentTrack.tracks.spotify_track_id
         void upsertPlayedTrack(trackIdForUpsert).catch(() => {})
@@ -140,7 +136,6 @@ export class QueueSynchronizer {
         )
         return
       }
-
 
       await withErrorHandling(
         async () => {
@@ -186,7 +181,6 @@ export class QueueSynchronizer {
 
       if (potentialMatches.length > 0) {
         const validMatch = potentialMatches[0].item
-
 
         await withErrorHandling(
           async () => {
@@ -261,7 +255,6 @@ export class QueueSynchronizer {
     const currentSpotifyTrackId = currentTrack.id
     const currentTrackName = currentTrack.name || 'Unknown'
 
-
     // First serialized operation: mark played + find next track
     let nextTrack: JukeboxQueueItem | null = null
     await playbackService.executePlayback(async () => {
@@ -293,8 +286,7 @@ export class QueueSynchronizer {
     // maybeAnnounce runs OUTSIDE the lock so it does not hold isOperationInProgress = true
     try {
       await DJService.getInstance().maybeAnnounce(nextTrack)
-    } catch (error) {
-    }
+    } catch (error) {}
 
     // Second serialized operation: play the next track
     await playbackService.executePlayback(
@@ -348,7 +340,6 @@ export class QueueSynchronizer {
           currentSpotifyTrack.name.toLowerCase()
 
         if (isFuzzyMatch) {
-
           // Update the queue manager with the NEW ID so future checks pass
           // We don't change the DB ID, but we make the QueueManager aware via setCurrentlyPlayingTrack
           // and potentially update our local reference
@@ -362,7 +353,6 @@ export class QueueSynchronizer {
 
           return
         }
-
 
         void this.playNextTrack(expectedTrack)
         return

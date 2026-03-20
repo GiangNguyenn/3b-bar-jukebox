@@ -460,8 +460,7 @@ export class SpotifyPlayer {
     player.addListener('account_error', accountErrorHandler)
 
     // Playback error
-    const playbackErrorHandler = ({ message }: { message: string }) => {
-    }
+    const playbackErrorHandler = ({ message }: { message: string }) => {}
     player.addListener('playback_error', playbackErrorHandler)
 
     // Player state changed - will be handled by PlaybackService in Phase 2
@@ -495,7 +494,6 @@ export class SpotifyPlayer {
    * Destroy the player and clean up all resources
    */
   destroy(): void {
-
     // Clear all timeouts
     this.clearAllTimeouts()
 

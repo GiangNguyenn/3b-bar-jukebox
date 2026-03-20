@@ -193,7 +193,6 @@ class PlayerLifecycleService {
   ): Promise<boolean> {
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
       try {
-
         await sendApiRequest({
           path: `me/player/play?device_id=${deviceId}`,
           method: 'PUT',
@@ -297,7 +296,6 @@ class PlayerLifecycleService {
     deviceId: string,
     onStatusChange: (status: string, error?: string) => void
   ): void {
-
     const timeoutKey = 'notReady'
     this.timeoutManager.clear(timeoutKey)
 
@@ -313,7 +311,6 @@ class PlayerLifecycleService {
           if (!this.playerRef) {
             return
           }
-
 
           // Try to transfer playback back to this device
           const transferred = await transferPlaybackToDevice(deviceId)
@@ -332,8 +329,7 @@ class PlayerLifecycleService {
               'Device recovery failed. Player may need to be recreated.'
             )
           }
-        } catch (error) {
-        }
+        } catch (error) {}
       })()
     }, RECOVERY_GRACE_PERIOD_MS)
 
@@ -422,8 +418,7 @@ class PlayerLifecycleService {
       if (transformedState) {
         onPlaybackStateChange(transformedState)
       }
-    } catch (error) {
-    }
+    } catch (error) {}
   }
 
   private async processStateChange(
@@ -465,7 +460,6 @@ class PlayerLifecycleService {
     onDeviceIdChange: (deviceId: string) => void,
     onPlaybackStateChange: (state: SpotifyPlaybackState) => void
   ): Promise<void> {
-
     // Phase 3: Check if recovery is possible
     if (!recoveryManager.canAttemptRecovery()) {
       onStatusChange(
@@ -505,7 +499,6 @@ class PlayerLifecycleService {
       recoveryManager.recordSuccess()
       this.isRecoveryNeeded = false
     } catch (error) {
-
       // Check if error indicates user action is required
       // Check both error message and error code if available
       const errorMessage =
@@ -550,7 +543,6 @@ class PlayerLifecycleService {
   }
 
   handleAccountError(message: string): void {
-
     const isPremiumError =
       message.toLowerCase().includes('premium') ||
       message.toLowerCase().includes('subscription') ||
@@ -689,7 +681,6 @@ class PlayerLifecycleService {
           typeof navigator !== 'undefined' ? navigator.userAgent : 'unknown',
         timestamp: new Date().toISOString()
       }
-
     })
 
     onStatusChange(
