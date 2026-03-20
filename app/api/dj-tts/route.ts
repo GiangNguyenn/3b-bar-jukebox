@@ -50,6 +50,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
           isVietnamese
             ? {
                 model: VIETNAMESE_TTS_MODEL,
+                voice: 'Vivian',
                 input: text,
                 response_format: 'mp3'
               }
