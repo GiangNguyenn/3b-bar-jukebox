@@ -264,6 +264,12 @@ class DJService {
       return
     }
 
+    // Already prefetching (or prefetched) for this exact track — nothing to do
+    if (this.prefetchState?.trackId === nextTrack.id) {
+      log(`→ prefetch already exists for "${trackName}" (id=${nextTrack.id}), skipping`)
+      return
+    }
+
     log(
       `→ prefetching for "${trackName}" by ${artistName} (id=${nextTrack.id})`
     )
