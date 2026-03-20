@@ -98,14 +98,16 @@ export function usePlaybackControls(): {
         // Prefetch DJ audio for the next track so it's ready when this one ends.
         // The resume path bypasses playNextTrackImpl (which normally calls
         // onTrackStarted), so we trigger the prefetch explicitly here.
-        const currentQueueItem = currentTrackId
-          ? queue.find(
-              (item) => item.tracks.spotify_track_id === currentTrackId
-            )
-          : null
-        if (currentQueueItem) {
-          const nextTrack = queueManager.getNextTrack()
-          djService.onTrackStarted(currentQueueItem, nextTrack ?? null)
+        // We must set currentlyPlayingTrack first so getNextTrack() excludes it.
+        if (currentTrackId) {
+          queueManager.setCurrentlyPlayingTrack(currentTrackId)
+          const currentQueueItem = queue.find(
+            (item) => item.tracks.spotify_track_id === currentTrackId
+          )
+          if (currentQueueItem) {
+            const nextTrack = queueManager.getNextTrack()
+            djService.onTrackStarted(currentQueueItem, nextTrack ?? null)
+          }
         }
       }
 
