@@ -1,5 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
 
+// Vercel max function duration — set to 30s to accommodate slow LLM responses.
+// Requires at least the Pro plan for values > 10s.
+export const maxDuration = 30
+
+const FETCH_TIMEOUT_MS = 25000 // 25s — leaves headroom before the 30s function limit
+
 const ENGLISH_LLM_MODEL = 'llama-3.3-70b'
 const VIETNAMESE_LLM_MODEL = 'qwen3-235b-a22b-instruct-2507'
 
@@ -66,6 +72,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${apiKey}`
         },
+        signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
         body: JSON.stringify({
           model,
           messages: [

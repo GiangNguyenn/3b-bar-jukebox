@@ -1,5 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
 
+// Vercel max function duration — set to 30s to accommodate slow TTS responses.
+// Requires at least the Pro plan for values > 10s.
+export const maxDuration = 30
+
+const FETCH_TIMEOUT_MS = 25000 // 25s — leaves headroom before the 30s function limit
+
 const ENGLISH_TTS_MODEL = 'tts-kokoro'
 const ENGLISH_TTS_VOICE = 'af_nova'
 const VIETNAMESE_TTS_MODEL = 'tts-qwen3-1-7b'
@@ -39,6 +45,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${apiKey}`
         },
+        signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
         body: JSON.stringify(
           isVietnamese
             ? {
