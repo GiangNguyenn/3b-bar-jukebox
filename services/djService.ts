@@ -319,31 +319,16 @@ class DJService {
       this.prefetchState = null
       audioBlob = await promise
     } else {
-      // No prefetch or stale — check frequency roll before doing a live fetch
+      // No prefetch ready — skip the DJ rather than blocking the transition
+      // with a live fetch. The next track will play immediately.
       if (this.prefetchState !== null) {
         log(
           `→ stale prefetch (prefetch=${this.prefetchState.trackId} ≠ next=${nextTrack.id}), discarding`
         )
         this.prefetchState = null
       }
-
-      const freqRaw = localStorage.getItem('djFrequency') as DJFrequency | null
-      const freq: DJFrequency =
-        freqRaw && freqRaw in FREQUENCY_MAP ? freqRaw : 'sometimes'
-      const roll = Math.random()
-      const threshold = FREQUENCY_MAP[freq]
-
-      log(
-        `→ no prefetch — live fetch | freq=${freq} roll=${roll.toFixed(2)} threshold=${threshold}`
-      )
-
-      if (roll >= threshold) {
-        log(`→ skipping (roll ${roll.toFixed(2)} ≥ ${threshold})`)
-        return
-      }
-
-      log(`→ fetching live for "${trackName}" by ${artistName}`)
-      audioBlob = await this.fetchAudioBlob(trackName, artistName, nextTrack.id)
+      log('→ no prefetch available, skipping DJ to avoid delay')
+      return
     }
 
     if (audioBlob === null) {
