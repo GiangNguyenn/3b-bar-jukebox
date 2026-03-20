@@ -472,4 +472,23 @@ export class SpotifyApiService implements SpotifyApiClient {
       'SpotifyApi.setRepeatMode'
     )
   }
+
+  async setVolume(volumePercent: number, deviceId?: string): Promise<void> {
+    let appDeviceId = deviceId
+    if (!appDeviceId) {
+      const store = getPlayerStore()
+      appDeviceId = store?.getState().deviceId || undefined
+    }
+    if (!appDeviceId) return
+    const clamped = Math.round(Math.max(0, Math.min(100, volumePercent)))
+    return handleOperationError(
+      async () =>
+        this.apiClient({
+          path: `me/player/volume?volume_percent=${clamped}&device_id=${appDeviceId}`,
+          method: 'PUT',
+          retryConfig: this.retryConfig
+        }),
+      'SpotifyApi.setVolume'
+    )
+  }
 }

@@ -8,6 +8,9 @@ import { sendApiRequest } from '@/shared/api'
 import { useConsoleLogsContext } from '@/hooks/ConsoleLogsProvider'
 import { useState, useRef } from 'react'
 import { getAutoPlayService } from '@/services/autoPlayService'
+import { DJModeToggle } from './dj-mode-toggle'
+import { DJFrequencySelect } from './dj-frequency-select'
+import { DuckOverlayToggle } from './duck-overlay-toggle'
 
 interface JukeboxSectionProps {
   className?: string
@@ -287,6 +290,11 @@ export function JukeboxSection({
             </div>
           </div>
         </div>
+
+        {/* DJ Mode */}
+        <DJModeToggle />
+        <DJFrequencySelect />
+        <DuckOverlayToggle />
       </div>
     </div>
   )

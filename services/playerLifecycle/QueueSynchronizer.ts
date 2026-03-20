@@ -8,6 +8,7 @@ import { ensureTrackNotDuplicate, withErrorHandling } from './utils'
 import { buildTrackUri } from '@/shared/utils/spotifyUri'
 import { upsertPlayedTrack } from '@/lib/trackUpsert'
 import { playbackService } from '@/services/player'
+import { DJService } from '@/services/djService'
 
 export interface PlaybackController {
   playTrackWithRetry(
@@ -164,6 +165,7 @@ export class QueueSynchronizer {
         queueManager.setCurrentlyPlayingTrack(
           currentTrack.tracks.spotify_track_id
         )
+        DJService.getInstance().onTrackStarted(currentTrack, queueManager.getNextTrack() ?? null)
         return
       }
 
@@ -363,6 +365,7 @@ export class QueueSynchronizer {
         'INFO',
         `[handleTrackFinished] Playing next track: ${nextTrack.tracks.name} (${nextTrack.tracks.spotify_track_id}), Queue ID: ${nextTrack.id}`
       )
+      await DJService.getInstance().maybeAnnounce(nextTrack)
       await this.playNextTrackImpl(nextTrack)
     } else {
       this.currentQueueTrack = null
