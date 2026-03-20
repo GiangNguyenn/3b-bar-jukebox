@@ -165,7 +165,10 @@ export class QueueSynchronizer {
         queueManager.setCurrentlyPlayingTrack(
           currentTrack.tracks.spotify_track_id
         )
-        DJService.getInstance().onTrackStarted(currentTrack, queueManager.getNextTrack() ?? null)
+        DJService.getInstance().onTrackStarted(
+          currentTrack,
+          queueManager.getNextTrack() ?? null
+        )
         return
       }
 

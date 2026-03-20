@@ -8,7 +8,7 @@ export const FREQUENCY_MAP: Record<DJFrequency, number> = {
   rarely: 0.1,
   sometimes: 0.25,
   often: 0.5,
-  always: 1.0,
+  always: 1.0
 }
 
 interface PrefetchState {
@@ -16,7 +16,8 @@ interface PrefetchState {
   promise: Promise<Blob | null>
 }
 
-const log = (...args: unknown[]) => console.log('%c[DJService]', 'color: #a78bfa; font-weight: bold', ...args)
+const log = (...args: unknown[]) =>
+  console.log('%c[DJService]', 'color: #a78bfa; font-weight: bold', ...args)
 const warn = (...args: unknown[]) => console.warn('[DJService]', ...args)
 const err = (...args: unknown[]) => console.error('[DJService]', ...args)
 
@@ -61,7 +62,11 @@ class DJService {
     localStorage.setItem('duckOverlayMode', String(enabled))
   }
 
-  private playAudioBlob(blob: Blob, waitForEnd: boolean, restoreVolume: number | null): Promise<void> {
+  private playAudioBlob(
+    blob: Blob,
+    waitForEnd: boolean,
+    restoreVolume: number | null
+  ): Promise<void> {
     return new Promise<void>((resolve, reject) => {
       const url = URL.createObjectURL(blob)
       const audio = new Audio(url)
@@ -79,14 +84,18 @@ class DJService {
         warn('audio playback error', e)
         if (waitForEnd) reject(e)
         if (restoreVolume !== null) {
-          SpotifyApiService.getInstance().setVolume(restoreVolume).catch(() => {})
+          SpotifyApiService.getInstance()
+            .setVolume(restoreVolume)
+            .catch(() => {})
         }
       }
       audio.play().catch((e) => {
         warn('audio.play() rejected', e)
         if (waitForEnd) reject(e)
         if (restoreVolume !== null) {
-          SpotifyApiService.getInstance().setVolume(restoreVolume).catch(() => {})
+          SpotifyApiService.getInstance()
+            .setVolume(restoreVolume)
+            .catch(() => {})
         }
       })
 
@@ -97,33 +106,46 @@ class DJService {
   private rampVolume(targetVolume: number, durationMs: number): void {
     const STEP_MS = 200
     const steps = Math.max(1, Math.floor(durationMs / STEP_MS))
-    SpotifyApiService.getInstance().getPlaybackState().then((state) => {
-      const currentVolume = state?.device?.volume_percent ?? Math.round(targetVolume * 0.5)
-      const increment = (targetVolume - currentVolume) / steps
-      let current = currentVolume
-      let step = 0
-      const interval = setInterval(() => {
-        step++
-        current += increment
-        const clamped = Math.round(Math.max(0, Math.min(100, current)))
-        SpotifyApiService.getInstance().setVolume(clamped).catch(() => {})
-        if (step >= steps) {
-          clearInterval(interval)
-          SpotifyApiService.getInstance().setVolume(targetVolume).catch(() => {})
-          log(`volume ramp complete → ${targetVolume}%`)
-        }
-      }, STEP_MS)
-    }).catch(() => {
-      SpotifyApiService.getInstance().setVolume(targetVolume).catch(() => {})
-    })
+    SpotifyApiService.getInstance()
+      .getPlaybackState()
+      .then((state) => {
+        const currentVolume =
+          state?.device?.volume_percent ?? Math.round(targetVolume * 0.5)
+        const increment = (targetVolume - currentVolume) / steps
+        let current = currentVolume
+        let step = 0
+        const interval = setInterval(() => {
+          step++
+          current += increment
+          const clamped = Math.round(Math.max(0, Math.min(100, current)))
+          SpotifyApiService.getInstance()
+            .setVolume(clamped)
+            .catch(() => {})
+          if (step >= steps) {
+            clearInterval(interval)
+            SpotifyApiService.getInstance()
+              .setVolume(targetVolume)
+              .catch(() => {})
+            log(`volume ramp complete → ${targetVolume}%`)
+          }
+        }, STEP_MS)
+      })
+      .catch(() => {
+        SpotifyApiService.getInstance()
+          .setVolume(targetVolume)
+          .catch(() => {})
+      })
   }
 
-  private async fetchAudioBlob(trackName: string, artistName: string): Promise<Blob | null> {
+  private async fetchAudioBlob(
+    trackName: string,
+    artistName: string
+  ): Promise<Blob | null> {
     try {
       const scriptRes = await fetch('/api/dj-script', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ trackName, artistName }),
+        body: JSON.stringify({ trackName, artistName })
       })
       if (!scriptRes.ok) {
         warn(`/api/dj-script ${scriptRes.status}`)
@@ -137,7 +159,7 @@ class DJService {
       const ttsRes = await fetch('/api/dj-tts', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text: data.script }),
+        body: JSON.stringify({ text: data.script })
       })
       if (!ttsRes.ok) {
         warn(`/api/dj-tts ${ttsRes.status}`)
@@ -163,10 +185,14 @@ class DJService {
     const roll = Math.random()
     const threshold = FREQUENCY_MAP[freq]
 
-    log(`onTrackStarted | enabled=${enabled} freq=${freq} roll=${roll.toFixed(2)} threshold=${threshold} next="${nextTrack?.tracks?.name ?? 'none'}"`)
+    log(
+      `onTrackStarted | enabled=${enabled} freq=${freq} roll=${roll.toFixed(2)} threshold=${threshold} next="${nextTrack?.tracks?.name ?? 'none'}"`
+    )
 
     if (!enabled || roll >= threshold) {
-      log(`→ skipping prefetch (${!enabled ? 'DJ disabled' : `roll ${roll.toFixed(2)} ≥ ${threshold}`})`)
+      log(
+        `→ skipping prefetch (${!enabled ? 'DJ disabled' : `roll ${roll.toFixed(2)} ≥ ${threshold}`})`
+      )
       this.prefetchState = null
       return
     }
@@ -179,14 +205,18 @@ class DJService {
     const trackName = nextTrack.tracks?.name
     const artistName = nextTrack.tracks?.artist
     if (!trackName || !artistName) {
-      log(`→ skipping prefetch (missing metadata: name="${trackName}" artist="${artistName}")`)
+      log(
+        `→ skipping prefetch (missing metadata: name="${trackName}" artist="${artistName}")`
+      )
       return
     }
 
-    log(`→ prefetching for "${trackName}" by ${artistName} (id=${nextTrack.id})`)
+    log(
+      `→ prefetching for "${trackName}" by ${artistName} (id=${nextTrack.id})`
+    )
     this.prefetchState = {
       trackId: nextTrack.id,
-      promise: this.fetchAudioBlob(trackName, artistName),
+      promise: this.fetchAudioBlob(trackName, artistName)
     }
   }
 
@@ -200,16 +230,23 @@ class DJService {
     const trackName = nextTrack.tracks?.name
     const artistName = nextTrack.tracks?.artist
     if (!trackName || !artistName) {
-      log(`maybeAnnounce | missing metadata (name="${trackName}" artist="${artistName}"), skipping`)
+      log(
+        `maybeAnnounce | missing metadata (name="${trackName}" artist="${artistName}"), skipping`
+      )
       return
     }
 
-    log(`maybeAnnounce | trackId=${nextTrack.id} prefetch=${this.prefetchState ? `id=${this.prefetchState.trackId}` : 'null'} track="${trackName}"`)
+    log(
+      `maybeAnnounce | trackId=${nextTrack.id} prefetch=${this.prefetchState ? `id=${this.prefetchState.trackId}` : 'null'} track="${trackName}"`
+    )
 
     let audioBlob: Blob | null = null
 
     // Use prefetched audio if available and matches
-    if (this.prefetchState !== null && nextTrack.id === this.prefetchState.trackId) {
+    if (
+      this.prefetchState !== null &&
+      nextTrack.id === this.prefetchState.trackId
+    ) {
       log('→ using prefetched audio')
       const { promise } = this.prefetchState
       this.prefetchState = null
@@ -217,16 +254,21 @@ class DJService {
     } else {
       // No prefetch or stale — check frequency roll before doing a live fetch
       if (this.prefetchState !== null) {
-        log(`→ stale prefetch (prefetch=${this.prefetchState.trackId} ≠ next=${nextTrack.id}), discarding`)
+        log(
+          `→ stale prefetch (prefetch=${this.prefetchState.trackId} ≠ next=${nextTrack.id}), discarding`
+        )
         this.prefetchState = null
       }
 
       const freqRaw = localStorage.getItem('djFrequency') as DJFrequency | null
-      const freq: DJFrequency = freqRaw && freqRaw in FREQUENCY_MAP ? freqRaw : 'sometimes'
+      const freq: DJFrequency =
+        freqRaw && freqRaw in FREQUENCY_MAP ? freqRaw : 'sometimes'
       const roll = Math.random()
       const threshold = FREQUENCY_MAP[freq]
 
-      log(`→ no prefetch — live fetch | freq=${freq} roll=${roll.toFixed(2)} threshold=${threshold}`)
+      log(
+        `→ no prefetch — live fetch | freq=${freq} roll=${roll.toFixed(2)} threshold=${threshold}`
+      )
 
       if (roll >= threshold) {
         log(`→ skipping (roll ${roll.toFixed(2)} ≥ ${threshold})`)
@@ -256,10 +298,14 @@ class DJService {
         }
         const duckedVolume = Math.round(originalVolume * 0.2)
         log(`duck: ${originalVolume}% → ${duckedVolume}%`)
-        await SpotifyApiService.getInstance().setVolume(duckedVolume).catch((e) => warn('setVolume failed', e))
+        await SpotifyApiService.getInstance()
+          .setVolume(duckedVolume)
+          .catch((e) => warn('setVolume failed', e))
         // Re-apply duck after Spotify's play command may reset volume
         setTimeout(() => {
-          SpotifyApiService.getInstance().setVolume(duckedVolume).catch(() => {})
+          SpotifyApiService.getInstance()
+            .setVolume(duckedVolume)
+            .catch(() => {})
         }, 500)
         await this.playAudioBlob(audioBlob, false, originalVolume)
       } else {

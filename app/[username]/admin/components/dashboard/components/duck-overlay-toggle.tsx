@@ -19,14 +19,16 @@ export function DuckOverlayToggle(): JSX.Element {
 
   return (
     <div className='flex items-center justify-between py-1'>
-      <label className='flex items-center gap-2 cursor-pointer'>
+      <label className='flex cursor-pointer items-center gap-2'>
         <input
           type='checkbox'
           checked={checked}
           onChange={handleChange}
           className='h-4 w-4 cursor-pointer accent-green-500'
         />
-        <span className='text-white text-sm font-semibold'>Duck &amp; Overlay</span>
+        <span className='text-white text-sm font-semibold'>
+          Duck &amp; Overlay
+        </span>
       </label>
     </div>
   )

@@ -8,7 +8,7 @@ const OPTIONS: { value: DJFrequency; label: string }[] = [
   { value: 'rarely', label: 'Rarely' },
   { value: 'sometimes', label: 'Sometimes' },
   { value: 'often', label: 'Often' },
-  { value: 'always', label: 'Always' },
+  { value: 'always', label: 'Always' }
 ]
 
 export function DJFrequencySelect(): JSX.Element {
@@ -43,7 +43,7 @@ export function DJFrequencySelect(): JSX.Element {
   return (
     <div className='py-1'>
       <span className='text-white text-sm font-semibold'>DJ Frequency</span>
-      <div className='mt-1 flex gap-1 flex-wrap'>
+      <div className='mt-1 flex flex-wrap gap-1'>
         {OPTIONS.map(({ value, label }) => (
           <button
             key={value}
@@ -51,7 +51,7 @@ export function DJFrequencySelect(): JSX.Element {
             onClick={() => handleSelect(value)}
             className={`rounded px-2 py-0.5 text-xs font-medium transition-colors ${
               frequency === value
-                ? 'bg-green-600 text-white'
+                ? 'text-white bg-green-600'
                 : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
             }`}
           >

@@ -1112,7 +1112,11 @@ class PlayerLifecycleService {
       try {
         await SpotifyApiService.getInstance().pausePlayback(this.deviceId)
       } catch (error) {
-        this.log('WARN', '[playNextFromQueue] Failed to pause before DJ announcement', error)
+        this.log(
+          'WARN',
+          '[playNextFromQueue] Failed to pause before DJ announcement',
+          error
+        )
       }
     }
 

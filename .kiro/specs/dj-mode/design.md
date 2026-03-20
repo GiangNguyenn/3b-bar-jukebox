@@ -87,21 +87,24 @@ sequenceDiagram
 ### `DJService` (`services/djService.ts`)
 
 ```typescript
-type DJFrequency = "never" | "rarely" | "sometimes" | "often" | "always"
+type DJFrequency = 'never' | 'rarely' | 'sometimes' | 'often' | 'always'
 
 const FREQUENCY_MAP: Record<DJFrequency, number> = {
   never: 0,
   rarely: 0.1,
   sometimes: 0.25,
   often: 0.5,
-  always: 1.0,
+  always: 1.0
 }
 
 class DJService {
   static getInstance(): DJService
 
   // Called when a new track starts; triggers prefetch if frequency check passes
-  onTrackStarted(currentTrack: JukeboxQueueItem, nextTrack: JukeboxQueueItem | null): void
+  onTrackStarted(
+    currentTrack: JukeboxQueueItem,
+    nextTrack: JukeboxQueueItem | null
+  ): void
 
   // Called when the current track ends; awaits prefetch and plays audio
   // Never throws — all errors are caught internally
@@ -119,6 +122,7 @@ class DJService {
 ```
 
 **`onTrackStarted` logic:**
+
 1. Re-read `localStorage["djMode"]`, `localStorage["djFrequency"]` (default `"sometimes"`).
 2. If disabled or `Math.random() >= FREQUENCY_MAP[freq]` → clear any stale prefetch, return.
 3. If `nextTrack` is null or has no name/artist → return.
@@ -127,6 +131,7 @@ class DJService {
 6. Catch all errors inside `prefetchPromise` and resolve to `null` on failure.
 
 **`maybeAnnounce` logic:**
+
 1. If `prefetchPromise` is null → return immediately (no announcement was scheduled).
 2. If `nextTrack.id !== prefetchTrackId` → discard, return immediately.
 3. Await `prefetchPromise` → get `audioBlob | null`.
@@ -203,23 +208,30 @@ if (nextTrack) {
 
 ### localStorage entries
 
-| Key | Type | Values | Default |
-|-----|------|--------|---------|
-| `"djMode"` | string | `"true"` / `"false"` | absent = disabled |
-| `"djFrequency"` | string | `"never"` / `"rarely"` / `"sometimes"` / `"often"` / `"always"` | `"sometimes"` |
-| `"duckOverlayMode"` | string | `"true"` / `"false"` | absent = disabled |
+| Key                 | Type   | Values                                                          | Default           |
+| ------------------- | ------ | --------------------------------------------------------------- | ----------------- |
+| `"djMode"`          | string | `"true"` / `"false"`                                            | absent = disabled |
+| `"djFrequency"`     | string | `"never"` / `"rarely"` / `"sometimes"` / `"often"` / `"always"` | `"sometimes"`     |
+| `"duckOverlayMode"` | string | `"true"` / `"false"`                                            | absent = disabled |
 
 ### `/api/dj-script` request / response
 
 ```typescript
-interface DJScriptRequest  { trackName: string; artistName: string }
-interface DJScriptResponse { script: string }
+interface DJScriptRequest {
+  trackName: string
+  artistName: string
+}
+interface DJScriptResponse {
+  script: string
+}
 ```
 
 ### `/api/dj-tts` request / response
 
 ```typescript
-interface DJTTSRequest { text: string }
+interface DJTTSRequest {
+  text: string
+}
 // Response: binary audio/mpeg stream (no JSON wrapper)
 ```
 
@@ -242,84 +254,84 @@ Venice AI base URL: `https://api.venice.ai/api/v1`
 
 ```typescript
 interface PrefetchState {
-  trackId: string          // ID of the next track this prefetch is for
-  promise: Promise<Blob | null>  // resolves to audio blob or null on failure
+  trackId: string // ID of the next track this prefetch is for
+  promise: Promise<Blob | null> // resolves to audio blob or null on failure
 }
 ```
 
 ## Correctness Properties
 
-*A property is a characteristic or behavior that should hold true across all valid executions of a system — essentially, a formal statement about what the system should do. Properties serve as the bridge between human-readable specifications and machine-verifiable correctness guarantees.*
+_A property is a characteristic or behavior that should hold true across all valid executions of a system — essentially, a formal statement about what the system should do. Properties serve as the bridge between human-readable specifications and machine-verifiable correctness guarantees._
 
 ### Property 1: DJ Mode localStorage round-trip
 
-*For any* boolean value written to `localStorage["djMode"]`, reading it back and rendering the `DJModeToggle` component should produce a checkbox whose checked state matches the written value.
+_For any_ boolean value written to `localStorage["djMode"]`, reading it back and rendering the `DJModeToggle` component should produce a checkbox whose checked state matches the written value.
 
 **Validates: Requirements 1.2, 1.3, 1.4**
 
 ### Property 2: DJ Frequency gate uses correct probability threshold
 
-*For any* DJ frequency setting (`"never"`, `"rarely"`, `"sometimes"`, `"often"`, `"always"`) and any random value `r` in `[0, 1)`, `onTrackStarted` should trigger a prefetch if and only if DJ Mode is enabled AND `r < FREQUENCY_MAP[freq]`. For `"never"` no announcement should ever fire; for `"always"` every call should fire.
+_For any_ DJ frequency setting (`"never"`, `"rarely"`, `"sometimes"`, `"often"`, `"always"`) and any random value `r` in `[0, 1)`, `onTrackStarted` should trigger a prefetch if and only if DJ Mode is enabled AND `r < FREQUENCY_MAP[freq]`. For `"never"` no announcement should ever fire; for `"always"` every call should fire.
 
 **Validates: Requirements 2.2, 2.6, 2.7**
 
 ### Property 3: Prompt contains track metadata
 
-*For any* `JukeboxQueueItem` with a non-empty track name and artist, the request body sent to the Venice AI API should contain both the track name and the artist name somewhere in the messages.
+_For any_ `JukeboxQueueItem` with a non-empty track name and artist, the request body sent to the Venice AI API should contain both the track name and the artist name somewhere in the messages.
 
 **Validates: Requirements 3.2**
 
 ### Property 4: Graceful fallback on any error
 
-*For any* error condition (Venice AI fetch failure, Venice AI TTS failure, missing `VENICE_AI_API_KEY`, prefetch failure, empty queue), `maybeAnnounce` should resolve without throwing, and the caller should proceed to play the next track normally.
+_For any_ error condition (Venice AI fetch failure, Venice AI TTS failure, missing `VENICE_AI_API_KEY`, prefetch failure, empty queue), `maybeAnnounce` should resolve without throwing, and the caller should proceed to play the next track normally.
 
 **Validates: Requirements 2.8, 3.4, 3.5, 4.5, 4.6, 5.3, 6.5**
 
 ### Property 5: TTS audio sequencing respects Duck & Overlay mode
 
-*For any* generated DJ script, when Duck & Overlay Mode is **disabled**, `playNextTrackImpl` should not be called before the TTS audio `onended` event fires. When Duck & Overlay Mode is **enabled**, `playNextTrackImpl` should be called immediately (before `onended`) with the track volume set to 0.5.
+_For any_ generated DJ script, when Duck & Overlay Mode is **disabled**, `playNextTrackImpl` should not be called before the TTS audio `onended` event fires. When Duck & Overlay Mode is **enabled**, `playNextTrackImpl` should be called immediately (before `onended`) with the track volume set to 0.5.
 
 **Validates: Requirements 4.3, 4.4, 8.5, 8.7**
 
 ### Property 6: DJ Frequency localStorage round-trip
 
-*For any* valid frequency value (`"never"` / `"rarely"` / `"sometimes"` / `"often"` / `"always"`), selecting it in `DJFrequencySelect` should persist it to `localStorage["djFrequency"]`, and re-mounting the component should display that same option as selected.
+_For any_ valid frequency value (`"never"` / `"rarely"` / `"sometimes"` / `"often"` / `"always"`), selecting it in `DJFrequencySelect` should persist it to `localStorage["djFrequency"]`, and re-mounting the component should display that same option as selected.
 
 **Validates: Requirements 2.3, 2.4, 7.2, 7.3**
 
 ### Property 7: Prefetch fires during playback, not at track-end
 
-*For any* track transition where DJ Mode is enabled and the frequency check passes, the network requests to `/api/dj-script` and `/api/dj-tts` should be initiated during `onTrackStarted` (while the current track is playing), not during `maybeAnnounce` (at track-end).
+_For any_ track transition where DJ Mode is enabled and the frequency check passes, the network requests to `/api/dj-script` and `/api/dj-tts` should be initiated during `onTrackStarted` (while the current track is playing), not during `maybeAnnounce` (at track-end).
 
 **Validates: Requirements 6.1, 6.2**
 
 ### Property 8: No duplicate requests when prefetch is reused
 
-*For any* track transition where `onTrackStarted` has already initiated a prefetch for `nextTrack`, calling `maybeAnnounce(nextTrack)` should result in zero additional network requests to `/api/dj-script` or `/api/dj-tts` — whether the prefetch has already resolved or is still in-flight.
+_For any_ track transition where `onTrackStarted` has already initiated a prefetch for `nextTrack`, calling `maybeAnnounce(nextTrack)` should result in zero additional network requests to `/api/dj-script` or `/api/dj-tts` — whether the prefetch has already resolved or is still in-flight.
 
 **Validates: Requirements 6.3, 6.4**
 
 ### Property 9: Stale prefetch is discarded on queue change
 
-*For any* scenario where `onTrackStarted` prefetches for track A but `maybeAnnounce` is called with track B (different ID), the prefetched audio for track A should be discarded and no announcement should play.
+_For any_ scenario where `onTrackStarted` prefetches for track A but `maybeAnnounce` is called with track B (different ID), the prefetched audio for track A should be discarded and no announcement should play.
 
 **Validates: Requirements 6.6**
 
 ### Property 10: Duck & Overlay localStorage round-trip
 
-*For any* boolean value written to `localStorage["duckOverlayMode"]`, reading it back and rendering the `DuckOverlayToggle` component should produce a toggle whose state matches the written value, independently of the DJ Mode toggle state.
+_For any_ boolean value written to `localStorage["duckOverlayMode"]`, reading it back and rendering the `DuckOverlayToggle` component should produce a toggle whose state matches the written value, independently of the DJ Mode toggle state.
 
 **Validates: Requirements 8.2, 8.3, 8.4, 8.9**
 
 ### Property 11: Duck mode starts next track at 50% volume and ramps to 100%
 
-*For any* DJ announcement where Duck & Overlay Mode is enabled, the next track's audio element volume should be 0.5 at the moment playback starts, and should reach 1.0 within 2 seconds of the TTS audio `onended` event firing.
+_For any_ DJ announcement where Duck & Overlay Mode is enabled, the next track's audio element volume should be 0.5 at the moment playback starts, and should reach 1.0 within 2 seconds of the TTS audio `onended` event firing.
 
 **Validates: Requirements 8.5, 8.6**
 
 ### Property 12: No-announcement invariant — full volume when no DJ fires
 
-*For any* track transition where no DJ announcement is triggered (DJ Mode disabled, frequency check fails, or prefetch fails), the next track should start at full volume (1.0) regardless of the Duck & Overlay Mode setting.
+_For any_ track transition where no DJ announcement is triggered (DJ Mode disabled, frequency check fails, or prefetch fails), the next track should start at full volume (1.0) regardless of the Duck & Overlay Mode setting.
 
 **Validates: Requirements 8.8**
 
@@ -327,18 +339,18 @@ interface PrefetchState {
 
 All errors in the DJ announcement path are non-fatal. The invariant is: **the next track always plays**.
 
-| Error scenario | Handling |
-|---|---|
-| `VENICE_AI_API_KEY` not set | `/api/dj-script` and `/api/dj-tts` both return 500; prefetch resolves to `null`; `maybeAnnounce` skips announcement |
-| Venice AI network timeout | `fetch` rejects; prefetch resolves to `null`; `maybeAnnounce` skips announcement |
-| Venice AI returns non-200 | prefetch resolves to `null`; `maybeAnnounce` skips announcement |
-| Venice AI returns empty script | prefetch resolves to `null`; `maybeAnnounce` skips announcement |
-| Venice AI TTS network timeout | `fetch` rejects; prefetch resolves to `null`; `maybeAnnounce` skips announcement |
-| Venice AI TTS returns non-200 | prefetch resolves to `null`; `maybeAnnounce` skips announcement |
-| Audio playback error (`onerror`) | `maybeAnnounce` catches, logs, returns; next track plays |
-| Queue changed (stale prefetch) | `maybeAnnounce` discards cached blob, returns immediately |
-| Next track not in queue | `maybeAnnounce` returns immediately |
-| Duck & Overlay ramp interrupted | Volume ramp is cancelled; next track continues at whatever volume it reached |
+| Error scenario                   | Handling                                                                                                            |
+| -------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| `VENICE_AI_API_KEY` not set      | `/api/dj-script` and `/api/dj-tts` both return 500; prefetch resolves to `null`; `maybeAnnounce` skips announcement |
+| Venice AI network timeout        | `fetch` rejects; prefetch resolves to `null`; `maybeAnnounce` skips announcement                                    |
+| Venice AI returns non-200        | prefetch resolves to `null`; `maybeAnnounce` skips announcement                                                     |
+| Venice AI returns empty script   | prefetch resolves to `null`; `maybeAnnounce` skips announcement                                                     |
+| Venice AI TTS network timeout    | `fetch` rejects; prefetch resolves to `null`; `maybeAnnounce` skips announcement                                    |
+| Venice AI TTS returns non-200    | prefetch resolves to `null`; `maybeAnnounce` skips announcement                                                     |
+| Audio playback error (`onerror`) | `maybeAnnounce` catches, logs, returns; next track plays                                                            |
+| Queue changed (stale prefetch)   | `maybeAnnounce` discards cached blob, returns immediately                                                           |
+| Next track not in queue          | `maybeAnnounce` returns immediately                                                                                 |
+| Duck & Overlay ramp interrupted  | Volume ramp is cancelled; next track continues at whatever volume it reached                                        |
 
 Logging uses `console.warn` / `console.error` in the service layer, consistent with how other singleton services log outside the admin page context.
 
@@ -364,6 +376,7 @@ Logging uses `console.warn` / `console.error` in the service layer, consistent w
 Uses [fast-check](https://github.com/dubzzz/fast-check). Each property test runs a minimum of 100 iterations.
 
 **Property 1: DJ Mode localStorage round-trip**
+
 ```typescript
 // Feature: dj-mode, Property 1: DJ Mode localStorage round-trip
 fc.property(fc.boolean(), (enabled) => {
@@ -374,18 +387,25 @@ fc.property(fc.boolean(), (enabled) => {
 ```
 
 **Property 2: DJ Frequency gate uses correct probability threshold**
+
 ```typescript
 // Feature: dj-mode, Property 2: DJ Frequency gate uses correct probability threshold
-const FREQ_MAP = { never: 0, rarely: 0.1, sometimes: 0.25, often: 0.5, always: 1.0 }
+const FREQ_MAP = {
+  never: 0,
+  rarely: 0.1,
+  sometimes: 0.25,
+  often: 0.5,
+  always: 1.0
+}
 fc.property(
-  fc.constantFrom("never", "rarely", "sometimes", "often", "always"),
+  fc.constantFrom('never', 'rarely', 'sometimes', 'often', 'always'),
   fc.float({ min: 0, max: 0.9999, noNaN: true }),
   fc.boolean(),
   async (freq, r, djEnabled) => {
-    jest.spyOn(Math, "random").mockReturnValue(r)
-    localStorage.setItem("djMode", String(djEnabled))
-    localStorage.setItem("djFrequency", freq)
-    const fetchSpy = jest.spyOn(global, "fetch")
+    jest.spyOn(Math, 'random').mockReturnValue(r)
+    localStorage.setItem('djMode', String(djEnabled))
+    localStorage.setItem('djFrequency', freq)
+    const fetchSpy = jest.spyOn(global, 'fetch')
     djService.onTrackStarted(mockCurrentTrack, mockNextTrack)
     const shouldPrefetch = djEnabled && r < FREQ_MAP[freq]
     expect(fetchSpy).toHaveBeenCalledTimes(shouldPrefetch ? 1 : 0)
@@ -394,50 +414,65 @@ fc.property(
 ```
 
 **Property 3: Prompt contains track metadata**
+
 ```typescript
 // Feature: dj-mode, Property 3: Prompt contains track metadata
-fc.property(fc.string({ minLength: 1 }), fc.string({ minLength: 1 }), async (trackName, artistName) => {
-  const capturedBody = await captureVeniceRequest(trackName, artistName)
-  const allContent = capturedBody.messages.map((m: { content: string }) => m.content).join(" ")
-  expect(allContent).toContain(trackName)
-  expect(allContent).toContain(artistName)
-})
+fc.property(
+  fc.string({ minLength: 1 }),
+  fc.string({ minLength: 1 }),
+  async (trackName, artistName) => {
+    const capturedBody = await captureVeniceRequest(trackName, artistName)
+    const allContent = capturedBody.messages
+      .map((m: { content: string }) => m.content)
+      .join(' ')
+    expect(allContent).toContain(trackName)
+    expect(allContent).toContain(artistName)
+  }
+)
 ```
 
 **Property 4: Graceful fallback on any error**
+
 ```typescript
 // Feature: dj-mode, Property 4: Graceful fallback on any error
 fc.property(
-  fc.constantFrom("fetch-script-error", "fetch-tts-error", "no-api-key", "audio-error"),
+  fc.constantFrom(
+    'fetch-script-error',
+    'fetch-tts-error',
+    'no-api-key',
+    'audio-error'
+  ),
   async (errorType) => {
     setupError(errorType)
-    localStorage.setItem("djMode", "true")
-    jest.spyOn(Math, "random").mockReturnValue(0.01) // always trigger
+    localStorage.setItem('djMode', 'true')
+    jest.spyOn(Math, 'random').mockReturnValue(0.01) // always trigger
     await expect(djService.maybeAnnounce(mockTrack)).resolves.toBeUndefined()
   }
 )
 ```
 
 **Property 5: TTS audio sequencing respects Duck & Overlay mode**
+
 ```typescript
 // Feature: dj-mode, Property 5: TTS audio sequencing respects Duck & Overlay mode
 fc.property(fc.boolean(), async (duckEnabled) => {
   const order: string[] = []
-  localStorage.setItem("duckOverlayMode", String(duckEnabled))
-  mockTTSAudio({ onEndDelay: 50, onRecord: () => order.push("tts-end") })
+  localStorage.setItem('duckOverlayMode', String(duckEnabled))
+  mockTTSAudio({ onEndDelay: 50, onRecord: () => order.push('tts-end') })
   mockPlayNextTrack((vol: number) => order.push(`play:${vol}`))
   await runAnnouncementWithCachedAudio()
   if (duckEnabled) {
     expect(order[0]).toMatch(/^play:0\.5/)
-    expect(order[1]).toBe("tts-end")
+    expect(order[1]).toBe('tts-end')
   } else {
-    expect(order[0]).toBe("tts-end")
+    expect(order[0]).toBe('tts-end')
     expect(order[1]).toMatch(/^play:1/)
   }
 })
 ```
 
 **Property 6: DJ Frequency localStorage round-trip**
+
 ```typescript
 // Feature: dj-mode, Property 6: DJ Frequency localStorage round-trip
 fc.property(
@@ -451,28 +486,39 @@ fc.property(
 ```
 
 **Property 7: Prefetch fires during playback, not at track-end**
+
 ```typescript
 // Feature: dj-mode, Property 7: Prefetch fires during playback, not at track-end
-fc.property(fc.record({ id: fc.string(), name: fc.string({ minLength: 1 }), artist: fc.string({ minLength: 1 }) }), (nextTrack) => {
-  localStorage.setItem("djMode", "true")
-  localStorage.setItem("djFrequency", "always")
-  const fetchSpy = jest.spyOn(global, "fetch").mockResolvedValue(mockOkResponse())
-  djService.onTrackStarted(mockCurrentTrack, nextTrack)
-  // Fetch should have been called synchronously during onTrackStarted
-  expect(fetchSpy).toHaveBeenCalled()
-  // maybeAnnounce should NOT trigger additional fetches
-  fetchSpy.mockClear()
-  return djService.maybeAnnounce(nextTrack).then(() => {
-    expect(fetchSpy).not.toHaveBeenCalled()
-  })
-})
+fc.property(
+  fc.record({
+    id: fc.string(),
+    name: fc.string({ minLength: 1 }),
+    artist: fc.string({ minLength: 1 })
+  }),
+  (nextTrack) => {
+    localStorage.setItem('djMode', 'true')
+    localStorage.setItem('djFrequency', 'always')
+    const fetchSpy = jest
+      .spyOn(global, 'fetch')
+      .mockResolvedValue(mockOkResponse())
+    djService.onTrackStarted(mockCurrentTrack, nextTrack)
+    // Fetch should have been called synchronously during onTrackStarted
+    expect(fetchSpy).toHaveBeenCalled()
+    // maybeAnnounce should NOT trigger additional fetches
+    fetchSpy.mockClear()
+    return djService.maybeAnnounce(nextTrack).then(() => {
+      expect(fetchSpy).not.toHaveBeenCalled()
+    })
+  }
+)
 ```
 
 **Property 8: No duplicate requests when prefetch is reused**
+
 ```typescript
 // Feature: dj-mode, Property 8: No duplicate requests when prefetch is reused
 fc.property(fc.boolean(), async (prefetchComplete) => {
-  const fetchSpy = jest.spyOn(global, "fetch")
+  const fetchSpy = jest.spyOn(global, 'fetch')
   if (prefetchComplete) {
     await djService.onTrackStarted(mockCurrentTrack, mockNextTrack) // let it resolve
   } else {
@@ -485,6 +531,7 @@ fc.property(fc.boolean(), async (prefetchComplete) => {
 ```
 
 **Property 9: Stale prefetch is discarded on queue change**
+
 ```typescript
 // Feature: dj-mode, Property 9: Stale prefetch is discarded on queue change
 fc.property(
@@ -493,7 +540,7 @@ fc.property(
   async (trackA, trackB) => {
     fc.pre(trackA.id !== trackB.id)
     djService.onTrackStarted(mockCurrentTrack, { ...mockNextTrack, ...trackA })
-    const audioSpy = jest.spyOn(HTMLAudioElement.prototype, "play")
+    const audioSpy = jest.spyOn(HTMLAudioElement.prototype, 'play')
     await djService.maybeAnnounce({ ...mockNextTrack, ...trackB })
     expect(audioSpy).not.toHaveBeenCalled()
   }
@@ -501,6 +548,7 @@ fc.property(
 ```
 
 **Property 10: Duck & Overlay localStorage round-trip**
+
 ```typescript
 // Feature: dj-mode, Property 10: Duck & Overlay localStorage round-trip
 fc.property(fc.boolean(), fc.boolean(), (duckEnabled, djEnabled) => {
@@ -515,11 +563,12 @@ fc.property(fc.boolean(), fc.boolean(), (duckEnabled, djEnabled) => {
 ```
 
 **Property 11: Duck mode starts next track at 50% volume and ramps to 100%**
+
 ```typescript
 // Feature: dj-mode, Property 11: Duck mode starts next track at 50% volume and ramps to 100%
 fc.property(fc.integer({ min: 50, max: 2000 }), async (rampDurationMs) => {
   jest.useFakeTimers()
-  localStorage.setItem("duckOverlayMode", "true")
+  localStorage.setItem('duckOverlayMode', 'true')
   const volumeAtStart = await captureVolumeAtPlayStart()
   expect(volumeAtStart).toBe(0.5)
   // Simulate TTS ending and advance timers by 2s
@@ -531,11 +580,12 @@ fc.property(fc.integer({ min: 50, max: 2000 }), async (rampDurationMs) => {
 ```
 
 **Property 12: No-announcement invariant — full volume when no DJ fires**
+
 ```typescript
 // Feature: dj-mode, Property 12: No-announcement invariant — full volume when no DJ fires
 fc.property(fc.boolean(), async (duckEnabled) => {
-  localStorage.setItem("duckOverlayMode", String(duckEnabled))
-  localStorage.setItem("djMode", "false") // DJ disabled → no announcement
+  localStorage.setItem('duckOverlayMode', String(duckEnabled))
+  localStorage.setItem('djMode', 'false') // DJ disabled → no announcement
   const volumeAtStart = await captureVolumeAtPlayStart()
   expect(volumeAtStart).toBe(1.0)
 })

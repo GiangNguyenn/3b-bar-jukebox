@@ -38,6 +38,7 @@ all SDK state events. The finished-track SDK state (paused=true, position=0) cau
 `false`, locking the skip button.
 
 **Formal Specification:**
+
 ```
 FUNCTION isBugCondition(state)
   INPUT: state — current application state snapshot
@@ -61,6 +62,7 @@ END FUNCTION
 ### Preservation Requirements
 
 **Unchanged Behaviors:**
+
 - Auto-play: when a track finishes, the next track in the queue plays automatically without user interaction.
 - DJ announcement sequencing: `maybeAnnounce` still runs before `playNextTrackImpl`; the next track still starts after the announcement completes (or immediately if no announcement).
 - Duck & Overlay: next track still starts at 50% volume with ramp-up when Duck & Overlay is enabled.
@@ -70,6 +72,7 @@ END FUNCTION
 
 **Scope:**
 All inputs that do NOT involve a track transition (i.e., `isBugCondition` returns false) must be completely unaffected. This includes:
+
 - Normal play/pause while a track is playing.
 - Volume changes.
 - Seeking on the progress bar.
@@ -118,6 +121,7 @@ Assuming our root cause analysis is correct:
 **Function**: `handleTrackFinishedImpl`
 
 **Specific Changes**:
+
 1. **Split the serialized operation**: Wrap only the Spotify API call (`playNextTrackImpl`) inside `playbackService.executePlayback()`. Move `findNextValidTrack` and `maybeAnnounce` outside the lock, or use two sequential `executePlayback` calls — one for the lookup/mark-played step and one for the actual play call.
 2. **Set `isTransitionInProgress = true`** in the Zustand store at the start of `handleTrackFinishedImpl`, before the lock is acquired.
 3. **Set `isTransitionInProgress = false`** after `playNextTrackImpl` resolves (in a `finally` block to handle errors).
@@ -126,17 +130,20 @@ Assuming our root cause analysis is correct:
 **File 2**: `hooks/useSpotifyPlayer.ts` (or wherever the Zustand store is defined)
 
 **Specific Changes**:
+
 1. **Add `isTransitionInProgress: boolean`** field to the store, defaulting to `false`.
 2. **Add `setIsTransitionInProgress(value: boolean): void`** action.
 
 **File 3**: `app/[username]/admin/hooks/usePlaybackControls.ts`
 
 **Specific Changes**:
+
 1. **Update `getIsActuallyPlaying`**: Return `true` (or a new `isTransitioning` state) when `isTransitionInProgress` is `true`, so the skip button is not disabled during transitions.
 
 **File 4**: `app/[username]/admin/components/dashboard/components/jukebox-section.tsx`
 
 **Specific Changes**:
+
 1. **Show DJ status indicator**: When `isTransitionInProgress` is `true` and DJ Mode is enabled, render a "DJ is speaking..." status label so the user understands why no track is actively playing in Spotify (Requirement 2.6).
 
 ## Testing Strategy
@@ -157,12 +164,14 @@ button remains enabled while `handleTrackFinishedImpl` is executing. Run these t
 UNFIXED code to observe failures and understand the root cause.
 
 **Test Cases**:
+
 1. **Skip button disabled during normal transition** (will fail on unfixed code): Trigger `handleTrackFinished`, immediately check `isActuallyPlaying` — expect `true`, observe `false`.
 2. **Skip button disabled during DJ announcement** (will fail on unfixed code): Trigger `handleTrackFinished` with DJ Mode enabled and a mocked slow `maybeAnnounce`, check skip button `disabled` prop mid-announcement — expect `false`, observe `true`.
 3. **`syncQueueWithPlayback` discards state during lock** (will fail on unfixed code): While `isOperationInProgress()` is `true`, call `syncQueueWithPlayback` with a valid playing state — expect Zustand store to update, observe early return with no update.
 4. **Progress bar disappears during transition** (will fail on unfixed code): Trigger transition, check `currentlyPlaying?.item` — expect non-null or loading indicator, observe null causing unmount.
 
 **Expected Counterexamples**:
+
 - `isActuallyPlaying` returns `false` during transition because `playbackState.is_playing` is `false` in stale Zustand state.
 - Possible causes: `syncQueueWithPlayback` early-return, `transformStateForUI` returning `null`, no transition-aware fallback in `getIsActuallyPlaying`.
 
@@ -172,6 +181,7 @@ UNFIXED code to observe failures and understand the root cause.
 the expected behavior (controls remain enabled).
 
 **Pseudocode:**
+
 ```
 FOR ALL state WHERE isBugCondition(state) DO
   result := observeSkipButtonDisabledProp(state)
@@ -185,6 +195,7 @@ END FOR
 produces the same result as the original code.
 
 **Pseudocode:**
+
 ```
 FOR ALL state WHERE NOT isBugCondition(state) DO
   ASSERT original_behavior(state) = fixed_behavior(state)
@@ -192,6 +203,7 @@ END FOR
 ```
 
 **Testing Approach**: Property-based testing is recommended for preservation checking because:
+
 - It generates many track/state combinations automatically.
 - It catches edge cases (empty queue, DJ disabled, Duck & Overlay on/off) that manual tests miss.
 - It provides strong guarantees that auto-play and DJ sequencing are unchanged.
@@ -200,6 +212,7 @@ END FOR
 then write property-based tests capturing that behavior.
 
 **Test Cases**:
+
 1. **Auto-play preservation**: Verify next track plays automatically after transition completes.
 2. **DJ sequencing preservation**: Verify `maybeAnnounce` still runs before `playNextTrackImpl`.
 3. **Duck & Overlay preservation**: Verify volume is 50% at next-track start when Duck & Overlay is enabled.
