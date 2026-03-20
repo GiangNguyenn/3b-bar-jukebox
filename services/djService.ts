@@ -16,6 +16,11 @@ interface PrefetchState {
   promise: Promise<Blob | null>
 }
 
+// Global in-flight fetch guard: maps trackId → active fetch promise.
+// Prevents duplicate Venice API calls if onTrackStarted or maybeAnnounce
+// is triggered more than once for the same track.
+const inFlightFetches = new Map<string, Promise<Blob | null>>()
+
 const log = (...args: unknown[]) =>
   console.log('%c[DJService]', 'color: #a78bfa; font-weight: bold', ...args)
 const warn = (...args: unknown[]) => console.warn('[DJService]', ...args)
@@ -27,6 +32,7 @@ class DJService {
   private static instance: DJService
   private prefetchState: PrefetchState | null = null
   private recentScripts: string[] = []
+  private isAnnouncementInProgress: boolean = false
 
   private constructor() {}
 
@@ -149,7 +155,28 @@ class DJService {
       })
   }
 
-  private async fetchAudioBlob(
+  private fetchAudioBlob(
+    trackName: string,
+    artistName: string,
+    trackId?: string
+  ): Promise<Blob | null> {
+    // Deduplicate: if a fetch is already in-flight for this track, reuse it
+    if (trackId && inFlightFetches.has(trackId)) {
+      log(`fetchAudioBlob — reusing in-flight fetch for trackId=${trackId}`)
+      return inFlightFetches.get(trackId)!
+    }
+
+    const promise = this._doFetchAudioBlob(trackName, artistName)
+
+    if (trackId) {
+      inFlightFetches.set(trackId, promise)
+      promise.finally(() => inFlightFetches.delete(trackId))
+    }
+
+    return promise
+  }
+
+  private async _doFetchAudioBlob(
     trackName: string,
     artistName: string
   ): Promise<Blob | null> {
@@ -242,7 +269,7 @@ class DJService {
     )
     this.prefetchState = {
       trackId: nextTrack.id,
-      promise: this.fetchAudioBlob(trackName, artistName)
+      promise: this.fetchAudioBlob(trackName, artistName, nextTrack.id)
     }
   }
 
@@ -250,6 +277,12 @@ class DJService {
     const enabled = localStorage.getItem('djMode') === 'true'
     if (!enabled) {
       log('maybeAnnounce | DJ disabled, skipping')
+      return
+    }
+
+    // Guard: never run two announcements concurrently
+    if (this.isAnnouncementInProgress) {
+      log('maybeAnnounce | announcement already in progress, skipping')
       return
     }
 
@@ -302,7 +335,7 @@ class DJService {
       }
 
       log(`→ fetching live for "${trackName}" by ${artistName}`)
-      audioBlob = await this.fetchAudioBlob(trackName, artistName)
+      audioBlob = await this.fetchAudioBlob(trackName, artistName, nextTrack.id)
     }
 
     if (audioBlob === null) {
@@ -313,6 +346,7 @@ class DJService {
     const duckOverlay = this.isDuckOverlayEnabled()
     log(`→ playing audio (duck=${duckOverlay})`)
 
+    this.isAnnouncementInProgress = true
     try {
       if (duckOverlay) {
         let originalVolume = 100
@@ -339,6 +373,8 @@ class DJService {
       }
     } catch (e) {
       err('unexpected error during playback', e)
+    } finally {
+      this.isAnnouncementInProgress = false
     }
   }
 }
