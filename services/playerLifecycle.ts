@@ -19,7 +19,6 @@ import {
 } from '@/services/player'
 import { PlayerEventHandler } from './playerLifecycle/PlayerEventHandler'
 import { QueueSynchronizer } from './playerLifecycle/QueueSynchronizer'
-import { DJService } from '@/services/djService'
 import { SpotifyApiService } from '@/services/spotifyApi'
 
 import { PlayerSDKState, isPlayerSDKState } from './playerLifecycle/types'
@@ -1107,20 +1106,6 @@ class PlayerLifecycleService {
       return
     }
 
-    // Pause current track before DJ speaks, then play next
-    if (this.deviceId) {
-      try {
-        await SpotifyApiService.getInstance().pausePlayback(this.deviceId)
-      } catch (error) {
-        this.log(
-          'WARN',
-          '[playNextFromQueue] Failed to pause before DJ announcement',
-          error
-        )
-      }
-    }
-
-    await DJService.getInstance().maybeAnnounce(nextTrack)
     await this.playNextTrack(nextTrack)
   }
 
