@@ -6,7 +6,7 @@ import { usePlaybackControls } from '../../../hooks/usePlaybackControls'
 import { useSpotifyPlayerStore } from '@/hooks/useSpotifyPlayer'
 import { sendApiRequest } from '@/shared/api'
 import { useConsoleLogsContext } from '@/hooks/ConsoleLogsProvider'
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { getAutoPlayService } from '@/services/autoPlayService'
 import { DJModeToggle } from './dj-mode-toggle'
 import { DJFrequencySelect } from './dj-frequency-select'
@@ -19,12 +19,24 @@ interface JukeboxSectionProps {
 export function JukeboxSection({
   className = ''
 }: JukeboxSectionProps): JSX.Element {
-  const { deviceId, isReady } = useSpotifyPlayerStore()
+  const { deviceId, isReady, isTransitionInProgress } = useSpotifyPlayerStore()
   const { addLog } = useConsoleLogsContext()
   const [volume, setVolume] = useState(50)
   const [isSeeking, setIsSeeking] = useState(false)
   const [isDragging, setIsDragging] = useState(false)
+  const [isDjModeEnabled, setIsDjModeEnabled] = useState(false)
   const progressBarRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    setIsDjModeEnabled(localStorage.getItem('djMode') === 'true')
+    const handleDjModeChanged = (): void => {
+      setIsDjModeEnabled(localStorage.getItem('djMode') === 'true')
+    }
+    window.addEventListener('djmode-changed', handleDjModeChanged)
+    return () => {
+      window.removeEventListener('djmode-changed', handleDjModeChanged)
+    }
+  }, [])
 
   const { data: currentlyPlaying, isLoading } = useNowPlayingTrack({
     token: null, // Use admin credentials
@@ -132,6 +144,14 @@ export function JukeboxSection({
         <div>
           <h3 className='text-white text-lg font-semibold'>Jukebox Controls</h3>
         </div>
+
+        {/* DJ Speaking Indicator */}
+        {isTransitionInProgress && isDjModeEnabled && (
+          <div className='flex items-center gap-2 rounded-md bg-purple-900/50 px-3 py-2 text-sm text-purple-300'>
+            <span className='animate-pulse'>🎙️</span>
+            <span>DJ is speaking...</span>
+          </div>
+        )}
 
         {/* Currently Playing Track */}
         {currentlyPlaying?.item && (

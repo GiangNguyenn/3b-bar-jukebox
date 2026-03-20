@@ -1,6 +1,6 @@
 # Implementation Plan
 
-- [-] 1. Write bug condition exploration test
+- [x] 1. Write bug condition exploration test
 
   - **Property 1: Bug Condition** - Controls Disabled During Track Transition
   - **CRITICAL**: This test MUST FAIL on unfixed code - failure confirms the bug exists
@@ -17,7 +17,7 @@
   - Mark task complete when test is written, run, and failure is documented
   - _Requirements: 1.1, 1.2, 1.3, 1.4, 1.6_
 
-- [~] 2. Write preservation property tests (BEFORE implementing fix)
+- [x] 2. Write preservation property tests (BEFORE implementing fix)
 
   - **Property 2: Preservation** - Auto-Play, DJ Sequencing, and Race Condition Prevention Unchanged
   - **IMPORTANT**: Follow observation-first methodology
@@ -33,9 +33,9 @@
   - Mark task complete when tests are written, run, and passing on unfixed code
   - _Requirements: 3.1, 3.2, 3.3, 3.4, 3.5, 3.6_
 
-- [ ] 3. Fix for playback controls disabled during track transition
+- [x] 3. Fix for playback controls disabled during track transition
 
-  - [~] 3.1 Add `isTransitionInProgress` flag to Zustand store
+  - [x] 3.1 Add `isTransitionInProgress` flag to Zustand store
 
     - Add `isTransitionInProgress: boolean` field to `useSpotifyPlayerStore`, defaulting to `false`
     - Add `setIsTransitionInProgress(value: boolean): void` action to the store
@@ -44,7 +44,7 @@
     - _Expected_Behavior: `isTransitionInProgress` is `true` throughout the transition window so UI can keep controls enabled_
     - _Requirements: 2.1, 2.3_
 
-  - [~] 3.2 Split serialized operation and set transition flag in `handleTrackFinishedImpl`
+  - [x] 3.2 Split serialized operation and set transition flag in `handleTrackFinishedImpl`
 
     - Set `isTransitionInProgress = true` in Zustand store at the start of `handleTrackFinishedImpl`, before the lock is acquired
     - Move `maybeAnnounce` outside the `playbackService.executePlayback()` lock (or split into two sequential `executePlayback` calls — one for lookup/mark-played, one for the actual play call)
@@ -55,7 +55,7 @@
     - _Preservation: `maybeAnnounce` still runs before `playNextTrackImpl`; race condition deduplication via serialized queue is preserved_
     - _Requirements: 2.1, 2.4, 2.5, 3.1, 3.3, 3.4, 3.6_
 
-  - [~] 3.3 Remove or narrow the `syncQueueWithPlayback` early-return
+  - [x] 3.3 Remove or narrow the `syncQueueWithPlayback` early-return
 
     - Update `syncQueueWithPlayback` in `QueueSynchronizer.ts` to allow Zustand state updates to pass through even when `isOperationInProgress()` is `true`
     - Only block the queue-enforcement branch (if needed), not the `onPlaybackStateChange` / Zustand update path
@@ -64,7 +64,7 @@
     - _Expected_Behavior: Zustand `playbackState` is updated from incoming SDK events even during a transition_
     - _Requirements: 2.2, 3.6_
 
-  - [~] 3.4 Update `getIsActuallyPlaying` to be transition-aware
+  - [x] 3.4 Update `getIsActuallyPlaying` to be transition-aware
 
     - Update `getIsActuallyPlaying` in `app/[username]/admin/hooks/usePlaybackControls.ts` to return `true` when `isTransitionInProgress` is `true`
     - This ensures `disabled={!isReady || !isActuallyPlaying || isSkipLoading}` evaluates to `false` (enabled) during transitions
@@ -73,14 +73,14 @@
     - _Expected_Behavior: `getIsActuallyPlaying()` returns `true` when `isTransitionInProgress` is `true`, keeping skip and play buttons enabled_
     - _Requirements: 2.1, 2.3, 2.5_
 
-  - [~] 3.5 Add DJ status indicator in jukebox section
+  - [x] 3.5 Add DJ status indicator in jukebox section
 
     - When `isTransitionInProgress` is `true` and DJ Mode is enabled, render a "DJ is speaking..." status label in `jukebox-section.tsx`
     - File: `app/[username]/admin/components/dashboard/components/jukebox-section.tsx`
     - _Expected_Behavior: user sees a visual indicator explaining why no track is actively playing in Spotify during a DJ announcement_
     - _Requirements: 2.6_
 
-  - [~] 3.6 Verify bug condition exploration test now passes
+  - [x] 3.6 Verify bug condition exploration test now passes
 
     - **Property 1: Expected Behavior** - Controls Remain Enabled During Track Transition
     - **IMPORTANT**: Re-run the SAME test from task 1 - do NOT write a new test
@@ -90,12 +90,12 @@
     - **EXPECTED OUTCOME**: Test PASSES (confirms bug is fixed)
     - _Requirements: 2.1, 2.2, 2.3, 2.4, 2.5_
 
-  - [~] 3.7 Verify preservation tests still pass
+  - [x] 3.7 Verify preservation tests still pass
     - **Property 2: Preservation** - Auto-Play, DJ Sequencing, and Race Condition Prevention Unchanged
     - **IMPORTANT**: Re-run the SAME tests from task 2 - do NOT write new tests
     - Run preservation property tests from step 2
     - **EXPECTED OUTCOME**: Tests PASS (confirms no regressions in auto-play, DJ sequencing, Duck & Overlay, and race condition prevention)
     - Confirm all tests still pass after fix (no regressions)
 
-- [~] 4. Checkpoint - Ensure all tests pass
+- [x] 4. Checkpoint - Ensure all tests pass
   - Ensure all tests pass, ask the user if questions arise.

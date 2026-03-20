@@ -9,6 +9,7 @@ import { buildTrackUri } from '@/shared/utils/spotifyUri'
 import { upsertPlayedTrack } from '@/lib/trackUpsert'
 import { playbackService } from '@/services/player'
 import { DJService } from '@/services/djService'
+import { spotifyPlayerStore } from '@/hooks/spotifyPlayerStore'
 
 export interface PlaybackController {
   playTrackWithRetry(
@@ -319,10 +320,12 @@ export class QueueSynchronizer {
   }
 
   async handleTrackFinished(state: PlayerSDKState): Promise<void> {
-    await playbackService.executePlayback(
-      () => this.handleTrackFinishedImpl(state),
-      'handleTrackFinished'
-    )
+    spotifyPlayerStore.getState().setIsTransitionInProgress(true)
+    try {
+      await this.handleTrackFinishedImpl(state)
+    } finally {
+      spotifyPlayerStore.getState().setIsTransitionInProgress(false)
+    }
   }
 
   private async handleTrackFinishedImpl(state: PlayerSDKState): Promise<void> {
@@ -344,50 +347,65 @@ export class QueueSynchronizer {
        State Debug: Paused=${state.paused}, Position=${state.position}, Duration=${state.duration}`
     )
 
-    if (!this.duplicateDetector.shouldProcessTrack(currentSpotifyTrackId)) {
-      this.duplicateDetector.setLastKnownPlayingTrack(currentSpotifyTrackId)
-      this.controller.log(
-        'INFO',
-        `[handleTrackFinished] Skipping duplicate processing for track: ${currentSpotifyTrackId}`
+    // First serialized operation: mark played + find next track
+    let nextTrack: JukeboxQueueItem | null = null
+    await playbackService.executePlayback(async () => {
+      if (!this.duplicateDetector.shouldProcessTrack(currentSpotifyTrackId)) {
+        this.duplicateDetector.setLastKnownPlayingTrack(currentSpotifyTrackId)
+        this.controller.log(
+          'INFO',
+          `[handleTrackFinished] Skipping duplicate processing for track: ${currentSpotifyTrackId}`
+        )
+        return
+      }
+
+      await this.markFinishedTrackAsPlayed(
+        currentSpotifyTrackId,
+        currentTrackName
       )
+
+      queueManager.setCurrentlyPlayingTrack(null)
+
+      nextTrack = await this.findNextValidTrack(currentSpotifyTrackId)
+
+      if (nextTrack) {
+        this.currentQueueTrack = nextTrack
+        this.controller.log(
+          'INFO',
+          `[handleTrackFinished] Found next track: ${nextTrack.tracks.name} (${nextTrack.tracks.spotify_track_id}), Queue ID: ${nextTrack.id}`
+        )
+      } else {
+        this.currentQueueTrack = null
+        this.controller.log(
+          'WARN',
+          '[handleTrackFinished] No next track available after track finished. Playback will stop.'
+        )
+      }
+    }, 'handleTrackFinished:lookup')
+
+    if (!nextTrack) {
       return
     }
 
-    await this.markFinishedTrackAsPlayed(
-      currentSpotifyTrackId,
-      currentTrackName
-    )
-
-    queueManager.setCurrentlyPlayingTrack(null)
-
-    const nextTrack = await this.findNextValidTrack(currentSpotifyTrackId)
-
-    if (nextTrack) {
-      this.currentQueueTrack = nextTrack
-      this.controller.log(
-        'INFO',
-        `[handleTrackFinished] Playing next track: ${nextTrack.tracks.name} (${nextTrack.tracks.spotify_track_id}), Queue ID: ${nextTrack.id}`
-      )
+    // maybeAnnounce runs OUTSIDE the lock so it does not hold isOperationInProgress = true
+    try {
       await DJService.getInstance().maybeAnnounce(nextTrack)
-      await this.playNextTrackImpl(nextTrack)
-    } else {
-      this.currentQueueTrack = null
+    } catch (error) {
       this.controller.log(
         'WARN',
-        '[handleTrackFinished] No next track available after track finished. Playback will stop.'
+        '[handleTrackFinished] DJ announcement failed, continuing to next track',
+        error
       )
     }
+
+    // Second serialized operation: play the next track
+    await playbackService.executePlayback(
+      () => this.playNextTrackImpl(nextTrack!),
+      'handleTrackFinished:play'
+    )
   }
 
   syncQueueWithPlayback(state: PlayerSDKState): void {
-    if (playbackService.isOperationInProgress()) {
-      this.controller.log(
-        'WARN',
-        '[syncQueueWithPlayback] Playback operation in progress - state will sync after completion'
-      )
-      return
-    }
-
     const currentSpotifyTrack = state.track_window?.current_track
 
     if (currentSpotifyTrack) {
@@ -405,6 +423,16 @@ export class QueueSynchronizer {
     }
 
     queueManager.setCurrentlyPlayingTrack(currentSpotifyTrack.id)
+
+    // Skip queue-enforcement branch while a playback operation is in progress
+    // to avoid race conditions, but allow state updates above to pass through.
+    if (playbackService.isOperationInProgress()) {
+      this.controller.log(
+        'WARN',
+        '[syncQueueWithPlayback] Playback operation in progress - skipping queue enforcement'
+      )
+      return
+    }
 
     const queue = queueManager.getQueue()
     const matchingQueueItem = queue.find(

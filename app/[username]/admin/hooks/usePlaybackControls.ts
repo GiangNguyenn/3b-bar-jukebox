@@ -19,14 +19,16 @@ export function usePlaybackControls(): {
 } {
   const [isLoading, setIsLoading] = useState(false)
   const [isSkipLoading, setIsSkipLoading] = useState(false)
-  const { deviceId, playbackState, setPlaybackState } = useSpotifyPlayerStore()
+  const { deviceId, playbackState, setPlaybackState, isTransitionInProgress } = useSpotifyPlayerStore()
   const { addLog } = useConsoleLogsContext()
 
   const getIsActuallyPlaying = useCallback(() => {
+    // During a track transition, default to enabled rather than locking out controls
+    if (isTransitionInProgress) return true
     if (!playbackState) return false
     if (!playbackState.is_playing) return false
     return true
-  }, [playbackState])
+  }, [playbackState, isTransitionInProgress])
 
   const handlePlayPause = useCallback(async (): Promise<void> => {
     if (!deviceId || !playbackState) return

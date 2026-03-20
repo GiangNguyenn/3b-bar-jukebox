@@ -21,9 +21,12 @@ const log = (...args: unknown[]) =>
 const warn = (...args: unknown[]) => console.warn('[DJService]', ...args)
 const err = (...args: unknown[]) => console.error('[DJService]', ...args)
 
+const RECENT_SCRIPTS_MAX = 5
+
 class DJService {
   private static instance: DJService
   private prefetchState: PrefetchState | null = null
+  private recentScripts: string[] = []
 
   private constructor() {}
 
@@ -145,7 +148,7 @@ class DJService {
       const scriptRes = await fetch('/api/dj-script', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ trackName, artistName })
+        body: JSON.stringify({ trackName, artistName, recentScripts: this.recentScripts })
       })
       if (!scriptRes.ok) {
         warn(`/api/dj-script ${scriptRes.status}`)
@@ -156,6 +159,8 @@ class DJService {
         warn('empty script returned')
         return null
       }
+      // Track recent scripts to avoid repetition
+      this.recentScripts = [data.script, ...this.recentScripts].slice(0, RECENT_SCRIPTS_MAX)
       const ttsRes = await fetch('/api/dj-tts', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },

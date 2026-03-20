@@ -1,134 +1,13 @@
-import { create } from 'zustand'
-import { useCallback, useEffect, useRef } from 'react'
+import { useCallback, useEffect } from 'react'
 import { useConsoleLogsContext } from './ConsoleLogsProvider'
-import { SpotifyPlaybackState } from '@/shared/types/spotify'
 import { playerLifecycleService } from '@/services/playerLifecycle'
-import { PLAYER_LIFECYCLE_CONFIG } from '@/services/playerLifecycleConfig'
 
-// Enhanced player status states
-export type PlayerStatus =
-  | 'initializing' // First-time setup
-  | 'ready' // Fully connected and ready
-  | 'reconnecting' // Lost connection, trying to recover
-  | 'error' // Permanent error state
-  | 'disconnected' // User manually disconnected
-  | 'verifying' // Device verification in progress
-  | 'recovery_needed' // Signal to UI that player needs to be recreated
+// Re-export everything from the store so existing imports keep working
+export type { PlayerStatus, PlayerStatusState } from './spotifyPlayerStore'
+export { spotifyPlayerStore } from './spotifyPlayerStore'
 
-interface PlayerStatusState {
-  status: PlayerStatus
-  lastStatusChange: number
-  consecutiveFailures: number
-  lastError?: string
-  deviceId: string | null
-  isReady: boolean // Keep for backward compatibility
-  playbackState: SpotifyPlaybackState | null
-  setStatus: (status: PlayerStatus, error?: string) => void
-  setDeviceId: (deviceId: string | null) => void
-  setPlaybackState: (state: SpotifyPlaybackState | null) => void
-  resetFailures: () => void
-  incrementFailures: () => void
-}
-
-// State transition rules
-const ALLOWED_TRANSITIONS: Record<PlayerStatus, PlayerStatus[]> = {
-  initializing: ['ready', 'error', 'verifying', 'disconnected'],
-  ready: ['reconnecting', 'error', 'disconnected', 'initializing'],
-  reconnecting: ['ready', 'error', 'initializing'],
-  error: ['initializing', 'ready', 'disconnected'],
-  disconnected: ['initializing', 'ready'],
-  verifying: ['ready', 'error', 'initializing', 'disconnected'],
-  recovery_needed: ['initializing', 'error', 'disconnected'] // Can only go to initializing (recreation) or error
-}
-
-// Helper function to check if a transition is allowed
-function isTransitionAllowed(from: PlayerStatus, to: PlayerStatus): boolean {
-  return ALLOWED_TRANSITIONS[from]?.includes(to) ?? false
-}
-
-// Helper function to get isReady from status (for backward compatibility)
-function getIsReadyFromStatus(status: PlayerStatus): boolean {
-  return status === 'ready'
-}
-
-// Create the store with robust state management
-export const spotifyPlayerStore = create<PlayerStatusState>((set, get) => ({
-  status: 'initializing',
-  lastStatusChange: 0,
-  consecutiveFailures: 0,
-  deviceId: null,
-  isReady: false,
-  playbackState: null,
-
-  setStatus: (newStatus, error) => {
-    const currentState = get()
-    const currentStatus = currentState.status
-
-    // If it's the same status, just update the error if provided
-    if (currentStatus === newStatus) {
-      if (error !== undefined) {
-        set({ lastError: error })
-      }
-      return
-    }
-
-    // Check if transition is allowed
-    if (!isTransitionAllowed(currentStatus, newStatus)) {
-      console.warn(
-        `[PlayerState] Invalid transition from ${currentStatus} to ${newStatus}`
-      )
-      return
-    }
-
-    // Debounce rapid status changes (but allow certain important transitions)
-    const timeSinceLastChange = Date.now() - currentState.lastStatusChange
-    const isImportantTransition =
-      (currentStatus === 'verifying' && newStatus === 'ready') ||
-      (currentStatus === 'initializing' && newStatus === 'verifying')
-
-    if (
-      timeSinceLastChange < PLAYER_LIFECYCLE_CONFIG.STATUS_DEBOUNCE &&
-      !isImportantTransition
-    ) {
-      return
-    }
-
-    // Update state
-    set({
-      status: newStatus,
-      lastStatusChange: Date.now(),
-      lastError: error,
-      isReady: getIsReadyFromStatus(newStatus)
-    })
-  },
-
-  setDeviceId: (deviceId) => set({ deviceId }),
-  setPlaybackState: (state) => set({ playbackState: state }),
-
-  resetFailures: () => set({ consecutiveFailures: 0 }),
-  incrementFailures: () => {
-    const currentFailures = get().consecutiveFailures
-    const newFailures = currentFailures + 1
-
-    set({ consecutiveFailures: newFailures })
-
-    // If we've exceeded max failures, transition to error state
-    if (newFailures >= PLAYER_LIFECYCLE_CONFIG.MAX_CONSECUTIVE_FAILURES) {
-      get().setStatus(
-        'error',
-        `Exceeded maximum consecutive failures (${newFailures})`
-      )
-    }
-
-    return newFailures
-  }
-}))
-
-// Subscribe to the store to react to state changes
-spotifyPlayerStore.subscribe(() => {
-  // Note: Removed duplicate "Playback resumed" toast notification
-  // The SpotifyApiService.resumePlayback() method already handles this notification
-})
+import { spotifyPlayerStore } from './spotifyPlayerStore'
+import type { PlayerStatus } from './spotifyPlayerStore'
 
 // Export a hook to access the store
 export function useSpotifyPlayerStore() {
@@ -205,13 +84,8 @@ export function useSpotifyPlayerHook(
               'Player signaled recovery needed, recreating...',
               'SpotifyPlayer'
             )
-            // Don't set status to recovery_needed, just trigger recreation
-            // But we need to update status to something transitional?
-            // Actually, destroyPlayer sets status to disconnected.
-            // Let's float a promise to recreate
             void (async () => {
               destroyPlayer()
-              // Short delay to ensure cleanup
               await new Promise((resolve) => setTimeout(resolve, 100))
               await createPlayer()
             })()
