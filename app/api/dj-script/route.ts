@@ -91,8 +91,14 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     )
 
     if (!veniceResponse.ok) {
+      const errorBody = await veniceResponse.text()
+      console.error(
+        '[dj-script] Venice AI error:',
+        veniceResponse.status,
+        errorBody
+      )
       return NextResponse.json(
-        { error: 'Venice AI request failed' },
+        { error: 'Venice AI request failed', detail: errorBody },
         { status: 500 }
       )
     }
