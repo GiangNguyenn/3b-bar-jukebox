@@ -61,11 +61,6 @@ export class QueueSynchronizer {
       context?: string,
       error?: Error
     ) => {
-      this.controller.log(
-        level,
-        `${context ? `[${context}] ` : ''}${message}`,
-        error
-      )
     }
   }
 
@@ -81,7 +76,6 @@ export class QueueSynchronizer {
   private async playNextTrackImpl(track: JukeboxQueueItem): Promise<void> {
     const deviceId = this.controller.getDeviceId()
     if (!deviceId) {
-      this.controller.log('ERROR', 'No device ID available to play next track')
       return
     }
 
@@ -102,10 +96,6 @@ export class QueueSynchronizer {
       attempts++
       seenTrackIds.add(currentTrack.tracks.spotify_track_id)
 
-      this.controller.log(
-        'INFO',
-        `[playNextTrack] Attempt ${attempts}/${MAX_ATTEMPTS} - Track: ${currentTrack.tracks.name} (${currentTrack.tracks.spotify_track_id}), Queue ID: ${currentTrack.id}`
-      )
 
       if (lastPlayingTrackId) {
         const validTrack = await ensureTrackNotDuplicate(
@@ -116,10 +106,6 @@ export class QueueSynchronizer {
         )
 
         if (!validTrack) {
-          this.controller.log(
-            'WARN',
-            `Track ${currentTrack?.tracks.name ?? 'unknown'} is a duplicate, queue exhausted or removal failed`
-          )
           break
         }
 
@@ -128,10 +114,6 @@ export class QueueSynchronizer {
 
       const trackUri = buildTrackUri(currentTrack.tracks.spotify_track_id)
 
-      this.controller.log(
-        'INFO',
-        `[playNextTrack] Attempting to play track URI: ${trackUri} on device: ${deviceId}`
-      )
 
       const success = await this.controller.playTrackWithRetry(
         trackUri,
@@ -141,26 +123,12 @@ export class QueueSynchronizer {
 
       if (success) {
         if (!currentTrack) {
-          this.controller.log(
-            'ERROR',
-            '[playNextTrack] Current track became null unexpectedly'
-          )
           return
         }
 
-        this.controller.log(
-          'INFO',
-          `[playNextTrack] Successfully started playback of track: ${currentTrack.tracks.name} (${currentTrack.tracks.spotify_track_id})`
-        )
 
         const trackIdForUpsert = currentTrack.tracks.spotify_track_id
-        void upsertPlayedTrack(trackIdForUpsert).catch((error) =>
-          this.controller.log(
-            'ERROR',
-            `Failed to upsert played track ${trackIdForUpsert}`,
-            error
-          )
-        )
+        void upsertPlayedTrack(trackIdForUpsert).catch(() => {})
 
         this.currentQueueTrack = currentTrack
         queueManager.setCurrentlyPlayingTrack(
@@ -173,10 +141,6 @@ export class QueueSynchronizer {
         return
       }
 
-      this.controller.log(
-        'WARN',
-        `[playNextTrack] Failed to play track ${currentTrack?.tracks.name ?? 'unknown'} (${currentTrack?.tracks.spotify_track_id ?? 'unknown'}) after retries. Queue ID: ${currentTrack?.id ?? 'unknown'}. Trying next track.`
-      )
 
       await withErrorHandling(
         async () => {
@@ -190,15 +154,7 @@ export class QueueSynchronizer {
     }
 
     if (attempts >= MAX_ATTEMPTS) {
-      this.controller.log(
-        'ERROR',
-        `[playNextTrack] Maximum attempts (${MAX_ATTEMPTS}) reached. Stopping track playback attempts.`
-      )
     } else if (!currentTrack) {
-      this.controller.log(
-        'WARN',
-        '[playNextTrack] No more tracks available in queue'
-      )
     }
   }
 
@@ -214,15 +170,7 @@ export class QueueSynchronizer {
     if (finishedQueueItem) {
       await withErrorHandling(
         async () => {
-          this.controller.log(
-            'INFO',
-            `[markFinishedTrackAsPlayed] Marking queue item as played - Queue ID: ${finishedQueueItem.id}, Track: ${finishedQueueItem.tracks.name}`
-          )
           await queueManager.markAsPlayed(finishedQueueItem.id)
-          this.controller.log(
-            'INFO',
-            `[markFinishedTrackAsPlayed] Successfully marked queue item as played: ${finishedQueueItem.id}`
-          )
         },
         '[markFinishedTrackAsPlayed] Mark track as played',
         this.getLogger()
@@ -239,35 +187,15 @@ export class QueueSynchronizer {
       if (potentialMatches.length > 0) {
         const validMatch = potentialMatches[0].item
 
-        this.controller.log(
-          'INFO',
-          `[markFinishedTrackAsPlayed] PLAYBACK SYNC: Handling Track Relinking/ID Mismatch.
-           Finished Track ID: ${trackId}
-           Matched Queue Item: ${validMatch.tracks.name} (${validMatch.tracks.spotify_track_id})
-           Reason: Name match ("${trackName}")
-           Action: Removing matched item from queue.`
-        )
 
         await withErrorHandling(
           async () => {
             await queueManager.markAsPlayed(validMatch.id)
-            this.controller.log(
-              'INFO',
-              `[markFinishedTrackAsPlayed] Successfully removed fuzzy-matched item: ${validMatch.id}`
-            )
           },
           '[markFinishedTrackAsPlayed] Fuzzy removal',
           this.getLogger()
         )
       } else {
-        this.controller.log(
-          'WARN',
-          `[markFinishedTrackAsPlayed] No queue item found for finished track: ${trackId} (${trackName}). 
-           Queue length: ${queue.length}
-           Queue items: ${JSON.stringify(
-             queue.map((i) => `${i.tracks.name} (${i.tracks.spotify_track_id})`)
-           )}`
-        )
       }
     }
   }
@@ -294,10 +222,6 @@ export class QueueSynchronizer {
         alternativeTrack &&
         alternativeTrack.tracks.spotify_track_id !== finishedTrackId
       ) {
-        this.controller.log(
-          'WARN',
-          `[findNextValidTrack] Using alternative track ${alternativeTrack.id} after duplicate detection failure`
-        )
         return alternativeTrack
       }
 
@@ -331,31 +255,18 @@ export class QueueSynchronizer {
   private async handleTrackFinishedImpl(state: PlayerSDKState): Promise<void> {
     const currentTrack = state.track_window?.current_track
     if (!currentTrack?.id) {
-      this.controller.log(
-        'WARN',
-        '[handleTrackFinished] Track finished but no track ID available'
-      )
       return
     }
 
     const currentSpotifyTrackId = currentTrack.id
     const currentTrackName = currentTrack.name || 'Unknown'
 
-    this.controller.log(
-      'INFO',
-      `[handleTrackFinished] Track finished - ID: ${currentSpotifyTrackId}, Name: ${currentTrackName}, Position: ${state.position}, Duration: ${state.duration}
-       State Debug: Paused=${state.paused}, Position=${state.position}, Duration=${state.duration}`
-    )
 
     // First serialized operation: mark played + find next track
     let nextTrack: JukeboxQueueItem | null = null
     await playbackService.executePlayback(async () => {
       if (!this.duplicateDetector.shouldProcessTrack(currentSpotifyTrackId)) {
         this.duplicateDetector.setLastKnownPlayingTrack(currentSpotifyTrackId)
-        this.controller.log(
-          'INFO',
-          `[handleTrackFinished] Skipping duplicate processing for track: ${currentSpotifyTrackId}`
-        )
         return
       }
 
@@ -370,16 +281,8 @@ export class QueueSynchronizer {
 
       if (nextTrack) {
         this.currentQueueTrack = nextTrack
-        this.controller.log(
-          'INFO',
-          `[handleTrackFinished] Found next track: ${nextTrack.tracks.name} (${nextTrack.tracks.spotify_track_id}), Queue ID: ${nextTrack.id}`
-        )
       } else {
         this.currentQueueTrack = null
-        this.controller.log(
-          'WARN',
-          '[handleTrackFinished] No next track available after track finished. Playback will stop.'
-        )
       }
     }, 'handleTrackFinished:lookup')
 
@@ -391,11 +294,6 @@ export class QueueSynchronizer {
     try {
       await DJService.getInstance().maybeAnnounce(nextTrack)
     } catch (error) {
-      this.controller.log(
-        'WARN',
-        '[handleTrackFinished] DJ announcement failed, continuing to next track',
-        error
-      )
     }
 
     // Second serialized operation: play the next track
@@ -427,10 +325,6 @@ export class QueueSynchronizer {
     // Skip queue-enforcement branch while a playback operation is in progress
     // to avoid race conditions, but allow state updates above to pass through.
     if (playbackService.isOperationInProgress()) {
-      this.controller.log(
-        'WARN',
-        '[syncQueueWithPlayback] Playback operation in progress - skipping queue enforcement'
-      )
       return
     }
 
@@ -441,12 +335,6 @@ export class QueueSynchronizer {
 
     if (matchingQueueItem) {
       if (this.currentQueueTrack?.id !== matchingQueueItem.id) {
-        this.controller.log(
-          'INFO',
-          `Syncing queue: Current track changed from ${
-            this.currentQueueTrack?.id ?? 'none'
-          } to ${matchingQueueItem.id}`
-        )
         this.currentQueueTrack = matchingQueueItem
       }
     } else {
@@ -460,13 +348,6 @@ export class QueueSynchronizer {
           currentSpotifyTrack.name.toLowerCase()
 
         if (isFuzzyMatch) {
-          this.controller.log(
-            'INFO',
-            `[syncQueueWithPlayback] Detected Track Relinking/Fuzzy Match.
-             Expected: ${expectedTrack.tracks.name} (${expectedTrack.tracks.spotify_track_id})
-             Playing: ${currentSpotifyTrack.name} (${currentSpotifyTrack.id})
-             Action: Updating internal state to match playing track.`
-          )
 
           // Update the queue manager with the NEW ID so future checks pass
           // We don't change the DB ID, but we make the QueueManager aware via setCurrentlyPlayingTrack
@@ -482,20 +363,12 @@ export class QueueSynchronizer {
           return
         }
 
-        this.controller.log(
-          'WARN',
-          `[syncQueueWithPlayback] Enforcing queue order: Track ${currentSpotifyTrack.name} (${currentSpotifyTrack.id}) is playing but not in queue. Jukebox expected: ${expectedTrack.tracks.name}`
-        )
 
         void this.playNextTrack(expectedTrack)
         return
       }
 
       if (this.currentQueueTrack) {
-        this.controller.log(
-          'WARN',
-          `Playing track ${currentSpotifyTrack.id} not found in queue - clearing queue reference`
-        )
         this.currentQueueTrack = null
       }
     }
@@ -524,10 +397,6 @@ export class QueueSynchronizer {
       this.lastKnownState.position > 2000
 
     if (trackJustFinished) {
-      this.controller.log(
-        'INFO',
-        '[isTrackFinished] Detected clean track finish (paused at 0)'
-      )
       return true
     }
 
@@ -538,10 +407,6 @@ export class QueueSynchronizer {
     const isNowNearStart = state.position < 3000
 
     if (wasNearEnd && isNowNearStart && !state.paused) {
-      this.controller.log(
-        'WARN',
-        `[isTrackFinished] Detected track wrap-around (seamless repeat). Last pos: ${this.lastKnownState.position}, New pos: ${state.position}. Forcing track finish.`
-      )
       return true
     }
 
@@ -566,18 +431,10 @@ export class QueueSynchronizer {
   async handleRestrictionViolatedError(): Promise<void> {
     const currentTrack = this.currentQueueTrack
     if (!currentTrack) {
-      this.controller.log(
-        'WARN',
-        'No current track found, cannot remove problematic track'
-      )
       return
     }
 
     if (playbackService.isOperationInProgress()) {
-      this.controller.log(
-        'WARN',
-        '[syncQueueWithPlayback] Playback operation in progress - state will sync after completion'
-      )
       return
     }
 

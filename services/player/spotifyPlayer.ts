@@ -146,7 +146,6 @@ export class SpotifyPlayer {
     let timeoutId: NodeJS.Timeout
     const timeoutPromise = new Promise<boolean>((resolve) => {
       timeoutId = setTimeout(() => {
-        this.log('WARN', `Device verification timed out after ${TIMEOUT_MS}ms`)
         resolve(false)
       }, TIMEOUT_MS)
     })
@@ -156,7 +155,6 @@ export class SpotifyPlayer {
         (result) => result.isValid && !(result.device?.isRestricted ?? false)
       )
       .catch((error) => {
-        this.log('ERROR', 'Device verification failed', error)
         return false
       })
 
@@ -222,7 +220,6 @@ export class SpotifyPlayer {
       let originalError = window.onSpotifyWebPlaybackSDKError
       window.onSpotifyWebPlaybackSDKError = (error: unknown): void => {
         cleanup()
-        this.log('ERROR', 'Failed to reload Spotify SDK', error)
         // Call original handler if exists, then set to undefined to break closure chain
         const tempError = originalError
         originalError = undefined // Break closure chain to prevent memory leak
@@ -240,7 +237,6 @@ export class SpotifyPlayer {
       script.async = true
       script.onerror = () => {
         cleanup()
-        this.log('ERROR', 'Failed to load Spotify SDK script')
         if (!isResolved) {
           isResolved = true
           reject(new Error('Failed to load Spotify SDK script'))
@@ -272,7 +268,6 @@ export class SpotifyPlayer {
     }
 
     if (typeof window.Spotify === 'undefined') {
-      this.log('ERROR', 'Spotify SDK not loaded')
       onStatusChange('error', 'Spotify SDK not loaded')
       throw new Error('Spotify SDK not loaded')
     }
@@ -289,20 +284,11 @@ export class SpotifyPlayer {
             .getToken()
             .then((token) => {
               if (!token) {
-                this.log(
-                  'ERROR',
-                  'Token manager returned null token in getOAuthToken callback'
-                )
                 throw new Error('Token is null')
               }
               cb(token)
             })
             .catch((error) => {
-              this.log(
-                'ERROR',
-                'Error getting token from token manager in getOAuthToken callback',
-                error
-              )
               throw error
             })
         },
@@ -350,10 +336,6 @@ export class SpotifyPlayer {
         // Set strict initialization timeout
         const initTimeout = setTimeout(() => {
           if (this.deviceErrorResolver === rejectWrapper) {
-            this.log(
-              'ERROR',
-              `Player initialization timed out after ${PLAYER_LIFECYCLE_CONFIG.INITIALIZATION_TIMEOUT_MS}ms`
-            )
             rejectWrapper(new Error('Player initialization timed out'))
             this.deviceReadyResolver = null
             this.deviceErrorResolver = null
@@ -368,7 +350,6 @@ export class SpotifyPlayer {
       // This prevents memory leaks from partial initialization
       this.eventCleanup.forEach((cleanup) => cleanup())
       this.eventCleanup = []
-      this.log('ERROR', 'Error creating player', error)
       this.status = 'error'
       throw error
     }
@@ -385,7 +366,6 @@ export class SpotifyPlayer {
       void (async () => {
         try {
           if (!this.player) {
-            this.log('WARN', 'Player destroyed before ready handler - aborting')
             return
           }
 
@@ -397,15 +377,10 @@ export class SpotifyPlayer {
           const deviceExisted = await this.verifyDeviceWithTimeout(device_id)
 
           if (!this.player) {
-            this.log('WARN', 'Player destroyed during device verification')
             return
           }
 
           if (!deviceExisted) {
-            this.log(
-              'WARN',
-              'Device verification failed/timed-out. Attempting direct playback transfer as recovery.'
-            )
           }
 
           // Set device ID
@@ -416,12 +391,10 @@ export class SpotifyPlayer {
           const transferSuccess = await transferPlaybackToDevice(device_id)
 
           if (!this.player) {
-            this.log('WARN', 'Player destroyed during playback transfer')
             return
           }
 
           if (!transferSuccess) {
-            this.log('ERROR', 'Failed to transfer playback to new device')
             this.status = 'error'
             onStatusChange('error', 'Failed to transfer playback to new device')
             return
@@ -438,7 +411,6 @@ export class SpotifyPlayer {
             this.deviceErrorResolver = null
           }
         } catch (error) {
-          this.log('ERROR', 'Ready handler failed', error)
           if (this.deviceErrorResolver) {
             this.deviceErrorResolver(
               error instanceof Error ? error : new Error(String(error))
@@ -455,7 +427,6 @@ export class SpotifyPlayer {
 
     // Not ready event
     const notReadyHandler = () => {
-      this.log('WARN', 'Device reported as not ready')
       // In Phase 2, this will trigger recovery service
       onStatusChange('error', 'Device not ready')
     }
@@ -463,7 +434,6 @@ export class SpotifyPlayer {
 
     // Initialization error
     const initErrorHandler = ({ message }: { message: string }) => {
-      this.log('ERROR', `Initialization error: ${message}`)
       this.status = 'error'
       onStatusChange('error', `Initialization error: ${message}`)
 
@@ -477,7 +447,6 @@ export class SpotifyPlayer {
 
     // Authentication error - will be handled by RecoveryManager in Phase 3
     const authErrorHandler = ({ message }: { message: string }) => {
-      this.log('ERROR', `Authentication error: ${message}`)
       this.status = 'error'
       onStatusChange('error', `Authentication error: ${message}`)
     }
@@ -485,7 +454,6 @@ export class SpotifyPlayer {
 
     // Account error
     const accountErrorHandler = ({ message }: { message: string }) => {
-      this.log('ERROR', `Account error: ${message}`)
       this.status = 'error'
       onStatusChange('error', `Account error: ${message}`)
     }
@@ -493,22 +461,16 @@ export class SpotifyPlayer {
 
     // Playback error
     const playbackErrorHandler = ({ message }: { message: string }) => {
-      this.log('ERROR', `Playback error: ${message}`)
     }
     player.addListener('playback_error', playbackErrorHandler)
 
     // Player state changed - will be handled by PlaybackService in Phase 2
     const stateChangeHandler = (state: unknown) => {
       if (!state) {
-        this.log('WARN', 'Received null state in player_state_changed event')
         return
       }
 
       if (!isPlayerSDKState(state)) {
-        this.log(
-          'ERROR',
-          'Invalid state shape received in player_state_changed'
-        )
         return
       }
 
@@ -533,7 +495,6 @@ export class SpotifyPlayer {
    * Destroy the player and clean up all resources
    */
   destroy(): void {
-    this.log('INFO', 'Destroying player and cleaning up resources')
 
     // Clear all timeouts
     this.clearAllTimeouts()

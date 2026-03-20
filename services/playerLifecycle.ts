@@ -193,10 +193,6 @@ class PlayerLifecycleService {
   ): Promise<boolean> {
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
       try {
-        this.log(
-          'INFO',
-          `Playing track ${trackUri} on device ${deviceId} (attempt ${attempt + 1}/${maxRetries + 1})`
-        )
 
         await sendApiRequest({
           path: `me/player/play?device_id=${deviceId}`,
@@ -216,20 +212,11 @@ class PlayerLifecycleService {
 
         // Handle "Restriction violated" by skipping to next track
         if (errorMessage.includes('Restriction violated')) {
-          this.log(
-            'WARN',
-            `Restriction violated for track ${trackUri}, skipping to next track`
-          )
           return false // Don't retry, just skip this track
         }
 
         // If we've exhausted retries, fail
         if (attempt === maxRetries) {
-          this.log(
-            'ERROR',
-            `Failed to play track ${trackUri} after ${maxRetries + 1} attempts`,
-            error
-          )
           return false
         }
 
@@ -237,11 +224,6 @@ class PlayerLifecycleService {
         const backoffMs =
           PLAYER_LIFECYCLE_CONFIG.PLAYBACK_RETRY.initialBackoffMs *
           Math.pow(2, attempt)
-        this.log(
-          'WARN',
-          `Playback attempt ${attempt + 1} failed, retrying in ${backoffMs}ms`,
-          error
-        )
         await new Promise((resolve) => setTimeout(resolve, backoffMs))
       }
     }
@@ -288,7 +270,6 @@ class PlayerLifecycleService {
     let timeoutId: NodeJS.Timeout
     const timeoutPromise = new Promise<boolean>((resolve) => {
       timeoutId = setTimeout(() => {
-        this.log('WARN', `Device verification timed out after ${TIMEOUT_MS}ms`)
         resolve(false) // Timed out
       }, TIMEOUT_MS)
     })
@@ -299,7 +280,6 @@ class PlayerLifecycleService {
         (result) => result.isValid && !(result.device?.isRestricted ?? false)
       )
       .catch((error) => {
-        this.log('ERROR', 'Device verification failed', error)
         return false
       })
 
@@ -317,10 +297,6 @@ class PlayerLifecycleService {
     deviceId: string,
     onStatusChange: (status: string, error?: string) => void
   ): void {
-    this.log(
-      'WARN',
-      `Device ${deviceId} reported as not ready - attempting background recovery`
-    )
 
     const timeoutKey = 'notReady'
     this.timeoutManager.clear(timeoutKey)
@@ -335,41 +311,21 @@ class PlayerLifecycleService {
         try {
           // Guard: Check if player was destroyed while we were waiting
           if (!this.playerRef) {
-            this.log(
-              'WARN',
-              'Player destroyed during recovery grace period - cancelling recovery'
-            )
             return
           }
 
-          this.log(
-            'INFO',
-            'Attempting background recovery: transferring playback to device'
-          )
 
           // Try to transfer playback back to this device
           const transferred = await transferPlaybackToDevice(deviceId)
 
           // Re-check player existence after async operation
           if (!this.playerRef) {
-            this.log(
-              'WARN',
-              'Player destroyed during recovery transfer - ignoring result'
-            )
             return
           }
 
           if (transferred) {
-            this.log(
-              'INFO',
-              'Background recovery successful - device reactivated'
-            )
             onStatusChange('ready', undefined)
           } else {
-            this.log(
-              'ERROR',
-              'Background recovery failed - device could not be reactivated'
-            )
             // Only trigger full recovery if background transfer fails
             onStatusChange(
               'recovery_needed',
@@ -377,7 +333,6 @@ class PlayerLifecycleService {
             )
           }
         } catch (error) {
-          this.log('ERROR', 'Error in not_ready background recovery', error)
         }
       })()
     }, RECOVERY_GRACE_PERIOD_MS)
@@ -468,7 +423,6 @@ class PlayerLifecycleService {
         onPlaybackStateChange(transformedState)
       }
     } catch (error) {
-      this.log('ERROR', 'Error in player state changed handler', error)
     }
   }
 
@@ -482,10 +436,6 @@ class PlayerLifecycleService {
       if (this.pendingStates.length < this.MAX_PENDING_STATES) {
         this.pendingStates.push(state)
       } else {
-        this.log(
-          'WARN',
-          `State change queue full (${this.MAX_PENDING_STATES}), dropping oldest state`
-        )
         // Drop oldest state and add new one
         this.pendingStates.shift()
         this.pendingStates.push(state)
@@ -515,14 +465,9 @@ class PlayerLifecycleService {
     onDeviceIdChange: (deviceId: string) => void,
     onPlaybackStateChange: (state: SpotifyPlaybackState) => void
   ): Promise<void> {
-    this.log('ERROR', `Failed to authenticate: ${message}`)
 
     // Phase 3: Check if recovery is possible
     if (!recoveryManager.canAttemptRecovery()) {
-      this.log(
-        'ERROR',
-        `Authentication retry limit reached (${recoveryManager.getRetryCount()} attempts)`
-      )
       onStatusChange(
         'error',
         `Authentication failed after ${recoveryManager.getRetryCount()} attempts. Click to reload player.`
@@ -560,7 +505,6 @@ class PlayerLifecycleService {
       recoveryManager.recordSuccess()
       this.isRecoveryNeeded = false
     } catch (error) {
-      this.log('ERROR', 'Failed to recover from authentication error', error)
 
       // Check if error indicates user action is required
       // Check both error message and error code if available
@@ -606,7 +550,6 @@ class PlayerLifecycleService {
   }
 
   handleAccountError(message: string): void {
-    this.log('ERROR', `Account error: ${message}`)
 
     const isPremiumError =
       message.toLowerCase().includes('premium') ||
@@ -619,7 +562,6 @@ class PlayerLifecycleService {
         this.navigationCallback('/premium-required')
       } else {
         // Issue #7 fix: Don't manipulate DOM directly - throw error instead
-        this.log('ERROR', 'Navigation callback not set for premium redirect')
         throw new Error(
           'Premium account required but navigation callback not configured'
         )
@@ -636,7 +578,6 @@ class PlayerLifecycleService {
     onDeviceIdChange: (deviceId: string) => void,
     onPlaybackStateChange: (state: SpotifyPlaybackState) => void
   ): Promise<void> {
-    this.log('INFO', 'Force recovery initiated by user')
     // Phase 3: Reset recovery state on device ready
     recoveryManager.recordSuccess()
     this.isRecoveryNeeded = false
@@ -649,7 +590,6 @@ class PlayerLifecycleService {
         onPlaybackStateChange
       )
     } catch (error) {
-      this.log('ERROR', 'Force recovery failed', error)
       onStatusChange('error', 'Recovery failed. Please refresh the page.')
     }
   }
@@ -669,7 +609,6 @@ class PlayerLifecycleService {
   ): Promise<void> {
     // Guard: Check player exists before starting
     if (!this.playerRef) {
-      this.log('WARN', 'Player destroyed before ready handler - aborting')
       return
     }
 
@@ -682,15 +621,10 @@ class PlayerLifecycleService {
 
     // Guard: Re-check after async operation
     if (!this.playerRef) {
-      this.log('WARN', 'Player destroyed during device verification')
       return
     }
 
     if (!deviceExisted) {
-      this.log(
-        'WARN',
-        'Device verification failed/timed-out. Attempting direct playback transfer as recovery.'
-      )
     }
 
     // Step 2: Set local ID
@@ -702,12 +636,10 @@ class PlayerLifecycleService {
 
     // Guard: Re-check after async operation
     if (!this.playerRef) {
-      this.log('WARN', 'Player destroyed during playback transfer')
       return
     }
 
     if (!transferSuccess) {
-      this.log('ERROR', 'Failed to transfer playback to new device')
       onStatusChange('error', 'Failed to transfer playback to new device')
       return
     }
@@ -726,18 +658,12 @@ class PlayerLifecycleService {
     // Phase 4: Enforce Repeat Mode 'off' after device is ready
     // This prevents tracks from seamlessly looping, which would bypass our track finish detection.
     try {
-      this.log('INFO', 'Enforcing Repeat Mode: off')
       // Import dynamically to avoid circular dependencies if any, or just use existing import if clean
       const SpotifyApiService = (await import('@/services/spotifyApi'))
         .SpotifyApiService
       await SpotifyApiService.getInstance().setRepeatMode('off', deviceId)
     } catch (error) {
       // Log warning but don't fail initialization
-      this.log(
-        'WARN',
-        'Failed to enforce repeat mode off during initialization',
-        error
-      )
     }
   }
 
@@ -764,11 +690,6 @@ class PlayerLifecycleService {
         timestamp: new Date().toISOString()
       }
 
-      this.log(
-        'ERROR',
-        `Failed to initialize player: ${message}. Context: SDK=${sdkAvailable}, Token=${!!token}, TokenLength=${token?.length ?? 0}`,
-        new Error(JSON.stringify(errorDetails, null, 2))
-      )
     })
 
     onStatusChange(
@@ -789,21 +710,8 @@ class PlayerLifecycleService {
    * Extracted from createPlayer to reduce complexity
    */
   handlePlaybackError(message: string): void {
-    this.log('ERROR', `Playback error: ${message}`)
-
     if (message.includes('Restriction violated')) {
-      this.log(
-        'WARN',
-        'Restriction violated error detected - removing problematic track and playing next'
-      )
-      void this.handleRestrictionViolatedError().catch((error) =>
-        this.log('ERROR', 'Error handling restriction violated error', error)
-      )
-    } else {
-      this.log(
-        'WARN',
-        'Playback error occurred, but error handling is managed by health monitor'
-      )
+      void this.handleRestrictionViolatedError().catch(() => {})
     }
   }
 
@@ -825,10 +733,6 @@ class PlayerLifecycleService {
         PLAYER_LIFECYCLE_CONFIG.STATE_MONITORING.nullStateThreshold
 
       if (this.consecutiveNullStates >= NULL_STATE_THRESHOLD) {
-        this.log(
-          'ERROR',
-          `Received ${this.consecutiveNullStates} consecutive null states. Device is persistently inactive. Triggering recovery.`
-        )
         this.consecutiveNullStates = 0
 
         void this.handleAuthenticationError(
@@ -836,14 +740,7 @@ class PlayerLifecycleService {
           onStatusChange,
           onDeviceIdChange,
           onPlaybackStateChange
-        ).catch((error) =>
-          this.log('ERROR', 'Error in authentication error handler', error)
-        )
-      } else {
-        this.log(
-          'WARN',
-          `Received null state in player_state_changed event (${this.consecutiveNullStates}/${NULL_STATE_THRESHOLD}). Device may be temporarily inactive.`
-        )
+        ).catch(() => {})
       }
       return
     }
@@ -853,11 +750,6 @@ class PlayerLifecycleService {
 
     // Runtime validation
     if (!isPlayerSDKState(state)) {
-      this.log(
-        'ERROR',
-        'Invalid state shape received in player_state_changed',
-        new Error('Invalid state structure')
-      )
       return
     }
 
@@ -871,7 +763,6 @@ class PlayerLifecycleService {
     error: unknown,
     onStatusChange: (status: string, error?: string) => void
   ): void {
-    this.log('ERROR', 'Ready handler failed', error)
     if (this.deviceErrorResolver) {
       this.deviceErrorResolver(
         error instanceof Error ? error : new Error(String(error))
@@ -900,13 +791,11 @@ class PlayerLifecycleService {
     try {
       await waitForSpotifySDK()
     } catch (error) {
-      this.log('ERROR', 'Spotify SDK failed to load', error)
       onStatusChange('error', 'Spotify SDK failed to load')
       throw error
     }
 
     if (typeof window.Spotify === 'undefined') {
-      this.log('ERROR', 'Spotify SDK not loaded after wait')
       onStatusChange('error', 'Spotify SDK not loaded')
       throw new Error('Spotify SDK not loaded')
     }
@@ -941,20 +830,11 @@ class PlayerLifecycleService {
             .getToken()
             .then((token) => {
               if (!token) {
-                this.log(
-                  'ERROR',
-                  'Token manager returned null token in getOAuthToken callback'
-                )
                 throw new Error('Token is null')
               }
               cb(token)
             })
             .catch((error) => {
-              this.log(
-                'ERROR',
-                'Error getting token from token manager in getOAuthToken callback',
-                error
-              )
               // Resolve with empty string to trigger SDK authentication_error
               // preventing unhandled promise rejection
               cb('')
@@ -1009,12 +889,6 @@ class PlayerLifecycleService {
         const initTimeout = setTimeout(async () => {
           if (this.deviceErrorResolver === rejectWrapper) {
             const token = await tokenManager.getToken().catch(() => null)
-            this.log(
-              'ERROR',
-              `Player initialization timed out after ${PLAYER_LIFECYCLE_CONFIG.INITIALIZATION_TIMEOUT_MS}ms. This may due to: 1) SDK script loading failure, 2) Token issue (token length: ${
-                token?.length ?? 0
-              }), 3) Network blocking.`
-            )
             // Ensure proper cleanup of the pending promise state
             if (this.pendingPromiseCleanup) {
               this.pendingPromiseCleanup()
@@ -1034,7 +908,6 @@ class PlayerLifecycleService {
       })
     } catch (error) {
       this.clearAllTimeouts()
-      this.log('ERROR', 'Error creating player', error)
       throw error
     }
   }
@@ -1093,16 +966,8 @@ class PlayerLifecycleService {
    * playNextTrack logic and device management.
    */
   async playNextFromQueue(): Promise<void> {
-    this.log(
-      'INFO',
-      '[playNextFromQueue] Requested to play next track from queue'
-    )
     const nextTrack = queueManager.getNextTrack()
     if (!nextTrack) {
-      this.log(
-        'WARN',
-        '[playNextFromQueue] Skip requested but no next track is available in queue'
-      )
       return
     }
 
@@ -1115,10 +980,6 @@ class PlayerLifecycleService {
    * the pause → SDK state-change → handleTrackFinished race condition.
    */
   async skipToTrack(nextTrack: JukeboxQueueItem): Promise<void> {
-    this.log(
-      'INFO',
-      `[skipToTrack] User-initiated skip to: ${nextTrack.tracks.name}`
-    )
     await this.playNextTrack(nextTrack)
   }
 
@@ -1138,7 +999,6 @@ class PlayerLifecycleService {
    */
   public setManualPause(isManualPause: boolean): void {
     this.isManualPause = isManualPause
-    this.log('INFO', `Manual pause state set to: ${isManualPause}`)
   }
 
   /**
@@ -1153,16 +1013,13 @@ class PlayerLifecycleService {
    */
   public async resumePlayback(): Promise<void> {
     if (!this.deviceId) {
-      this.log('WARN', '[resumePlayback] No device ID available')
       return
     }
 
-    this.log('INFO', '[resumePlayback] Resuming playback')
     try {
       await spotifyPlayer.resume()
       this.isManualPause = false
     } catch (error) {
-      this.log('ERROR', '[resumePlayback] Failed to resume playback', error)
       throw error
     }
   }

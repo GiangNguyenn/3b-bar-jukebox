@@ -1,7 +1,6 @@
 import { JukeboxQueueItem } from '@/shared/types/queue'
 import { sendApiRequest } from '@/shared/api'
 import { QueueManager } from './queueManager'
-import { createModuleLogger } from '@/shared/utils/logger'
 import { LogLevel } from '@/hooks/ConsoleLogsProvider'
 import { SpotifyPlaybackState } from '@/shared/types/spotify'
 import {
@@ -20,8 +19,6 @@ import { TrackDuplicateDetector } from '@/shared/utils/trackDuplicateDetector'
 import { playerLifecycleService } from '@/services/playerLifecycle'
 import { transferPlaybackToDevice } from '@/services/deviceManagement'
 import { buildTrackUri } from '@/shared/utils/spotifyUri'
-
-const logger = createModuleLogger('AutoPlayService')
 
 interface AutoPlayServiceConfig {
   checkInterval?: number // How often to check playback state (default: 5 seconds)
@@ -85,7 +82,6 @@ class AutoPlayService {
 
   public start(): void {
     if (this.isRunning) {
-      logger('WARN', 'Auto-play service is already running')
       return
     }
 
@@ -104,12 +100,6 @@ class AutoPlayService {
     this.intervalRef = setInterval(() => {
       // Wrap in error handler to prevent interval from continuing on fatal errors
       void this.checkPlaybackState().catch((error) => {
-        logger(
-          'ERROR',
-          'Fatal error in checkPlaybackState - stopping service',
-          undefined,
-          error as Error
-        )
         // Stop the service on fatal error to prevent memory leaks
         this.stop()
       })
@@ -162,7 +152,6 @@ class AutoPlayService {
 
   public setDeviceId(deviceId: string | null): void {
     if (this.deviceId !== deviceId) {
-      logger('INFO', `[setDeviceId] Device ID updated to: ${deviceId}`)
       this.deviceId = deviceId
     }
   }
@@ -195,10 +184,6 @@ class AutoPlayService {
       currentQueueLength < this.autoFillTargetSize &&
       !this.isAutoFilling
     ) {
-      logger(
-        'INFO',
-        `Queue updated: ${currentQueueLength}/${this.autoFillTargetSize} tracks, triggering auto-fill check`
-      )
       // Use setTimeout to avoid blocking queue update
       setTimeout(() => {
         void this.checkAndAutoFillQueue()
@@ -207,18 +192,9 @@ class AutoPlayService {
   }
 
   public setTrackSuggestionsState(state: TrackSuggestionsState | null): void {
-    logger(
-      'INFO',
-      `[setTrackSuggestionsState] Setting track suggestions state: ${JSON.stringify(state)}`
-    )
-    logger(
-      'INFO',
-      `[setTrackSuggestionsState] State type: ${typeof state}, is null: ${state === null}, is undefined: ${state === undefined}`
-    )
 
     // Validate state before setting
     if (state && !isValidTrackSuggestionsState(state)) {
-      logger('WARN', 'Invalid track suggestions state provided')
       return
     }
 
@@ -227,20 +203,12 @@ class AutoPlayService {
     // Update autoFillTargetSize from track suggestions state if available
     if (state?.autoFillTargetSize !== undefined) {
       this.autoFillTargetSize = state.autoFillTargetSize
-      logger(
-        'INFO',
-        `[setTrackSuggestionsState] Updated autoFillTargetSize to: ${this.autoFillTargetSize}`
-      )
     }
 
     // If this is the first time setting the state and we have a queue, trigger an auto-fill check
     if (state && this.isRunning && this.username) {
       const queue = this.queueManager.getQueue()
       if (queue.length < this.autoFillTargetSize) {
-        logger(
-          'INFO',
-          `Track suggestions state initialized, checking if auto-fill is needed`
-        )
         // Use setTimeout to avoid blocking the current operation
         setTimeout(() => {
           void this.checkAndAutoFillQueue()
@@ -264,10 +232,6 @@ class AutoPlayService {
   private async checkPlaybackState(): Promise<void> {
     // Prevent overlapping polling requests to avoid race conditions
     if (this.isPolling) {
-      logger(
-        'INFO',
-        'Skipping playback check - previous check still in progress'
-      )
       return
     }
 
@@ -289,10 +253,6 @@ class AutoPlayService {
       }
 
       if (!currentState) {
-        logger(
-          'INFO',
-          '[checkPlaybackState] No current playback state available'
-        )
 
         // Proactive safety net: if the service is initialized, auto-play is
         // enabled, and there are tracks waiting in the jukebox queue, delegate
@@ -301,19 +261,9 @@ class AutoPlayService {
         if (this.isInitialized && this.username && !this.isAutoPlayDisabled) {
           const nextTrack = this.queueManager.getNextTrack()
           if (nextTrack) {
-            logger(
-              'INFO',
-              '[checkPlaybackState] No playback state but queue has tracks – starting next track directly (no DJ announcement)'
-            )
             try {
               await playerLifecycleService.skipToTrack(nextTrack)
             } catch (error) {
-              logger(
-                'ERROR',
-                '[checkPlaybackState] PlayerLifecycleService failed to start next track from fallback',
-                undefined,
-                error as Error
-              )
             }
           }
         }
@@ -337,16 +287,6 @@ class AutoPlayService {
         try {
           await this.handleTrackFinished(currentTrackId)
         } catch (error) {
-          logger(
-            'ERROR',
-            'Exception in handleTrackFinished',
-            undefined,
-            error as Error
-          )
-          logger(
-            'ERROR',
-            `[checkPlaybackState] Error details: ${error instanceof Error ? error.message : 'Unknown error'}`
-          )
         }
       }
 
@@ -368,12 +308,6 @@ class AutoPlayService {
       } as SpotifyPlaybackState
       this.lastTrackId = currentTrackId || null
     } catch (error) {
-      logger(
-        'ERROR',
-        'Error checking playback state',
-        undefined,
-        error as Error
-      )
     } finally {
       // Auto-Resume Logic (Issue #12)
       // Check if we need to auto-resume playback if it was paused without user interaction
@@ -393,32 +327,12 @@ class AutoPlayService {
           // Double check we haven't just finished a track (which is handled separately)
           const isTrackFinished = this.hasTrackFinished(this.lastPlaybackState)
           if (!isTrackFinished) {
-            logger(
-              'INFO',
-              `[checkPlaybackState] Auto-resuming playback (paused without user interaction)
-               Details: 
-               - Track: ${this.lastPlaybackState.item.name} (${this.lastPlaybackState.item.id})
-               - Progress: ${this.lastPlaybackState.progress_ms}/${this.lastPlaybackState.item.duration_ms}
-               - ManualPause: ${playerLifecycleService.getIsManualPause()}
-               - isTrackFinished: ${isTrackFinished}`
-            )
             try {
               // Use playerLifecycleService to resume so it can manage state (conceptually, though resumePlayback just calls spotifyPlayer)
               await playerLifecycleService.resumePlayback()
             } catch (resumeError) {
-              logger(
-                'WARN',
-                '[checkPlaybackState] Failed to auto-resume playback',
-                undefined,
-                resumeError as Error
-              )
             }
           } else {
-            logger(
-              'INFO',
-              `[checkPlaybackState] Auto-resume suppressed because track finished detected. 
-                  Track: ${this.lastPlaybackState.item.name}`
-            )
           }
         }
       }
@@ -454,15 +368,6 @@ class AutoPlayService {
 
     // Detailed debug logging for tracking down Issue #12 (re-playing same song)
     if (isNearEnd || isAtEnd || isStopped || (isPaused && wasPlaying)) {
-      logger(
-        'INFO',
-        `[hasTrackFinished] Debug: 
-            Track: ${currentState.item.name} (${currentTrackId})
-            Progress: ${progress}/${duration} (${duration - progress}ms remaining)
-            State: isPlaying=${currentState.is_playing}, wasPlaying=${wasPlaying}
-            Flags: isSameTrack=${isSameTrack}, isAtEnd=${isAtEnd}, isNearEnd=${isNearEnd}, isStopped=${isStopped}, hasStalled=${hasStalled}
-        `
-      )
     }
 
     // Track finished if:
@@ -479,10 +384,6 @@ class AutoPlayService {
       (isPaused && isNearEnd && isSameTrack)
 
     if (finished) {
-      logger(
-        'INFO',
-        `[hasTrackFinished] Track finished detected via logic match`
-      )
     }
 
     return finished
@@ -491,22 +392,13 @@ class AutoPlayService {
   private async handleTrackFinished(
     trackId: string | undefined
   ): Promise<void> {
-    logger(
-      'INFO',
-      `[handleTrackFinished] Function called with trackId: ${trackId}`
-    )
 
     if (!trackId) {
-      logger('WARN', 'Track finished but no track ID available')
       return
     }
 
     // Prevent processing the same track multiple times
     if (!this.duplicateDetector.shouldProcessTrack(trackId)) {
-      logger(
-        'INFO',
-        `[handleTrackFinished] Skipping duplicate processing for track: ${trackId}`
-      )
       return
     }
     this.onTrackFinished?.(trackId)
@@ -514,14 +406,6 @@ class AutoPlayService {
     try {
       // Find the queue item with this Spotify track ID
       const queue = this.queueManager.getQueue()
-      logger(
-        'INFO',
-        `[handleTrackFinished] Current queue length: ${queue.length}`
-      )
-      logger(
-        'INFO',
-        `[handleTrackFinished] Queue items: ${JSON.stringify(queue.map((item) => ({ id: item.id, spotify_track_id: item.tracks.spotify_track_id, name: item.tracks.name })))}`
-      )
 
       const queueItem = queue.find(
         (item) => item.tracks.spotify_track_id === trackId
@@ -540,34 +424,14 @@ class AutoPlayService {
             try {
               const freshQueueLength = await this.refreshQueueFromAPI()
               if (freshQueueLength !== null) {
-                logger(
-                  'INFO',
-                  `[handleTrackFinished] Refreshed queue after markAsPlayed (${freshQueueLength} tracks remaining)`
-                )
               }
             } catch (refreshError) {
-              logger(
-                'WARN',
-                '[handleTrackFinished] Failed to refresh queue after markAsPlayed, using cached queue',
-                undefined,
-                refreshError as Error
-              )
             }
           }
         } catch (error) {
-          logger(
-            'WARN',
-            `Failed to mark queue item ${queueItem.id} as played`,
-            undefined,
-            error as Error
-          )
           // Continue with next track even if marking as played fails
         }
       } else {
-        logger(
-          'WARN',
-          `No queue item found for finished trackId: ${trackId}. Track may have been manually started or already removed from queue.`
-        )
       }
 
       // Check if queue is getting low and trigger auto-fill if needed
@@ -585,18 +449,11 @@ class AutoPlayService {
         this.onQueueEmpty?.()
       }
     } catch (error) {
-      logger(
-        'ERROR',
-        'Error handling track finished',
-        undefined,
-        error as Error
-      )
     }
   }
 
   private async refreshQueueFromAPI(): Promise<number | null> {
     if (!this.username) {
-      logger('WARN', '[refreshQueueFromAPI] No username available')
       return null
     }
 
@@ -614,10 +471,6 @@ class AutoPlayService {
       }
 
       if (!response.ok) {
-        logger(
-          'WARN',
-          `[refreshQueueFromAPI] API response not ok: ${response.status} ${response.statusText}`
-        )
         return null
       }
 
@@ -626,19 +479,9 @@ class AutoPlayService {
 
       this.queueManager.updateQueue(queue)
 
-      logger(
-        'INFO',
-        `[refreshQueueFromAPI] Queue refreshed - cached: ${cachedQueueLength}, fresh: ${queue.length}`
-      )
 
       return queue.length
     } catch (error) {
-      logger(
-        'WARN',
-        '[refreshQueueFromAPI] Failed to refresh queue from API',
-        undefined,
-        error as Error
-      )
       return null
     }
   }
@@ -652,18 +495,10 @@ class AutoPlayService {
     const currentQueueLength = freshQueueLength ?? cachedQueueLength
 
     if (freshQueueLength === null && cachedQueueLength > 0) {
-      logger(
-        'WARN',
-        `[checkAndAutoFillQueue] Using cached queue data (${cachedQueueLength} tracks) - API refresh failed`
-      )
     } else if (
       freshQueueLength !== null &&
       freshQueueLength !== cachedQueueLength
     ) {
-      logger(
-        'INFO',
-        `[checkAndAutoFillQueue] Queue size mismatch detected - cached: ${cachedQueueLength}, fresh: ${freshQueueLength}`
-      )
     }
 
     // Check if queue is low (below target size)
@@ -675,10 +510,6 @@ class AutoPlayService {
     ) {
       // Additional check to ensure we have valid track suggestions state or fallback defaults
       const hasValidState = this.trackSuggestionsState || true // Always allow auto-fill with fallbacks
-      logger(
-        'INFO',
-        `[checkAndAutoFillQueue] Triggering auto-fill - queue: ${currentQueueLength}/${this.autoFillTargetSize} tracks`
-      )
       this.onQueueLow?.()
 
       try {
@@ -693,10 +524,6 @@ class AutoPlayService {
           // This prevents the 'in' operator from failing if state becomes null between checks
           const trackSuggestionsState = this.trackSuggestionsState
           if (!trackSuggestionsState) {
-            logger(
-              'WARN',
-              '[checkAndAutoFillQueue] Track suggestions state is null in else block'
-            )
             return
           }
 
@@ -715,25 +542,11 @@ class AutoPlayService {
           )
 
           if (missingFields.length > 0) {
-            logger(
-              'WARN',
-              `[checkAndAutoFillQueue] Track suggestions state missing fields: ${missingFields.join(', ')}`
-            )
-            logger(
-              'WARN',
-              `[checkAndAutoFillQueue] Track suggestions state: ${JSON.stringify(trackSuggestionsState)}`
-            )
           }
         }
 
         await this.autoFillQueue()
       } catch (error) {
-        logger(
-          'ERROR',
-          '[checkAndAutoFillQueue] Failed to auto-fill queue',
-          undefined,
-          error as Error
-        )
       } finally {
         this.isAutoFilling = false
       }
@@ -755,29 +568,16 @@ class AutoPlayService {
         reasons.push('service not initialized')
       }
 
-      logger(
-        'INFO',
-        `[checkAndAutoFillQueue] Auto-fill not triggered - queue: ${currentQueueLength}/${this.autoFillTargetSize} tracks. Reasons: ${reasons.join(', ') || 'none (should not happen)'}`
-      )
     }
   }
 
   private async autoFillQueue(): Promise<void> {
     if (!this.username) {
-      logger('ERROR', 'No username available for auto-fill')
       return
     }
 
     // Check if we have valid track suggestions state
     if (!this.trackSuggestionsState) {
-      logger(
-        'WARN',
-        '[AutoFill] No track suggestions state available, using fallback defaults'
-      )
-      logger(
-        'WARN',
-        '[AutoFill] Track suggestions state is null/undefined - this indicates the state was not properly set'
-      )
     }
 
     const targetQueueSize = this.autoFillTargetSize // Target number of tracks in queue
@@ -874,22 +674,6 @@ class AutoPlayService {
         )
 
         if (missingFields.length > 0) {
-          logger(
-            'ERROR',
-            `[AutoFill] Missing required fields: ${missingFields.join(', ')}`
-          )
-          logger(
-            'ERROR',
-            `[AutoFill] Request body: ${JSON.stringify(requestBody)}`
-          )
-          logger(
-            'ERROR',
-            `[AutoFill] Request body keys: ${Object.keys(requestBody).join(', ')}`
-          )
-          logger(
-            'ERROR',
-            `[AutoFill] Track suggestions state that was used: ${JSON.stringify(this.trackSuggestionsState)}`
-          )
           throw new Error(
             `Missing required fields: ${missingFields.join(', ')}`
           )
@@ -910,61 +694,15 @@ class AutoPlayService {
           const cooldown = loadCooldownState(contextId)
           const tracksInCooldown = getTracksInCooldown(cooldown)
           if (tracksInCooldown.length > 0) {
-            logger(
-              'INFO',
-              `[AutoFill] Including ${tracksInCooldown.length} tracks in 24-hour cooldown into exclusions for context=${contextId}`
-            )
             excludedTrackIds = Array.from(
               new Set([...excludedTrackIds, ...tracksInCooldown])
-            )
-            logger(
-              'INFO',
-              `[AutoFill] Exclusions total after cooldown merge: ${excludedTrackIds.length}`
             )
           }
         } catch (error) {
           // Non-critical: Cooldown loading failure doesn't prevent auto-fill,
           // we just won't exclude tracks in cooldown this time
-          logger(
-            'LOG',
-            `[AutoFill] Failed to load cooldown exclusions: ${error instanceof Error ? error.message : 'Unknown error'}`
-          )
         }
 
-        logger(
-          'INFO',
-          `[AutoFill] Attempt ${attempts} - Excluding ${excludedTrackIds.length} existing tracks from suggestions`
-        )
-
-        logger(
-          'INFO',
-          `[AutoFill] Attempt ${attempts} - TRACK SUGGESTIONS STATE: ${JSON.stringify(this.trackSuggestionsState)}`
-        )
-        logger(
-          'INFO',
-          `[AutoFill] Attempt ${attempts} - MERGED TRACK SUGGESTIONS: ${JSON.stringify(mergedTrackSuggestions)}`
-        )
-        logger(
-          'INFO',
-          `[AutoFill] Attempt ${attempts} - FINAL REQUEST BODY: ${JSON.stringify(requestBody)}`
-        )
-        logger(
-          'INFO',
-          `[AutoFill] Attempt ${attempts} - REQUEST BODY TYPES: ${JSON.stringify(
-            {
-              genres: typeof requestBody.genres,
-              yearRange: typeof requestBody.yearRange,
-              popularity: typeof requestBody.popularity,
-              allowExplicit: typeof requestBody.allowExplicit,
-              maxSongLength: typeof requestBody.maxSongLength,
-              maxOffset: typeof requestBody.maxOffset
-            }
-          )}`
-        )
-        logger(
-          'INFO',
-          `[AutoFill] Attempt ${attempts} - Sending request: ${JSON.stringify(requestBody)}`
-        )
 
         let response: Response
         let errorBody: any
@@ -987,14 +725,9 @@ class AutoPlayService {
             clearTimeout(timeoutId)
           }
 
-          logger(
-            'INFO',
-            `[AutoFill] Attempt ${attempts} - RESPONSE RECEIVED - Status: ${response.status}`
-          )
 
           if (!response.ok) {
             const statusMessage = `REQUEST FAILED - Status: ${response.status}`
-            logger('ERROR', `[AutoFill] Attempt ${attempts} - ${statusMessage}`)
             if (this.addLog) {
               this.addLog(
                 'ERROR',
@@ -1005,37 +738,21 @@ class AutoPlayService {
 
             try {
               errorBody = await response.json()
-              logger(
-                'ERROR',
-                `[AutoFill] Attempt ${attempts} - ERROR BODY: ${JSON.stringify(errorBody)}`
-              )
 
               if (response.status === 400 && errorBody.errors) {
                 // Log validation errors
                 if (Array.isArray(errorBody.errors)) {
                   errorBody.errors.forEach((error: any, index: number) => {
-                    logger(
-                      'ERROR',
-                      `[AutoFill] Attempt ${attempts} - Validation error ${index + 1}: Field "${error.field}" - ${error.message}`
-                    )
                   })
                 }
               }
             } catch (parseError) {
-              logger(
-                'ERROR',
-                `[AutoFill] Attempt ${attempts} - Failed to parse error response: ${parseError}`
-              )
             }
 
             // Handle different types of 400 errors
             if (response.status === 400) {
               if (errorBody && errorBody.errors) {
                 // Validation error - log the validation errors
-                logger(
-                  'ERROR',
-                  `[AutoFill] Attempt ${attempts} - Validation error detected: ${JSON.stringify(errorBody.errors)}`
-                )
                 throw new Error(
                   'Track suggestions validation failed. Please check your parameters.'
                 )
@@ -1045,22 +762,10 @@ class AutoPlayService {
                 errorBody.message
               ) {
                 // No suitable tracks found - log the detailed error and inform user
-                logger(
-                  'WARN',
-                  `[AutoFill] Attempt ${attempts} - No suitable tracks found: ${errorBody.message}`
-                )
 
                 if (errorBody.searchDetails) {
-                  logger(
-                    'INFO',
-                    `[AutoFill] Attempt ${attempts} - Search details: ${JSON.stringify(errorBody.searchDetails)}`
-                  )
 
                   if (errorBody.searchDetails.suggestions) {
-                    logger(
-                      'INFO',
-                      `[AutoFill] Attempt ${attempts} - Suggestions for user: ${errorBody.searchDetails.suggestions.join(', ')}`
-                    )
                   }
                 }
 
@@ -1068,10 +773,6 @@ class AutoPlayService {
                 const errorMessage = errorBody.message
                 const suggestions = errorBody.searchDetails?.suggestions || []
 
-                logger(
-                  'INFO',
-                  `[AutoFill] Attempt ${attempts} - Informing user: ${errorMessage}. Suggestions: ${suggestions.join(', ')}`
-                )
 
                 // Don't try with different parameters - just inform the user
                 throw new Error(
@@ -1084,7 +785,6 @@ class AutoPlayService {
           }
         } catch (fetchError) {
           const errorMessage = `FETCH ERROR: ${fetchError}`
-          logger('ERROR', `[AutoFill] Attempt ${attempts} - ${errorMessage}`)
           if (this.addLog) {
             this.addLog(
               'ERROR',
@@ -1100,17 +800,9 @@ class AutoPlayService {
           tracks: { id: string }[]
         }
 
-        logger(
-          'INFO',
-          `[AutoFill] Attempt ${attempts} - Track suggestions response: ${JSON.stringify(suggestions)}`
-        )
 
         // If no tracks were suggested, try fallback
         if (!suggestions.tracks || suggestions.tracks.length === 0) {
-          logger(
-            'WARN',
-            `[AutoFill] Attempt ${attempts} - No track suggestions received, trying fallback`
-          )
           throw new Error('No track suggestions available')
         }
 
@@ -1121,18 +813,10 @@ class AutoPlayService {
           const queueSizeBeforeTrack = queueBeforeTrack.length
 
           if (queueSizeBeforeTrack >= targetQueueSize) {
-            logger(
-              'INFO',
-              `[AutoFill] Target queue size already reached (${queueSizeBeforeTrack}/${targetQueueSize}), stopping track processing`
-            )
             return
           }
 
           try {
-            logger(
-              'INFO',
-              `[AutoFill] Attempt ${attempts} - Fetching full details for track: ${track.id}`
-            )
 
             // Fetch full track details from Spotify
             const trackDetails = await sendApiRequest<{
@@ -1153,17 +837,6 @@ class AutoPlayService {
               method: 'GET'
             })
 
-            logger(
-              'INFO',
-              `[AutoFill] Attempt ${attempts} - Track details: ${JSON.stringify(
-                {
-                  name: trackDetails.name,
-                  artist: trackDetails.artists[0]?.name,
-                  duration_ms: trackDetails.duration_ms,
-                  popularity: trackDetails.popularity
-                }
-              )}`
-            )
 
             // Add track to queue
             const controller = new AbortController()
@@ -1190,33 +863,17 @@ class AutoPlayService {
 
               // Handle 409 conflicts (track already in playlist) - this is not an error for auto-fill
               if (playlistResponse.status === 409) {
-                logger(
-                  'INFO',
-                  `[AutoFill] Attempt ${attempts} - Track already in playlist: ${trackDetails.name}, skipping`
-                )
                 continue // Skip this track and try the next one
               }
 
-              logger(
-                'ERROR',
-                `[AutoFill] Attempt ${attempts} - Failed to add track to playlist: ${JSON.stringify(playlistError)}`
-              )
             } else {
               tracksAdded++
-              logger(
-                'INFO',
-                `[AutoFill] Attempt ${attempts} - Successfully added track to queue: ${trackDetails.name} (Total added: ${tracksAdded})`
-              )
 
               // Check if we've reached the target queue size after adding this track
               const currentQueueAfterAdd = this.queueManager.getQueue()
               const currentQueueSizeAfterAdd = currentQueueAfterAdd.length
 
               if (currentQueueSizeAfterAdd >= targetQueueSize) {
-                logger(
-                  'INFO',
-                  `[AutoFill] Target queue size reached after adding track (${currentQueueSizeAfterAdd}/${targetQueueSize}), stopping auto-fill`
-                )
                 // Break out of both the track loop and the attempt loop
                 return
               }
@@ -1232,17 +889,9 @@ class AutoPlayService {
                 const cooldown = loadCooldownState(contextId)
                 const updated = recordTrackAddition(cooldown, trackDetails.id)
                 saveCooldownState(contextId, updated)
-                logger(
-                  'INFO',
-                  `[AutoFill] Recorded track addition to 24-hour cooldown (context=${contextId}, trackId=${trackDetails.id}, totalTracked=${Object.keys(updated.trackTimestamps).length})`
-                )
               } catch (error) {
                 // Non-critical: Cooldown recording failure doesn't prevent track addition,
                 // we just won't track this particular track in the cooldown
-                logger(
-                  'LOG',
-                  `[AutoFill] Failed to record track in cooldown: ${error instanceof Error ? error.message : 'Unknown error'}`
-                )
               }
             }
 
@@ -1276,10 +925,6 @@ class AutoPlayService {
                   }
                 }
               } catch (genreError) {
-                logger(
-                  'WARN',
-                  `[AutoFill] Attempt ${attempts} - Failed to fetch artist genres: ${genreError instanceof Error ? genreError.message : 'Unknown error'}`
-                )
                 // Continue with empty genres array if fetch fails
               }
 
@@ -1304,15 +949,7 @@ class AutoPlayService {
               } finally {
                 clearTimeout(timeoutId)
               }
-              logger(
-                'INFO',
-                `[AutoFill] Attempt ${attempts} - Updated last suggested track cache: ${trackDetails.name}`
-              )
             } catch (cacheError) {
-              logger(
-                'WARN',
-                `[AutoFill] Attempt ${attempts} - Failed to update last suggested track cache: ${cacheError}`
-              )
             }
 
             // Extract metadata for notification
@@ -1333,29 +970,11 @@ class AutoPlayService {
               isFallback: false
             }
 
-            logger(
-              'INFO',
-              `[AutoFill] Notification metadata: ${JSON.stringify({
-                trackName: notificationMetadata.trackName,
-                albumName: notificationMetadata.albumName,
-                hasAlbumArt: !!notificationMetadata.albumArtUrl,
-                durationMs: notificationMetadata.durationMs,
-                popularity: notificationMetadata.popularity,
-                explicit: notificationMetadata.explicit,
-                allArtists: notificationMetadata.allArtists
-              })}`
-            )
 
             // Show popup notification for auto-added track
             this.showAutoFillNotification(notificationMetadata)
           } catch (error) {
             const errorMessage = `Failed to add track ${track.id} to queue`
-            logger(
-              'ERROR',
-              `[AutoFill] Attempt ${attempts} - ${errorMessage}`,
-              undefined,
-              error as Error
-            )
             if (this.addLog) {
               this.addLog(
                 'ERROR',
@@ -1370,27 +989,9 @@ class AutoPlayService {
         // Small delay between attempts to avoid overwhelming the API
         await new Promise((resolve) => setTimeout(resolve, 1000))
       } catch (error) {
-        logger(
-          'ERROR',
-          `[AutoFill] Attempt ${attempts} - Auto-fill failed, trying fallback random track`,
-          undefined,
-          error as Error
-        )
-        logger(
-          'INFO',
-          `[AutoFill] Attempt ${attempts} - Error details: ${error instanceof Error ? error.message : 'Unknown error'}`
-        )
 
         // Fallback: Get a random track from the database
-        logger(
-          'INFO',
-          `[AutoFill] Attempt ${attempts} - Calling fallbackToRandomTrack...`
-        )
         const fallbackSuccess = await this.fallbackToRandomTrack()
-        logger(
-          'INFO',
-          `[AutoFill] Attempt ${attempts} - FallbackToRandomTrack completed with success: ${fallbackSuccess}`
-        )
 
         if (fallbackSuccess) {
           tracksAdded++
@@ -1400,10 +1001,6 @@ class AutoPlayService {
           const currentQueueSizeAfterFallback = currentQueueAfterFallback.length
 
           if (currentQueueSizeAfterFallback >= targetQueueSize) {
-            logger(
-              'INFO',
-              `[AutoFill] Target queue size reached after fallback (${currentQueueSizeAfterFallback}/${targetQueueSize}), stopping auto-fill`
-            )
             return
           }
         }
@@ -1413,10 +1010,6 @@ class AutoPlayService {
       }
 
       if (attempts >= maxAttempts) {
-        logger(
-          'WARN',
-          `[AutoFill] Reached maximum attempts (${maxAttempts}), stopping auto-fill process`
-        )
       }
 
       const finalQueueSize = this.queueManager.getQueue().length
@@ -1425,14 +1018,9 @@ class AutoPlayService {
 
   private async fallbackToRandomTrack(): Promise<boolean> {
     if (!this.username) {
-      logger('ERROR', '[Fallback] No username available for fallback')
       return false
     }
 
-    logger(
-      'INFO',
-      `[Fallback] Starting fallback to random track for username: ${this.username}`
-    )
 
     // Get current queue to exclude existing tracks
     const currentQueue = this.queueManager.getQueue()
@@ -1449,10 +1037,6 @@ class AutoPlayService {
       const cooldown = loadCooldownState(contextId)
       const tracksInCooldown = getTracksInCooldown(cooldown)
       if (tracksInCooldown.length > 0) {
-        logger(
-          'INFO',
-          `[Fallback] Including ${tracksInCooldown.length} tracks in 24-hour cooldown into exclusions`
-        )
         excludedTrackIds = Array.from(
           new Set([...excludedTrackIds, ...tracksInCooldown])
         )
@@ -1460,10 +1044,6 @@ class AutoPlayService {
     } catch (error) {
       // Non-critical: Cooldown loading failure doesn't prevent fallback track selection,
       // we just won't exclude tracks in cooldown this time
-      logger(
-        'LOG',
-        `[Fallback] Failed to load cooldown exclusions: ${error instanceof Error ? error.message : 'Unknown error'}`
-      )
     }
 
     let attempts = 0
@@ -1472,10 +1052,6 @@ class AutoPlayService {
       attempts++
       try {
         const requestBody = { username: this.username, excludedTrackIds }
-        logger(
-          'INFO',
-          `[Fallback] Sending random track request (attempt ${attempts}): ${JSON.stringify(requestBody)}`
-        )
 
         const controller = new AbortController()
         const timeoutId = setTimeout(() => controller.abort(), 10000)
@@ -1494,10 +1070,6 @@ class AutoPlayService {
 
         if (!response.ok) {
           const errorBody = await response.json()
-          logger(
-            'ERROR',
-            `[Fallback] Random track API error: ${JSON.stringify(errorBody)}`
-          )
           if (response.status === 404) {
             // No tracks available after exclusion
             return false
@@ -1519,25 +1091,13 @@ class AutoPlayService {
           }
         }
 
-        logger(
-          'INFO',
-          `[Fallback] Random track response: ${JSON.stringify(result)}`
-        )
 
         if (result.success && result.track) {
           // Double-check exclusion (shouldn't be needed, but just in case)
           if (excludedTrackIds.includes(result.track.spotify_track_id)) {
-            logger(
-              'WARN',
-              `[Fallback] Received duplicate track (already in playlist): ${result.track.name}, retrying...`
-            )
             continue
           }
 
-          logger(
-            'INFO',
-            `[Fallback] Adding random track to queue: ${result.track.name} by ${result.track.artist}`
-          )
 
           // Add the random track to the queue
           const playlistController = new AbortController()
@@ -1573,16 +1133,8 @@ class AutoPlayService {
           if (!playlistResponse.ok) {
             const playlistError = await playlistResponse.json()
             if (playlistResponse.status === 409) {
-              logger(
-                'INFO',
-                `[Fallback] Track already in playlist (409): ${result.track.name}, retrying...`
-              )
               continue
             }
-            logger(
-              'ERROR',
-              `[Fallback] Failed to add random track to playlist: ${JSON.stringify(playlistError)}`
-            )
             return false
           } else {
           }
@@ -1601,17 +1153,9 @@ class AutoPlayService {
               result.track.spotify_track_id
             )
             saveCooldownState(contextId, updated)
-            logger(
-              'INFO',
-              `[Fallback] Recorded track addition to 24-hour cooldown (trackId=${result.track.spotify_track_id})`
-            )
           } catch (error) {
             // Non-critical: Cooldown recording failure doesn't prevent track addition,
             // we just won't track this particular track in the cooldown
-            logger(
-              'LOG',
-              `[Fallback] Failed to record track in cooldown: ${error instanceof Error ? error.message : 'Unknown error'}`
-            )
           }
 
           // Show popup notification for fallback track
@@ -1628,16 +1172,9 @@ class AutoPlayService {
           })
           return true
         } else {
-          logger('ERROR', '[Fallback] No random track available for fallback')
           return false
         }
       } catch (error) {
-        logger(
-          'ERROR',
-          '[Fallback] Fallback to random track failed',
-          undefined,
-          error as Error
-        )
         if (this.addLog) {
           this.addLog(
             'ERROR',
@@ -1648,10 +1185,6 @@ class AutoPlayService {
         }
       }
     }
-    logger(
-      'WARN',
-      '[Fallback] Exceeded max attempts to find a unique random track'
-    )
     return false
   }
 
@@ -1694,18 +1227,10 @@ class AutoPlayService {
     isPredictive: boolean = false
   ): Promise<void> {
     if (!this.deviceId) {
-      logger(
-        'ERROR',
-        '[playNextTrack] No device ID available to play next track'
-      )
       return
     }
 
     // Log track transition attempt with context
-    logger(
-      'INFO',
-      `[playNextTrack] Starting track transition - Track: ${track.tracks.name} (${track.tracks.spotify_track_id}), Device: ${this.deviceId}, Queue ID: ${track.id}, Mode: ${isPredictive ? 'predictive' : 'reactive'}`
-    )
 
     // Always transfer playback to the app's device before playing
     // Add retry logic with exponential backoff for transfer failures
@@ -1730,20 +1255,8 @@ class AutoPlayService {
         transferAttempt++
         if (transferAttempt <= maxTransferRetries) {
           const retryDelay = 1000 * transferAttempt // Exponential backoff: 1s, 2s
-          logger(
-            'WARN',
-            `[playNextTrack] Device transfer failed (attempt ${transferAttempt}/${maxTransferRetries + 1}), retrying in ${retryDelay}ms... Device: ${this.deviceId}, Track: ${track.tracks.name}`,
-            undefined,
-            transferErrors[transferErrors.length - 1]
-          )
           await new Promise((resolve) => setTimeout(resolve, retryDelay))
         } else {
-          logger(
-            'WARN',
-            `[playNextTrack] Device transfer failed after ${maxTransferRetries + 1} attempts. Attempting to check if device is already active and proceed with playback. Device: ${this.deviceId}, Track: ${track.tracks.name}, Errors: ${transferErrors.length}`,
-            undefined,
-            transferErrors[transferErrors.length - 1]
-          )
 
           // Fallback: Check if device is already active via alternative method
           try {
@@ -1755,33 +1268,15 @@ class AutoPlayService {
               method: 'GET'
             })
 
-            logger(
-              'INFO',
-              `[playNextTrack] Fallback device check - Device ID: ${playbackState?.device?.id}, Is Active: ${playbackState?.device?.is_active}, Is Playing: ${playbackState?.is_playing}`
-            )
 
             if (
               playbackState?.device?.id === this.deviceId &&
               playbackState.device.is_active
             ) {
-              logger(
-                'INFO',
-                `[playNextTrack] Device ${this.deviceId} is already active - proceeding with playback despite transfer verification failure`
-              )
               transferred = true // Treat as success since device is active
             } else {
-              logger(
-                'ERROR',
-                `[playNextTrack] Device ${this.deviceId} is not active. Current device: ${playbackState?.device?.id || 'none'}, Is Active: ${playbackState?.device?.is_active || false}. Cannot proceed with playback.`
-              )
             }
           } catch (fallbackError) {
-            logger(
-              'WARN',
-              `[playNextTrack] Failed to verify device state via fallback method, but attempting playback anyway. Error: ${fallbackError instanceof Error ? fallbackError.message : String(fallbackError)}`,
-              undefined,
-              fallbackError as Error
-            )
             // Attempt playback anyway - device might be active but API is having issues
             transferred = true
           }
@@ -1790,12 +1285,6 @@ class AutoPlayService {
     }
 
     if (!transferred) {
-      logger(
-        'WARN',
-        `[playNextTrack] Failed to transfer playback to app device: ${this.deviceId} after all retry attempts. Attempting playback anyway as last resort. Track: ${track.tracks.name}, Queue ID: ${track.id}, Total transfer errors: ${transferErrors.length}`,
-        undefined,
-        transferErrors[transferErrors.length - 1]
-      )
       // Don't return early - attempt playback anyway as last resort
       // Device might be active but transfer API is having issues
       // If playback fails, error recovery in catch block will handle it
@@ -1817,70 +1306,32 @@ class AutoPlayService {
         currentPlaybackState.item.id === track.tracks.spotify_track_id &&
         currentPlaybackState.is_playing
       ) {
-        logger(
-          'WARN',
-          `[playNextTrack] Track ${track.tracks.name} (${track.tracks.spotify_track_id}) is already playing. Removing from queue and attempting next track.`
-        )
         // Remove duplicate track from queue and try next track
         try {
           await this.queueManager.markAsPlayed(track.id)
-          logger(
-            'INFO',
-            `[playNextTrack] Removed duplicate track from queue: ${track.id}`
-          )
         } catch (error) {
-          logger(
-            'ERROR',
-            `[playNextTrack] Failed to remove duplicate track from queue. Track: ${track.tracks.name}, Queue ID: ${track.id}`,
-            undefined,
-            error as Error
-          )
         }
 
         // Attempt to play the next track instead of returning early
         const nextTrack = this.queueManager.getNextTrack()
         if (nextTrack) {
-          logger(
-            'INFO',
-            `[playNextTrack] Attempting to play next track after duplicate detection: ${nextTrack.tracks.name} (${nextTrack.tracks.spotify_track_id}), Queue ID: ${nextTrack.id}`
-          )
           try {
             await this.playNextTrack(nextTrack, false)
             return // Success - exit early
           } catch (error) {
-            logger(
-              'ERROR',
-              `[playNextTrack] Failed to play next track after duplicate detection. Track: ${nextTrack.tracks.name}, Queue ID: ${nextTrack.id}`,
-              undefined,
-              error as Error
-            )
             // Error recovery in catch block will handle further attempts
           }
         } else {
-          logger(
-            'WARN',
-            '[playNextTrack] No next track available after duplicate detection'
-          )
         }
         return
       }
     } catch (apiError) {
       // If we can't verify, log warning but continue with playback
-      logger(
-        'WARN',
-        '[playNextTrack] Failed to verify current playback state before playing next track, continuing anyway',
-        undefined,
-        apiError as Error
-      )
     }
 
     try {
       const trackUri = buildTrackUri(track.tracks.spotify_track_id)
 
-      logger(
-        'INFO',
-        `[playNextTrack] Attempting to play track URI: ${trackUri} on device: ${this.deviceId}, Mode: ${isPredictive ? 'predictive' : 'reactive'}`
-      )
 
       await sendApiRequest({
         path: 'me/player/play',
@@ -1891,10 +1342,6 @@ class AutoPlayService {
         }
       })
 
-      logger(
-        'INFO',
-        `[playNextTrack] Successfully started playback of track: ${track.tracks.name} (${track.tracks.spotify_track_id}), Queue ID: ${track.id}`
-      )
 
       // Update queue manager with currently playing track so getNextTrack() excludes it
       this.queueManager.setCurrentlyPlayingTrack(track.tracks.spotify_track_id)
@@ -1903,12 +1350,6 @@ class AutoPlayService {
     } catch (error) {
       const errorMessage =
         error instanceof Error ? error.message : String(error)
-      logger(
-        'ERROR',
-        `[playNextTrack] Failed to play next track. Track: ${track.tracks.name} (${track.tracks.spotify_track_id}), Queue ID: ${track.id}, Device: ${this.deviceId}, Mode: ${isPredictive ? 'predictive' : 'reactive'}`,
-        undefined,
-        error as Error
-      )
 
       // Check if error is transient (network, timeout) vs permanent (restriction violated)
       const isTransientError =
@@ -1919,10 +1360,6 @@ class AutoPlayService {
 
       // For transient errors, attempt one retry before giving up
       if (isTransientError) {
-        logger(
-          'WARN',
-          `[playNextTrack] Transient error detected, attempting retry for track: ${track.tracks.name}`
-        )
         try {
           await new Promise((resolve) => setTimeout(resolve, 1000)) // Wait 1s before retry
           await sendApiRequest({
@@ -1933,19 +1370,9 @@ class AutoPlayService {
               uris: [buildTrackUri(track.tracks.spotify_track_id)]
             }
           })
-          logger(
-            'INFO',
-            `[playNextTrack] Retry successful for track: ${track.tracks.name}`
-          )
           this.onNextTrackStarted?.(track)
           return // Success - exit early
         } catch (retryError) {
-          logger(
-            'ERROR',
-            `[playNextTrack] Retry also failed for track: ${track.tracks.name}`,
-            undefined,
-            retryError as Error
-          )
           // Continue with error recovery below
         }
       }
@@ -1953,35 +1380,17 @@ class AutoPlayService {
       // Error recovery: attempt to remove problematic track and try next track
       try {
         await this.queueManager.markAsPlayed(track.id)
-        logger(
-          'INFO',
-          `[playNextTrack] Removed problematic track from queue: ${track.id}`
-        )
 
         // Try to play the next track in queue
         const nextTrack = this.queueManager.getNextTrack()
         if (nextTrack) {
-          logger(
-            'INFO',
-            `[playNextTrack] Attempting to play next track after error recovery: ${nextTrack.tracks.name} (${nextTrack.tracks.spotify_track_id}), Queue ID: ${nextTrack.id}`
-          )
           // Recursively attempt to play next track (non-predictive mode)
           await this.playNextTrack(nextTrack, false)
           // If successful, don't reset predictive state
           return
         } else {
-          logger(
-            'WARN',
-            '[playNextTrack] No next track available after error recovery'
-          )
         }
       } catch (recoveryError) {
-        logger(
-          'ERROR',
-          `[playNextTrack] Error recovery failed. Track: ${track.tracks.name}, Queue ID: ${track.id}`,
-          undefined,
-          recoveryError as Error
-        )
       }
 
       // Only reset predictive state if no recovery was possible
@@ -2003,7 +1412,6 @@ class AutoPlayService {
 
       return response?.access_token || null
     } catch (error) {
-      logger('ERROR', 'Failed to get access token', undefined, error as Error)
       return null
     }
   }
@@ -2052,10 +1460,6 @@ class AutoPlayService {
     // This prevents stale track preparation after state changes (e.g., seeking)
     this.lastPlaybackState = null
     this.lastTrackId = null
-    logger(
-      'INFO',
-      '[resetPredictiveState] Reset predictive state - forcing fresh playback check'
-    )
   }
 
   public resetAfterSeek(): void {

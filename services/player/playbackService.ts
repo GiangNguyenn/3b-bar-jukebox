@@ -60,10 +60,6 @@ export class PlaybackService {
     // Periodically reset the promise chain to prevent unbounded growth
     // This prevents memory accumulation in long-running sessions
     if (this.operationCount % this.RESET_THRESHOLD === 0) {
-      this.log(
-        'INFO',
-        `Resetting promise chain after ${this.operationCount} operations`
-      )
       // Wait for current chain to complete, then reset
       await this.operationQueue.catch(() => {
         // Ignore errors from previous chain
@@ -85,10 +81,8 @@ export class PlaybackService {
       }
 
       // 2. Execute the current operation
-      this.log('INFO', `[${operationName}] Starting operation`)
       try {
         await operation()
-        this.log('INFO', `[${operationName}] Operation completed`)
       } finally {
         this.pendingOperations = Math.max(0, this.pendingOperations - 1)
       }
@@ -102,7 +96,6 @@ export class PlaybackService {
     // for the NEXT item. But if this one fails, the NEXT item should still run (after this one finishes).
     // So operationQueue should always point to a RESOLVED promise when this one is done (even if failed).
     this.operationQueue = executionPromise.catch((err) => {
-      this.log('ERROR', `[${operationName}] Operation failed`, err)
       // Return void to resolve the queue promise
     })
 

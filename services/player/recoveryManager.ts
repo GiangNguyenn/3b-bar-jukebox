@@ -49,16 +49,11 @@ export class RecoveryManager {
    */
   canAttemptRecovery(): boolean {
     if (this.failureCount >= this.maxRetries) {
-      this.log('WARN', `Max retries (${this.maxRetries}) exceeded`)
       return false
     }
 
     if (this.isInCooldown()) {
       const remainingMs = this.cooldownMs - (Date.now() - this.lastAttemptTime)
-      this.log(
-        'WARN',
-        `In cooldown period (${Math.ceil(remainingMs / 1000)}s remaining)`
-      )
       return false
     }
 
@@ -82,10 +77,6 @@ export class RecoveryManager {
   recordAttempt(): void {
     this.failureCount++
     this.lastAttemptTime = Date.now()
-    this.log(
-      'INFO',
-      `Recovery attempt recorded (count: ${this.failureCount}/${this.maxRetries})`
-    )
   }
 
   /**
@@ -94,10 +85,6 @@ export class RecoveryManager {
    */
   recordSuccess(): void {
     if (this.failureCount > 0) {
-      this.log(
-        'INFO',
-        `Recovery successful after ${this.failureCount} attempts - resetting state`
-      )
     }
     this.failureCount = 0
     this.lastAttemptTime = 0
@@ -116,7 +103,6 @@ export class RecoveryManager {
    * Useful for manual recovery or cleanup.
    */
   reset(): void {
-    this.log('INFO', 'Resetting recovery state')
     this.failureCount = 0
     this.lastAttemptTime = 0
   }
