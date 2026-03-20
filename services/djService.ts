@@ -65,6 +65,13 @@ class DJService {
     localStorage.setItem('duckOverlayMode', String(enabled))
   }
 
+  invalidatePrefetch(): void {
+    if (this.prefetchState !== null) {
+      log('invalidatePrefetch — discarding stale prefetch due to language change')
+      this.prefetchState = null
+    }
+  }
+
   private playAudioBlob(
     blob: Blob,
     waitForEnd: boolean,
@@ -144,6 +151,9 @@ class DJService {
     trackName: string,
     artistName: string
   ): Promise<Blob | null> {
+    const rawLang = localStorage.getItem('djLanguage')
+    const language: 'english' | 'vietnamese' =
+      rawLang === 'vietnamese' ? 'vietnamese' : 'english'
     try {
       const scriptRes = await fetch('/api/dj-script', {
         method: 'POST',
@@ -151,7 +161,8 @@ class DJService {
         body: JSON.stringify({
           trackName,
           artistName,
-          recentScripts: this.recentScripts
+          recentScripts: this.recentScripts,
+          language
         })
       })
       if (!scriptRes.ok) {
@@ -171,7 +182,7 @@ class DJService {
       const ttsRes = await fetch('/api/dj-tts', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text: data.script })
+        body: JSON.stringify({ text: data.script, language })
       })
       if (!ttsRes.ok) {
         warn(`/api/dj-tts ${ttsRes.status}`)

@@ -1,5 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 
+const ENGLISH_TTS_MODEL = 'tts-kokoro'
+const ENGLISH_TTS_VOICE = 'af_nova'
+const VIETNAMESE_TTS_MODEL = 'tts-qwen3-1-7b'
+
 export async function POST(request: NextRequest) {
   const apiKey = process.env.VENICE_AI_API_KEY
   if (!apiKey) {
@@ -16,7 +20,8 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Invalid request body' }, { status: 400 })
   }
 
-  const { text } = body as Record<string, unknown>
+  const { text, language } = body as Record<string, unknown>
+  const isVietnamese = language === 'vietnamese'
 
   if (!text || typeof text !== 'string') {
     return NextResponse.json(
@@ -34,12 +39,11 @@ export async function POST(request: NextRequest) {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${apiKey}`
         },
-        body: JSON.stringify({
-          model: 'tts-kokoro',
-          voice: 'af_nova',
-          input: text,
-          response_format: 'mp3'
-        })
+        body: JSON.stringify(
+          isVietnamese
+            ? { model: VIETNAMESE_TTS_MODEL, input: text, response_format: 'mp3' }
+            : { model: ENGLISH_TTS_MODEL, voice: ENGLISH_TTS_VOICE, input: text, response_format: 'mp3' }
+        )
       }
     )
 

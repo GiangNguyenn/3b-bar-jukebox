@@ -1124,6 +1124,19 @@ class PlayerLifecycleService {
     await this.playNextTrack(nextTrack)
   }
 
+  /**
+   * User-initiated skip: play the given next track immediately without pausing
+   * first or triggering a DJ announcement. Bypasses playNextFromQueue to avoid
+   * the pause → SDK state-change → handleTrackFinished race condition.
+   */
+  async skipToTrack(nextTrack: JukeboxQueueItem): Promise<void> {
+    this.log(
+      'INFO',
+      `[skipToTrack] User-initiated skip to: ${nextTrack.tracks.name}`
+    )
+    await this.playNextTrack(nextTrack)
+  }
+
   async reloadSDK(): Promise<void> {
     // Phase 1: Delegate SDK reloading to spotifyPlayer service
     await spotifyPlayer.reloadSDK()

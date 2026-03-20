@@ -186,22 +186,16 @@ export function usePlaybackControls(): {
         )
       }
 
-      // Delegate track-to-track transition to playerLifecycleService so that
-      // all playback starts flow through the same device management and
-      // duplicate protection logic used for natural track finishes.
-      try {
-        await playerLifecycleService.playNextFromQueue()
-      } catch (error) {
-        addLog(
-          'ERROR',
-          'Failed to play next track after skip',
-          'Playback',
-          error instanceof Error ? error : undefined
-        )
-        // On error, fall back to pausing playback to avoid a stuck state.
-        const spotifyApi = SpotifyApiService.getInstance()
-        await spotifyApi.pausePlayback(deviceId)
+      // Find the next track now (before any async gap) and play it directly.
+      // Using skipToTrack avoids the pause→SDK-state-change→handleTrackFinished
+      // race condition that playNextFromQueue causes.
+      const nextTrack = queueManager.getNextTrack()
+      if (!nextTrack) {
+        addLog('WARN', 'No next track available to skip to', 'Playback')
+        return
       }
+
+      await playerLifecycleService.skipToTrack(nextTrack)
     } catch (error) {
       addLog(
         'ERROR',

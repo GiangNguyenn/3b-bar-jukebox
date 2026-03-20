@@ -303,10 +303,10 @@ class AutoPlayService {
           if (nextTrack) {
             logger(
               'INFO',
-              '[checkPlaybackState] No playback state but queue has tracks – delegating next track start to PlayerLifecycleService'
+              '[checkPlaybackState] No playback state but queue has tracks – starting next track directly (no DJ announcement)'
             )
             try {
-              await playerLifecycleService.playNextFromQueue()
+              await playerLifecycleService.skipToTrack(nextTrack)
             } catch (error) {
               logger(
                 'ERROR',

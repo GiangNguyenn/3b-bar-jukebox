@@ -10,6 +10,7 @@ import { useState, useRef, useEffect } from 'react'
 import { getAutoPlayService } from '@/services/autoPlayService'
 import { DJModeToggle } from './dj-mode-toggle'
 import { DJFrequencySelect } from './dj-frequency-select'
+import { DJLanguageSelect } from './dj-language-select'
 import { DuckOverlayToggle } from './duck-overlay-toggle'
 
 interface JukeboxSectionProps {
@@ -314,6 +315,7 @@ export function JukeboxSection({
         {/* DJ Mode */}
         <DJModeToggle />
         <DJFrequencySelect />
+        <DJLanguageSelect />
         <DuckOverlayToggle />
       </div>
     </div>
