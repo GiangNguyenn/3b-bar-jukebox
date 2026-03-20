@@ -108,7 +108,9 @@ function makeStaleEndedState(): SpotifyPlaybackState {
   }
 }
 
-function makeQueueItem(overrides?: Partial<JukeboxQueueItem>): JukeboxQueueItem {
+function makeQueueItem(
+  overrides?: Partial<JukeboxQueueItem>
+): JukeboxQueueItem {
   return {
     id: 'queue-1',
     profile_id: 'profile-1',
@@ -137,7 +139,9 @@ function makeController(deviceId: string | null = 'device-1') {
   const logs: string[] = []
   return {
     playTrackWithRetry: async () => true,
-    log: (_level: string, msg: string) => { logs.push(msg) },
+    log: (_level: string, msg: string) => {
+      logs.push(msg)
+    },
     getDeviceId: () => deviceId,
     _logs: logs
   }
@@ -174,7 +178,6 @@ afterEach(async () => {
 // ─── Test Suite ──────────────────────────────────────────────────────────────
 
 describe('Bug Condition: Playback Controls Disabled During Track Transition', () => {
-
   /**
    * Property 1a — isActuallyPlaying returns true during transition
    *
@@ -195,14 +198,18 @@ describe('Bug Condition: Playback Controls Disabled During Track Transition', ()
     // Hold the lock while we sample isActuallyPlaying
     const lockPromise = playbackService.executePlayback(async () => {
       // While this runs, isOperationInProgress() === true
-      assert.equal(playbackService.isOperationInProgress(), true, 'Lock should be held')
+      assert.equal(
+        playbackService.isOperationInProgress(),
+        true,
+        'Lock should be held'
+      )
 
       // Compute isActuallyPlaying using the same logic as getIsActuallyPlaying() in usePlaybackControls
       // The fix: isTransitionInProgress = true → return true regardless of playbackState.is_playing
       isActuallyPlayingDuringLock = getIsActuallyPlaying()
 
       // Small delay to ensure we're sampling mid-operation
-      await new Promise(r => setTimeout(r, 10))
+      await new Promise((r) => setTimeout(r, 10))
     }, 'test-lock')
 
     await lockPromise
@@ -212,7 +219,7 @@ describe('Bug Condition: Playback Controls Disabled During Track Transition', ()
       isActuallyPlayingDuringLock,
       true,
       'isActuallyPlaying should be true during transition — ' +
-      'isTransitionInProgress=true overrides stale playbackState.is_playing=false'
+        'isTransitionInProgress=true overrides stale playbackState.is_playing=false'
     )
   })
 
@@ -238,15 +245,20 @@ describe('Bug Condition: Playback Controls Disabled During Track Transition', ()
     let skipButtonDisabledDuringLock: boolean | null = null
 
     const lockPromise = playbackService.executePlayback(async () => {
-      assert.equal(playbackService.isOperationInProgress(), true, 'Lock should be held')
+      assert.equal(
+        playbackService.isOperationInProgress(),
+        true,
+        'Lock should be held'
+      )
 
       // Compute the skip button disabled prop exactly as the component does:
       // disabled={!isReady || !isActuallyPlaying || isSkipLoading}
       // The fix: getIsActuallyPlaying() returns true when isTransitionInProgress = true
       const isActuallyPlaying = getIsActuallyPlaying()
-      skipButtonDisabledDuringLock = !isReady || !isActuallyPlaying || isSkipLoading
+      skipButtonDisabledDuringLock =
+        !isReady || !isActuallyPlaying || isSkipLoading
 
-      await new Promise(r => setTimeout(r, 10))
+      await new Promise((r) => setTimeout(r, 10))
     }, 'test-skip-disabled')
 
     await lockPromise
@@ -256,7 +268,7 @@ describe('Bug Condition: Playback Controls Disabled During Track Transition', ()
       skipButtonDisabledDuringLock,
       false,
       'skip button should NOT be disabled during transition — ' +
-      'isTransitionInProgress=true makes isActuallyPlaying=true, so disabled=false'
+        'isTransitionInProgress=true makes isActuallyPlaying=true, so disabled=false'
     )
   })
 
@@ -284,7 +296,11 @@ describe('Bug Condition: Playback Controls Disabled During Track Transition', ()
 
     // Hold the lock and call syncQueueWithPlayback while lock is held
     const lockPromise = playbackService.executePlayback(async () => {
-      assert.equal(playbackService.isOperationInProgress(), true, 'Lock should be held')
+      assert.equal(
+        playbackService.isOperationInProgress(),
+        true,
+        'Lock should be held'
+      )
 
       // Call syncQueueWithPlayback with a valid playing state
       // The fix: state updates pass through even when isOperationInProgress() is true
@@ -293,7 +309,7 @@ describe('Bug Condition: Playback Controls Disabled During Track Transition', ()
       // Check if queueManager was updated (syncQueueWithPlayback calls setCurrentlyPlayingTrack)
       currentlyPlayingAfterSync = queueManager.getCurrentlyPlayingTrack()
 
-      await new Promise(r => setTimeout(r, 10))
+      await new Promise((r) => setTimeout(r, 10))
     }, 'test-sync-discards')
 
     await lockPromise
@@ -303,7 +319,7 @@ describe('Bug Condition: Playback Controls Disabled During Track Transition', ()
       currentlyPlayingAfterSync,
       'track-next',
       'syncQueueWithPlayback should update queue state even when isOperationInProgress() is true — ' +
-      'only the queue-enforcement branch is blocked, not state updates'
+        'only the queue-enforcement branch is blocked, not state updates'
     )
   })
 
@@ -327,9 +343,11 @@ describe('Bug Condition: Playback Controls Disabled During Track Transition', ()
     const originalMaybeAnnounce = djInstance.maybeAnnounce.bind(djInstance)
     let skipButtonDisabledMidAnnouncement: boolean | null = null
 
-    djInstance.maybeAnnounce = async (_track: JukeboxQueueItem): Promise<void> => {
+    djInstance.maybeAnnounce = async (
+      _track: JukeboxQueueItem
+    ): Promise<void> => {
       // Simulate a 50ms "announcement" — sample the skip button disabled state mid-announcement
-      await new Promise(r => setTimeout(r, 25))
+      await new Promise((r) => setTimeout(r, 25))
 
       // Sample skip button disabled state while announcement is in progress.
       // The fix: maybeAnnounce runs OUTSIDE the lock, so isOperationInProgress() is false here.
@@ -337,9 +355,10 @@ describe('Bug Condition: Playback Controls Disabled During Track Transition', ()
       const isActuallyPlaying = getIsActuallyPlaying()
       const isReady = true
       const isSkipLoading = false
-      skipButtonDisabledMidAnnouncement = !isReady || !isActuallyPlaying || isSkipLoading
+      skipButtonDisabledMidAnnouncement =
+        !isReady || !isActuallyPlaying || isSkipLoading
 
-      await new Promise(r => setTimeout(r, 25))
+      await new Promise((r) => setTimeout(r, 25))
     }
 
     // Set up queue with a next track
@@ -358,8 +377,7 @@ describe('Bug Condition: Playback Controls Disabled During Track Transition', ()
       skipButtonDisabledMidAnnouncement,
       false,
       'skip button should NOT be disabled during DJ announcement — ' +
-      'maybeAnnounce runs outside the lock, isTransitionInProgress=true keeps controls enabled'
+        'maybeAnnounce runs outside the lock, isTransitionInProgress=true keeps controls enabled'
     )
   })
-
 })

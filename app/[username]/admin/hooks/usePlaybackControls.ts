@@ -19,7 +19,8 @@ export function usePlaybackControls(): {
 } {
   const [isLoading, setIsLoading] = useState(false)
   const [isSkipLoading, setIsSkipLoading] = useState(false)
-  const { deviceId, playbackState, setPlaybackState, isTransitionInProgress } = useSpotifyPlayerStore()
+  const { deviceId, playbackState, setPlaybackState, isTransitionInProgress } =
+    useSpotifyPlayerStore()
   const { addLog } = useConsoleLogsContext()
 
   const getIsActuallyPlaying = useCallback(() => {

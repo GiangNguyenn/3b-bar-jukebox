@@ -16,7 +16,10 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Invalid request body' }, { status: 400 })
   }
 
-  const { trackName, artistName, recentScripts } = body as Record<string, unknown>
+  const { trackName, artistName, recentScripts } = body as Record<
+    string,
+    unknown
+  >
 
   if (!trackName || typeof trackName !== 'string') {
     return NextResponse.json(
@@ -32,7 +35,9 @@ export async function POST(request: NextRequest) {
   }
 
   const recentScriptsList = Array.isArray(recentScripts)
-    ? (recentScripts as string[]).filter((s) => typeof s === 'string').slice(0, 5)
+    ? (recentScripts as string[])
+        .filter((s) => typeof s === 'string')
+        .slice(0, 5)
     : []
 
   const recentScriptsNote =

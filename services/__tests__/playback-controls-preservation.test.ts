@@ -26,9 +26,15 @@ import type { PlayerSDKState } from '../playerLifecycle/types'
 const localStorageStore: Record<string, string> = {}
 const localStorageMock = {
   getItem: (key: string) => localStorageStore[key] ?? null,
-  setItem: (key: string, value: string) => { localStorageStore[key] = value },
-  removeItem: (key: string) => { delete localStorageStore[key] },
-  clear: () => { Object.keys(localStorageStore).forEach(k => delete localStorageStore[k]) }
+  setItem: (key: string, value: string) => {
+    localStorageStore[key] = value
+  },
+  removeItem: (key: string) => {
+    delete localStorageStore[key]
+  },
+  clear: () => {
+    Object.keys(localStorageStore).forEach((k) => delete localStorageStore[k])
+  }
 }
 // @ts-ignore
 global.localStorage = localStorageMock
@@ -137,7 +143,6 @@ afterEach(async () => {
 // ─── Test Suite ──────────────────────────────────────────────────────────────
 
 describe('Preservation: Auto-Play, DJ Sequencing, and Race Condition Prevention', () => {
-
   /**
    * P2a — Auto-play preservation (no DJ)
    *
@@ -147,9 +152,13 @@ describe('Preservation: Auto-Play, DJ Sequencing, and Race Condition Prevention'
    * We test across multiple queue configurations to simulate "for any" semantics.
    */
   describe('P2a: Next track plays exactly once after normal transition (no DJ)', () => {
-
     // Parameterized over several next-track IDs to simulate property-style coverage
-    const nextTrackIds = ['track-next-1', 'track-next-2', 'track-next-abc', 'track-xyz-999']
+    const nextTrackIds = [
+      'track-next-1',
+      'track-next-2',
+      'track-next-abc',
+      'track-xyz-999'
+    ]
 
     for (const nextTrackId of nextTrackIds) {
       test(`plays exactly once for next track: ${nextTrackId}`, async () => {
@@ -196,7 +205,6 @@ describe('Preservation: Auto-Play, DJ Sequencing, and Race Condition Prevention'
    * Validates: Requirement 3.1, 3.3
    */
   describe('P2a (DJ): Next track plays exactly once after DJ announcement', () => {
-
     const nextTrackIds = ['track-dj-1', 'track-dj-2']
 
     for (const nextTrackId of nextTrackIds) {
@@ -218,9 +226,11 @@ describe('Preservation: Auto-Play, DJ Sequencing, and Race Condition Prevention'
         // Mock maybeAnnounce to avoid real network calls but still execute
         const djInstance = DJService.getInstance()
         const originalMaybeAnnounce = djInstance.maybeAnnounce.bind(djInstance)
-        djInstance.maybeAnnounce = async (_track: JukeboxQueueItem): Promise<void> => {
+        djInstance.maybeAnnounce = async (
+          _track: JukeboxQueueItem
+        ): Promise<void> => {
           // Simulate a brief announcement without real network
-          await new Promise(r => setTimeout(r, 5))
+          await new Promise((r) => setTimeout(r, 5))
         }
 
         try {
@@ -254,7 +264,6 @@ describe('Preservation: Auto-Play, DJ Sequencing, and Race Condition Prevention'
    * Validates: Requirement 3.3
    */
   describe('P2b: maybeAnnounce is called before playNextTrackImpl in DJ Mode', () => {
-
     test('maybeAnnounce completes before playTrackWithRetry is called', async () => {
       localStorage.setItem('djMode', 'true')
       localStorage.setItem('djFrequency', 'always')
@@ -282,34 +291,32 @@ describe('Preservation: Auto-Play, DJ Sequencing, and Race Condition Prevention'
       // Mock maybeAnnounce to record when it's called and when it completes
       const djInstance = DJService.getInstance()
       const originalMaybeAnnounce = djInstance.maybeAnnounce.bind(djInstance)
-      djInstance.maybeAnnounce = async (_track: JukeboxQueueItem): Promise<void> => {
+      djInstance.maybeAnnounce = async (
+        _track: JukeboxQueueItem
+      ): Promise<void> => {
         callOrder.push('announce:start')
-        await new Promise(r => setTimeout(r, 10))
+        await new Promise((r) => setTimeout(r, 10))
         callOrder.push('announce:end')
       }
 
       try {
-        await synchronizer.handleTrackFinished(makeFinishedState(finishedTrackId))
+        await synchronizer.handleTrackFinished(
+          makeFinishedState(finishedTrackId)
+        )
       } finally {
         djInstance.maybeAnnounce = originalMaybeAnnounce
       }
 
       // Property: announce:start and announce:end both appear before any play: call
       const announceEndIdx = callOrder.indexOf('announce:end')
-      const playIdx = callOrder.findIndex(e => e.startsWith('play:'))
+      const playIdx = callOrder.findIndex((e) => e.startsWith('play:'))
 
-      assert.ok(
-        announceEndIdx !== -1,
-        'maybeAnnounce should have been called'
-      )
-      assert.ok(
-        playIdx !== -1,
-        'playTrackWithRetry should have been called'
-      )
+      assert.ok(announceEndIdx !== -1, 'maybeAnnounce should have been called')
+      assert.ok(playIdx !== -1, 'playTrackWithRetry should have been called')
       assert.ok(
         announceEndIdx < playIdx,
         `maybeAnnounce must complete before playNextTrackImpl starts. ` +
-        `Call order: ${JSON.stringify(callOrder)}`
+          `Call order: ${JSON.stringify(callOrder)}`
       )
     })
 
@@ -344,15 +351,19 @@ describe('Preservation: Auto-Play, DJ Sequencing, and Race Condition Prevention'
         const djInstance = DJService.getInstance()
         const originalMaybeAnnounce = djInstance.maybeAnnounce.bind(djInstance)
         let announceWasCalled = false
-        djInstance.maybeAnnounce = async (_track: JukeboxQueueItem): Promise<void> => {
+        djInstance.maybeAnnounce = async (
+          _track: JukeboxQueueItem
+        ): Promise<void> => {
           announceWasCalled = true
           callOrder.push('announce:start')
-          await new Promise(r => setTimeout(r, 5))
+          await new Promise((r) => setTimeout(r, 5))
           callOrder.push('announce:end')
         }
 
         try {
-          await synchronizer.handleTrackFinished(makeFinishedState(finishedTrackId))
+          await synchronizer.handleTrackFinished(
+            makeFinishedState(finishedTrackId)
+          )
         } finally {
           djInstance.maybeAnnounce = originalMaybeAnnounce
         }
@@ -360,7 +371,7 @@ describe('Preservation: Auto-Play, DJ Sequencing, and Race Condition Prevention'
         // Property: if announce was called, it must complete before play
         if (announceWasCalled) {
           const announceEndIdx = callOrder.indexOf('announce:end')
-          const playIdx = callOrder.findIndex(e => e.startsWith('play:'))
+          const playIdx = callOrder.findIndex((e) => e.startsWith('play:'))
           if (playIdx !== -1) {
             assert.ok(
               announceEndIdx < playIdx,
@@ -370,7 +381,7 @@ describe('Preservation: Auto-Play, DJ Sequencing, and Race Condition Prevention'
         }
 
         // Property: play was called exactly once regardless of whether announce ran
-        const playCount = callOrder.filter(e => e.startsWith('play:')).length
+        const playCount = callOrder.filter((e) => e.startsWith('play:')).length
         assert.equal(
           playCount,
           1,
@@ -390,7 +401,6 @@ describe('Preservation: Auto-Play, DJ Sequencing, and Race Condition Prevention'
    * Validates: Requirement 3.4
    */
   describe('P2b (fallback): Baseline behavior when maybeAnnounce fails', () => {
-
     test('handleTrackFinished plays next track even when maybeAnnounce throws', async () => {
       localStorage.setItem('djMode', 'true')
       localStorage.setItem('djFrequency', 'always')
@@ -408,13 +418,17 @@ describe('Preservation: Auto-Play, DJ Sequencing, and Race Condition Prevention'
       // Mock maybeAnnounce to throw (simulates network failure)
       const djInstance = DJService.getInstance()
       const originalMaybeAnnounce = djInstance.maybeAnnounce.bind(djInstance)
-      djInstance.maybeAnnounce = async (_track: JukeboxQueueItem): Promise<void> => {
+      djInstance.maybeAnnounce = async (
+        _track: JukeboxQueueItem
+      ): Promise<void> => {
         throw new Error('Simulated DJ fetch failure')
       }
 
       let threwError = false
       try {
-        await synchronizer.handleTrackFinished(makeFinishedState(finishedTrackId))
+        await synchronizer.handleTrackFinished(
+          makeFinishedState(finishedTrackId)
+        )
       } catch {
         threwError = true
       } finally {
@@ -452,7 +466,6 @@ describe('Preservation: Auto-Play, DJ Sequencing, and Race Condition Prevention'
    * Validates: Requirement 3.6 (serialized queue prevents concurrent execution)
    */
   describe('P2c: Serialized queue prevents concurrent execution of track transitions', () => {
-
     test('concurrent handleTrackFinished calls run sequentially (not concurrently)', async () => {
       const executionOrder: string[] = []
       let concurrentCount = 0
@@ -463,7 +476,7 @@ describe('Preservation: Auto-Play, DJ Sequencing, and Race Condition Prevention'
           concurrentCount++
           maxConcurrent = Math.max(maxConcurrent, concurrentCount)
           executionOrder.push(`play-start:${trackUri}`)
-          await new Promise(r => setTimeout(r, 5)) // simulate async work
+          await new Promise((r) => setTimeout(r, 5)) // simulate async work
           executionOrder.push(`play-end:${trackUri}`)
           concurrentCount--
           return true
@@ -494,7 +507,7 @@ describe('Preservation: Auto-Play, DJ Sequencing, and Race Condition Prevention'
         maxConcurrent,
         1,
         `Expected max 1 concurrent play call (serialized queue), got ${maxConcurrent}. ` +
-        `Execution order: ${JSON.stringify(executionOrder)}`
+          `Execution order: ${JSON.stringify(executionOrder)}`
       )
 
       // Property: play-start and play-end are interleaved correctly (no overlap)
@@ -507,7 +520,7 @@ describe('Preservation: Auto-Play, DJ Sequencing, and Race Condition Prevention'
             nextEvent,
             `play-end:${trackUri}`,
             `play-start:${trackUri} must be immediately followed by play-end:${trackUri}. ` +
-            `Got: ${nextEvent}. Order: ${JSON.stringify(executionOrder)}`
+              `Got: ${nextEvent}. Order: ${JSON.stringify(executionOrder)}`
           )
         }
       }
@@ -539,7 +552,7 @@ describe('Preservation: Auto-Play, DJ Sequencing, and Race Condition Prevention'
       assert.ok(
         played.length <= 2,
         `Expected at most 2 play calls (third deduplicated), got ${played.length}. ` +
-        `Played: ${JSON.stringify(played)}`
+          `Played: ${JSON.stringify(played)}`
       )
     })
 
@@ -576,7 +589,7 @@ describe('Preservation: Auto-Play, DJ Sequencing, and Race Condition Prevention'
         played.length,
         2,
         `Expected 2 play calls for 2 distinct transitions, got ${played.length}. ` +
-        `Played: ${JSON.stringify(played)}`
+          `Played: ${JSON.stringify(played)}`
       )
     })
   })
@@ -593,7 +606,6 @@ describe('Preservation: Auto-Play, DJ Sequencing, and Race Condition Prevention'
    * so we verify the structural behavior: maybeAnnounce runs before play, and play happens.
    */
   describe('P2d: Duck & Overlay — announcement plays before next track starts', () => {
-
     test('with Duck & Overlay enabled, maybeAnnounce runs before playNextTrackImpl', async () => {
       localStorage.setItem('djMode', 'true')
       localStorage.setItem('djFrequency', 'always')
@@ -621,16 +633,20 @@ describe('Preservation: Auto-Play, DJ Sequencing, and Race Condition Prevention'
 
       const djInstance = DJService.getInstance()
       const originalMaybeAnnounce = djInstance.maybeAnnounce.bind(djInstance)
-      djInstance.maybeAnnounce = async (_track: JukeboxQueueItem): Promise<void> => {
+      djInstance.maybeAnnounce = async (
+        _track: JukeboxQueueItem
+      ): Promise<void> => {
         callOrder.push('announce:start')
         // Simulate duck overlay: non-blocking (waitForEnd=false in duck mode)
         // The real implementation calls playAudioBlob with waitForEnd=false when duck is enabled
-        await new Promise(r => setTimeout(r, 5))
+        await new Promise((r) => setTimeout(r, 5))
         callOrder.push('announce:end')
       }
 
       try {
-        await synchronizer.handleTrackFinished(makeFinishedState(finishedTrackId))
+        await synchronizer.handleTrackFinished(
+          makeFinishedState(finishedTrackId)
+        )
       } finally {
         djInstance.maybeAnnounce = originalMaybeAnnounce
         localStorage.setItem('duckOverlayMode', 'false')
@@ -644,7 +660,7 @@ describe('Preservation: Auto-Play, DJ Sequencing, and Race Condition Prevention'
 
       // Property: play was called after announce started
       const announceIdx = callOrder.indexOf('announce:start')
-      const playIdx = callOrder.findIndex(e => e.startsWith('play:'))
+      const playIdx = callOrder.findIndex((e) => e.startsWith('play:'))
 
       assert.ok(
         playIdx !== -1,
@@ -673,9 +689,15 @@ describe('Preservation: Auto-Play, DJ Sequencing, and Race Condition Prevention'
       await synchronizer.handleTrackFinished(makeFinishedState(finishedTrackId))
 
       const played = controller.getPlayedTracks()
-      assert.equal(played.length, 1, 'Next track should play without Duck & Overlay')
-      assert.ok(played[0].includes('track-next-noduck'), `Expected track-next-noduck, got: ${played[0]}`)
+      assert.equal(
+        played.length,
+        1,
+        'Next track should play without Duck & Overlay'
+      )
+      assert.ok(
+        played[0].includes('track-next-noduck'),
+        `Expected track-next-noduck, got: ${played[0]}`
+      )
     })
   })
-
 })

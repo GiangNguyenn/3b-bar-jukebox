@@ -148,7 +148,11 @@ class DJService {
       const scriptRes = await fetch('/api/dj-script', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ trackName, artistName, recentScripts: this.recentScripts })
+        body: JSON.stringify({
+          trackName,
+          artistName,
+          recentScripts: this.recentScripts
+        })
       })
       if (!scriptRes.ok) {
         warn(`/api/dj-script ${scriptRes.status}`)
@@ -160,7 +164,10 @@ class DJService {
         return null
       }
       // Track recent scripts to avoid repetition
-      this.recentScripts = [data.script, ...this.recentScripts].slice(0, RECENT_SCRIPTS_MAX)
+      this.recentScripts = [data.script, ...this.recentScripts].slice(
+        0,
+        RECENT_SCRIPTS_MAX
+      )
       const ttsRes = await fetch('/api/dj-tts', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
