@@ -67,7 +67,9 @@ class DJService {
 
   invalidatePrefetch(): void {
     if (this.prefetchState !== null) {
-      log('invalidatePrefetch — discarding stale prefetch due to language change')
+      log(
+        'invalidatePrefetch — discarding stale prefetch due to language change'
+      )
       this.prefetchState = null
     }
   }
@@ -174,6 +176,7 @@ class DJService {
         warn('empty script returned')
         return null
       }
+      log(`DJ script (${language}): "${data.script}"`)
       // Track recent scripts to avoid repetition
       this.recentScripts = [data.script, ...this.recentScripts].slice(
         0,

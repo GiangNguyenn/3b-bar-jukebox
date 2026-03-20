@@ -41,8 +41,17 @@ export async function POST(request: NextRequest) {
         },
         body: JSON.stringify(
           isVietnamese
-            ? { model: VIETNAMESE_TTS_MODEL, input: text, response_format: 'mp3' }
-            : { model: ENGLISH_TTS_MODEL, voice: ENGLISH_TTS_VOICE, input: text, response_format: 'mp3' }
+            ? {
+                model: VIETNAMESE_TTS_MODEL,
+                input: text,
+                response_format: 'mp3'
+              }
+            : {
+                model: ENGLISH_TTS_MODEL,
+                voice: ENGLISH_TTS_VOICE,
+                input: text,
+                response_format: 'mp3'
+              }
         )
       }
     )

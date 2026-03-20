@@ -5,6 +5,7 @@
 This feature adds Vietnamese as a selectable language for DJ Mode. The change is additive and surgical: a single `language` field flows from the admin UI through `DJService` into both the Script API and TTS API routes, where it selects the appropriate model and prompt. The English path is completely unchanged — no existing behaviour, model, prompt, or localStorage key is modified.
 
 Key constraints from the requirements:
+
 - Model IDs are **hardcoded constants** in the route files — no new environment variables.
 - Only `VENICE_AI_API_KEY` is used (already exists).
 - Vietnamese LLM: `qwen3-235b-a22b-instruct-2507`
@@ -143,6 +144,7 @@ export function DJLanguageSelect(): JSX.Element {
 The only change is in `fetchAudioBlob` — read `djLanguage` from localStorage and pass it to both API calls.
 
 **Before:**
+
 ```typescript
 private async fetchAudioBlob(trackName: string, artistName: string): Promise<Blob | null> {
   // ...
@@ -153,6 +155,7 @@ private async fetchAudioBlob(trackName: string, artistName: string): Promise<Blo
 ```
 
 **After:**
+
 ```typescript
 private async fetchAudioBlob(trackName: string, artistName: string): Promise<Blob | null> {
   const rawLang = localStorage.getItem('djLanguage')
@@ -172,29 +175,41 @@ No other methods in `DJService` change.
 Add two hardcoded model constants and branch on `language`.
 
 **Constants added at top of file:**
+
 ```typescript
 const ENGLISH_LLM_MODEL = 'llama-3.3-70b'
 const VIETNAMESE_LLM_MODEL = 'qwen3-235b-a22b-instruct-2507'
 ```
 
 **Request parsing — add `language` extraction:**
+
 ```typescript
 // Before
 const { trackName, artistName, recentScripts } = body as Record<string, unknown>
 
 // After
-const { trackName, artistName, recentScripts, language } = body as Record<string, unknown>
+const { trackName, artistName, recentScripts, language } = body as Record<
+  string,
+  unknown
+>
 const isVietnamese = language === 'vietnamese'
 ```
 
 **Venice AI call — branch on language:**
+
 ```typescript
 // Before
 body: JSON.stringify({
   model: 'llama-3.3-70b',
   messages: [
-    { role: 'system', content: 'No more than 2 sentences...' + recentScriptsNote },
-    { role: 'user', content: `Introduce the next track: "${trackName}" by ${artistName}.` }
+    {
+      role: 'system',
+      content: 'No more than 2 sentences...' + recentScriptsNote
+    },
+    {
+      role: 'user',
+      content: `Introduce the next track: "${trackName}" by ${artistName}.`
+    }
   ],
   max_tokens: 150
 })
@@ -202,7 +217,8 @@ body: JSON.stringify({
 // After
 const model = isVietnamese ? VIETNAMESE_LLM_MODEL : ENGLISH_LLM_MODEL
 const systemPrompt = isVietnamese
-  ? 'Không quá 2 câu có thể đọc trong 10 giây hoặc ít hơn. Bạn là một DJ radio tên DJ 3B đang chơi nhạc tại quán bia thủ công 3B Saigon. Hãy viết một đoạn giới thiệu ngắn bằng tiếng Việt tự nhiên cho bài hát tiếp theo. Ngắn gọn và tự nhiên.' + recentScriptsNote
+  ? 'Không quá 2 câu có thể đọc trong 10 giây hoặc ít hơn. Bạn là một DJ radio tên DJ 3B đang chơi nhạc tại quán bia thủ công 3B Saigon. Hãy viết một đoạn giới thiệu ngắn bằng tiếng Việt tự nhiên cho bài hát tiếp theo. Ngắn gọn và tự nhiên.' +
+    recentScriptsNote
   : 'No more than 2 sentences that can be spoken in 10 seconds or less.  Do not generate non english characters.  You are an laid back, relaxed and chill radio DJ called DJ 3B playing music in a craft beer bar called 3B Saigon. Write a short announcement of no more than 2 sentences introducing the next track. Be informative but concise.' +
     'You are aware that you are an AI with a female voice though do not say that.  Never mention the date or time.' +
     recentScriptsNote
@@ -211,7 +227,10 @@ body: JSON.stringify({
   model,
   messages: [
     { role: 'system', content: systemPrompt },
-    { role: 'user', content: `Introduce the next track: "${trackName}" by ${artistName}.` }
+    {
+      role: 'user',
+      content: `Introduce the next track: "${trackName}" by ${artistName}.`
+    }
   ],
   max_tokens: 150
 })
@@ -222,6 +241,7 @@ body: JSON.stringify({
 Add two hardcoded model constants and branch on `language`.
 
 **Constants added at top of file:**
+
 ```typescript
 const ENGLISH_TTS_MODEL = 'tts-kokoro'
 const ENGLISH_TTS_VOICE = 'af_nova'
@@ -229,6 +249,7 @@ const VIETNAMESE_TTS_MODEL = 'tts-qwen3-1-7b'
 ```
 
 **Request parsing — add `language` extraction:**
+
 ```typescript
 // Before
 const { text } = body as Record<string, unknown>
@@ -239,6 +260,7 @@ const isVietnamese = language === 'vietnamese'
 ```
 
 **Venice AI TTS call — branch on language:**
+
 ```typescript
 // Before
 body: JSON.stringify({
@@ -251,7 +273,12 @@ body: JSON.stringify({
 // After
 const ttsBody = isVietnamese
   ? { model: VIETNAMESE_TTS_MODEL, input: text, response_format: 'mp3' }
-  : { model: ENGLISH_TTS_MODEL, voice: ENGLISH_TTS_VOICE, input: text, response_format: 'mp3' }
+  : {
+      model: ENGLISH_TTS_MODEL,
+      voice: ENGLISH_TTS_VOICE,
+      input: text,
+      response_format: 'mp3'
+    }
 
 body: JSON.stringify(ttsBody)
 ```
@@ -260,8 +287,8 @@ body: JSON.stringify(ttsBody)
 
 ### localStorage entries (additions only)
 
-| Key            | Type   | Values                        | Default                          |
-| -------------- | ------ | ----------------------------- | -------------------------------- |
+| Key            | Type   | Values                       | Default                         |
+| -------------- | ------ | ---------------------------- | ------------------------------- |
 | `"djLanguage"` | string | `"english"` / `"vietnamese"` | absent = treated as `"english"` |
 
 Existing keys (`djMode`, `djFrequency`, `duckOverlayMode`) are unchanged.
@@ -273,7 +300,7 @@ interface DJScriptRequest {
   trackName: string
   artistName: string
   recentScripts?: string[]
-  language?: 'english' | 'vietnamese'  // new — absent defaults to "english"
+  language?: 'english' | 'vietnamese' // new — absent defaults to "english"
 }
 ```
 
@@ -282,69 +309,69 @@ interface DJScriptRequest {
 ```typescript
 interface DJTTSRequest {
   text: string
-  language?: 'english' | 'vietnamese'  // new — absent defaults to "english"
+  language?: 'english' | 'vietnamese' // new — absent defaults to "english"
 }
 ```
 
 ### Hardcoded model constants
 
-| Constant               | Value                          | Location              |
-| ---------------------- | ------------------------------ | --------------------- |
-| `ENGLISH_LLM_MODEL`    | `"llama-3.3-70b"`              | `dj-script/route.ts`  |
-| `VIETNAMESE_LLM_MODEL` | `"qwen3-235b-a22b-instruct-2507"` | `dj-script/route.ts`  |
-| `ENGLISH_TTS_MODEL`    | `"tts-kokoro"`                 | `dj-tts/route.ts`     |
-| `ENGLISH_TTS_VOICE`    | `"af_nova"`                    | `dj-tts/route.ts`     |
-| `VIETNAMESE_TTS_MODEL` | `"tts-qwen3-1-7b"`             | `dj-tts/route.ts`     |
+| Constant               | Value                             | Location             |
+| ---------------------- | --------------------------------- | -------------------- |
+| `ENGLISH_LLM_MODEL`    | `"llama-3.3-70b"`                 | `dj-script/route.ts` |
+| `VIETNAMESE_LLM_MODEL` | `"qwen3-235b-a22b-instruct-2507"` | `dj-script/route.ts` |
+| `ENGLISH_TTS_MODEL`    | `"tts-kokoro"`                    | `dj-tts/route.ts`    |
+| `ENGLISH_TTS_VOICE`    | `"af_nova"`                       | `dj-tts/route.ts`    |
+| `VIETNAMESE_TTS_MODEL` | `"tts-qwen3-1-7b"`                | `dj-tts/route.ts`    |
 
 ## Correctness Properties
 
-*A property is a characteristic or behavior that should hold true across all valid executions of a system — essentially, a formal statement about what the system should do. Properties serve as the bridge between human-readable specifications and machine-verifiable correctness guarantees.*
+_A property is a characteristic or behavior that should hold true across all valid executions of a system — essentially, a formal statement about what the system should do. Properties serve as the bridge between human-readable specifications and machine-verifiable correctness guarantees._
 
 ### Property 1: Language selector localStorage round-trip
 
-*For any* valid DJ language value (`"english"` or `"vietnamese"`), selecting it in `DJLanguageSelect` should persist it to `localStorage["djLanguage"]`, and re-mounting the component (with DJ Mode enabled) should display that same option as selected.
+_For any_ valid DJ language value (`"english"` or `"vietnamese"`), selecting it in `DJLanguageSelect` should persist it to `localStorage["djLanguage"]`, and re-mounting the component (with DJ Mode enabled) should display that same option as selected.
 
 **Validates: Requirements 1.3, 1.4**
 
 ### Property 2: Language selector visibility tied to DJ Mode state
 
-*For any* DJ Mode state (enabled or disabled), the `DJLanguageSelect` component should be visible if and only if DJ Mode is enabled.
+_For any_ DJ Mode state (enabled or disabled), the `DJLanguageSelect` component should be visible if and only if DJ Mode is enabled.
 
 **Validates: Requirements 1.1, 1.6**
 
 ### Property 3: Script API uses correct model per language
 
-*For any* request to `/api/dj-script` with a `language` field, the model sent to Venice AI should be `qwen3-235b-a22b-instruct-2507` when `language` is `"vietnamese"`, and `llama-3.3-70b` when `language` is `"english"` or absent.
+_For any_ request to `/api/dj-script` with a `language` field, the model sent to Venice AI should be `qwen3-235b-a22b-instruct-2507` when `language` is `"vietnamese"`, and `llama-3.3-70b` when `language` is `"english"` or absent.
 
 **Validates: Requirements 2.1, 2.2, 5.1**
 
 ### Property 4: Vietnamese system prompt is in Vietnamese
 
-*For any* request to `/api/dj-script` with `language: "vietnamese"`, the system message sent to Venice AI should contain Vietnamese-language instructions (not English instructions).
+_For any_ request to `/api/dj-script` with `language: "vietnamese"`, the system message sent to Venice AI should contain Vietnamese-language instructions (not English instructions).
 
 **Validates: Requirements 2.4**
 
 ### Property 5: DJService passes language to both APIs
 
-*For any* `localStorage["djLanguage"]` value (including absent), `DJService.fetchAudioBlob` should include a `language` field in both the `/api/dj-script` and `/api/dj-tts` request bodies, defaulting to `"english"` when the key is absent or unrecognised.
+_For any_ `localStorage["djLanguage"]` value (including absent), `DJService.fetchAudioBlob` should include a `language` field in both the `/api/dj-script` and `/api/dj-tts` request bodies, defaulting to `"english"` when the key is absent or unrecognised.
 
 **Validates: Requirements 2.5, 3.1, 5.3**
 
 ### Property 6: TTS API uses correct model and voice config per language
 
-*For any* request to `/api/dj-tts`, the Venice AI TTS request body should contain `model: "tts-qwen3-1-7b"` with no `voice` field when `language` is `"vietnamese"`, and `model: "tts-kokoro"` with `voice: "af_nova"` when `language` is `"english"` or absent.
+_For any_ request to `/api/dj-tts`, the Venice AI TTS request body should contain `model: "tts-qwen3-1-7b"` with no `voice` field when `language` is `"vietnamese"`, and `model: "tts-kokoro"` with `voice: "af_nova"` when `language` is `"english"` or absent.
 
 **Validates: Requirements 3.2, 3.3, 5.2**
 
 ### Property 7: Vietnamese path graceful degradation
 
-*For any* error condition in the Vietnamese language path (LLM failure, TTS failure, network error, non-200 response), `DJService.maybeAnnounce` should resolve without throwing, and the next track should play normally.
+_For any_ error condition in the Vietnamese language path (LLM failure, TTS failure, network error, non-200 response), `DJService.maybeAnnounce` should resolve without throwing, and the next track should play normally.
 
 **Validates: Requirements 4.1, 4.2, 4.3**
 
 ### Property 8: Unknown language falls back to English
 
-*For any* string stored in `localStorage["djLanguage"]` that is not `"vietnamese"` (including arbitrary strings, empty string, or absent), `DJService` should treat it as `"english"` and use the English model and TTS path.
+_For any_ string stored in `localStorage["djLanguage"]` that is not `"vietnamese"` (including arbitrary strings, empty string, or absent), `DJService` should treat it as `"english"` and use the English model and TTS path.
 
 **Validates: Requirements 4.4**
 
@@ -352,15 +379,15 @@ interface DJTTSRequest {
 
 All error handling follows the existing DJ Mode invariant: **the next track always plays**.
 
-| Error scenario | Handling |
-| --- | --- |
+| Error scenario                         | Handling                                                                     |
+| -------------------------------------- | ---------------------------------------------------------------------------- |
 | Vietnamese LLM request fails (network) | `fetchAudioBlob` catches, returns `null`; `maybeAnnounce` skips announcement |
-| Vietnamese LLM returns non-200 | Same as above |
-| Vietnamese TTS request fails (network) | Same as above |
-| Vietnamese TTS returns non-200 | Same as above |
-| `tts-qwen3-1-7b` model unavailable | TTS route returns 500; `fetchAudioBlob` returns `null`; announcement skipped |
-| `djLanguage` set to unrecognised value | `DJService` treats as `"english"`, uses English path |
-| `djLanguage` absent from localStorage | `DJService` defaults to `"english"` |
+| Vietnamese LLM returns non-200         | Same as above                                                                |
+| Vietnamese TTS request fails (network) | Same as above                                                                |
+| Vietnamese TTS returns non-200         | Same as above                                                                |
+| `tts-qwen3-1-7b` model unavailable     | TTS route returns 500; `fetchAudioBlob` returns `null`; announcement skipped |
+| `djLanguage` set to unrecognised value | `DJService` treats as `"english"`, uses English path                         |
+| `djLanguage` absent from localStorage  | `DJService` defaults to `"english"`                                          |
 
 The Vietnamese path errors are handled identically to the existing English path errors — no new error handling logic is needed beyond the `language` branching.
 
@@ -422,9 +449,15 @@ fc.property(
   fc.string({ minLength: 1 }),
   fc.string({ minLength: 1 }),
   async (language, trackName, artistName) => {
-    const capturedBody = await captureVeniceScriptRequest({ trackName, artistName, language })
+    const capturedBody = await captureVeniceScriptRequest({
+      trackName,
+      artistName,
+      language
+    })
     const expectedModel =
-      language === 'vietnamese' ? 'qwen3-235b-a22b-instruct-2507' : 'llama-3.3-70b'
+      language === 'vietnamese'
+        ? 'qwen3-235b-a22b-instruct-2507'
+        : 'llama-3.3-70b'
     expect(capturedBody.model).toBe(expectedModel)
   }
 )
@@ -438,8 +471,14 @@ fc.property(
   fc.string({ minLength: 1 }),
   fc.string({ minLength: 1 }),
   async (trackName, artistName) => {
-    const capturedBody = await captureVeniceScriptRequest({ trackName, artistName, language: 'vietnamese' })
-    const systemMsg = capturedBody.messages.find((m: { role: string }) => m.role === 'system')
+    const capturedBody = await captureVeniceScriptRequest({
+      trackName,
+      artistName,
+      language: 'vietnamese'
+    })
+    const systemMsg = capturedBody.messages.find(
+      (m: { role: string }) => m.role === 'system'
+    )
     // English system prompt starts with "No more than" — Vietnamese prompt should not
     expect(systemMsg.content).not.toMatch(/^No more than/)
     // Should contain Vietnamese text
@@ -493,7 +532,12 @@ fc.property(
 ```typescript
 // Feature: vietnamese-dj-language, Property 7: Vietnamese path graceful degradation
 fc.property(
-  fc.constantFrom('llm-network-error', 'llm-non-200', 'tts-network-error', 'tts-non-200'),
+  fc.constantFrom(
+    'llm-network-error',
+    'llm-non-200',
+    'tts-network-error',
+    'tts-non-200'
+  ),
   async (errorType) => {
     localStorage.setItem('djMode', 'true')
     localStorage.setItem('djLanguage', 'vietnamese')
@@ -509,7 +553,7 @@ fc.property(
 ```typescript
 // Feature: vietnamese-dj-language, Property 8: Unknown language falls back to English
 fc.property(
-  fc.string().filter(s => s !== 'vietnamese'),
+  fc.string().filter((s) => s !== 'vietnamese'),
   async (unknownLang) => {
     localStorage.setItem('djLanguage', unknownLang)
     const { scriptBody, ttsBody } = await captureServiceFetchBodies()
