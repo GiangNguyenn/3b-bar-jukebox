@@ -126,7 +126,7 @@ interface MockResponse {
   ok: boolean
   status: number
   text: () => Promise<string>
-  json: () => Promise<any>
+  json: () => Promise<unknown>
 }
 
 // Helper for retrying fetches with special handling for rate limits and hanging IPv6 connections
@@ -157,12 +157,15 @@ async function fetchWithRetry(
               data += chunk
             })
             res.on('end', () => {
-              const status = res.statusCode || 200
+              const status = res.statusCode ?? 200
               resolve({
                 ok: status >= 200 && status < 300,
                 status,
-                text: async () => data,
-                json: async () => JSON.parse(data) // Throws native error if not JSON
+                text: () => Promise.resolve(data),
+                json: () => {
+                  const parsed: unknown = JSON.parse(data)
+                  return Promise.resolve(parsed)
+                }
               })
             })
           }
@@ -193,7 +196,7 @@ async function fetchWithRetry(
 
         const isTimeout =
           error instanceof Error && error.message === 'AbortError'
-        const reason = isTimeout ? 'Timed out via https' : error
+        const reason = isTimeout ? 'Timed out via https' : String(error)
 
         console.warn(
           `Fetch to ${url} failed (attempt ${i + 1}/${retries}). Reason: ${reason}. Retrying in ${delay}ms...`

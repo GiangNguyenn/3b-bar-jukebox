@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from 'next/server'
 const ENGLISH_LLM_MODEL = 'llama-3.3-70b'
 const VIETNAMESE_LLM_MODEL = 'qwen3-235b-a22b-instruct-2507'
 
-export async function POST(request: NextRequest) {
+export async function POST(request: NextRequest): Promise<NextResponse> {
   const apiKey = process.env.VENICE_AI_API_KEY
   if (!apiKey) {
     return NextResponse.json(

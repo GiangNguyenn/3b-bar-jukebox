@@ -4,7 +4,7 @@ const ENGLISH_TTS_MODEL = 'tts-kokoro'
 const ENGLISH_TTS_VOICE = 'af_nova'
 const VIETNAMESE_TTS_MODEL = 'tts-qwen3-1-7b'
 
-export async function POST(request: NextRequest) {
+export async function POST(request: NextRequest): Promise<NextResponse> {
   const apiKey = process.env.VENICE_AI_API_KEY
   if (!apiKey) {
     return NextResponse.json(
