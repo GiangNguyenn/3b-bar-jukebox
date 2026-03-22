@@ -61,8 +61,8 @@ flowchart LR
 
 ```typescript
 export interface DJVoiceOption {
-  value: string    // voice identifier sent to Venice AI (e.g. 'af_nova')
-  label: string    // human-readable display label (e.g. 'Nova')
+  value: string // voice identifier sent to Venice AI (e.g. 'af_nova')
+  label: string // human-readable display label (e.g. 'Nova')
 }
 
 export const DEFAULT_DJ_VOICE = 'af_nova'
@@ -78,7 +78,7 @@ export const DJ_VOICES: DJVoiceOption[] = [
   { value: 'am_michael', label: 'Michael' }
 ]
 
-export const DJ_VOICE_IDS = DJ_VOICES.map(v => v.value)
+export const DJ_VOICE_IDS = DJ_VOICES.map((v) => v.value)
 ```
 
 ### `DJVoiceSelect` (`app/[username]/admin/components/dashboard/components/dj-voice-select.tsx`)
@@ -90,11 +90,13 @@ export function DJVoiceSelect(): JSX.Element
 Button-style selector, identical layout to `DJLanguageSelect` and `DJFrequencySelect`. Visible only when DJ Mode is enabled AND DJ Language is English.
 
 **Mount behavior:**
+
 1. Read `localStorage["djMode"]`, `localStorage["djLanguage"]`, `localStorage["djVoice"]`.
 2. If `djVoice` is missing or not in `DJ_VOICE_IDS`, default to `DEFAULT_DJ_VOICE`.
 3. Listen for `storage`, `djmode-changed`, and `djvoice-changed` events to re-sync.
 
 **Selection behavior:**
+
 1. Set local state.
 2. Write to `localStorage["djVoice"]`.
 3. Call `DJService.getInstance().invalidatePrefetch()`.
@@ -132,9 +134,9 @@ Export `DJVoiceSelect` from the dashboard components `index.ts` barrel file. Ren
 
 ### localStorage entries (new)
 
-| Key          | Type   | Values                                          | Default    |
-| ------------ | ------ | ----------------------------------------------- | ---------- |
-| `"djVoice"`  | string | Any value from `DJ_VOICE_IDS` (e.g. `af_nova`)  | absent = `af_nova` |
+| Key         | Type   | Values                                         | Default            |
+| ----------- | ------ | ---------------------------------------------- | ------------------ |
+| `"djVoice"` | string | Any value from `DJ_VOICE_IDS` (e.g. `af_nova`) | absent = `af_nova` |
 
 ### `/api/dj-tts` request body (updated)
 
@@ -142,7 +144,7 @@ Export `DJVoiceSelect` from the dashboard components `index.ts` barrel file. Ren
 interface DJTTSRequest {
   text: string
   language?: 'english' | 'vietnamese'
-  voice?: string  // new — English voice identifier, validated server-side
+  voice?: string // new — English voice identifier, validated server-side
 }
 ```
 
@@ -150,61 +152,60 @@ interface DJTTSRequest {
 
 ```typescript
 interface DJVoiceOption {
-  value: string  // voice identifier
-  label: string  // display label
+  value: string // voice identifier
+  label: string // display label
 }
 ```
 
-
 ## Correctness Properties
 
-*A property is a characteristic or behavior that should hold true across all valid executions of a system — essentially, a formal statement about what the system should do. Properties serve as the bridge between human-readable specifications and machine-verifiable correctness guarantees.*
+_A property is a characteristic or behavior that should hold true across all valid executions of a system — essentially, a formal statement about what the system should do. Properties serve as the bridge between human-readable specifications and machine-verifiable correctness guarantees._
 
 ### Property 1: Voice selector visibility depends on DJ Mode and language
 
-*For any* combination of `djMode` (true/false) and `djLanguage` (english/vietnamese), the `DJVoiceSelect` component should render its voice options if and only if `djMode` is `"true"` AND `djLanguage` is `"english"` (or absent, since English is the default).
+_For any_ combination of `djMode` (true/false) and `djLanguage` (english/vietnamese), the `DJVoiceSelect` component should render its voice options if and only if `djMode` is `"true"` AND `djLanguage` is `"english"` (or absent, since English is the default).
 
 **Validates: Requirements 1.1, 1.6, 1.7**
 
 ### Property 2: Voice localStorage round-trip
 
-*For any* voice identifier in `DJ_VOICE_IDS`, writing it to `localStorage["djVoice"]` and then mounting the `DJVoiceSelect` component should display that voice as the selected option. When `localStorage["djVoice"]` is absent, the component should show `af_nova` as selected.
+_For any_ voice identifier in `DJ_VOICE_IDS`, writing it to `localStorage["djVoice"]` and then mounting the `DJVoiceSelect` component should display that voice as the selected option. When `localStorage["djVoice"]` is absent, the component should show `af_nova` as selected.
 
 **Validates: Requirements 1.3, 1.4, 1.5**
 
 ### Property 3: DJService includes resolved voice in TTS request
 
-*For any* valid voice identifier stored in `localStorage["djVoice"]`, when `DJService._doFetchAudioBlob` sends a request to `/api/dj-tts`, the request body should contain a `voice` field matching that identifier. When `localStorage["djVoice"]` is absent or invalid, the request body should contain `af_nova`.
+_For any_ valid voice identifier stored in `localStorage["djVoice"]`, when `DJService._doFetchAudioBlob` sends a request to `/api/dj-tts`, the request body should contain a `voice` field matching that identifier. When `localStorage["djVoice"]` is absent or invalid, the request body should contain `af_nova`.
 
 **Validates: Requirements 2.1, 2.2**
 
 ### Property 4: TTS route forwards valid English voice to Venice AI
 
-*For any* voice identifier that is a member of `DJ_VOICE_IDS`, when the `/api/dj-tts` route receives a request with `language` not equal to `"vietnamese"` and that voice value, the outgoing request to Venice AI should contain that exact voice in the `voice` parameter.
+_For any_ voice identifier that is a member of `DJ_VOICE_IDS`, when the `/api/dj-tts` route receives a request with `language` not equal to `"vietnamese"` and that voice value, the outgoing request to Venice AI should contain that exact voice in the `voice` parameter.
 
 **Validates: Requirements 2.3, 2.4**
 
 ### Property 5: Vietnamese TTS ignores voice field
 
-*For any* string value in the `voice` field (valid, invalid, or absent), when the `/api/dj-tts` route receives a request with `language` set to `"vietnamese"`, the outgoing request to Venice AI should use voice `Vivian` and model `tts-qwen3-0-6b`, regardless of the `voice` field.
+_For any_ string value in the `voice` field (valid, invalid, or absent), when the `/api/dj-tts` route receives a request with `language` set to `"vietnamese"`, the outgoing request to Venice AI should use voice `Vivian` and model `tts-qwen3-0-6b`, regardless of the `voice` field.
 
 **Validates: Requirements 2.5**
 
 ### Property 6: Voice change triggers prefetch invalidation and custom event
 
-*For any* voice selected in the `DJVoiceSelect` component, the selection handler should call `DJService.getInstance().invalidatePrefetch()` and dispatch a `djvoice-changed` custom event on `window`.
+_For any_ voice selected in the `DJVoiceSelect` component, the selection handler should call `DJService.getInstance().invalidatePrefetch()` and dispatch a `djvoice-changed` custom event on `window`.
 
 **Validates: Requirements 3.1, 3.2**
 
 ### Property 7: TTS route falls back to default for invalid English voice
 
-*For any* string that is not a member of `DJ_VOICE_IDS`, when the `/api/dj-tts` route receives an English request with that string as the `voice` field, the outgoing request to Venice AI should use `af_nova` as the voice.
+_For any_ string that is not a member of `DJ_VOICE_IDS`, when the `/api/dj-tts` route receives an English request with that string as the `voice` field, the outgoing request to Venice AI should use `af_nova` as the voice.
 
 **Validates: Requirements 4.3, 4.4**
 
 ### Property 8: DJService falls back to default for corrupted localStorage voice
 
-*For any* arbitrary string stored in `localStorage["djVoice"]` that is not a member of `DJ_VOICE_IDS`, the voice resolved by `DJService` should be `af_nova`.
+_For any_ arbitrary string stored in `localStorage["djVoice"]` that is not a member of `DJ_VOICE_IDS`, the voice resolved by `DJService` should be `af_nova`.
 
 **Validates: Requirements 5.1**
 
@@ -212,12 +213,12 @@ interface DJVoiceOption {
 
 This feature inherits the existing DJ Mode error handling strategy: all errors are non-fatal and the next track always plays.
 
-| Error scenario | Handling |
-| --- | --- |
-| `localStorage["djVoice"]` is corrupted or not in allowed list | `DJService` resolves to `DEFAULT_DJ_VOICE` (`af_nova`) |
-| `voice` field in TTS request is missing or not in allowed list | `/api/dj-tts` falls back to `DEFAULT_DJ_VOICE` (`af_nova`) |
-| Venice AI TTS rejects the selected voice | `/api/dj-tts` returns 500; `DJService` skips announcement; next track plays normally |
-| `DJ_VOICES` constant is empty (developer error) | `DEFAULT_DJ_VOICE` is a standalone constant, so fallback still works |
+| Error scenario                                                 | Handling                                                                             |
+| -------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
+| `localStorage["djVoice"]` is corrupted or not in allowed list  | `DJService` resolves to `DEFAULT_DJ_VOICE` (`af_nova`)                               |
+| `voice` field in TTS request is missing or not in allowed list | `/api/dj-tts` falls back to `DEFAULT_DJ_VOICE` (`af_nova`)                           |
+| Venice AI TTS rejects the selected voice                       | `/api/dj-tts` returns 500; `DJService` skips announcement; next track plays normally |
+| `DJ_VOICES` constant is empty (developer error)                | `DEFAULT_DJ_VOICE` is a standalone constant, so fallback still works                 |
 
 No new error paths are introduced. The existing `try/catch` in `DJService._doFetchAudioBlob` and the error responses in `/api/dj-tts` handle all failure modes.
 
@@ -291,54 +292,45 @@ fc.property(
 
 ```typescript
 // Feature: dj-voice-selection, Property 3: DJService includes resolved voice in TTS request
-fc.property(
-  fc.constantFrom(...DJ_VOICE_IDS),
-  async (voiceId) => {
-    localStorage.setItem('djVoice', voiceId)
-    localStorage.setItem('djLanguage', 'english')
-    const capturedBodies: unknown[] = []
-    stubFetch((url, opts) => {
-      if (url === '/api/dj-tts') capturedBodies.push(JSON.parse(opts.body))
-      return mockOkResponse()
-    })
-    await triggerFetchAudioBlob('Track', 'Artist')
-    assert.strictEqual(capturedBodies.length, 1)
-    assert.strictEqual((capturedBodies[0] as { voice: string }).voice, voiceId)
-  }
-)
+fc.property(fc.constantFrom(...DJ_VOICE_IDS), async (voiceId) => {
+  localStorage.setItem('djVoice', voiceId)
+  localStorage.setItem('djLanguage', 'english')
+  const capturedBodies: unknown[] = []
+  stubFetch((url, opts) => {
+    if (url === '/api/dj-tts') capturedBodies.push(JSON.parse(opts.body))
+    return mockOkResponse()
+  })
+  await triggerFetchAudioBlob('Track', 'Artist')
+  assert.strictEqual(capturedBodies.length, 1)
+  assert.strictEqual((capturedBodies[0] as { voice: string }).voice, voiceId)
+})
 ```
 
 **Property 4: TTS route forwards valid English voice to Venice AI**
 
 ```typescript
 // Feature: dj-voice-selection, Property 4: TTS route forwards valid English voice to Venice AI
-fc.property(
-  fc.constantFrom(...DJ_VOICE_IDS),
-  async (voiceId) => {
-    const capturedBody = await callTTSRoute({ text: 'Hello', voice: voiceId })
-    const venicePayload = JSON.parse(capturedBody)
-    assert.strictEqual(venicePayload.voice, voiceId)
-  }
-)
+fc.property(fc.constantFrom(...DJ_VOICE_IDS), async (voiceId) => {
+  const capturedBody = await callTTSRoute({ text: 'Hello', voice: voiceId })
+  const venicePayload = JSON.parse(capturedBody)
+  assert.strictEqual(venicePayload.voice, voiceId)
+})
 ```
 
 **Property 5: Vietnamese TTS ignores voice field**
 
 ```typescript
 // Feature: dj-voice-selection, Property 5: Vietnamese TTS ignores voice field
-fc.property(
-  fc.string({ minLength: 0, maxLength: 50 }),
-  async (randomVoice) => {
-    const capturedBody = await callTTSRoute({
-      text: 'Xin chào',
-      language: 'vietnamese',
-      voice: randomVoice
-    })
-    const venicePayload = JSON.parse(capturedBody)
-    assert.strictEqual(venicePayload.voice, 'Vivian')
-    assert.strictEqual(venicePayload.model, 'tts-qwen3-0-6b')
-  }
-)
+fc.property(fc.string({ minLength: 0, maxLength: 50 }), async (randomVoice) => {
+  const capturedBody = await callTTSRoute({
+    text: 'Xin chào',
+    language: 'vietnamese',
+    voice: randomVoice
+  })
+  const venicePayload = JSON.parse(capturedBody)
+  assert.strictEqual(venicePayload.voice, 'Vivian')
+  assert.strictEqual(venicePayload.model, 'tts-qwen3-0-6b')
+})
 ```
 
 **Property 6: Voice change triggers prefetch invalidation and custom event**
@@ -368,9 +360,14 @@ fc.property(
 ```typescript
 // Feature: dj-voice-selection, Property 7: TTS route falls back to default for invalid English voice
 fc.property(
-  fc.string({ minLength: 1, maxLength: 50 }).filter(s => !DJ_VOICE_IDS.includes(s)),
+  fc
+    .string({ minLength: 1, maxLength: 50 })
+    .filter((s) => !DJ_VOICE_IDS.includes(s)),
   async (invalidVoice) => {
-    const capturedBody = await callTTSRoute({ text: 'Hello', voice: invalidVoice })
+    const capturedBody = await callTTSRoute({
+      text: 'Hello',
+      voice: invalidVoice
+    })
     const venicePayload = JSON.parse(capturedBody)
     assert.strictEqual(venicePayload.voice, 'af_nova')
   }
@@ -382,7 +379,9 @@ fc.property(
 ```typescript
 // Feature: dj-voice-selection, Property 8: DJService falls back to default for corrupted localStorage voice
 fc.property(
-  fc.string({ minLength: 1, maxLength: 100 }).filter(s => !DJ_VOICE_IDS.includes(s)),
+  fc
+    .string({ minLength: 1, maxLength: 100 })
+    .filter((s) => !DJ_VOICE_IDS.includes(s)),
   async (corruptedVoice) => {
     localStorage.setItem('djVoice', corruptedVoice)
     localStorage.setItem('djLanguage', 'english')

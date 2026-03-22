@@ -38,7 +38,8 @@ export function DJVoiceSelect(): JSX.Element {
     }
   }, [])
 
-  if (!djEnabled || language !== 'english') return null as unknown as JSX.Element
+  if (!djEnabled || language !== 'english')
+    return null as unknown as JSX.Element
 
   const handleSelect = (value: string): void => {
     setVoice(value)

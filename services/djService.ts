@@ -218,7 +218,11 @@ class DJService {
       const ttsRes = await fetch('/api/dj-tts', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text: data.script, language, voice: resolvedVoice })
+        body: JSON.stringify({
+          text: data.script,
+          language,
+          voice: resolvedVoice
+        })
       })
       if (!ttsRes.ok) {
         warn(`/api/dj-tts ${ttsRes.status}`)

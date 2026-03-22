@@ -16,4 +16,4 @@ export const DJ_VOICES: DJVoiceOption[] = [
   { value: 'am_michael', label: 'Michael' }
 ]
 
-export const DJ_VOICE_IDS = DJ_VOICES.map(v => v.value)
+export const DJ_VOICE_IDS = DJ_VOICES.map((v) => v.value)
