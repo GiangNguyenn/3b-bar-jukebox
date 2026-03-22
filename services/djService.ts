@@ -1,5 +1,6 @@
 import type { JukeboxQueueItem } from '@/shared/types/queue'
 import { SpotifyApiService } from '@/services/spotifyApi'
+import { DJ_VOICE_IDS, DEFAULT_DJ_VOICE } from '@/shared/constants/djVoices'
 
 export type DJFrequency = 'never' | 'rarely' | 'sometimes' | 'often' | 'always'
 
@@ -183,6 +184,11 @@ class DJService {
     const rawLang = localStorage.getItem('djLanguage')
     const language: 'english' | 'vietnamese' =
       rawLang === 'vietnamese' ? 'vietnamese' : 'english'
+    const rawVoice = localStorage.getItem('djVoice')
+    const resolvedVoice =
+      typeof rawVoice === 'string' && DJ_VOICE_IDS.includes(rawVoice)
+        ? rawVoice
+        : DEFAULT_DJ_VOICE
     try {
       const scriptRes = await fetch('/api/dj-script', {
         method: 'POST',
@@ -212,7 +218,7 @@ class DJService {
       const ttsRes = await fetch('/api/dj-tts', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text: data.script, language })
+        body: JSON.stringify({ text: data.script, language, voice: resolvedVoice })
       })
       if (!ttsRes.ok) {
         warn(`/api/dj-tts ${ttsRes.status}`)

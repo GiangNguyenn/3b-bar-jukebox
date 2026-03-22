@@ -11,6 +11,7 @@ import { getAutoPlayService } from '@/services/autoPlayService'
 import { DJModeToggle } from './dj-mode-toggle'
 import { DJFrequencySelect } from './dj-frequency-select'
 import { DJLanguageSelect } from './dj-language-select'
+import { DJVoiceSelect } from './dj-voice-select'
 import { DuckOverlayToggle } from './duck-overlay-toggle'
 
 interface JukeboxSectionProps {
@@ -316,6 +317,7 @@ export function JukeboxSection({
         <DJModeToggle />
         <DJFrequencySelect />
         <DJLanguageSelect />
+        <DJVoiceSelect />
         <DuckOverlayToggle />
       </div>
     </div>

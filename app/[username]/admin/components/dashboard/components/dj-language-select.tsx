@@ -34,6 +34,7 @@ export function DJLanguageSelect(): JSX.Element {
   const handleSelect = (value: DJLanguage): void => {
     setLanguage(value)
     localStorage.setItem('djLanguage', value)
+    window.dispatchEvent(new Event('djlanguage-changed'))
     DJService.getInstance().invalidatePrefetch()
   }
 

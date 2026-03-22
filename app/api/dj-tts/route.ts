@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { DJ_VOICE_IDS, DEFAULT_DJ_VOICE } from '@/shared/constants/djVoices'
 
 // Vercel max function duration — set to 30s to accommodate slow TTS responses.
 // Requires at least the Pro plan for values > 10s.
@@ -7,7 +8,6 @@ export const maxDuration = 60
 const FETCH_TIMEOUT_MS = 55000 // 55s — leaves headroom before the 60s function limit
 
 const ENGLISH_TTS_MODEL = 'tts-kokoro'
-const ENGLISH_TTS_VOICE = 'af_nova'
 const VIETNAMESE_TTS_MODEL = 'tts-qwen3-0-6b'
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
@@ -26,7 +26,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ error: 'Invalid request body' }, { status: 400 })
   }
 
-  const { text, language } = body as Record<string, unknown>
+  const { text, language, voice } = body as Record<string, unknown>
   const isVietnamese = language === 'vietnamese'
 
   if (!text || typeof text !== 'string') {
@@ -35,6 +35,11 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       { status: 400 }
     )
   }
+
+  const resolvedVoice =
+    typeof voice === 'string' && DJ_VOICE_IDS.includes(voice)
+      ? voice
+      : DEFAULT_DJ_VOICE
 
   try {
     const veniceResponse = await fetch(
@@ -56,7 +61,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
               }
             : {
                 model: ENGLISH_TTS_MODEL,
-                voice: ENGLISH_TTS_VOICE,
+                voice: resolvedVoice,
                 input: text,
                 response_format: 'mp3'
               }

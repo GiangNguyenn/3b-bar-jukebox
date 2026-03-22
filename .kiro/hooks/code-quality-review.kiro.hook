@@ -1,0 +1,19 @@
+{
+  "enabled": true,
+  "name": "Code Quality Review",
+  "description": "Analyzes modified source code files for potential improvements including code smells, design patterns, and best practices. Generates suggestions for improving readability, maintainability, and performance while preserving existing functionality.",
+  "version": "1",
+  "when": {
+    "type": "fileEdited",
+    "patterns": [
+      "*.ts",
+      "*.tsx",
+      "*.js",
+      "*.jsx"
+    ]
+  },
+  "then": {
+    "type": "askAgent",
+    "prompt": "Analyze the recently modified code for potential improvements. Focus on:\n\n1. Code smells (duplicated logic, long functions, deep nesting, magic numbers)\n2. Design pattern opportunities (singleton misuse, missing abstractions, tight coupling)\n3. Best practices (proper error handling, type safety, immutability, null checks)\n4. Readability (naming clarity, function decomposition, comment quality)\n5. Maintainability (separation of concerns, DRY violations, testability)\n6. Performance (unnecessary re-renders, missing memoization, inefficient data structures)\n\nImportant guidelines:\n- Use the project's logging conventions (createModuleLogger or useConsoleLogsContext) — never suggest raw console.log\n- Respect the existing code style (single quotes, no semicolons, no trailing commas)\n- Only suggest changes that preserve existing functionality\n- Keep suggestions concise and actionable\n- Prioritize high-impact improvements over nitpicks"
+  }
+}
