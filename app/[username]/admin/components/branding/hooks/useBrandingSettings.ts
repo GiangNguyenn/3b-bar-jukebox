@@ -1,6 +1,5 @@
 import { useEffect, useCallback } from 'react'
-import { createBrowserClient } from '@supabase/ssr'
-import type { Database } from '@/types/supabase'
+import { supabaseBrowser } from '@/lib/supabase-browser'
 import { getDefaultBrandingSettings } from '../utils/default-settings'
 import { useBrandingStore } from '@/stores/brandingStore'
 
@@ -33,10 +32,7 @@ export function useBrandingSettings(): {
     hasUnsavedChanges
   } = useBrandingStore()
 
-  const supabase = createBrowserClient<Database>(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-  )
+  const supabase = supabaseBrowser
 
   const fetchSettings = useCallback(async (): Promise<void> => {
     try {

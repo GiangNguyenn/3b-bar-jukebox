@@ -1,6 +1,5 @@
-import { useEffect, useState, useMemo } from 'react'
-import { createBrowserClient } from '@supabase/ssr'
-import type { Database } from '@/types/supabase'
+import { useEffect, useState } from 'react'
+import { supabaseBrowser } from '@/lib/supabase-browser'
 import { AppError } from '@/shared/utils/errorHandling'
 import { ERROR_MESSAGES } from '@/shared/constants/errors'
 import { queryWithRetry } from '@/lib/supabaseQuery'
@@ -12,16 +11,7 @@ export function useGetProfile() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
-  // Memoize the supabase client to prevent infinite re-renders
-  // Environment variables don't change, so the client can be stable
-  const supabase = useMemo(
-    () =>
-      createBrowserClient<Database>(
-        process.env.NEXT_PUBLIC_SUPABASE_URL!,
-        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-      ),
-    []
-  )
+  const supabase = supabaseBrowser
 
   useEffect(() => {
     async function getProfile() {

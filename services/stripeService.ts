@@ -1,10 +1,6 @@
 import Stripe from 'stripe'
-import { createServerClient } from '@supabase/ssr'
-import { createClient } from '@supabase/supabase-js'
-import type { Database } from '@/types/supabase'
+import { supabaseAdmin } from '@/lib/supabase-admin'
 import { createModuleLogger } from '@/shared/utils/logger'
-
-type Subscription = Database['public']['Tables']['subscriptions']['Row']
 
 const logger = createModuleLogger('StripeService')
 
@@ -22,22 +18,8 @@ export class StripeService {
       apiVersion: '2025-08-27.basil'
     })
 
-    // Use direct Supabase client for webhook operations (no cookies needed)
-    // Prefer Service Role Key for admin privileges (needed for webhooks)
-    const supabaseKey =
-      process.env.SUPABASE_SERVICE_ROLE_KEY ||
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-
-    this.supabase = createClient<Database>(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      supabaseKey,
-      {
-        auth: {
-          autoRefreshToken: false,
-          persistSession: false
-        }
-      }
-    )
+    // Use the shared admin client for webhook operations (service role key)
+    this.supabase = supabaseAdmin
   }
 
   /**

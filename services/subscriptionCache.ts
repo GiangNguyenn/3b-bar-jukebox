@@ -1,5 +1,5 @@
-import { createClient } from '@supabase/supabase-js'
 import type { Database } from '@/types/supabase'
+import { supabase } from '@/lib/supabase'
 import { createModuleLogger } from '@/shared/utils/logger'
 
 type Subscription = Database['public']['Tables']['subscriptions']['Row']
@@ -23,10 +23,7 @@ export class SubscriptionCacheService {
   private supabase
 
   constructor() {
-    this.supabase = createClient<Database>(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-    )
+    this.supabase = supabase
   }
 
   /**

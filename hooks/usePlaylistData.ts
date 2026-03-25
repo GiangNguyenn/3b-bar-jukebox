@@ -1,6 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { createBrowserClient } from '@supabase/ssr'
-import type { Database } from '@/types/supabase'
+import { supabaseBrowser } from '@/lib/supabase-browser'
 import { JukeboxQueueItem } from '@/shared/types/queue'
 import { useConsoleLogsContext } from './ConsoleLogsProvider'
 import { queueManager } from '@/services/queueManager'
@@ -21,10 +20,7 @@ export function usePlaylistData(username?: string) {
   const [isStale, setIsStale] = useState(false)
   const [isRealtimeConnected, setIsRealtimeConnected] = useState(false)
   const { addLog } = useConsoleLogsContext()
-  const supabase = createBrowserClient<Database>(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-  )
+  const supabase = supabaseBrowser
   const subscriptionRef = useRef<any>(null)
   const profileIdRef = useRef<string | null>(null)
   const isInitialLoadRef = useRef(true)

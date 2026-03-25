@@ -1,6 +1,4 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
-import { createBrowserClient } from '@supabase/ssr'
-import type { Database } from '@/types/supabase'
 import { useConsoleLogsContext } from '@/hooks/ConsoleLogsProvider'
 import { SpotifyUserProfile } from '@/shared/types/spotify'
 import { tokenManager } from '@/shared/token/tokenManager'

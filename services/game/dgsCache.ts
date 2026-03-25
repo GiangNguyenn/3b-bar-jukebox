@@ -9,6 +9,7 @@
  */
 
 import { supabase, queryWithRetry } from '@/lib/supabase'
+import { supabaseAdmin } from '@/lib/supabase-admin'
 import { sendApiRequest } from '@/shared/api'
 import type { SpotifyArtist, TrackDetails } from '@/shared/types/spotify'
 import { createModuleLogger } from '@/shared/utils/logger'
@@ -317,7 +318,7 @@ export async function upsertArtistProfile(artistData: {
       record.follower_count = artistData.follower_count
     }
 
-    const { error } = await supabase
+    const { error } = await supabaseAdmin
       .from('artists')
       .upsert(record, { onConflict: 'spotify_artist_id' })
 
@@ -1092,7 +1093,7 @@ export async function batchUpsertArtistProfiles(
       return record
     })
 
-    const { error } = await supabase
+    const { error } = await supabaseAdmin
       .from('artists')
       .upsert(records, { onConflict: 'spotify_artist_id' })
 

@@ -2,8 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { createBrowserClient } from '@supabase/ssr'
-import type { Database } from '@/types/supabase'
+import { supabaseBrowser } from '@/lib/supabase-browser'
 import { FaSpotify, FaCrown, FaMusic, FaPlay, FaSync } from 'react-icons/fa'
 import { usePremiumStatus } from '@/hooks/usePremiumStatus'
 import { useConsoleLogsContext } from '@/hooks/ConsoleLogsProvider'
@@ -24,10 +23,7 @@ export default function PremiumRequiredPage(): JSX.Element {
     forceRefreshPremiumStatus
   } = usePremiumStatus()
 
-  const supabase = createBrowserClient<Database>(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-  )
+  const supabase = supabaseBrowser
 
   useEffect(() => {
     const checkUser = async (): Promise<void> => {

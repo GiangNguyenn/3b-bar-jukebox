@@ -1,9 +1,8 @@
 'use client'
 
-import { useEffect, useState, useMemo } from 'react'
+import { useEffect, useState } from 'react'
 import { useRouter, useParams } from 'next/navigation'
-import { createBrowserClient } from '@supabase/ssr'
-import type { Database } from '@/types/supabase'
+import { supabaseBrowser } from '@/lib/supabase-browser'
 import { Loading } from '@/components/ui/loading'
 import { useMetadataBackfill } from '@/hooks/useMetadataBackfill'
 
@@ -21,12 +20,7 @@ export function ProtectedRoute({
   const [isPremium, setIsPremium] = useState<boolean | null>(null)
   const [isLoading, setIsLoading] = useState(true)
 
-  const supabase = useMemo(() => {
-    if (missingEnv || !supabaseUrl || !supabaseAnon) {
-      return null
-    }
-    return createBrowserClient<Database>(supabaseUrl, supabaseAnon)
-  }, [missingEnv, supabaseUrl, supabaseAnon])
+  const supabase = missingEnv ? null : supabaseBrowser
 
   useEffect(() => {
     if (missingEnv || !supabase) return

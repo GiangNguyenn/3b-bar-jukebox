@@ -1,9 +1,8 @@
 'use client'
 
-import { createBrowserClient } from '@supabase/ssr'
+import { supabaseBrowser } from '@/lib/supabase-browser'
 import { useEffect, useRef, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
-import type { Database } from '@/types/supabase'
 import { getOAuthRedirectUrl } from '@/shared/utils/domain'
 import { useConsoleLogsContext } from '@/hooks/ConsoleLogsProvider'
 import { startFreshAuthentication } from '@/shared/utils/authCleanup'
@@ -17,10 +16,7 @@ export default function SignIn(): JSX.Element {
 
   // Check if we should force a fresh start
   const forceFresh = searchParams.get('fresh') === 'true'
-  const supabase = createBrowserClient<Database>(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-  )
+  const supabase = supabaseBrowser
 
   useEffect(() => {
     const signInWithSpotify = async (): Promise<void> => {

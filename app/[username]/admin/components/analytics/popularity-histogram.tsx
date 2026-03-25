@@ -12,8 +12,7 @@ import {
 } from 'recharts'
 import { Loading } from '@/components/ui/loading'
 import { ErrorMessage } from '@/components/ui/error-message'
-import { createBrowserClient } from '@supabase/ssr'
-import { type Database } from '@/types/supabase'
+import { supabaseBrowser } from '@/lib/supabase-browser'
 
 interface HistogramData {
   popularity_range: string
@@ -74,10 +73,7 @@ export default function PopularityHistogram(): JSX.Element {
   const [data, setData] = useState<HistogramData[]>([])
   const [isLoading, setIsLoading] = useState<boolean>(true)
   const [error, setError] = useState<string | null>(null)
-  const supabase = createBrowserClient<Database>(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-  )
+  const supabase = supabaseBrowser
 
   useEffect(() => {
     const fetchHistogramData = async (): Promise<void> => {

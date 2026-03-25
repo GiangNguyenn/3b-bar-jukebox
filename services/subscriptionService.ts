@@ -1,5 +1,5 @@
-import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 import type { Database } from '@/types/supabase'
+import { supabase } from '@/lib/supabase'
 import { stripeService } from './stripeService'
 import { subscriptionCache } from './subscriptionCache'
 import { createModuleLogger } from '@/shared/utils/logger'
@@ -16,10 +16,7 @@ export class SubscriptionService {
   private supabase
 
   constructor() {
-    this.supabase = createClient<Database>(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-    )
+    this.supabase = supabase
   }
 
   /**

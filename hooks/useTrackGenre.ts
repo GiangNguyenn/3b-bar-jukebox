@@ -1,6 +1,5 @@
-import { useState, useEffect, useMemo } from 'react'
-import { createBrowserClient } from '@supabase/ssr'
-import type { Database } from '@/types/supabase'
+import { useState, useEffect } from 'react'
+import { supabaseBrowser } from '@/lib/supabase-browser'
 
 export function useTrackGenre(
   trackId: string | undefined,
@@ -9,15 +8,7 @@ export function useTrackGenre(
   const [genre, setGenre] = useState<string | null>(fallbackGenre ?? null)
   const [loading, setLoading] = useState(false)
 
-  // Create Supabase client
-  const supabase = useMemo(
-    () =>
-      createBrowserClient<Database>(
-        process.env.NEXT_PUBLIC_SUPABASE_URL!,
-        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-      ),
-    []
-  )
+  const supabase = supabaseBrowser
 
   useEffect(() => {
     // If we have a fallback genre, use it and don't fetch unless it's null

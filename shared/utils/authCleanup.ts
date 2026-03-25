@@ -1,15 +1,11 @@
-import { createBrowserClient } from '@supabase/ssr'
-import type { Database } from '@/types/supabase'
+import { supabaseBrowser } from '@/lib/supabase-browser'
 
 /**
  * Completely clears all authentication state to ensure a fresh start
  */
 export async function clearAuthenticationState(): Promise<void> {
   try {
-    const supabase = createBrowserClient<Database>(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-    )
+    const supabase = supabaseBrowser
 
     // Get current user before signing out to clean up their profile data
     const {

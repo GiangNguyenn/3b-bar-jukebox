@@ -2,9 +2,8 @@
 
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { createBrowserClient } from '@supabase/ssr'
+import { supabaseBrowser } from '@/lib/supabase-browser'
 import { usePremiumStatus } from '@/hooks/usePremiumStatus'
-import type { Database } from '@/types/supabase'
 import type { User } from '@supabase/supabase-js'
 import { Loading } from '@/components/ui/loading'
 import {
@@ -28,10 +27,7 @@ export default function Home(): JSX.Element {
     needsReauth
   } = usePremiumStatus()
 
-  const supabase = createBrowserClient<Database>(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-  )
+  const supabase = supabaseBrowser
 
   useEffect(() => {
     const getUser = async (): Promise<void> => {

@@ -1,11 +1,10 @@
 'use client'
 
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { createBrowserClient } from '@supabase/ssr'
+import { supabaseBrowser } from '@/lib/supabase-browser'
 import { RealtimeChannel } from '@supabase/supabase-js'
 import { Loading } from '@/components/ui/loading'
 import { ErrorMessage } from '@/components/ui/error-message'
-import { type Database } from '@/types/supabase'
 import { showToast } from '@/lib/toast'
 import { usePlaylistData } from '@/hooks/usePlaylistData'
 import ReleaseYearHistogram from './release-year-histogram'
@@ -61,10 +60,7 @@ const useTopTracks = (
   const [isLoading, setIsLoading] = useState<boolean>(true)
   const [error, setError] = useState<string | null>(null)
   const { addLog } = useConsoleLogsContext()
-  const supabase = createBrowserClient<Database>(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-  )
+  const supabase = supabaseBrowser
   const subscriptionRef = useRef<RealtimeChannel | null>(null)
 
   // Optimistic update function
@@ -254,10 +250,7 @@ const useTopArtists = (
   const [isLoading, setIsLoading] = useState<boolean>(true)
   const [error, setError] = useState<string | null>(null)
   const { addLog } = useConsoleLogsContext()
-  const supabase = createBrowserClient<Database>(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-  )
+  const supabase = supabaseBrowser
 
   // Fetch top artists data
   const fetchTopArtists = useCallback(async (): Promise<void> => {
@@ -410,10 +403,7 @@ const useTopGenres = (
   const [isLoading, setIsLoading] = useState<boolean>(true)
   const [error, setError] = useState<string | null>(null)
   const { addLog } = useConsoleLogsContext()
-  const supabase = createBrowserClient<Database>(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-  )
+  const supabase = supabaseBrowser
 
   // Fetch top genres data
   const fetchTopGenres = useCallback(async (): Promise<void> => {
