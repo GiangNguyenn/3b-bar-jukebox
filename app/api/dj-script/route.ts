@@ -115,6 +115,17 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       )
     }
 
+    // Reject garbled model output — repeated backslashes or excessive
+    // non-ASCII characters indicate an inference glitch.
+    const backslashRatio = (script.match(/\\/g) || []).length / script.length
+    if (backslashRatio > 0.1 || /\\{3,}/.test(script)) {
+      console.error('[dj-script] Garbled script rejected:', script.slice(0, 200))
+      return NextResponse.json(
+        { error: 'Venice AI returned an unusable script' },
+        { status: 500 }
+      )
+    }
+
     return NextResponse.json({ script })
   } catch {
     return NextResponse.json(

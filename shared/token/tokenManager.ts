@@ -1,9 +1,5 @@
 import { getAppAccessToken } from '@/services/spotify/auth'
 import { getBaseUrl } from '@/shared/utils/domain'
-import type {
-  TokenResponse,
-  TokenResponseWithExpiry
-} from '@/shared/types/token'
 import { TokenError } from '@/shared/types/token'
 import {
   safeParseTokenResponse,
@@ -59,6 +55,7 @@ class TokenManager {
   private config: TokenManagerConfig
   private refreshPromise: Promise<string> | null = null
   private refreshInProgress = false
+  private onRefreshCallbacks: Array<() => void> = []
 
   private constructor(config: TokenManagerConfig) {
     this.config = {
@@ -72,6 +69,31 @@ class TokenManager {
       TokenManager.instance = new TokenManager(config)
     }
     return TokenManager.instance
+  }
+
+  /**
+   * Register a callback to be invoked after a successful token refresh.
+   * Useful for clearing error cooldowns in dependent systems (e.g. queueManager).
+   * Returns an unsubscribe function.
+   */
+  public onRefresh(callback: () => void): () => void {
+    this.onRefreshCallbacks.push(callback)
+    return () => {
+      const index = this.onRefreshCallbacks.indexOf(callback)
+      if (index !== -1) {
+        this.onRefreshCallbacks.splice(index, 1)
+      }
+    }
+  }
+
+  private notifyRefreshSuccess(): void {
+    for (const cb of this.onRefreshCallbacks) {
+      try {
+        cb()
+      } catch {
+        // Don't let callback errors break token flow
+      }
+    }
   }
 
   public async getToken(): Promise<string> {
@@ -154,7 +176,11 @@ class TokenManager {
     timeout: number = 10000
   ): Promise<Response> {
     const controller = new AbortController()
-    const timeoutId = setTimeout(() => controller.abort(), timeout)
+    const timeoutId = setTimeout(
+      () =>
+        controller.abort(`Token fetch timeout after ${timeout}ms for ${url}`),
+      timeout
+    )
     try {
       const response = await fetch(url, {
         ...options,
@@ -166,128 +192,73 @@ class TokenManager {
     }
   }
 
+  /**
+   * Fetch with timeout and automatic retry for transient network failures.
+   * Used for token refresh calls where reliability is critical.
+   */
+  private async fetchWithRetry(
+    url: string,
+    options: RequestInit = {},
+    timeout: number = 15000,
+    maxRetries: number = 2
+  ): Promise<Response> {
+    let lastError: Error | null = null
+
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      try {
+        return await this.fetchWithTimeout(url, options, timeout)
+      } catch (error) {
+        lastError = error instanceof Error ? error : new Error(String(error))
+
+        // Don't retry if it's not a network/timeout error
+        const isRetryable =
+          lastError.name === 'AbortError' ||
+          lastError.message.includes('fetch') ||
+          lastError.message.includes('network') ||
+          lastError.message.includes('timeout')
+
+        if (!isRetryable || attempt === maxRetries) {
+          throw lastError
+        }
+
+        // Exponential backoff: 1s, 2s
+        const delay = 1000 * Math.pow(2, attempt)
+        if (addLog) {
+          addLog(
+            'WARN',
+            `Token fetch attempt ${attempt + 1}/${maxRetries + 1} failed (${lastError.message}), retrying in ${delay}ms`,
+            'TokenManager'
+          )
+        }
+        await new Promise((resolve) => setTimeout(resolve, delay))
+      }
+    }
+
+    throw lastError ?? new Error('Token fetch failed after retries')
+  }
+
   private async refreshToken(): Promise<string> {
     let lastError: Error | null = null
     let lastErrorCode: string | undefined
 
+    // Define token endpoints in priority order
+    const endpoints = this.buildTokenEndpoints()
+
     try {
-      // Try user-specific token first
-      const tryUser = await this.fetchWithTimeout(
-        `${this.config.baseUrl}/api/token`,
-        {
-          cache: 'no-store',
-          headers: { 'Content-Type': 'application/json' }
+      for (const endpoint of endpoints) {
+        const result = await this.tryTokenEndpoint(endpoint)
+        if (result.token) {
+          this.tokenCache = { token: result.token, expiry: result.expiry }
+          this.notifyRefreshSuccess()
+          return result.token
         }
-      )
-      if (tryUser.ok) {
-        try {
-          const dataRaw = await tryUser.json()
-          const parseResult = safeParseTokenResponse(dataRaw)
-          if (parseResult.success) {
-            const data = parseResult.data
-            this.tokenCache = {
-              token: data.access_token,
-              expiry: Date.now() + data.expires_in * 1000
-            }
-            return data.access_token
-          }
-        } catch (parseError) {
-          this.handleParseError(parseError, 'user')
-        }
-      } else {
-        // Try to parse error response to preserve error code
-        const errorDataRaw = await tryUser.json()
-        const errorResult = this.parseErrorResponse(errorDataRaw, 'User')
-        if (errorResult.error) {
-          lastError = errorResult.error
-          lastErrorCode = errorResult.code
+        if (result.error) {
+          lastError = result.error
+          lastErrorCode = result.errorCode
         }
       }
 
-      // Fallback 1: admin token endpoint
-      const tryAdmin = await this.fetchWithTimeout(
-        `${this.config.baseUrl}/api/auth/token`,
-        {
-          cache: 'no-store'
-        }
-      )
-      if (tryAdmin.ok) {
-        try {
-          const adminDataRaw = await tryAdmin.json()
-          const parseResult = safeParseTokenResponse(adminDataRaw)
-          if (parseResult.success) {
-            const adminData = parseResult.data
-            const expiresAtMs = Date.now() + adminData.expires_in * 1000
-            this.tokenCache = {
-              token: adminData.access_token,
-              expiry: expiresAtMs
-            }
-            return adminData.access_token
-          }
-        } catch (parseError) {
-          this.handleParseError(parseError, 'admin')
-        }
-      } else {
-        // Try to parse error response to preserve error code
-        const errorDataRaw = await tryAdmin.json()
-        const errorResult = this.parseErrorResponse(errorDataRaw, 'Admin')
-        if (errorResult.error) {
-          lastError = errorResult.error
-          lastErrorCode = errorResult.code
-        }
-      }
-
-      // Fallback 2: public username token endpoint
-      // Only attempt if username is configured
-      if (this.config.publicTokenUsername) {
-        try {
-          const tryPublic = await this.fetchWithTimeout(
-            `${this.config.baseUrl}/api/token/${encodeURIComponent(this.config.publicTokenUsername)}`,
-            { cache: 'no-store' }
-          )
-          if (tryPublic.ok) {
-            try {
-              const publicDataRaw = await tryPublic.json()
-              // Public endpoint returns expires_in (seconds remaining)
-              const healthParseResult =
-                safeParseTokenHealthResponse(publicDataRaw)
-              if (healthParseResult.success) {
-                const publicData = healthParseResult.data
-                const accessToken = publicData.access_token
-                if (accessToken) {
-                  // Calculate expiry from expires_in (seconds remaining)
-                  let expiresAtMs: number
-                  if (publicData.expires_in) {
-                    expiresAtMs = Date.now() + publicData.expires_in * 1000
-                  } else if (publicData.expiresIn) {
-                    expiresAtMs = Date.now() + publicData.expiresIn * 1000
-                  } else {
-                    // Default to 1 hour if no expiry info
-                    expiresAtMs =
-                      Date.now() + DEFAULT_TOKEN_EXPIRY_SECONDS * 1000
-                  }
-                  this.tokenCache = { token: accessToken, expiry: expiresAtMs }
-                  return accessToken
-                }
-              }
-            } catch (parseError) {
-              this.handleParseError(parseError, 'public')
-            }
-          }
-        } catch (fetchError) {
-          // Silently ignore fetch errors for fallback endpoint
-          if (addLog) {
-            addLog(
-              'WARN',
-              `Failed to fetch public token endpoint for username "${this.config.publicTokenUsername}"`,
-              'TokenManager',
-              fetchError instanceof Error ? fetchError : undefined
-            )
-          }
-        }
-      }
-
-      // Preserve error code if we have one from previous attempts
+      // All endpoints failed
       const errorMessage =
         'Failed to get token from user, admin, or public endpoints.'
       const error = lastError || new TokenError(errorMessage, lastErrorCode)
@@ -305,6 +276,145 @@ class TokenManager {
         )
       }
       throw error
+    }
+  }
+
+  /**
+   * Build the ordered list of token endpoints to try.
+   */
+  private buildTokenEndpoints(): Array<{
+    url: string
+    options: RequestInit
+    label: string
+    parseResponse: (data: unknown) => { token: string; expiry: number } | null
+  }> {
+    const endpoints: Array<{
+      url: string
+      options: RequestInit
+      label: string
+      parseResponse: (data: unknown) => { token: string; expiry: number } | null
+    }> = [
+      {
+        url: `${this.config.baseUrl}/api/token`,
+        options: {
+          cache: 'no-store',
+          headers: { 'Content-Type': 'application/json' }
+        },
+        label: 'user',
+        parseResponse: (data) => {
+          const result = safeParseTokenResponse(data)
+          if (!result.success) return null
+          return {
+            token: result.data.access_token,
+            expiry: Date.now() + result.data.expires_in * 1000
+          }
+        }
+      },
+      {
+        url: `${this.config.baseUrl}/api/auth/token`,
+        options: { cache: 'no-store' },
+        label: 'admin',
+        parseResponse: (data) => {
+          const result = safeParseTokenResponse(data)
+          if (!result.success) return null
+          return {
+            token: result.data.access_token,
+            expiry: Date.now() + result.data.expires_in * 1000
+          }
+        }
+      }
+    ]
+
+    if (this.config.publicTokenUsername) {
+      endpoints.push({
+        url: `${this.config.baseUrl}/api/token/${encodeURIComponent(this.config.publicTokenUsername)}`,
+        options: { cache: 'no-store' },
+        label: 'public',
+        parseResponse: (data) => {
+          const result = safeParseTokenHealthResponse(data)
+          if (!result.success) return null
+          const accessToken = result.data.access_token
+          if (!accessToken) return null
+
+          let expiresAtMs: number
+          if (result.data.expires_in) {
+            expiresAtMs = Date.now() + result.data.expires_in * 1000
+          } else if (result.data.expiresIn) {
+            expiresAtMs = Date.now() + result.data.expiresIn * 1000
+          } else {
+            expiresAtMs = Date.now() + DEFAULT_TOKEN_EXPIRY_SECONDS * 1000
+          }
+          return { token: accessToken, expiry: expiresAtMs }
+        }
+      })
+    }
+
+    return endpoints
+  }
+
+  /**
+   * Attempt a single token endpoint. Returns the token + expiry on success,
+   * or error details on failure.
+   */
+  private async tryTokenEndpoint(endpoint: {
+    url: string
+    options: RequestInit
+    label: string
+    parseResponse: (data: unknown) => { token: string; expiry: number } | null
+  }): Promise<{
+    token?: string
+    expiry: number
+    error?: Error
+    errorCode?: string
+  }> {
+    try {
+      const response = await this.fetchWithRetry(endpoint.url, endpoint.options)
+
+      if (response.ok) {
+        try {
+          const dataRaw = await response.json()
+          const parsed = endpoint.parseResponse(dataRaw)
+          if (parsed) {
+            return { token: parsed.token, expiry: parsed.expiry }
+          }
+        } catch (parseError) {
+          this.handleParseError(
+            parseError,
+            endpoint.label as 'user' | 'admin' | 'public'
+          )
+        }
+        return { expiry: 0 }
+      }
+
+      // Non-OK response — try to extract error details
+      try {
+        const errorDataRaw = await response.json()
+        const errorResult = this.parseErrorResponse(
+          errorDataRaw,
+          endpoint.label
+        )
+        if (errorResult.error) {
+          return {
+            expiry: 0,
+            error: errorResult.error,
+            errorCode: errorResult.code
+          }
+        }
+      } catch {
+        // Ignore JSON parse failures on error responses
+      }
+      return { expiry: 0 }
+    } catch (fetchError) {
+      // Network/timeout errors — log and continue to next endpoint
+      if (addLog) {
+        addLog(
+          'WARN',
+          `Failed to fetch ${endpoint.label} token endpoint`,
+          'TokenManager',
+          fetchError instanceof Error ? fetchError : undefined
+        )
+      }
+      return { expiry: 0 }
     }
   }
 

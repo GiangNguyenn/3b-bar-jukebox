@@ -9,6 +9,9 @@ class QueueManager {
   private static instance: QueueManager
   // Track IDs currently being deleted to prevent race conditions with queue refreshes
   private pendingDeletes: Set<string> = new Set()
+  // Track IDs that have permanently failed deletion — prevents infinite retry loops
+  // when the same track keeps being retried by multiple callers
+  private failedDeletes: Map<string, number> = new Map()
   // Track the currently playing track ID to exclude it from getNextTrack()
   private currentlyPlayingTrackId: string | null = null
 
@@ -66,7 +69,36 @@ class QueueManager {
     return this.queue
   }
 
+  /**
+   * Clear the failed deletes cooldown for a specific track or all tracks.
+   * Called when conditions change (e.g. token refreshed, connectivity restored).
+   */
+  public clearFailedDeletes(queueId?: string): void {
+    if (queueId) {
+      this.failedDeletes.delete(queueId)
+    } else {
+      this.failedDeletes.clear()
+    }
+  }
+
   public async markAsPlayed(queueId: string, maxRetries = 2): Promise<void> {
+    // Check if this track recently failed permanently — prevent infinite retry loops
+    // where multiple callers (QueueSynchronizer, autoPlayService) keep retrying the same track
+    const lastFailure = this.failedDeletes.get(queueId)
+    if (lastFailure) {
+      const cooldownMs = 30000 // 30s cooldown before allowing retry
+      const elapsed = Date.now() - lastFailure
+      if (elapsed < cooldownMs) {
+        logger(
+          'WARN',
+          `[markAsPlayed] Track ${queueId} is in cooldown after previous failure (${Math.round((cooldownMs - elapsed) / 1000)}s remaining), skipping`
+        )
+        return
+      }
+      // Cooldown expired, allow retry
+      this.failedDeletes.delete(queueId)
+    }
+
     // Store the track for potential rollback
     const trackToRemove = this.queue.find((track) => track.id === queueId)
 
@@ -143,8 +175,11 @@ class QueueManager {
         // Exhausted retries - rollback the optimistic update
         logger(
           'ERROR',
-          `[markAsPlayed] Failed to mark track ${queueId} as played after ${maxRetries + 1} attempts, rolling back local queue`
+          `[markAsPlayed] Failed to mark track ${queueId} as played after ${maxRetries + 1} attempts, rolling back local queue. Last status: ${response.status}`
         )
+
+        // Record permanent failure to prevent infinite retry loops from multiple callers
+        this.failedDeletes.set(queueId, Date.now())
 
         // Add track back to queue at the beginning (it was highest priority)
         this.queue.unshift(trackToRemove)
@@ -169,10 +204,13 @@ class QueueManager {
         // Exhausted retries - rollback the optimistic update
         logger(
           'ERROR',
-          `[markAsPlayed] Exception while marking track ${queueId} as played after ${maxRetries + 1} attempts, rolling back local queue`,
+          `[markAsPlayed] Exception while marking track ${queueId} as played after ${maxRetries + 1} attempts, rolling back local queue. Error: ${error instanceof Error ? error.message : String(error)}`,
           undefined,
           error as Error
         )
+
+        // Record permanent failure to prevent infinite retry loops from multiple callers
+        this.failedDeletes.set(queueId, Date.now())
 
         // Add track back to queue at the beginning (it was highest priority)
         this.queue.unshift(trackToRemove)

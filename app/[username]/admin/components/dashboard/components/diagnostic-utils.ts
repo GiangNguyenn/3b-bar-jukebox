@@ -55,6 +55,93 @@ export function formatEventType(type: string): string {
 
 import { LogEntry as ConsoleLogEntry } from '@/hooks/ConsoleLogsProvider'
 
+/**
+ * Summarize error/warn counts by context module from console logs.
+ * Helps quickly identify which subsystem is failing most.
+ */
+function summarizeErrorCounts(
+  logs: ConsoleLogEntry[]
+): Record<string, { errors: number; warnings: number }> {
+  const counts: Record<string, { errors: number; warnings: number }> = {}
+  for (const log of logs) {
+    if (log.level !== 'ERROR' && log.level !== 'WARN') continue
+    const key = log.context || 'Unknown'
+    if (!counts[key]) counts[key] = { errors: 0, warnings: 0 }
+    if (log.level === 'ERROR') counts[key].errors++
+    else counts[key].warnings++
+  }
+  return counts
+}
+
+/**
+ * Detect operations that failed repeatedly for the same target (e.g. same track ID).
+ * Returns groups of repeated failure patterns.
+ */
+function detectRepeatedFailures(logs: ConsoleLogEntry[]): Array<{
+  pattern: string
+  count: number
+  firstSeen: string
+  lastSeen: string
+}> {
+  // Extract failure signatures: context + key identifiers from message
+  const failureMap = new Map<
+    string,
+    { count: number; firstSeen: string; lastSeen: string }
+  >()
+
+  for (const log of logs) {
+    if (log.level !== 'ERROR') continue
+    // Normalize the message to group related failures
+    // Strip attempt numbers and timestamps to find the core operation
+    const normalized = log.message
+      .replace(/\(attempt \d+\/\d+\)/g, '')
+      .replace(/after \d+ attempts/g, 'after N attempts')
+      .replace(
+        /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi,
+        '<uuid>'
+      )
+      .trim()
+    const key = `[${log.context || 'Unknown'}] ${normalized}`
+
+    const existing = failureMap.get(key)
+    const ts = log.timestamp
+    if (existing) {
+      existing.count++
+      existing.lastSeen = ts
+    } else {
+      failureMap.set(key, { count: 1, firstSeen: ts, lastSeen: ts })
+    }
+  }
+
+  // Only return patterns that repeated
+  return Array.from(failureMap.entries())
+    .filter(([, v]) => v.count > 1)
+    .map(([pattern, v]) => ({
+      pattern,
+      count: v.count,
+      firstSeen: v.firstSeen.split('T')[1]?.slice(0, 12) ?? v.firstSeen,
+      lastSeen: v.lastSeen.split('T')[1]?.slice(0, 12) ?? v.lastSeen
+    }))
+}
+
+/**
+ * Get the time span covered by the captured logs.
+ */
+function getLogTimeSpan(
+  logs: ConsoleLogEntry[]
+): { oldest: string; newest: string; durationMinutes: number } | undefined {
+  if (logs.length === 0) return undefined
+  const oldest = logs[logs.length - 1]?.timestamp
+  const newest = logs[0]?.timestamp
+  if (!oldest || !newest) return undefined
+  const durationMs = new Date(newest).getTime() - new Date(oldest).getTime()
+  return {
+    oldest: oldest.split('T')[1]?.slice(0, 12) ?? oldest,
+    newest: newest.split('T')[1]?.slice(0, 12) ?? newest,
+    durationMinutes: Math.round(durationMs / 60000)
+  }
+}
+
 export function formatDiagnosticsForClipboard(
   healthStatus: HealthStatus,
   isReady: boolean,
@@ -80,7 +167,10 @@ export function formatDiagnosticsForClipboard(
       playback: {
         status: healthStatus.playback,
         isPlaying: healthStatus.playbackDetails?.isPlaying,
-        currentTrack: healthStatus.playbackDetails?.currentTrack?.name
+        currentTrack: healthStatus.playbackDetails?.currentTrack?.name,
+        progress: healthStatus.playbackDetails?.progress,
+        duration: healthStatus.playbackDetails?.duration,
+        isStalled: healthStatus.playbackDetails?.isStalled
       },
       connection: {
         status: healthStatus.connection,
@@ -122,6 +212,14 @@ export function formatDiagnosticsForClipboard(
       connectivity: healthStatus.connectivityInvestigation,
       internalState: healthStatus.internalState,
       systemInfo: healthStatus.systemInfo
+    },
+    errorAnalysis: {
+      // Summarize error patterns from logs to make diagnosis easier
+      errorCounts: summarizeErrorCounts(logs),
+      // Detect repeated failures on the same operation
+      repeatedFailures: detectRepeatedFailures(logs),
+      // Time span of captured logs
+      logTimeSpan: getLogTimeSpan(logs)
     },
     logs: {
       // Include both internal component logs and console logs

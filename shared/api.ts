@@ -201,7 +201,10 @@ export const sendApiRequest = async <T>({
     return cachedRequest.promise
   }
 
-  const makeRequest = async (retryCount = 0): Promise<T> => {
+  const makeRequest = async (
+    retryCount = 0,
+    extendQueueTimeout?: (duration: number) => void
+  ): Promise<T> => {
     const baseUrl = isLocalApi ? '/api' : SPOTIFY_API_URL
     const normalizedPath = path.startsWith('/') ? path : `/${path}`
     const url = `${baseUrl}${normalizedPath}`
@@ -227,7 +230,11 @@ export const sendApiRequest = async <T>({
 
       const startTime = Date.now()
       const controller = new AbortController()
-      const timeoutId = setTimeout(() => controller.abort(), timeout)
+      const timeoutId = setTimeout(
+        () =>
+          controller.abort(`Timeout after ${timeout}ms for ${method} ${url}`),
+        timeout
+      )
 
       let response: Response
       try {
@@ -273,6 +280,12 @@ export const sendApiRequest = async <T>({
             'TokenRefresh'
           )
 
+          // Extend the queue-level timeout to give the token refresh + retry enough time
+          // Token refresh can take up to 10s (fetchWithTimeout) + retry fetch up to 30s
+          if (extendQueueTimeout) {
+            extendQueueTimeout(timeout + 15000)
+          }
+
           try {
             if (useAppToken) {
               // For app tokens, clear the cache and get a new token
@@ -293,7 +306,7 @@ export const sendApiRequest = async <T>({
             }
 
             // Retry the request with the new token
-            return makeRequest(retryCount + 1)
+            return makeRequest(retryCount + 1, extendQueueTimeout)
           } catch (refreshError) {
             const log = await getLogger()
             log(
@@ -355,7 +368,7 @@ export const sendApiRequest = async <T>({
             await new Promise((resolve) =>
               setTimeout(resolve, retryAfter * 1000)
             )
-            return makeRequest(retryCount + 1)
+            return makeRequest(retryCount + 1, extendQueueTimeout)
           } else {
             throw new ApiError(
               `Rate limit reached. Retry after ${retryAfter}s`,
@@ -429,25 +442,28 @@ export const sendApiRequest = async <T>({
 
   const promise = new Promise<T>((resolve, reject) => {
     // Create an overall timeout for the request (queueing + execution)
-    const queueTimeoutId = setTimeout(() => {
-      // If the request is still in the queue or executing when this fires,
-      // fail the external promise. The background request may still complete
-      // but its result will be ignored.
-      reject(
-        new ApiError(`Request timed out after ${timeout}ms`, {
-          status: 408 // Request Timeout
-        })
-      )
-    }, timeout)
+    // Use an object so the 401 retry path can extend the timeout
+    const timeoutState = { id: 0 as unknown as ReturnType<typeof setTimeout> }
+    const startQueueTimeout = (duration: number) => {
+      clearTimeout(timeoutState.id)
+      timeoutState.id = setTimeout(() => {
+        reject(
+          new ApiError(`Request timed out after ${duration}ms`, {
+            status: 408
+          })
+        )
+      }, duration)
+    }
+    startQueueTimeout(timeout)
 
     requestQueue.push(() =>
-      makeRequest()
+      makeRequest(0, startQueueTimeout)
         .then((result) => {
-          clearTimeout(queueTimeoutId)
+          clearTimeout(timeoutState.id)
           resolve(result)
         })
         .catch((error) => {
-          clearTimeout(queueTimeoutId)
+          clearTimeout(timeoutState.id)
           reject(error)
         })
     )

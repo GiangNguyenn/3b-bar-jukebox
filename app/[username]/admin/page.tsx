@@ -143,6 +143,16 @@ export default function AdminPage(): JSX.Element {
     }
   }, [queue])
 
+  // Wire up token refresh → queue recovery:
+  // When token refreshes successfully, clear markAsPlayed cooldowns
+  // so tracks that were stuck during a token outage can be retried immediately
+  useEffect(() => {
+    const unsubscribe = tokenManager.onRefresh(() =>
+      queueManager.clearFailedDeletes()
+    )
+    return unsubscribe
+  }, [])
+
   // Initialize AutoPlayService when username is available
   useEffect(() => {
     if (!username) {
@@ -209,6 +219,9 @@ export default function AdminPage(): JSX.Element {
           'Connection restored - triggering auto-fill check',
           'AdminPage'
         )
+
+        // Clear markAsPlayed cooldowns so tracks stuck during disconnection can be retried
+        queueManager.clearFailedDeletes()
 
         // Use type assertion to access private/protected method if needed,
         // or rely on the fact that we can call public methods that trigger it.
