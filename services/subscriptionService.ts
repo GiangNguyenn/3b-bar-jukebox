@@ -1,4 +1,5 @@
 import type { Database } from '@/types/supabase'
+import type { SupabaseClient } from '@supabase/supabase-js'
 import { supabase } from '@/lib/supabase'
 import { stripeService } from './stripeService'
 import { subscriptionCache } from './subscriptionCache'

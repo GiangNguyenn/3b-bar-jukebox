@@ -21,6 +21,7 @@ The admin page loads with four categories of console noise: duplicate GoTrueClie
 The bug manifests across four independent symptoms that share a common root cause of fragmented Supabase client creation. Each browser page load creates ~15 independent Supabase client instances (via `createBrowserClient` in hooks/pages and `createClient` in services), triggering GoTrueClient warnings. The `dgsCache.ts` module uses the anon-key client for artist upserts that require service-role privileges. No `favicon.ico` exists at the expected path. Realtime websocket connections fail due to competing auth states from multiple GoTrueClient instances.
 
 **Formal Specification:**
+
 ```
 FUNCTION isBugCondition(input)
   INPUT: input of type { context: 'browser-load' | 'server-upsert' | 'asset-request' | 'realtime-connect', details: any }
@@ -50,12 +51,12 @@ END FUNCTION
 - Any page load → GET `/favicon.ico` returns 404 (only `public/icon.ico` exists)
 - `usePlaylistData` subscribes to realtime → websocket to `wss://...supabase.co/realtime/v1/websocket` fails to connect, likely due to conflicting auth tokens from multiple GoTrueClient instances
 
-
 ## Expected Behavior
 
 ### Preservation Requirements
 
 **Unchanged Behaviors:**
+
 - All existing Supabase queries (selects, inserts, updates, RPC calls) must return identical results — only client instantiation changes, not queries
 - `services/stripeService.ts` must continue using the service role key with admin privileges for Stripe webhook database operations
 - `lib/supabase-admin.ts` must remain unchanged with `autoRefreshToken: false` and `persistSession: false`
@@ -65,6 +66,7 @@ END FUNCTION
 
 **Scope:**
 All inputs that do NOT involve the four bug conditions should be completely unaffected by this fix. This includes:
+
 - Normal Supabase query execution (reads, writes via API routes)
 - Spotify playback SDK operations
 - Stripe webhook processing
@@ -123,7 +125,6 @@ _For any_ venue with custom branding favicon settings, the `usePublicBranding` h
 
 **Validates: Requirements 3.7**
 
-
 ## Fix Implementation
 
 ### Changes Required
@@ -135,6 +136,7 @@ Assuming our root cause analysis is correct:
 **Purpose**: Create a browser-side Supabase client singleton
 
 **Specific Changes**:
+
 1. **Create singleton module**: Export a single `supabaseBrowser` instance created via `createBrowserClient<Database>()` from `@supabase/ssr`. This mirrors the pattern of `lib/supabase.ts` but for browser contexts.
 
 ---
@@ -144,6 +146,7 @@ Assuming our root cause analysis is correct:
 **Function**: `usePlaylistData`
 
 **Specific Changes**:
+
 1. **Replace inline client**: Remove `createBrowserClient` import and inline instantiation. Import `supabaseBrowser` from `@/lib/supabase-browser` instead.
 
 ---
@@ -153,6 +156,7 @@ Assuming our root cause analysis is correct:
 **Function**: `useTrackGenre`
 
 **Specific Changes**:
+
 1. **Replace inline client**: Remove `createBrowserClient` import and `useMemo` wrapper. Import `supabaseBrowser` from `@/lib/supabase-browser`.
 
 ---
@@ -162,6 +166,7 @@ Assuming our root cause analysis is correct:
 **Function**: `useGetProfile`
 
 **Specific Changes**:
+
 1. **Replace inline client**: Remove `createBrowserClient` import and `useMemo` wrapper. Import `supabaseBrowser` from `@/lib/supabase-browser`.
 
 ---
@@ -171,6 +176,7 @@ Assuming our root cause analysis is correct:
 **Function**: `usePremiumStatus`
 
 **Specific Changes**:
+
 1. **Remove unused import**: Remove the `createBrowserClient` import and `@supabase/ssr` dependency since the hook doesn't actually use a Supabase client (it's a no-op stub returning hardcoded premium status).
 
 ---
@@ -180,6 +186,7 @@ Assuming our root cause analysis is correct:
 **Function**: `clearAuthenticationState`
 
 **Specific Changes**:
+
 1. **Replace inline client**: Remove `createBrowserClient` import and inline instantiation inside the function body. Import `supabaseBrowser` from `@/lib/supabase-browser`.
 
 ---
@@ -189,6 +196,7 @@ Assuming our root cause analysis is correct:
 **Function**: `useBrandingSettings`
 
 **Specific Changes**:
+
 1. **Replace inline client**: Remove `createBrowserClient` import and inline instantiation. Import `supabaseBrowser` from `@/lib/supabase-browser`.
 
 ---
@@ -196,6 +204,7 @@ Assuming our root cause analysis is correct:
 **File**: `app/[username]/admin/components/analytics/analytics-tab.tsx`
 
 **Specific Changes**:
+
 1. **Replace inline clients**: This file has three components each creating their own client. Remove all `createBrowserClient` calls and import `supabaseBrowser` from `@/lib/supabase-browser`.
 
 ---
@@ -203,6 +212,7 @@ Assuming our root cause analysis is correct:
 **File**: `app/[username]/admin/components/analytics/popularity-histogram.tsx`
 
 **Specific Changes**:
+
 1. **Replace inline client**: Remove `createBrowserClient` import and inline instantiation. Import `supabaseBrowser` from `@/lib/supabase-browser`.
 
 ---
@@ -210,6 +220,7 @@ Assuming our root cause analysis is correct:
 **File**: `app/[username]/admin/components/analytics/release-year-histogram.tsx`
 
 **Specific Changes**:
+
 1. **Replace inline client**: Remove `createBrowserClient` import and inline instantiation. Import `supabaseBrowser` from `@/lib/supabase-browser`.
 
 ---
@@ -217,6 +228,7 @@ Assuming our root cause analysis is correct:
 **File**: `app/[username]/admin/components/ProtectedRoute.tsx`
 
 **Specific Changes**:
+
 1. **Replace inline client**: Remove `createBrowserClient` import and `useMemo` wrapper. Import `supabaseBrowser` from `@/lib/supabase-browser`.
 
 ---
@@ -224,6 +236,7 @@ Assuming our root cause analysis is correct:
 **File**: `app/page.tsx`
 
 **Specific Changes**:
+
 1. **Replace inline client**: Remove `createBrowserClient` import and inline instantiation. Import `supabaseBrowser` from `@/lib/supabase-browser`.
 
 ---
@@ -231,6 +244,7 @@ Assuming our root cause analysis is correct:
 **File**: `app/premium-required/page.tsx`
 
 **Specific Changes**:
+
 1. **Replace inline client**: Remove `createBrowserClient` import and inline instantiation. Import `supabaseBrowser` from `@/lib/supabase-browser`.
 
 ---
@@ -238,6 +252,7 @@ Assuming our root cause analysis is correct:
 **File**: `app/auth/signin/page.tsx`
 
 **Specific Changes**:
+
 1. **Replace inline client**: Remove `createBrowserClient` import and inline instantiation. Import `supabaseBrowser` from `@/lib/supabase-browser`.
 
 ---
@@ -247,6 +262,7 @@ Assuming our root cause analysis is correct:
 **Functions**: `upsertArtistProfile`, `batchUpsertArtistProfiles`
 
 **Specific Changes**:
+
 1. **Import admin client**: Add import of `supabaseAdmin` from `@/lib/supabase-admin`.
 2. **Switch upsert calls**: Change `upsertArtistProfile` and `batchUpsertArtistProfiles` to use `supabaseAdmin` instead of `supabase` for the `.from('artists').upsert()` calls. Keep all read operations on the anon client since RLS allows reads.
 
@@ -255,6 +271,7 @@ Assuming our root cause analysis is correct:
 **File**: `services/game/metadataBackfill.ts`
 
 **Specific Changes**:
+
 1. **Replace inline client**: Remove `createClient` import and module-level instantiation. Import `supabase` from `@/lib/supabase`.
 
 ---
@@ -262,6 +279,7 @@ Assuming our root cause analysis is correct:
 **File**: `services/subscriptionService.ts`
 
 **Specific Changes**:
+
 1. **Replace constructor client**: Remove `createClient` import and constructor instantiation. Import `supabase` from `@/lib/supabase` and assign to `this.supabase`.
 
 ---
@@ -269,6 +287,7 @@ Assuming our root cause analysis is correct:
 **File**: `services/subscriptionCache.ts`
 
 **Specific Changes**:
+
 1. **Replace constructor client**: Remove `createClient` import and constructor instantiation. Import `supabase` from `@/lib/supabase` and assign to `this.supabase`.
 
 ---
@@ -276,6 +295,7 @@ Assuming our root cause analysis is correct:
 **File**: `utils/subscriptionQueries.ts`
 
 **Specific Changes**:
+
 1. **Replace constructor client**: Remove `createClient` import and constructor instantiation. Import `supabase` from `@/lib/supabase` and assign to `this.supabase`.
 
 ---
@@ -283,6 +303,7 @@ Assuming our root cause analysis is correct:
 **File**: `services/stripeService.ts`
 
 **Specific Changes**:
+
 1. **Replace constructor client**: Remove `createClient` and `createServerClient` imports and constructor instantiation. Import `supabaseAdmin` from `@/lib/supabase-admin` and assign to `this.supabase`. This preserves the service role key usage while eliminating the redundant client.
 
 ---
@@ -290,8 +311,8 @@ Assuming our root cause analysis is correct:
 **File**: `public/favicon.ico` (NEW)
 
 **Specific Changes**:
-1. **Copy existing icon**: Copy `public/icon.ico` to `public/favicon.ico` so browsers find the favicon at the default path.
 
+1. **Copy existing icon**: Copy `public/icon.ico` to `public/favicon.ico` so browsers find the favicon at the default path.
 
 ## Testing Strategy
 
@@ -306,12 +327,14 @@ The testing strategy follows a two-phase approach: first, surface counterexample
 **Test Plan**: Write tests that statically analyze imports and instantiation patterns across the codebase, and unit tests that verify the client used by `dgsCache.ts` for upserts. Run these tests on the UNFIXED code to observe failures.
 
 **Test Cases**:
+
 1. **Duplicate Client Detection Test**: Count the number of files that call `createBrowserClient()` directly — expect >1, confirming the duplication (will fail assertion that count == 1 on unfixed code)
 2. **Artist Upsert Client Test**: Verify that `dgsCache.ts` imports from `lib/supabase.ts` (anon key) — confirm this is the wrong client for upserts (will fail assertion that admin client is used on unfixed code)
 3. **Favicon Existence Test**: Check that `public/favicon.ico` exists — will fail on unfixed code since only `public/icon.ico` exists
 4. **Server-Side Service Client Test**: Verify that `subscriptionService.ts`, `subscriptionCache.ts`, `subscriptionQueries.ts` create their own clients instead of importing singletons (will fail singleton assertion on unfixed code)
 
 **Expected Counterexamples**:
+
 - 15+ files independently instantiate Supabase clients
 - `dgsCache.ts` uses anon key for artist upserts, triggering RLS 401
 - No `public/favicon.ico` file exists
@@ -321,6 +344,7 @@ The testing strategy follows a two-phase approach: first, surface counterexample
 **Goal**: Verify that for all inputs where the bug condition holds, the fixed code produces the expected behavior.
 
 **Pseudocode:**
+
 ```
 FOR ALL browserModule WHERE usesBrowserSupabaseClient(browserModule) DO
   client := getSupabaseClientUsed(browserModule)
@@ -341,6 +365,7 @@ ASSERT fileContent('public/favicon.ico') === fileContent('public/icon.ico')
 **Goal**: Verify that for all inputs where the bug condition does NOT hold, the fixed code produces the same result as the original code.
 
 **Pseudocode:**
+
 ```
 FOR ALL query WHERE isStandardSupabaseQuery(query) DO
   ASSERT executeWithNewClient(query) === executeWithOldClient(query)
@@ -352,6 +377,7 @@ END FOR
 ```
 
 **Testing Approach**: Property-based testing is recommended for preservation checking because:
+
 - It generates many test cases automatically across the input domain
 - It catches edge cases that manual unit tests might miss
 - It provides strong guarantees that behavior is unchanged for all non-buggy inputs
@@ -359,6 +385,7 @@ END FOR
 **Test Plan**: Observe behavior on UNFIXED code first for normal query execution and realtime fallback, then write tests capturing that behavior.
 
 **Test Cases**:
+
 1. **Query Result Preservation**: Verify that queries through the singleton client return the same results as queries through independently created clients (same URL, same key = same results)
 2. **Realtime Fallback Preservation**: Verify that `usePlaylistData` still falls back to 30-second polling on connection error after switching to the singleton client
 3. **Stripe Webhook Preservation**: Verify that `stripeService.ts` still uses service role key privileges after switching to `supabaseAdmin` import

@@ -1,6 +1,7 @@
 # Implementation Plan
 
 - [x] 1. Write bug condition exploration test
+
   - **Property 1: Bug Condition** - Fragmented Supabase Client Instantiation
   - **CRITICAL**: This test MUST FAIL on unfixed code - failure confirms the bugs exist
   - **DO NOT attempt to fix the test or the code when it fails**
@@ -19,6 +20,7 @@
   - _Requirements: 1.1, 1.2, 1.3, 1.4_
 
 - [x] 2. Write preservation property tests (BEFORE implementing fix)
+
   - **Property 2: Preservation** - Existing Client Configuration and Behavior Preserved
   - **IMPORTANT**: Follow observation-first methodology
   - Create test file `lib/__tests__/supabase-client-preservation.test.ts` using `node:test` and `node:assert`
@@ -41,6 +43,7 @@
 - [x] 3. Consolidate Supabase client instantiation and fix console errors
 
   - [x] 3.1 Create `lib/supabase-browser.ts` browser-side singleton
+
     - Create new file exporting `supabaseBrowser` via `createBrowserClient<Database>()` from `@supabase/ssr`
     - Use `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY` env vars
     - Mirror the singleton pattern of `lib/supabase.ts` but for browser contexts
@@ -50,6 +53,7 @@
     - _Requirements: 2.1, 2.4_
 
   - [x] 3.2 Update browser-side files to use `supabaseBrowser` singleton
+
     - Replace `createBrowserClient` calls with `supabaseBrowser` import from `@/lib/supabase-browser` in:
       - `hooks/usePlaylistData.ts` — remove `createBrowserClient` import and inline instantiation
       - `hooks/useTrackGenre.ts` — remove `createBrowserClient` import and `useMemo` wrapper
@@ -70,6 +74,7 @@
     - _Requirements: 2.1, 2.4, 3.1, 3.6_
 
   - [x] 3.3 Update server-side service files to use existing singletons
+
     - `services/subscriptionService.ts` — remove `createClient` import and constructor instantiation, import `supabase` from `@/lib/supabase`, assign to `this.supabase`
     - `services/subscriptionCache.ts` — remove `createClient` import and constructor instantiation, import `supabase` from `@/lib/supabase`, assign to `this.supabase`
     - `utils/subscriptionQueries.ts` — remove `createClient` import and constructor instantiation, import `supabase` from `@/lib/supabase`, assign to `this.supabase`
@@ -80,6 +85,7 @@
     - _Requirements: 2.1, 3.1_
 
   - [x] 3.4 Switch `services/stripeService.ts` to `lib/supabase-admin.ts`
+
     - Remove `createClient` and `createServerClient` imports and constructor client instantiation
     - Import `supabaseAdmin` from `@/lib/supabase-admin` and assign to `this.supabase`
     - This preserves service role key usage while eliminating the redundant client
@@ -89,6 +95,7 @@
     - _Requirements: 2.1, 3.2, 3.3_
 
   - [x] 3.5 Switch `dgsCache.ts` upsert functions to admin client
+
     - Add import of `supabaseAdmin` from `@/lib/supabase-admin`
     - Change `upsertArtistProfile` to use `supabaseAdmin` for `.from('artists').upsert()` call
     - Change `batchUpsertArtistProfiles` to use `supabaseAdmin` for `.from('artists').upsert()` call
@@ -99,6 +106,7 @@
     - _Requirements: 2.2, 3.5_
 
   - [x] 3.6 Add `public/favicon.ico`
+
     - Copy `public/icon.ico` to `public/favicon.ico`
     - _Bug_Condition: isBugCondition({ context: 'asset-request' }) where NOT fileExists('public/favicon.ico')_
     - _Expected_Behavior: GET /favicon.ico returns HTTP 200 with valid ICO file_
@@ -106,6 +114,7 @@
     - _Requirements: 2.3, 3.7_
 
   - [x] 3.7 Verify bug condition exploration test now passes
+
     - **Property 1: Expected Behavior** - Fragmented Supabase Client Instantiation Fixed
     - **IMPORTANT**: Re-run the SAME test from task 1 - do NOT write a new test
     - The test from task 1 encodes the expected behavior (singleton usage, admin client for upserts, favicon exists)

@@ -2,6 +2,7 @@ import { useEffect, useCallback } from 'react'
 import { supabaseBrowser } from '@/lib/supabase-browser'
 import { getDefaultBrandingSettings } from '../utils/default-settings'
 import { useBrandingStore } from '@/stores/brandingStore'
+import type { Database } from '@/types/supabase'
 
 type BrandingSettings = Database['public']['Tables']['branding_settings']['Row']
 

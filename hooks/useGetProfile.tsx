@@ -4,9 +4,30 @@ import { AppError } from '@/shared/utils/errorHandling'
 import { ERROR_MESSAGES } from '@/shared/constants/errors'
 import { queryWithRetry } from '@/lib/supabaseQuery'
 
-type Profile = Database['public']['Tables']['profiles']['Row']
+interface Profile {
+  avatar_url: string | null
+  created_at: string
+  display_name: string
+  id: string
+  is_premium: boolean | null
+  premium_verified_at: string | null
+  spotify_access_token: string | null
+  spotify_product_type: string | null
+  spotify_provider_id: string | null
+  spotify_refresh_token: string | null
+  spotify_token_expires_at: number | null
+  spotify_user_id: string
+  subscription_id: string | null
+  updated_at: string
+}
 
-export function useGetProfile() {
+interface UseGetProfileReturn {
+  profile: Profile | null
+  loading: boolean
+  error: string | null
+}
+
+export function useGetProfile(): UseGetProfileReturn {
   const [profile, setProfile] = useState<Profile | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)

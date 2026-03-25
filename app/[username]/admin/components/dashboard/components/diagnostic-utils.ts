@@ -65,7 +65,7 @@ function summarizeErrorCounts(
   const counts: Record<string, { errors: number; warnings: number }> = {}
   for (const log of logs) {
     if (log.level !== 'ERROR' && log.level !== 'WARN') continue
-    const key = log.context || 'Unknown'
+    const key = log.context ?? 'Unknown'
     if (!counts[key]) counts[key] = { errors: 0, warnings: 0 }
     if (log.level === 'ERROR') counts[key].errors++
     else counts[key].warnings++
@@ -101,7 +101,7 @@ function detectRepeatedFailures(logs: ConsoleLogEntry[]): Array<{
         '<uuid>'
       )
       .trim()
-    const key = `[${log.context || 'Unknown'}] ${normalized}`
+    const key = `[${log.context ?? 'Unknown'}] ${normalized}`
 
     const existing = failureMap.get(key)
     const ts = log.timestamp
