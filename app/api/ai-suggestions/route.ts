@@ -18,6 +18,10 @@ export const aiSuggestionsRequestSchema = z.object({
     .min(1, 'Prompt must not be empty')
     .max(500, 'Prompt must be 500 characters or fewer'),
   excludedTrackIds: z.array(z.string()),
+  queuedTracks: z.array(z.object({
+    title: z.string(),
+    artist: z.string()
+  })).optional().default([]),
   profileId: z.string().min(1, 'Profile ID must not be empty')
 })
 
@@ -60,7 +64,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     )
   }
 
-  const { prompt, excludedTrackIds, profileId } = parsed.data
+  const { prompt, excludedTrackIds, queuedTracks, profileId } = parsed.data
 
   try {
     // Resolve username to profile UUID for recently played lookups
@@ -76,7 +80,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     const result = await getAiSuggestions(
       prompt,
       excludedTrackIds,
-      recentlyPlayed
+      recentlyPlayed,
+      queuedTracks
     )
 
     // Record returned tracks as recently played (non-blocking, fire-and-forget)

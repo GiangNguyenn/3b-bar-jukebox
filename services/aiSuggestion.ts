@@ -20,13 +20,19 @@ Do not include songs from the recently played list provided by the user.`
 
 export function buildUserMessage(
   prompt: string,
-  recentlyPlayed: RecentlyPlayedEntry[]
+  recentlyPlayed: RecentlyPlayedEntry[],
+  queuedTracks: Array<{ title: string; artist: string }> = []
 ): string {
   let message = `Suggest ${SUGGESTION_BATCH_SIZE} songs matching this vibe: ${prompt}`
 
-  if (recentlyPlayed.length > 0) {
-    message += '\n\nDo NOT suggest any of these recently played songs:'
-    recentlyPlayed.forEach((entry, i) => {
+  const allExcluded = [
+    ...recentlyPlayed.map((e) => ({ title: e.title, artist: e.artist })),
+    ...queuedTracks
+  ]
+
+  if (allExcluded.length > 0) {
+    message += '\n\nDo NOT suggest any of these recently played or currently queued songs:'
+    allExcluded.forEach((entry, i) => {
       message += `\n${i + 1}. "${entry.title}" by ${entry.artist}`
     })
   }
@@ -138,7 +144,8 @@ export async function resolveToSpotifyTrack(
 export async function getAiSuggestions(
   prompt: string,
   excludedTrackIds: string[],
-  recentlyPlayed: RecentlyPlayedEntry[]
+  recentlyPlayed: RecentlyPlayedEntry[],
+  queuedTracks: Array<{ title: string; artist: string }> = []
 ): Promise<AiSuggestionResult> {
   const apiKey = process.env.VENICE_AI_API_KEY
   if (!apiKey) {
@@ -146,7 +153,7 @@ export async function getAiSuggestions(
     return { tracks: [], failedResolutions: [] }
   }
 
-  const userMessage = buildUserMessage(prompt, recentlyPlayed)
+  const userMessage = buildUserMessage(prompt, recentlyPlayed, queuedTracks)
 
   logger(
     'INFO',

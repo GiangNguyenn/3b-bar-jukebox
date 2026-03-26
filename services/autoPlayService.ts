@@ -547,6 +547,11 @@ class AutoPlayService {
       const timeoutId = setTimeout(() => controller.abort(), 30000)
       let response: Response
 
+      const queuedTracks = currentQueue.map((item) => ({
+        title: item.tracks.name,
+        artist: item.tracks.artist
+      }))
+
       try {
         response = await fetch('/api/ai-suggestions', {
           method: 'POST',
@@ -554,6 +559,7 @@ class AutoPlayService {
           body: JSON.stringify({
             prompt: this.activePrompt,
             excludedTrackIds,
+            queuedTracks,
             profileId: this.username
           }),
           signal: controller.signal
