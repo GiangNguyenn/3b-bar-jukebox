@@ -8,7 +8,10 @@ interface SubtitleOverlayProps {
   isVisible: boolean
 }
 
-export function SubtitleOverlay({ text, isVisible }: SubtitleOverlayProps): React.ReactElement | null {
+export function SubtitleOverlay({
+  text,
+  isVisible
+}: SubtitleOverlayProps): React.ReactElement | null {
   return (
     <AnimatePresence>
       {isVisible && text && (
