@@ -1,4 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
+import {
+  DJ_PERSONALITY_IDS,
+  DEFAULT_DJ_PERSONALITY,
+  DJ_PERSONALITIES
+} from '@/shared/constants/djPersonalities'
 
 // Vercel max function duration — set to 30s to accommodate slow LLM responses.
 // Requires at least the Pro plan for values > 10s.
@@ -25,10 +30,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ error: 'Invalid request body' }, { status: 400 })
   }
 
-  const { trackName, artistName, recentScripts, language } = body as Record<
-    string,
-    unknown
-  >
+  const { trackName, artistName, recentScripts, language, personality } =
+    body as Record<string, unknown>
   const isVietnamese = language === 'vietnamese'
 
   if (!trackName || typeof trackName !== 'string') {
@@ -55,12 +58,20 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       ? ` Avoid repeating phrases, sentence structures, or themes from these recent announcements you already made: ${recentScriptsList.map((s, i) => `[${i + 1}] "${s}"`).join(' ')}`
       : ''
 
+  const resolvedPersonality =
+    typeof personality === 'string' && DJ_PERSONALITY_IDS.includes(personality)
+      ? personality
+      : DEFAULT_DJ_PERSONALITY
+  const personalityPrompt = DJ_PERSONALITIES.find(
+    (p) => p.value === resolvedPersonality
+  )!.prompt
+
   try {
     const model = isVietnamese ? VIETNAMESE_LLM_MODEL : ENGLISH_LLM_MODEL
     const systemPrompt = isVietnamese
       ? 'Không quá 2 câu có thể đọc trong 10 giây hoặc ít hơn. Bạn là một DJ radio tên "DJ 3B" đang chơi nhạc tại quán bia thủ công "3B Saigon". Hãy viết một đoạn giới thiệu ngắn bằng tiếng Việt tự nhiên cho bài hát tiếp theo. Ngắn gọn và tự nhiên. Chỉ thỉnh thoảng mới nhắc đến bia hoặc quán bar, không phải lần nào cũng nhắc.' +
         recentScriptsNote
-      : 'No more than 2 sentences that can be spoken in 10 seconds or less.  English language only.  You are a laid back, relaxed and chill DJ playing music in a craft beer bar called 3B Saigon. Write a short announcement of no more than 2 sentences introducing the next track. Be informative but concise. Only occasionally mention beer or the bar — most of the time just focus on the music.' +
+      : `No more than 2 sentences that can be spoken in 10 seconds or less.  English language only.  You are a ${personalityPrompt} DJ playing music in a craft beer bar called 3B Saigon. Write a short announcement of no more than 2 sentences introducing the next track. Be informative but concise. Only occasionally mention beer or the bar — most of the time just focus on the music.` +
         'You are aware that you are an AI with a female voice though do not say that.  Never mention the date or time.' +
         recentScriptsNote
 

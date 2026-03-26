@@ -1,6 +1,10 @@
 import type { JukeboxQueueItem } from '@/shared/types/queue'
 import { SpotifyApiService } from '@/services/spotifyApi'
 import { DJ_VOICE_IDS, DEFAULT_DJ_VOICE } from '@/shared/constants/djVoices'
+import {
+  DJ_PERSONALITY_IDS,
+  DEFAULT_DJ_PERSONALITY
+} from '@/shared/constants/djPersonalities'
 
 export type DJFrequency = 'never' | 'rarely' | 'sometimes' | 'often' | 'always'
 
@@ -212,6 +216,12 @@ class DJService {
       typeof rawVoice === 'string' && DJ_VOICE_IDS.includes(rawVoice)
         ? rawVoice
         : DEFAULT_DJ_VOICE
+    const rawPersonality = localStorage.getItem('djPersonality')
+    const resolvedPersonality =
+      typeof rawPersonality === 'string' &&
+      DJ_PERSONALITY_IDS.includes(rawPersonality)
+        ? rawPersonality
+        : DEFAULT_DJ_PERSONALITY
     try {
       const scriptRes = await fetch('/api/dj-script', {
         method: 'POST',
@@ -220,7 +230,8 @@ class DJService {
           trackName,
           artistName,
           recentScripts: this.recentScripts,
-          language
+          language,
+          personality: resolvedPersonality
         })
       })
       if (!scriptRes.ok) {
