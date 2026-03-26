@@ -10,7 +10,10 @@ import { AutoFillTargetSelector } from './components/auto-fill-target-selector'
 import { Toast } from '@/components/ui'
 
 interface TrackSuggestionsTabProps {
-  onStateChange?: (state: { activePrompt: string; autoFillTargetSize: number }) => void
+  onStateChange?: (state: {
+    activePrompt: string
+    autoFillTargetSize: number
+  }) => void
 }
 
 interface AiSuggestionTrack {
@@ -33,7 +36,9 @@ export function TrackSuggestionsTab({
   const { addLog } = useConsoleLogsContext()
 
   const [isLoading, setIsLoading] = useState(false)
-  const [suggestedTracks, setSuggestedTracks] = useState<AiSuggestionTrack[]>([])
+  const [suggestedTracks, setSuggestedTracks] = useState<AiSuggestionTrack[]>(
+    []
+  )
   const [toast, setToast] = useState<{
     message: string
     variant: 'success' | 'warning' | 'info'
@@ -49,7 +54,10 @@ export function TrackSuggestionsTab({
   // Propagate state changes to parent
   useEffect(() => {
     if (onStateChange) {
-      onStateChange({ activePrompt, autoFillTargetSize: state.autoFillTargetSize })
+      onStateChange({
+        activePrompt,
+        autoFillTargetSize: state.autoFillTargetSize
+      })
     }
   }, [activePrompt, state.autoFillTargetSize, onStateChange])
 
@@ -75,10 +83,21 @@ export function TrackSuggestionsTab({
       if (data.success && data.tracks && data.tracks.length > 0) {
         setSuggestedTracks(data.tracks)
         showToast(`Found ${data.tracks.length} tracks`)
-        addLog('INFO', `AI suggestion test: ${data.tracks.length} tracks returned`, 'TrackSuggestionsTab')
+        addLog(
+          'INFO',
+          `AI suggestion test: ${data.tracks.length} tracks returned`,
+          'TrackSuggestionsTab'
+        )
       } else {
-        showToast(data.error ?? 'No tracks returned from AI suggestion', 'warning')
-        addLog('WARN', `AI suggestion test failed: ${data.error ?? 'no tracks'}`, 'TrackSuggestionsTab')
+        showToast(
+          data.error ?? 'No tracks returned from AI suggestion',
+          'warning'
+        )
+        addLog(
+          'WARN',
+          `AI suggestion test failed: ${data.error ?? 'no tracks'}`,
+          'TrackSuggestionsTab'
+        )
       }
     } catch (error) {
       showToast('An unexpected error occurred', 'warning')
@@ -152,7 +171,9 @@ export function TrackSuggestionsTab({
                     {index + 1}
                   </span>
                   <div className='min-w-0 flex-1'>
-                    <p className='truncate text-sm font-medium'>{track.title}</p>
+                    <p className='truncate text-sm font-medium'>
+                      {track.title}
+                    </p>
                     <p className='truncate text-xs text-muted-foreground'>
                       {track.artist}
                     </p>

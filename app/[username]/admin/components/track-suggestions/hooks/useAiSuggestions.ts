@@ -73,7 +73,10 @@ export function useAiSuggestions(): UseAiSuggestionsReturn {
     }
   }, [state])
 
-  const activePrompt = deriveActivePrompt(state.selectedPresetId, state.customPrompt)
+  const activePrompt = deriveActivePrompt(
+    state.selectedPresetId,
+    state.customPrompt
+  )
 
   const selectPreset = useCallback((presetId: string): void => {
     const preset = PRESET_PROMPTS.find((p) => p.id === presetId)

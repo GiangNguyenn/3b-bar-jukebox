@@ -20,7 +20,11 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   const apiKey = process.env.VENICE_AI_API_KEY
   if (!apiKey) {
     return NextResponse.json(
-      { success: false, tracks: [], error: 'Venice AI API key is not configured' },
+      {
+        success: false,
+        tracks: [],
+        error: 'Venice AI API key is not configured'
+      },
       { status: 500 }
     )
   }
@@ -55,7 +59,11 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
   try {
     const recentlyPlayed = await getRecentlyPlayed(profileId)
-    const result = await getAiSuggestions(prompt, excludedTrackIds, recentlyPlayed)
+    const result = await getAiSuggestions(
+      prompt,
+      excludedTrackIds,
+      recentlyPlayed
+    )
 
     return NextResponse.json({
       success: true,

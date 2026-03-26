@@ -103,8 +103,6 @@ export default function AdminPage(): JSX.Element {
     optimisticUpdate
   } = usePlaylistData(username)
 
-
-
   // First, use the health monitor hook
   const healthStatus = useSpotifyHealthMonitor()
 
@@ -168,7 +166,8 @@ export default function AdminPage(): JSX.Element {
           parsed.customPrompt ?? ''
         )
         if (prompt) autoPlayService.setActivePrompt(prompt)
-        if (parsed.autoFillTargetSize) autoPlayService.setAutoFillTargetSize(parsed.autoFillTargetSize)
+        if (parsed.autoFillTargetSize)
+          autoPlayService.setAutoFillTargetSize(parsed.autoFillTargetSize)
       } else {
         const defaultPrompt = PRESET_PROMPTS[0]?.prompt ?? ''
         if (defaultPrompt) autoPlayService.setActivePrompt(defaultPrompt)
@@ -232,7 +231,11 @@ export default function AdminPage(): JSX.Element {
     const wasDisconnected = prevConnectionRef.current !== 'connected'
     prevConnectionRef.current = healthStatus.connection
 
-    if (healthStatus.connection === 'connected' && wasDisconnected && username) {
+    if (
+      healthStatus.connection === 'connected' &&
+      wasDisconnected &&
+      username
+    ) {
       const autoPlayService = getAutoPlayService()
       if (autoPlayService.isActive()) {
         addLog(
@@ -281,13 +284,7 @@ export default function AdminPage(): JSX.Element {
 
   // Add missing functions
   const handleTabChange = useCallback((value: string): void => {
-    setActiveTab(
-      value as
-        | 'dashboard'
-        | 'playlist'
-        | 'settings'
-        | 'analytics'
-    )
+    setActiveTab(value as 'dashboard' | 'playlist' | 'settings' | 'analytics')
   }, [])
 
   const handleTrackSuggestionsStateChange = useCallback(

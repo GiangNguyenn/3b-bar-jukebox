@@ -24,7 +24,9 @@ export function CustomPromptInput({
   return (
     <Card>
       <CardHeader>
-        <CardTitle className='text-lg'>Tell me what type of music you want to hear</CardTitle>
+        <CardTitle className='text-lg'>
+          Tell me what type of music you want to hear
+        </CardTitle>
       </CardHeader>
       <CardContent className='space-y-2'>
         <textarea

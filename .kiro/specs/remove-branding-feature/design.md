@@ -17,14 +17,14 @@ graph TD
     C -->|calls| D[Branding API Routes<br/>app/api/branding/]
     D -->|uses| E[BrandingService<br/>services/brandingService.ts]
     E -->|queries| F[(branding_settings table)]
-    
+
     G[Public Playlist Page] -->|imports| H[usePublicBranding hook]
     H -->|fetches| D
-    
+
     I[Branding Zustand Store<br/>stores/brandingStore.ts] -->|used by| C
-    
+
     J[Subscription Tab] -->|lists| K[Branding customization<br/>as premium feature]
-    
+
     L[Test file] -->|references| C
 
     style B fill:#f66,stroke:#333
@@ -60,22 +60,23 @@ Order matters to avoid intermediate broken states during development. The approa
 
 ### Files to Delete
 
-| File/Directory | Type | Reason |
-|---|---|---|
-| `app/[username]/admin/components/branding/` | Directory (13 files) | Entire branding admin UI |
-| `app/api/branding/settings/route.ts` | API route | Settings GET/PUT |
-| `app/api/branding/reset/route.ts` | API route | Settings reset DELETE |
-| `app/api/branding/public/[username]/route.ts` | API route | Public branding GET |
-| `app/api/branding/public/test/route.ts` | API route | Test endpoint |
-| `services/brandingService.ts` | Service | Server-side branding CRUD |
-| `stores/brandingStore.ts` | Zustand store | Client-side branding state |
-| `hooks/usePublicBranding.ts` | React hook | Public page branding fetch |
+| File/Directory                                | Type                 | Reason                     |
+| --------------------------------------------- | -------------------- | -------------------------- |
+| `app/[username]/admin/components/branding/`   | Directory (13 files) | Entire branding admin UI   |
+| `app/api/branding/settings/route.ts`          | API route            | Settings GET/PUT           |
+| `app/api/branding/reset/route.ts`             | API route            | Settings reset DELETE      |
+| `app/api/branding/public/[username]/route.ts` | API route            | Public branding GET        |
+| `app/api/branding/public/test/route.ts`       | API route            | Test endpoint              |
+| `services/brandingService.ts`                 | Service              | Server-side branding CRUD  |
+| `stores/brandingStore.ts`                     | Zustand store        | Client-side branding state |
+| `hooks/usePublicBranding.ts`                  | React hook           | Public page branding fetch |
 
 ### Files to Modify
 
 #### 1. `app/[username]/admin/page.tsx`
 
 Changes:
+
 - Remove `import { BrandingTab } from './components/branding/branding-tab'`
 - Remove `'branding'` from the `activeTab` union type (becomes `'dashboard' | 'playlist' | 'settings' | 'logs' | 'analytics'`)
 - Remove the `<TabsTrigger value='branding'>` element
@@ -86,6 +87,7 @@ Changes:
 #### 2. `app/[username]/playlist/page.tsx`
 
 This is the most significant refactor. Changes:
+
 - Remove `import { usePublicBranding } from '@/hooks/usePublicBranding'`
 - Remove the `usePublicBranding` hook call and all `settings` / `brandingLoading` state
 - Remove `getFontSizeValue` helper function
@@ -105,12 +107,14 @@ This is the most significant refactor. Changes:
 #### 3. `app/[username]/admin/components/subscription/subscription-tab.tsx`
 
 Changes:
+
 - Remove the "Branding customization" `<li>` from the Free Plan list (currently shows ✗)
 - Remove the "Branding customization" `<li>` from the Monthly Plan list (currently shows ✓)
 
 #### 4. `lib/__tests__/supabase-client-consolidation.test.ts`
 
 Changes:
+
 - Remove `'app/[username]/admin/components/branding/hooks/useBrandingSettings.ts'` from the `browserFiles` array
 
 #### 5. Database Migration: `supabase/migrations/YYYYMMDD000000_drop_branding_settings.sql`
@@ -135,32 +139,32 @@ DROP TABLE IF EXISTS public.branding_settings;
 
 The following table and all associated types will be removed:
 
-| Column | Type | Default |
-|---|---|---|
-| id | uuid | gen_random_uuid() |
-| profile_id | uuid (FK → profiles) | — |
-| logo_url | text | null |
-| favicon_url | text | null |
-| venue_name | text | '3B Jukebox' |
-| subtitle | text | null |
-| welcome_message | text | null |
-| footer_text | text | null |
-| font_family | text | 'Belgrano' |
-| font_size | text | 'text-4xl' |
-| font_weight | text | 'normal' |
-| text_color | text | '#ffffff' |
-| primary_color | text | '#C09A5E' |
-| secondary_color | text | '#191414' |
-| background_color | text | '#000000' |
-| accent_color_1–3 | text | null |
-| gradient_type | text | 'none' |
-| gradient_direction | text | null |
-| gradient_stops | text | null |
-| page_title | text | '3B Jukebox' |
-| meta_description | text | 'The Ultimate Shared Music Experience' |
-| open_graph_title | text | '3B Jukebox' |
-| created_at | timestamptz | now() |
-| updated_at | timestamptz | now() |
+| Column             | Type                 | Default                                |
+| ------------------ | -------------------- | -------------------------------------- |
+| id                 | uuid                 | gen_random_uuid()                      |
+| profile_id         | uuid (FK → profiles) | —                                      |
+| logo_url           | text                 | null                                   |
+| favicon_url        | text                 | null                                   |
+| venue_name         | text                 | '3B Jukebox'                           |
+| subtitle           | text                 | null                                   |
+| welcome_message    | text                 | null                                   |
+| footer_text        | text                 | null                                   |
+| font_family        | text                 | 'Belgrano'                             |
+| font_size          | text                 | 'text-4xl'                             |
+| font_weight        | text                 | 'normal'                               |
+| text_color         | text                 | '#ffffff'                              |
+| primary_color      | text                 | '#C09A5E'                              |
+| secondary_color    | text                 | '#191414'                              |
+| background_color   | text                 | '#000000'                              |
+| accent_color_1–3   | text                 | null                                   |
+| gradient_type      | text                 | 'none'                                 |
+| gradient_direction | text                 | null                                   |
+| gradient_stops     | text                 | null                                   |
+| page_title         | text                 | '3B Jukebox'                           |
+| meta_description   | text                 | 'The Ultimate Shared Music Experience' |
+| open_graph_title   | text                 | '3B Jukebox'                           |
+| created_at         | timestamptz          | now()                                  |
+| updated_at         | timestamptz          | now()                                  |
 
 After the migration, the `branding_settings` key in `types/supabase.ts` will become stale. Since this file is auto-generated from the database schema, it will be updated on the next `supabase gen types` run. No manual edit is needed — the deleted code no longer references these types.
 
@@ -180,34 +184,33 @@ const DEFAULTS = {
 }
 ```
 
-
 ## Correctness Properties
 
-*A property is a characteristic or behavior that should hold true across all valid executions of a system — essentially, a formal statement about what the system should do. Properties serve as the bridge between human-readable specifications and machine-verifiable correctness guarantees.*
+_A property is a characteristic or behavior that should hold true across all valid executions of a system — essentially, a formal statement about what the system should do. Properties serve as the bridge between human-readable specifications and machine-verifiable correctness guarantees._
 
 The branding removal is primarily a deletion task. Most acceptance criteria are specific examples (file exists/doesn't exist, specific string present/absent). However, several criteria generalize into properties over sets of files or statements.
 
 ### Property 1: No dangling branding imports
 
-*For any* TypeScript/TSX source file in the codebase (excluding `node_modules`, `.next`, and migration files), the file shall not contain import statements referencing any deleted branding module — specifically `BrandingService`, `useBrandingStore`, `usePublicBranding`, `BrandingTab`, `useBrandingSettings`, or any path under `components/branding/`.
+_For any_ TypeScript/TSX source file in the codebase (excluding `node_modules`, `.next`, and migration files), the file shall not contain import statements referencing any deleted branding module — specifically `BrandingService`, `useBrandingStore`, `usePublicBranding`, `BrandingTab`, `useBrandingSettings`, or any path under `components/branding/`.
 
 **Validates: Requirements 4.2, 5.2, 6.2, 1.4**
 
 ### Property 2: No dynamic branding constructs in playlist page
 
-*For any* branding-dynamic construct (gradient computation, `getFontSizeValue`, `footer_text` rendering, `welcome_message` overlay, `brandingLoading` gate, dynamic `document.title` from `settings`), the public playlist page source (`app/[username]/playlist/page.tsx`) shall not contain that construct.
+_For any_ branding-dynamic construct (gradient computation, `getFontSizeValue`, `footer_text` rendering, `welcome_message` overlay, `brandingLoading` gate, dynamic `document.title` from `settings`), the public playlist page source (`app/[username]/playlist/page.tsx`) shall not contain that construct.
 
 **Validates: Requirements 7.4, 7.5, 7.6**
 
 ### Property 3: No branding references in test assertions
 
-*For any* test file in the codebase (files under `__tests__/` directories), the file shall not contain string references to branding-related file paths (e.g., paths containing `branding/` or `brandingService` or `brandingStore`).
+_For any_ test file in the codebase (files under `__tests__/` directories), the file shall not contain string references to branding-related file paths (e.g., paths containing `branding/` or `brandingService` or `brandingStore`).
 
 **Validates: Requirements 9.1, 9.2**
 
 ### Property 4: Migration idempotency
 
-*For any* `DROP` statement in the branding removal migration file, the statement shall include an `IF EXISTS` clause, ensuring the migration can be safely re-run without errors.
+_For any_ `DROP` statement in the branding removal migration file, the statement shall include an `IF EXISTS` clause, ensuring the migration can be safely re-run without errors.
 
 **Validates: Requirements 10.4**
 
@@ -245,16 +248,19 @@ Unit tests cover the specific examples from the acceptance criteria:
 Each property test references its design document property:
 
 - **Property 1 test** — Feature: remove-branding-feature, Property 1: No dangling branding imports
+
   - Generate: random selection from all `.ts`/`.tsx` files in the project (excluding `node_modules`, `.next`)
   - Assert: file content does not match import patterns for deleted branding modules
   - Min iterations: 100
 
 - **Property 2 test** — Feature: remove-branding-feature, Property 2: No dynamic branding constructs in playlist page
+
   - Generate: random selection from a list of banned construct patterns (`getFontSizeValue`, `gradient_type`, `gradient_direction`, `footer_text`, `welcome_message`, `brandingLoading`, `usePublicBranding`, `settings?.page_title`, `settings?.meta_description`, `settings?.open_graph_title`)
   - Assert: the playlist page source does not contain the selected pattern
   - Min iterations: 100
 
 - **Property 3 test** — Feature: remove-branding-feature, Property 3: No branding references in test assertions
+
   - Generate: random selection from all test files (`**/__tests__/**/*.ts`)
   - Assert: file content does not contain branding-related path strings
   - Min iterations: 100

@@ -36,28 +36,21 @@ describe('Property 4: Active prompt derivation from preset and custom prompt', (
 
   it('returns preset prompt text when custom prompt is empty or whitespace-only', () => {
     fc.assert(
-      fc.property(
-        presetIdArb,
-        whitespaceOnlyArb,
-        (presetId, customPrompt) => {
-          const result = deriveActivePrompt(presetId, customPrompt)
-          const expectedPreset = PRESET_PROMPTS.find((p) => p.id === presetId)!
-          assert.equal(result, expectedPreset.prompt)
-        }
-      ),
+      fc.property(presetIdArb, whitespaceOnlyArb, (presetId, customPrompt) => {
+        const result = deriveActivePrompt(presetId, customPrompt)
+        const expectedPreset = PRESET_PROMPTS.find((p) => p.id === presetId)!
+        assert.equal(result, expectedPreset.prompt)
+      }),
       PBT_CONFIG
     )
   })
 
   it('returns empty string when no preset selected and custom prompt is empty', () => {
     fc.assert(
-      fc.property(
-        whitespaceOnlyArb,
-        (customPrompt) => {
-          const result = deriveActivePrompt(null, customPrompt)
-          assert.equal(result, '')
-        }
-      ),
+      fc.property(whitespaceOnlyArb, (customPrompt) => {
+        const result = deriveActivePrompt(null, customPrompt)
+        assert.equal(result, '')
+      }),
       PBT_CONFIG
     )
   })
@@ -133,7 +126,10 @@ describe('Property 6: Custom prompt truncation at 500 characters', () => {
   it('returns exactly 500 characters for strings of exactly 501 characters', () => {
     fc.assert(
       fc.property(
-        fc.string({ minLength: MAX_CUSTOM_PROMPT_LENGTH + 1, maxLength: MAX_CUSTOM_PROMPT_LENGTH + 1 }),
+        fc.string({
+          minLength: MAX_CUSTOM_PROMPT_LENGTH + 1,
+          maxLength: MAX_CUSTOM_PROMPT_LENGTH + 1
+        }),
         (input) => {
           const result = truncatePrompt(input)
           assert.equal(result.length, MAX_CUSTOM_PROMPT_LENGTH)
@@ -147,7 +143,10 @@ describe('Property 6: Custom prompt truncation at 500 characters', () => {
   it('returns the string unchanged for strings of exactly 500 characters', () => {
     fc.assert(
       fc.property(
-        fc.string({ minLength: MAX_CUSTOM_PROMPT_LENGTH, maxLength: MAX_CUSTOM_PROMPT_LENGTH }),
+        fc.string({
+          minLength: MAX_CUSTOM_PROMPT_LENGTH,
+          maxLength: MAX_CUSTOM_PROMPT_LENGTH
+        }),
         (input) => {
           const result = truncatePrompt(input)
           assert.equal(result, input)
@@ -169,7 +168,10 @@ const presetIdOrNullArb = fc.oneof(
   fc.constant(null)
 )
 
-const customPromptArb = fc.string({ minLength: 0, maxLength: MAX_CUSTOM_PROMPT_LENGTH })
+const customPromptArb = fc.string({
+  minLength: 0,
+  maxLength: MAX_CUSTOM_PROMPT_LENGTH
+})
 
 const autoFillTargetSizeArb = fc.integer({ min: 1, max: 1000 })
 
@@ -184,81 +186,80 @@ describe('Property 5: Suggestion state localStorage round-trip', () => {
 
   it('JSON round-trip produces an object equal to the original state', () => {
     fc.assert(
-      fc.property(
-        aiSuggestionsStateArb,
-        (state) => {
-          const plain: AiSuggestionsState = {
-            selectedPresetId: state.selectedPresetId,
-            customPrompt: state.customPrompt,
-            autoFillTargetSize: state.autoFillTargetSize
-          }
-          const roundTripped = JSON.parse(JSON.stringify(plain)) as AiSuggestionsState
-          assert.deepStrictEqual(roundTripped, plain)
+      fc.property(aiSuggestionsStateArb, (state) => {
+        const plain: AiSuggestionsState = {
+          selectedPresetId: state.selectedPresetId,
+          customPrompt: state.customPrompt,
+          autoFillTargetSize: state.autoFillTargetSize
         }
-      ),
+        const roundTripped = JSON.parse(
+          JSON.stringify(plain)
+        ) as AiSuggestionsState
+        assert.deepStrictEqual(roundTripped, plain)
+      }),
       PBT_CONFIG
     )
   })
 
   it('round-tripped state preserves selectedPresetId type (string or null)', () => {
     fc.assert(
-      fc.property(
-        aiSuggestionsStateArb,
-        (state) => {
-          const plain: AiSuggestionsState = {
-            selectedPresetId: state.selectedPresetId,
-            customPrompt: state.customPrompt,
-            autoFillTargetSize: state.autoFillTargetSize
-          }
-          const roundTripped = JSON.parse(JSON.stringify(plain)) as AiSuggestionsState
-          if (plain.selectedPresetId === null) {
-            assert.equal(roundTripped.selectedPresetId, null)
-          } else {
-            assert.equal(typeof roundTripped.selectedPresetId, 'string')
-            assert.equal(roundTripped.selectedPresetId, plain.selectedPresetId)
-          }
+      fc.property(aiSuggestionsStateArb, (state) => {
+        const plain: AiSuggestionsState = {
+          selectedPresetId: state.selectedPresetId,
+          customPrompt: state.customPrompt,
+          autoFillTargetSize: state.autoFillTargetSize
         }
-      ),
+        const roundTripped = JSON.parse(
+          JSON.stringify(plain)
+        ) as AiSuggestionsState
+        if (plain.selectedPresetId === null) {
+          assert.equal(roundTripped.selectedPresetId, null)
+        } else {
+          assert.equal(typeof roundTripped.selectedPresetId, 'string')
+          assert.equal(roundTripped.selectedPresetId, plain.selectedPresetId)
+        }
+      }),
       PBT_CONFIG
     )
   })
 
   it('round-tripped state preserves customPrompt as a string of the same length', () => {
     fc.assert(
-      fc.property(
-        aiSuggestionsStateArb,
-        (state) => {
-          const plain: AiSuggestionsState = {
-            selectedPresetId: state.selectedPresetId,
-            customPrompt: state.customPrompt,
-            autoFillTargetSize: state.autoFillTargetSize
-          }
-          const roundTripped = JSON.parse(JSON.stringify(plain)) as AiSuggestionsState
-          assert.equal(typeof roundTripped.customPrompt, 'string')
-          assert.equal(roundTripped.customPrompt.length, plain.customPrompt.length)
-          assert.equal(roundTripped.customPrompt, plain.customPrompt)
+      fc.property(aiSuggestionsStateArb, (state) => {
+        const plain: AiSuggestionsState = {
+          selectedPresetId: state.selectedPresetId,
+          customPrompt: state.customPrompt,
+          autoFillTargetSize: state.autoFillTargetSize
         }
-      ),
+        const roundTripped = JSON.parse(
+          JSON.stringify(plain)
+        ) as AiSuggestionsState
+        assert.equal(typeof roundTripped.customPrompt, 'string')
+        assert.equal(
+          roundTripped.customPrompt.length,
+          plain.customPrompt.length
+        )
+        assert.equal(roundTripped.customPrompt, plain.customPrompt)
+      }),
       PBT_CONFIG
     )
   })
 
   it('round-tripped state preserves autoFillTargetSize as an integer', () => {
     fc.assert(
-      fc.property(
-        aiSuggestionsStateArb,
-        (state) => {
-          const plain: AiSuggestionsState = {
-            selectedPresetId: state.selectedPresetId,
-            customPrompt: state.customPrompt,
-            autoFillTargetSize: state.autoFillTargetSize
-          }
-          const roundTripped = JSON.parse(JSON.stringify(plain)) as AiSuggestionsState
-          assert.equal(typeof roundTripped.autoFillTargetSize, 'number')
-          assert.equal(Number.isInteger(roundTripped.autoFillTargetSize), true)
-          assert.equal(roundTripped.autoFillTargetSize, plain.autoFillTargetSize)
+      fc.property(aiSuggestionsStateArb, (state) => {
+        const plain: AiSuggestionsState = {
+          selectedPresetId: state.selectedPresetId,
+          customPrompt: state.customPrompt,
+          autoFillTargetSize: state.autoFillTargetSize
         }
-      ),
+        const roundTripped = JSON.parse(
+          JSON.stringify(plain)
+        ) as AiSuggestionsState
+        assert.equal(typeof roundTripped.autoFillTargetSize, 'number')
+        assert.equal(Number.isInteger(roundTripped.autoFillTargetSize), true)
+        assert.equal(roundTripped.autoFillTargetSize, plain.autoFillTargetSize)
+      }),
       PBT_CONFIG
     )
   })

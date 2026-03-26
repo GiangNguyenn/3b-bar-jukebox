@@ -39,7 +39,11 @@ void describe('Property 13: API request validation accepts valid and rejects inv
             profileId,
             excludedTrackIds
           })
-          assert.equal(result.success, true, `should accept valid input: prompt="${prompt}", profileId="${profileId}"`)
+          assert.equal(
+            result.success,
+            true,
+            `should accept valid input: prompt="${prompt}", profileId="${profileId}"`
+          )
         }
       ),
       PBT_CONFIG
@@ -76,7 +80,11 @@ void describe('Property 13: API request validation accepts valid and rejects inv
             profileId,
             excludedTrackIds
           })
-          assert.equal(result.success, false, 'should reject prompt longer than 500 chars')
+          assert.equal(
+            result.success,
+            false,
+            'should reject prompt longer than 500 chars'
+          )
         }
       ),
       PBT_CONFIG
@@ -102,7 +110,11 @@ void describe('Property 13: API request validation accepts valid and rejects inv
             profileId,
             excludedTrackIds
           })
-          assert.equal(result.success, false, `should reject non-string prompt: ${typeof prompt}`)
+          assert.equal(
+            result.success,
+            false,
+            `should reject non-string prompt: ${typeof prompt}`
+          )
         }
       ),
       PBT_CONFIG
@@ -128,7 +140,11 @@ void describe('Property 13: API request validation accepts valid and rejects inv
             profileId,
             excludedTrackIds
           })
-          assert.equal(result.success, false, `should reject invalid excludedTrackIds: ${JSON.stringify(excludedTrackIds)}`)
+          assert.equal(
+            result.success,
+            false,
+            `should reject invalid excludedTrackIds: ${JSON.stringify(excludedTrackIds)}`
+          )
         }
       ),
       PBT_CONFIG
@@ -153,7 +169,11 @@ void describe('Property 13: API request validation accepts valid and rejects inv
             profileId,
             excludedTrackIds
           })
-          assert.equal(result.success, false, `should reject invalid profileId: ${JSON.stringify(profileId)}`)
+          assert.equal(
+            result.success,
+            false,
+            `should reject invalid profileId: ${JSON.stringify(profileId)}`
+          )
         }
       ),
       PBT_CONFIG

@@ -46,13 +46,13 @@ flowchart TD
 
 ### Module Responsibilities
 
-| Module | Responsibility |
-|---|---|
-| `services/aiSuggestion.ts` | Standalone server-side service: builds Venice AI prompt, calls chat completions, parses response, resolves to Spotify IDs, manages recently-played list |
-| `app/api/ai-suggestions/route.ts` | POST endpoint: validates request with Zod, delegates to AI suggestion service, returns resolved track IDs |
-| `AutoPlayService` (simplified) | Queue monitoring, auto-fill triggering. Maintains a buffer of unqueued suggestions. Delegates all suggestion logic to `/api/ai-suggestions` |
-| `Track Suggestions Tab` (new UI) | 11 preset prompt cards, custom prompt textarea, auto-fill target selector. Persists state to localStorage |
-| `useAiSuggestions` hook | Manages AI suggestion state (selected preset, custom prompt, auto-fill target), localStorage persistence, state propagation to AutoPlayService |
+| Module                            | Responsibility                                                                                                                                          |
+| --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `services/aiSuggestion.ts`        | Standalone server-side service: builds Venice AI prompt, calls chat completions, parses response, resolves to Spotify IDs, manages recently-played list |
+| `app/api/ai-suggestions/route.ts` | POST endpoint: validates request with Zod, delegates to AI suggestion service, returns resolved track IDs                                               |
+| `AutoPlayService` (simplified)    | Queue monitoring, auto-fill triggering. Maintains a buffer of unqueued suggestions. Delegates all suggestion logic to `/api/ai-suggestions`             |
+| `Track Suggestions Tab` (new UI)  | 11 preset prompt cards, custom prompt textarea, auto-fill target selector. Persists state to localStorage                                               |
+| `useAiSuggestions` hook           | Manages AI suggestion state (selected preset, custom prompt, auto-fill target), localStorage persistence, state propagation to AutoPlayService          |
 
 ## Components and Interfaces
 
@@ -111,9 +111,9 @@ export async function addToRecentlyPlayed(
 // POST /api/ai-suggestions
 // Request body (validated with Zod):
 interface AiSuggestionsRequest {
-  prompt: string          // non-empty, max 500 chars
-  excludedTrackIds: string[]  // Spotify track IDs already in queue
-  profileId: string       // venue owner's profile ID for recently-played lookup
+  prompt: string // non-empty, max 500 chars
+  excludedTrackIds: string[] // Spotify track IDs already in queue
+  profileId: string // venue owner's profile ID for recently-played lookup
 }
 
 // Response:
@@ -162,13 +162,14 @@ public setAutoFillTargetSize(targetSize: number): void
 - `last-suggested-track.tsx` — Retained from old system (unchanged)
 
 **New hook:**
+
 - `hooks/useAiSuggestions.ts` — Replaces `useTrackSuggestions.ts`
 
 ```typescript
 interface AiSuggestionsState {
   selectedPresetId: string | null
   customPrompt: string
-  activePrompt: string  // derived: customPrompt if non-empty, else preset prompt text
+  activePrompt: string // derived: customPrompt if non-empty, else preset prompt text
   autoFillTargetSize: number
 }
 
@@ -181,6 +182,7 @@ interface UseAiSuggestionsReturn {
 ```
 
 **Deleted components:**
+
 - `genres-selector.tsx`
 - `year-range-selector.tsx`
 - `popularity-selector.tsx`
@@ -205,71 +207,81 @@ export const PRESET_PROMPTS: PresetPrompt[] = [
     id: 'party',
     label: 'Party',
     emoji: '🎉',
-    prompt: 'Upbeat, high-energy party songs that get people dancing. Mix of pop, dance, and hip hop hits.'
+    prompt:
+      'Upbeat, high-energy party songs that get people dancing. Mix of pop, dance, and hip hop hits.'
   },
   {
     id: 'chill',
     label: 'Chill',
     emoji: '☕',
-    prompt: 'Relaxed, mellow songs for a laid-back atmosphere. Lo-fi, acoustic, jazz, and soft indie.'
+    prompt:
+      'Relaxed, mellow songs for a laid-back atmosphere. Lo-fi, acoustic, jazz, and soft indie.'
   },
   {
     id: 'rock',
     label: 'Rock',
     emoji: '🎸',
-    prompt: 'Rock classics and modern rock anthems. Alternative, indie rock, and classic rock.'
+    prompt:
+      'Rock classics and modern rock anthems. Alternative, indie rock, and classic rock.'
   },
   {
     id: 'throwback',
     label: 'Throwback',
     emoji: '📻',
-    prompt: 'Nostalgic hits from the 70s, 80s, and 90s. Classic soul, disco, new wave, and retro pop.'
+    prompt:
+      'Nostalgic hits from the 70s, 80s, and 90s. Classic soul, disco, new wave, and retro pop.'
   },
   {
     id: 'indie',
     label: 'Indie',
     emoji: '🎧',
-    prompt: 'Independent and alternative music. Indie pop, indie rock, dream pop, and shoegaze.'
+    prompt:
+      'Independent and alternative music. Indie pop, indie rock, dream pop, and shoegaze.'
   },
   {
     id: 'hiphop',
     label: 'Hip Hop',
     emoji: '🎤',
-    prompt: 'Hip hop and R&B tracks. Mix of classic boom bap, modern trap, and smooth R&B.'
+    prompt:
+      'Hip hop and R&B tracks. Mix of classic boom bap, modern trap, and smooth R&B.'
   },
   {
     id: 'electronic',
     label: 'Electronic',
     emoji: '🎛️',
-    prompt: 'Electronic and dance music. House, techno, ambient, and synth-driven tracks.'
+    prompt:
+      'Electronic and dance music. House, techno, ambient, and synth-driven tracks.'
   },
   {
     id: 'acoustic',
     label: 'Acoustic',
     emoji: '🪕',
-    prompt: 'Acoustic and unplugged music. Singer-songwriter, folk, country, and acoustic covers.'
+    prompt:
+      'Acoustic and unplugged music. Singer-songwriter, folk, country, and acoustic covers.'
   },
   {
     id: 'vpop',
     label: 'V-Pop',
     emoji: '🇻🇳',
-    prompt: 'Popular Vietnamese music (V-Pop). Trending Vietnamese hits, ballads, and modern Vietnamese pop songs.'
+    prompt:
+      'Popular Vietnamese music (V-Pop). Trending Vietnamese hits, ballads, and modern Vietnamese pop songs.'
   },
   {
     id: 'vrock',
     label: 'Viet Rock & Hip Hop',
     emoji: '🎸🇻🇳',
-    prompt: 'Vietnamese rock and hip hop. Vietnamese rap, Viet rock bands, and Vietnamese hip hop artists.'
+    prompt:
+      'Vietnamese rock and hip hop. Vietnamese rap, Viet rock bands, and Vietnamese hip hop artists.'
   },
   {
     id: 'punk-metal',
     label: 'Punk & Metal',
     emoji: '🤘',
-    prompt: 'Punk and metal music. Hardcore punk, pop punk, thrash metal, metalcore, and heavy metal anthems.'
+    prompt:
+      'Punk and metal music. Hardcore punk, pop punk, thrash metal, metalcore, and heavy metal anthems.'
   }
 ]
 ```
-
 
 ## Data Models
 
@@ -326,6 +338,7 @@ Key: `ai-suggestions-state`
 The AI suggestion service constructs a system + user message pair:
 
 **System message:**
+
 ```
 You are a music recommendation engine. Return exactly 10 song suggestions as a JSON array.
 Each entry must have "title" and "artist" fields. Return ONLY the JSON array, no other text.
@@ -333,6 +346,7 @@ Do not include songs from the recently played list provided by the user.
 ```
 
 **User message:**
+
 ```
 Suggest 10 songs matching this vibe: {prompt}
 
@@ -360,20 +374,20 @@ This uses the existing `sendApiRequest` with `useAppToken: true` pattern, matchi
 
 ### Files to Delete
 
-| File | Reason |
-|---|---|
-| `services/trackSuggestion.ts` | Old database-driven suggestion service |
-| `app/api/track-suggestions/route.ts` | Old API endpoint with server cache |
-| `app/[username]/admin/components/track-suggestions/components/genres-selector.tsx` | Old genre filter UI |
-| `app/[username]/admin/components/track-suggestions/components/year-range-selector.tsx` | Old year range filter UI |
-| `app/[username]/admin/components/track-suggestions/components/popularity-selector.tsx` | Old popularity filter UI |
-| `app/[username]/admin/components/track-suggestions/components/max-song-length-selector.tsx` | Old max song length filter UI |
-| `app/[username]/admin/components/track-suggestions/components/max-offset-selector.tsx` | Old max offset filter UI |
-| `app/[username]/admin/components/track-suggestions/components/explicit-content-toggle.tsx` | Old explicit content toggle UI |
-| `app/[username]/admin/components/track-suggestions/hooks/useTrackSuggestions.ts` | Old hook managing genre/year/popularity state |
-| `shared/types/trackSuggestions.ts` | Old `TrackSuggestionsState` type |
-| `shared/validations/trackSuggestion.ts` | Old validation functions |
-| `shared/utils/suggestionsCooldown.ts` | Old 24-hour cooldown utility |
+| File                                                                                        | Reason                                        |
+| ------------------------------------------------------------------------------------------- | --------------------------------------------- |
+| `services/trackSuggestion.ts`                                                               | Old database-driven suggestion service        |
+| `app/api/track-suggestions/route.ts`                                                        | Old API endpoint with server cache            |
+| `app/[username]/admin/components/track-suggestions/components/genres-selector.tsx`          | Old genre filter UI                           |
+| `app/[username]/admin/components/track-suggestions/components/year-range-selector.tsx`      | Old year range filter UI                      |
+| `app/[username]/admin/components/track-suggestions/components/popularity-selector.tsx`      | Old popularity filter UI                      |
+| `app/[username]/admin/components/track-suggestions/components/max-song-length-selector.tsx` | Old max song length filter UI                 |
+| `app/[username]/admin/components/track-suggestions/components/max-offset-selector.tsx`      | Old max offset filter UI                      |
+| `app/[username]/admin/components/track-suggestions/components/explicit-content-toggle.tsx`  | Old explicit content toggle UI                |
+| `app/[username]/admin/components/track-suggestions/hooks/useTrackSuggestions.ts`            | Old hook managing genre/year/popularity state |
+| `shared/types/trackSuggestions.ts`                                                          | Old `TrackSuggestionsState` type              |
+| `shared/validations/trackSuggestion.ts`                                                     | Old validation functions                      |
+| `shared/utils/suggestionsCooldown.ts`                                                       | Old 24-hour cooldown utility                  |
 
 ### Constants to Remove from `shared/constants/trackSuggestion.ts`
 
@@ -381,105 +395,104 @@ All constants except `DEFAULT_MARKET` (still used by other parts of the system) 
 
 Constants to remove: `COOLDOWN_MS`, `INTERVAL_MS`, `DEBOUNCE_MS`, `MIN_TRACK_POPULARITY`, `MIN_TRACK_POPULARITY_INCLUSIVE`, `MIN_TRACK_POPULARITY_VERY_INCLUSIVE`, `MIN_TRACK_POPULARITY_OBSCURE`, `FALLBACK_GENRES`, `ALL_SPOTIFY_GENRES`, `POPULAR_GENRES`, `MAX_PLAYLIST_LENGTH`, `TRACK_SEARCH_LIMIT`, `DEFAULT_MAX_SONG_LENGTH_MINUTES`, `DEFAULT_MAX_OFFSET`, `DEFAULT_MAX_GENRE_ATTEMPTS`, `DEFAULT_YEAR_RANGE`, `TRACK_REPEAT_COOLDOWN_HOURS`, `MIN_POPULARITY`, `MAX_POPULARITY`, `MIN_SONG_LENGTH_MINUTES`, `MAX_SONG_LENGTH_MINUTES`, `MIN_YEAR`, `MAX_YEAR`.
 
-
 ## Correctness Properties
 
-*A property is a characteristic or behavior that should hold true across all valid executions of a system — essentially, a formal statement about what the system should do. Properties serve as the bridge between human-readable specifications and machine-verifiable correctness guarantees.*
+_A property is a characteristic or behavior that should hold true across all valid executions of a system — essentially, a formal statement about what the system should do. Properties serve as the bridge between human-readable specifications and machine-verifiable correctness guarantees._
 
 ### Property 1: Venice AI response parsing yields valid recommendations
 
-*For any* valid JSON array returned by Venice AI containing objects with `title` and `artist` string fields, the parsing function shall return recommendation objects where every entry has a non-empty `title` and a non-empty `artist`.
+_For any_ valid JSON array returned by Venice AI containing objects with `title` and `artist` string fields, the parsing function shall return recommendation objects where every entry has a non-empty `title` and a non-empty `artist`.
 
 **Validates: Requirements 1.2**
 
 ### Property 2: Spotify search query construction includes title and artist
 
-*For any* song recommendation with a non-empty title and non-empty artist, the constructed Spotify search query string shall contain both the title and the artist in the `track:` and `artist:` query format.
+_For any_ song recommendation with a non-empty title and non-empty artist, the constructed Spotify search query string shall contain both the title and the artist in the `track:` and `artist:` query format.
 
 **Validates: Requirements 1.3**
 
 ### Property 3: Graceful degradation on partial AI responses
 
-*For any* Venice AI response containing N valid recommendations where 0 < N < 10, the service shall return exactly N resolved results without making additional Venice AI requests.
+_For any_ Venice AI response containing N valid recommendations where 0 < N < 10, the service shall return exactly N resolved results without making additional Venice AI requests.
 
 **Validates: Requirements 1.5**
 
 ### Property 4: Active prompt derivation from preset and custom prompt
 
-*For any* combination of a selected preset ID (from the 11 presets) and a custom prompt string, the derived active prompt shall equal the custom prompt if the custom prompt is non-empty after trimming, and shall equal the selected preset's prompt text otherwise. If the custom prompt is cleared (empty or whitespace-only), the active prompt shall revert to the preset's prompt text.
+_For any_ combination of a selected preset ID (from the 11 presets) and a custom prompt string, the derived active prompt shall equal the custom prompt if the custom prompt is non-empty after trimming, and shall equal the selected preset's prompt text otherwise. If the custom prompt is cleared (empty or whitespace-only), the active prompt shall revert to the preset's prompt text.
 
 **Validates: Requirements 2.2, 3.2, 3.3**
 
 ### Property 5: Suggestion state localStorage round-trip
 
-*For any* valid `AiSuggestionsState` object (containing a selectedPresetId from the known presets or null, a customPrompt string of 0–500 characters, and an autoFillTargetSize integer), serializing the state to JSON, storing it in localStorage, and deserializing it shall produce an object equal to the original state.
+_For any_ valid `AiSuggestionsState` object (containing a selectedPresetId from the known presets or null, a customPrompt string of 0–500 characters, and an autoFillTargetSize integer), serializing the state to JSON, storing it in localStorage, and deserializing it shall produce an object equal to the original state.
 
 **Validates: Requirements 2.4, 3.4, 8.2, 8.3**
 
 ### Property 6: Custom prompt truncation at 500 characters
 
-*For any* string of length greater than 500 characters, the truncation function shall return a string of exactly 500 characters equal to the first 500 characters of the input. For any string of length ≤ 500, the function shall return the string unchanged.
+_For any_ string of length greater than 500 characters, the truncation function shall return a string of exactly 500 characters equal to the first 500 characters of the input. For any string of length ≤ 500, the function shall return the string unchanged.
 
 **Validates: Requirements 3.5**
 
 ### Property 7: Auto-fill adds tracks from buffer up to target size
 
-*For any* queue of current size C, an auto-fill target size T where C < T, and a suggestion buffer of size B, the auto-fill operation shall add exactly min(B, T − C) tracks to the queue from the buffer, and the resulting queue size shall be min(C + B, T).
+_For any_ queue of current size C, an auto-fill target size T where C < T, and a suggestion buffer of size B, the auto-fill operation shall add exactly min(B, T − C) tracks to the queue from the buffer, and the resulting queue size shall be min(C + B, T).
 
 **Validates: Requirements 4.2, 4.4**
 
 ### Property 8: Buffer is consumed before requesting a new batch
 
-*For any* state where the suggestion buffer is non-empty and the queue size is below the auto-fill target, the auto-fill operation shall consume tracks from the existing buffer without triggering a new AI suggestion API call. A new API call shall only be made when the buffer is empty AND the queue is still below target.
+_For any_ state where the suggestion buffer is non-empty and the queue size is below the auto-fill target, the auto-fill operation shall consume tracks from the existing buffer without triggering a new AI suggestion API call. A new API call shall only be made when the buffer is empty AND the queue is still below target.
 
 **Validates: Requirements 4.3**
 
 ### Property 9: Recently played list size invariant
 
-*For any* sequence of N track additions to the recently played list (where N ≥ 0), the list size shall never exceed 100 entries. After adding a track when the list already contains 100 entries, the oldest entry shall be removed and the list size shall remain exactly 100.
+_For any_ sequence of N track additions to the recently played list (where N ≥ 0), the list size shall never exceed 100 entries. After adding a track when the list already contains 100 entries, the oldest entry shall be removed and the list size shall remain exactly 100.
 
 **Validates: Requirements 5.1, 5.4**
 
 ### Property 10: AI prompt includes recently played context
 
-*For any* non-empty recently played list of entries (each with title and artist), the constructed Venice AI user message shall contain every title and every artist from the recently played list.
+_For any_ non-empty recently played list of entries (each with title and artist), the constructed Venice AI user message shall contain every title and every artist from the recently played list.
 
 **Validates: Requirements 5.2**
 
 ### Property 11: Post-resolution filtering excludes recently played tracks
 
-*For any* set of resolved Spotify track IDs and a recently played list containing Spotify track IDs, the filtered output shall contain no track ID that appears in the recently played list. The filtered output shall be a subset of the resolved track IDs minus the recently played set.
+_For any_ set of resolved Spotify track IDs and a recently played list containing Spotify track IDs, the filtered output shall contain no track ID that appears in the recently played list. The filtered output shall be a subset of the resolved track IDs minus the recently played set.
 
 **Validates: Requirements 5.3**
 
 ### Property 12: Recently played database persistence round-trip
 
-*For any* list of recently played entries (each with spotifyTrackId, title, and artist) written to the database for a given profile, reading the recently played list for that profile shall return entries with matching spotifyTrackId, title, and artist values.
+_For any_ list of recently played entries (each with spotifyTrackId, title, and artist) written to the database for a given profile, reading the recently played list for that profile shall return entries with matching spotifyTrackId, title, and artist values.
 
 **Validates: Requirements 5.5**
 
 ### Property 13: API request validation accepts valid and rejects invalid inputs
 
-*For any* request body with a non-empty prompt string (≤ 500 chars), a valid profileId string, and an array of string excludedTrackIds, the Zod schema shall accept the input. *For any* request body where the prompt is empty, missing, or not a string, or where excludedTrackIds is not an array of strings, the Zod schema shall reject the input with validation errors.
+_For any_ request body with a non-empty prompt string (≤ 500 chars), a valid profileId string, and an array of string excludedTrackIds, the Zod schema shall accept the input. _For any_ request body where the prompt is empty, missing, or not a string, or where excludedTrackIds is not an array of strings, the Zod schema shall reject the input with validation errors.
 
 **Validates: Requirements 7.1, 7.2, 7.4**
 
 ## Error Handling
 
-| Scenario | Handling |
-|---|---|
-| Venice AI timeout (>25s) | `AbortSignal.timeout(25000)` on fetch. Return error response with `{ success: false, error: 'AI request timed out' }`. Log via `createModuleLogger`. |
-| Venice AI returns non-JSON or malformed JSON | Catch JSON parse error. Return `{ success: false, error: 'Failed to parse AI response' }`. Log the raw response (truncated). |
-| Venice AI returns fewer than 10 recommendations | Proceed with available recommendations. No retry. Log the count. |
-| Venice AI returns 0 recommendations | Return `{ success: false, tracks: [], error: 'AI returned no recommendations' }`. |
-| Spotify search returns no results for a recommendation | Skip that recommendation. Add to `failedResolutions` array in response. Log the failed title+artist. |
-| Spotify API rate limit (429) | Handled by existing `sendApiRequest` retry logic with exponential backoff. |
-| Spotify API auth failure (401) | Handled by existing `sendApiRequest` token refresh logic. |
-| `VENICE_AI_API_KEY` not configured | Return 500 with `{ error: 'Venice AI API key is not configured' }`. Same pattern as `/api/dj-script`. |
-| Zod validation failure on `/api/ai-suggestions` | Return 400 with Zod error details. Same pattern as existing `/api/track-suggestions`. |
-| Database error reading/writing recently played | Log error. For reads: proceed with empty recently played list (degraded but functional). For writes: log and continue (non-blocking). |
-| localStorage unavailable or corrupted | Fall back to default state (first preset selected, empty custom prompt, target size 10). Same pattern as existing `useTrackSuggestions`. |
-| All Spotify resolutions fail | Return `{ success: true, tracks: [], failedResolutions: [...] }`. AutoPlayService handles empty result by not adding tracks and retrying on next queue check cycle. |
+| Scenario                                               | Handling                                                                                                                                                            |
+| ------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Venice AI timeout (>25s)                               | `AbortSignal.timeout(25000)` on fetch. Return error response with `{ success: false, error: 'AI request timed out' }`. Log via `createModuleLogger`.                |
+| Venice AI returns non-JSON or malformed JSON           | Catch JSON parse error. Return `{ success: false, error: 'Failed to parse AI response' }`. Log the raw response (truncated).                                        |
+| Venice AI returns fewer than 10 recommendations        | Proceed with available recommendations. No retry. Log the count.                                                                                                    |
+| Venice AI returns 0 recommendations                    | Return `{ success: false, tracks: [], error: 'AI returned no recommendations' }`.                                                                                   |
+| Spotify search returns no results for a recommendation | Skip that recommendation. Add to `failedResolutions` array in response. Log the failed title+artist.                                                                |
+| Spotify API rate limit (429)                           | Handled by existing `sendApiRequest` retry logic with exponential backoff.                                                                                          |
+| Spotify API auth failure (401)                         | Handled by existing `sendApiRequest` token refresh logic.                                                                                                           |
+| `VENICE_AI_API_KEY` not configured                     | Return 500 with `{ error: 'Venice AI API key is not configured' }`. Same pattern as `/api/dj-script`.                                                               |
+| Zod validation failure on `/api/ai-suggestions`        | Return 400 with Zod error details. Same pattern as existing `/api/track-suggestions`.                                                                               |
+| Database error reading/writing recently played         | Log error. For reads: proceed with empty recently played list (degraded but functional). For writes: log and continue (non-blocking).                               |
+| localStorage unavailable or corrupted                  | Fall back to default state (first preset selected, empty custom prompt, target size 10). Same pattern as existing `useTrackSuggestions`.                            |
+| All Spotify resolutions fail                           | Return `{ success: true, tracks: [], failedResolutions: [...] }`. AutoPlayService handles empty result by not adding tracks and retrying on next queue check cycle. |
 
 ## Testing Strategy
 
@@ -488,6 +501,7 @@ Constants to remove: `COOLDOWN_MS`, `INTERVAL_MS`, `DEBOUNCE_MS`, `MIN_TRACK_POP
 Property-based tests use the `fast-check` library with the Node.js built-in test runner (`node:test`). Each property test runs a minimum of 100 iterations.
 
 Each test is tagged with a comment referencing the design property:
+
 ```typescript
 // Feature: ai-song-suggestions, Property 1: Venice AI response parsing yields valid recommendations
 ```

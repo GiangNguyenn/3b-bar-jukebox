@@ -666,7 +666,9 @@ class AutoPlayService {
       if (playlistResponse.status === 409) {
         return // Track already in playlist, skip silently
       }
-      throw new Error(`Failed to add track to playlist: ${playlistResponse.status}`)
+      throw new Error(
+        `Failed to add track to playlist: ${playlistResponse.status}`
+      )
     }
 
     // Show notification for auto-added track

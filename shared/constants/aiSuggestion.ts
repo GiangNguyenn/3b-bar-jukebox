@@ -10,67 +10,78 @@ export const PRESET_PROMPTS: PresetPrompt[] = [
     id: 'party',
     label: 'Party',
     emoji: '🎉',
-    prompt: 'Upbeat, high-energy party songs that get people dancing. Mix of pop, dance, and hip hop hits.'
+    prompt:
+      'Upbeat, high-energy party songs that get people dancing. Mix of pop, dance, and hip hop hits.'
   },
   {
     id: 'chill',
     label: 'Chill',
     emoji: '☕',
-    prompt: 'Relaxed, mellow songs for a laid-back atmosphere. Lo-fi, acoustic, jazz, and soft indie.'
+    prompt:
+      'Relaxed, mellow songs for a laid-back atmosphere. Lo-fi, acoustic, jazz, and soft indie.'
   },
   {
     id: 'rock',
     label: 'Rock',
     emoji: '🎸',
-    prompt: 'Rock classics and modern rock anthems. Alternative, indie rock, and classic rock.'
+    prompt:
+      'Rock classics and modern rock anthems. Alternative, indie rock, and classic rock.'
   },
   {
     id: 'throwback',
     label: 'Throwback',
     emoji: '📻',
-    prompt: 'Nostalgic hits from the 70s, 80s, and 90s. Classic soul, disco, new wave, and retro pop.'
+    prompt:
+      'Nostalgic hits from the 70s, 80s, and 90s. Classic soul, disco, new wave, and retro pop.'
   },
   {
     id: 'indie',
     label: 'Indie',
     emoji: '🎧',
-    prompt: 'Independent and alternative music. Indie pop, indie rock, dream pop, and shoegaze.'
+    prompt:
+      'Independent and alternative music. Indie pop, indie rock, dream pop, and shoegaze.'
   },
   {
     id: 'hiphop',
     label: 'Hip Hop',
     emoji: '🎤',
-    prompt: 'Hip hop and R&B tracks. Mix of classic boom bap, modern trap, and smooth R&B.'
+    prompt:
+      'Hip hop and R&B tracks. Mix of classic boom bap, modern trap, and smooth R&B.'
   },
   {
     id: 'electronic',
     label: 'Electronic',
     emoji: '🎛️',
-    prompt: 'Electronic and dance music. House, techno, ambient, and synth-driven tracks.'
+    prompt:
+      'Electronic and dance music. House, techno, ambient, and synth-driven tracks.'
   },
   {
     id: 'acoustic',
     label: 'Acoustic',
     emoji: '🪕',
-    prompt: 'Acoustic and unplugged music. Singer-songwriter, folk, country, and acoustic covers.'
+    prompt:
+      'Acoustic and unplugged music. Singer-songwriter, folk, country, and acoustic covers.'
   },
   {
     id: 'vpop',
     label: 'V-Pop',
     emoji: '🇻🇳',
-    prompt: 'Popular Vietnamese music (V-Pop). Trending Vietnamese hits, ballads, and modern Vietnamese pop songs.'
+    prompt:
+      'Popular Vietnamese music (V-Pop). Trending Vietnamese hits, ballads, and modern Vietnamese pop songs.'
   },
   {
     id: 'vrock',
     label: 'Viet Rock & Hip Hop',
     emoji: '🎸🇻🇳',
-    prompt: 'Vietnamese rock and hip hop. Vietnamese rap, Viet rock bands, and Vietnamese hip hop artists.'
+    prompt:
+      'Vietnamese rock and hip hop. Vietnamese rap, Viet rock bands, and Vietnamese hip hop artists.'
   },
   {
     id: 'punk-metal',
     label: 'Punk & Metal',
     emoji: '🤘',
-    prompt: 'Punk and metal music. Hardcore punk, pop punk, thrash metal, metalcore, and heavy metal anthems.'
+    prompt:
+      'Punk and metal music. Hardcore punk, pop punk, thrash metal, metalcore, and heavy metal anthems.'
   }
 ]
 

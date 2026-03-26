@@ -84,7 +84,6 @@ describe('Property 1: Venice AI response parsing yields valid recommendations', 
   })
 })
 
-
 // -------------------------------------------------------------------
 // Property 2: Spotify search query construction includes title and artist
 // -------------------------------------------------------------------
@@ -98,8 +97,14 @@ describe('Property 2: Spotify search query construction includes title and artis
         nonEmptyPrintableArb,
         (title, artist) => {
           const query = buildSpotifySearchQuery(title, artist)
-          assert.ok(query.includes(title), `query must contain title "${title}"`)
-          assert.ok(query.includes(artist), `query must contain artist "${artist}"`)
+          assert.ok(
+            query.includes(title),
+            `query must contain title "${title}"`
+          )
+          assert.ok(
+            query.includes(artist),
+            `query must contain artist "${artist}"`
+          )
         }
       ),
       PBT_CONFIG
@@ -116,9 +121,14 @@ describe('Property 3: Graceful degradation on partial AI responses', () => {
   it('returns exactly N results for a response with N valid items (1-9)', () => {
     fc.assert(
       fc.property(
-        fc.integer({ min: 1, max: 9 }).chain((n) =>
-          fc.tuple(fc.constant(n), fc.array(validRecArb, { minLength: n, maxLength: n }))
-        ),
+        fc
+          .integer({ min: 1, max: 9 })
+          .chain((n) =>
+            fc.tuple(
+              fc.constant(n),
+              fc.array(validRecArb, { minLength: n, maxLength: n })
+            )
+          ),
         ([n, recs]) => {
           const json = JSON.stringify(recs)
           const result = parseVeniceResponse(json)
@@ -145,11 +155,15 @@ describe('Property 11: Post-resolution filtering excludes recently played tracks
     excludedIds: Set<string>
   ) {
     return tracks.filter(
-      (t) => !recentlyPlayedIds.has(t.spotifyTrackId) && !excludedIds.has(t.spotifyTrackId)
+      (t) =>
+        !recentlyPlayedIds.has(t.spotifyTrackId) &&
+        !excludedIds.has(t.spotifyTrackId)
     )
   }
 
-  const trackIdArb = fc.string({ minLength: 1, maxLength: 30 }).filter((s) => s.trim().length > 0)
+  const trackIdArb = fc
+    .string({ minLength: 1, maxLength: 30 })
+    .filter((s) => s.trim().length > 0)
 
   const trackObjArb = fc.record({
     spotifyTrackId: trackIdArb,
@@ -207,7 +221,6 @@ describe('Property 11: Post-resolution filtering excludes recently played tracks
   })
 })
 
-
 // -------------------------------------------------------------------
 // Property 9: Recently played list size invariant
 // -------------------------------------------------------------------
@@ -222,14 +235,18 @@ describe('Property 9: Recently played list size invariant', () => {
     entry: { spotifyTrackId: string; title: string; artist: string }
   ): Array<{ spotifyTrackId: string; title: string; artist: string }> {
     // Upsert: remove existing entry with same ID, then add at front
-    const filtered = list.filter((e) => e.spotifyTrackId !== entry.spotifyTrackId)
+    const filtered = list.filter(
+      (e) => e.spotifyTrackId !== entry.spotifyTrackId
+    )
     const updated = [entry, ...filtered]
     // Trim to limit
     return updated.slice(0, RECENTLY_PLAYED_LIMIT)
   }
 
   const entryArb = fc.record({
-    spotifyTrackId: fc.string({ minLength: 1, maxLength: 30 }).filter((s) => s.trim().length > 0),
+    spotifyTrackId: fc
+      .string({ minLength: 1, maxLength: 30 })
+      .filter((s) => s.trim().length > 0),
     title: nonEmptyPrintableArb,
     artist: nonEmptyPrintableArb
   })
@@ -239,7 +256,11 @@ describe('Property 9: Recently played list size invariant', () => {
       fc.property(
         fc.array(entryArb, { minLength: 1, maxLength: 200 }),
         (entries) => {
-          let list: Array<{ spotifyTrackId: string; title: string; artist: string }> = []
+          let list: Array<{
+            spotifyTrackId: string
+            title: string
+            artist: string
+          }> = []
           for (const entry of entries) {
             list = simulateAddAndTrim(list, entry)
             assert.ok(
@@ -256,7 +277,8 @@ describe('Property 9: Recently played list size invariant', () => {
   it('list size is exactly 100 after adding 100+ unique tracks', () => {
     fc.assert(
       fc.property(
-        fc.array(entryArb, { minLength: 101, maxLength: 150 })
+        fc
+          .array(entryArb, { minLength: 101, maxLength: 150 })
           .map((entries) => {
             // Ensure unique IDs by appending index
             return entries.map((e, i) => ({
@@ -265,7 +287,11 @@ describe('Property 9: Recently played list size invariant', () => {
             }))
           }),
         (entries) => {
-          let list: Array<{ spotifyTrackId: string; title: string; artist: string }> = []
+          let list: Array<{
+            spotifyTrackId: string
+            title: string
+            artist: string
+          }> = []
           for (const entry of entries) {
             list = simulateAddAndTrim(list, entry)
           }
@@ -284,7 +310,9 @@ describe('Property 10: AI prompt includes recently played context', () => {
   // **Validates: Requirements 5.2**
 
   const recentlyPlayedEntryArb = fc.record({
-    spotifyTrackId: fc.string({ minLength: 1, maxLength: 30 }).filter((s) => s.trim().length > 0),
+    spotifyTrackId: fc
+      .string({ minLength: 1, maxLength: 30 })
+      .filter((s) => s.trim().length > 0),
     title: nonEmptyPrintableArb,
     artist: nonEmptyPrintableArb
   })
@@ -313,7 +341,6 @@ describe('Property 10: AI prompt includes recently played context', () => {
     )
   })
 })
-
 
 // Feature: ai-song-suggestions, Property 12: Recently played database persistence round-trip
 
@@ -403,27 +430,22 @@ describe('Property 12: Recently played database persistence round-trip', () => {
 
   it('upsert payload preserves profile_id and maps spotifyTrackId to spotify_track_id', () => {
     fc.assert(
-      fc.property(
-        profileIdArb,
-        recentlyPlayedEntryArb,
-        (profileId, entry) => {
-          const payload = entryToUpsertPayload(profileId, entry)
+      fc.property(profileIdArb, recentlyPlayedEntryArb, (profileId, entry) => {
+        const payload = entryToUpsertPayload(profileId, entry)
 
-          assert.equal(payload.profile_id, profileId)
-          assert.equal(payload.spotify_track_id, entry.spotifyTrackId)
-          assert.equal(payload.title, entry.title)
-          assert.equal(payload.artist, entry.artist)
-          assert.ok(
-            typeof payload.played_at === 'string' && payload.played_at.length > 0,
-            'played_at must be a non-empty ISO string'
-          )
-        }
-      ),
+        assert.equal(payload.profile_id, profileId)
+        assert.equal(payload.spotify_track_id, entry.spotifyTrackId)
+        assert.equal(payload.title, entry.title)
+        assert.equal(payload.artist, entry.artist)
+        assert.ok(
+          typeof payload.played_at === 'string' && payload.played_at.length > 0,
+          'played_at must be a non-empty ISO string'
+        )
+      }),
       PBT_CONFIG
     )
   })
 })
-
 
 // Feature: ai-song-suggestions, Property 7: Auto-fill adds tracks from buffer up to target size
 
@@ -435,7 +457,10 @@ function simulateAutoFill(
   targetSize: number,
   bufferSize: number
 ) {
-  const tracksFromBuffer = Math.min(bufferSize, Math.max(0, targetSize - currentQueueSize))
+  const tracksFromBuffer = Math.min(
+    bufferSize,
+    Math.max(0, targetSize - currentQueueSize)
+  )
   const remainingBuffer = bufferSize - tracksFromBuffer
   const newQueueSize = currentQueueSize + tracksFromBuffer
   const needsNewBatch = remainingBuffer === 0 && newQueueSize < targetSize
@@ -458,16 +483,26 @@ describe('Property 7: Auto-fill adds tracks from buffer up to target size', () =
           // Only test when queue is below target
           fc.pre(currentQueueSize < targetSize)
 
-          const result = simulateAutoFill(currentQueueSize, targetSize, bufferSize)
+          const result = simulateAutoFill(
+            currentQueueSize,
+            targetSize,
+            bufferSize
+          )
 
-          const expectedTracksFromBuffer = Math.min(bufferSize, targetSize - currentQueueSize)
+          const expectedTracksFromBuffer = Math.min(
+            bufferSize,
+            targetSize - currentQueueSize
+          )
           assert.equal(
             result.tracksFromBuffer,
             expectedTracksFromBuffer,
             `should add min(${bufferSize}, ${targetSize} - ${currentQueueSize}) = ${expectedTracksFromBuffer} tracks`
           )
 
-          const expectedQueueSize = Math.min(currentQueueSize + bufferSize, targetSize)
+          const expectedQueueSize = Math.min(
+            currentQueueSize + bufferSize,
+            targetSize
+          )
           assert.equal(
             result.newQueueSize,
             expectedQueueSize,
@@ -488,7 +523,11 @@ describe('Property 7: Auto-fill adds tracks from buffer up to target size', () =
         (currentQueueSize, targetSize, bufferSize) => {
           fc.pre(currentQueueSize < targetSize)
 
-          const result = simulateAutoFill(currentQueueSize, targetSize, bufferSize)
+          const result = simulateAutoFill(
+            currentQueueSize,
+            targetSize,
+            bufferSize
+          )
 
           assert.ok(
             result.tracksFromBuffer <= bufferSize,
@@ -509,7 +548,11 @@ describe('Property 7: Auto-fill adds tracks from buffer up to target size', () =
         (currentQueueSize, targetSize, bufferSize) => {
           fc.pre(currentQueueSize < targetSize)
 
-          const result = simulateAutoFill(currentQueueSize, targetSize, bufferSize)
+          const result = simulateAutoFill(
+            currentQueueSize,
+            targetSize,
+            bufferSize
+          )
 
           assert.ok(
             result.newQueueSize <= targetSize,
@@ -530,7 +573,11 @@ describe('Property 7: Auto-fill adds tracks from buffer up to target size', () =
         (currentQueueSize, targetSize, bufferSize) => {
           fc.pre(currentQueueSize < targetSize)
 
-          const result = simulateAutoFill(currentQueueSize, targetSize, bufferSize)
+          const result = simulateAutoFill(
+            currentQueueSize,
+            targetSize,
+            bufferSize
+          )
 
           assert.equal(
             result.remainingBuffer,
@@ -562,7 +609,11 @@ describe('Property 8: Buffer is consumed before requesting a new batch', () => {
           // Buffer is non-empty and queue is below target
           fc.pre(currentQueueSize < targetSize)
 
-          const result = simulateAutoFill(currentQueueSize, targetSize, bufferSize)
+          const result = simulateAutoFill(
+            currentQueueSize,
+            targetSize,
+            bufferSize
+          )
 
           // If there are still tracks remaining in the buffer, no new batch needed
           if (result.remainingBuffer > 0) {
@@ -587,7 +638,11 @@ describe('Property 8: Buffer is consumed before requesting a new batch', () => {
         (currentQueueSize, targetSize, bufferSize) => {
           fc.pre(currentQueueSize < targetSize)
 
-          const result = simulateAutoFill(currentQueueSize, targetSize, bufferSize)
+          const result = simulateAutoFill(
+            currentQueueSize,
+            targetSize,
+            bufferSize
+          )
 
           if (result.needsNewBatch) {
             assert.equal(
@@ -616,9 +671,14 @@ describe('Property 8: Buffer is consumed before requesting a new batch', () => {
 
           const gap = targetSize - currentQueueSize
           // Buffer is larger than the gap — more than enough
-          const bufferSize = gap + fc.sample(fc.integer({ min: 1, max: 50 }), 1)[0]
+          const bufferSize =
+            gap + fc.sample(fc.integer({ min: 1, max: 50 }), 1)[0]
 
-          const result = simulateAutoFill(currentQueueSize, targetSize, bufferSize)
+          const result = simulateAutoFill(
+            currentQueueSize,
+            targetSize,
+            bufferSize
+          )
 
           assert.equal(
             result.needsNewBatch,

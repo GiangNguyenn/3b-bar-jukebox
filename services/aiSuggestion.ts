@@ -111,7 +111,10 @@ export async function resolveToSpotifyTrack(
       signal: AbortSignal.timeout(10000)
     })
     if (!response.ok) {
-      logger('WARN', `Spotify search failed for "${title}" by ${artist}: ${response.status}`)
+      logger(
+        'WARN',
+        `Spotify search failed for "${title}" by ${artist}: ${response.status}`
+      )
       return null
     }
     const data = (await response.json()) as SpotifySearchResponse
@@ -145,7 +148,10 @@ export async function getAiSuggestions(
 
   const userMessage = buildUserMessage(prompt, recentlyPlayed)
 
-  logger('INFO', `Requesting AI suggestions for prompt: "${prompt.slice(0, 80)}..."`)
+  logger(
+    'INFO',
+    `Requesting AI suggestions for prompt: "${prompt.slice(0, 80)}..."`
+  )
 
   const recentlyPlayedIds = new Set(recentlyPlayed.map((e) => e.spotifyTrackId))
   const excludedSet = new Set(excludedTrackIds)
@@ -169,7 +175,8 @@ export async function getAiSuggestions(
       })
     })
   } catch (error) {
-    const isTimeout = error instanceof DOMException && error.name === 'TimeoutError'
+    const isTimeout =
+      error instanceof DOMException && error.name === 'TimeoutError'
     logger(
       'ERROR',
       isTimeout
@@ -233,7 +240,10 @@ export async function getAiSuggestions(
       continue
     }
 
-    if (recentlyPlayedIds.has(spotifyTrackId) || excludedSet.has(spotifyTrackId)) {
+    if (
+      recentlyPlayedIds.has(spotifyTrackId) ||
+      excludedSet.has(spotifyTrackId)
+    ) {
       logger(
         'INFO',
         `Filtered out "${rec.title}" by ${rec.artist} (already played or excluded)`
@@ -256,12 +266,12 @@ export async function getAiSuggestions(
   return { tracks, failedResolutions }
 }
 
-
 const RECENTLY_PLAYED_LIMIT = 100
 
 // Table type not yet in generated Supabase types (migration in task 4.1)
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-const recentlyPlayedTable = () => (supabase as any).from('recently_played_tracks')
+const recentlyPlayedTable = () =>
+  (supabase as any).from('recently_played_tracks')
 
 interface RecentlyPlayedRow {
   spotify_track_id: string
@@ -306,20 +316,22 @@ export async function addToRecentlyPlayed(
   entry: RecentlyPlayedEntry
 ): Promise<void> {
   try {
-    const { error: upsertError } = await recentlyPlayedTable()
-      .upsert(
-        {
-          profile_id: profileId,
-          spotify_track_id: entry.spotifyTrackId,
-          title: entry.title,
-          artist: entry.artist,
-          played_at: new Date().toISOString()
-        },
-        { onConflict: 'profile_id,spotify_track_id' }
-      )
+    const { error: upsertError } = await recentlyPlayedTable().upsert(
+      {
+        profile_id: profileId,
+        spotify_track_id: entry.spotifyTrackId,
+        title: entry.title,
+        artist: entry.artist,
+        played_at: new Date().toISOString()
+      },
+      { onConflict: 'profile_id,spotify_track_id' }
+    )
 
     if (upsertError) {
-      logger('WARN', `Failed to upsert recently played track: ${upsertError.message}`)
+      logger(
+        'WARN',
+        `Failed to upsert recently played track: ${upsertError.message}`
+      )
       return
     }
 
@@ -331,7 +343,10 @@ export async function addToRecentlyPlayed(
       .range(RECENTLY_PLAYED_LIMIT - 1, RECENTLY_PLAYED_LIMIT - 1)
 
     if (fetchError) {
-      logger('WARN', `Failed to check recently played count: ${fetchError.message}`)
+      logger(
+        'WARN',
+        `Failed to check recently played count: ${fetchError.message}`
+      )
       return
     }
 
@@ -344,7 +359,10 @@ export async function addToRecentlyPlayed(
         .lt('played_at', cutoff)
 
       if (deleteError) {
-        logger('WARN', `Failed to trim recently played tracks: ${deleteError.message}`)
+        logger(
+          'WARN',
+          `Failed to trim recently played tracks: ${deleteError.message}`
+        )
       }
     }
   } catch (error) {

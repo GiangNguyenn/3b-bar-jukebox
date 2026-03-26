@@ -287,7 +287,11 @@ export default function PlaylistPage(): JSX.Element {
   return (
     <div
       className='min-h-screen w-full'
-      style={{ backgroundColor: '#000000', color: '#ffffff', fontFamily: 'Belgrano' }}
+      style={{
+        backgroundColor: '#000000',
+        color: '#ffffff',
+        fontFamily: 'Belgrano'
+      }}
     >
       <AutoFillNotification />
       {lastAddedTrack && (
