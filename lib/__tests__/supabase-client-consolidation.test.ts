@@ -25,7 +25,6 @@ void describe('Bug Condition: Duplicate browser clients (Req 1.1)', () => {
     'hooks/useTrackGenre.ts',
     'hooks/useGetProfile.tsx',
     'shared/utils/authCleanup.ts',
-    'app/[username]/admin/components/branding/hooks/useBrandingSettings.ts',
     'app/[username]/admin/components/analytics/analytics-tab.tsx',
     'app/[username]/admin/components/analytics/popularity-histogram.tsx',
     'app/[username]/admin/components/analytics/release-year-histogram.tsx',

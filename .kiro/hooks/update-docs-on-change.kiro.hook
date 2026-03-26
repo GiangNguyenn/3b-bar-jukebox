@@ -1,0 +1,26 @@
+{
+  "enabled": true,
+  "name": "Update Docs on Source Change",
+  "description": "When source files (TypeScript, config, middleware, etc.) are edited, asks the agent to review the change and update relevant documentation in README.md or the docs/ folder if the change affects documented behavior, architecture, APIs, or configuration.",
+  "version": "1",
+  "when": {
+    "type": "fileEdited",
+    "patterns": [
+      "*.ts",
+      "*.tsx",
+      "*.mjs",
+      "*.js",
+      "*.json",
+      "middleware.ts",
+      "next.config.mjs",
+      "tailwind.config.ts",
+      "package.json",
+      "tsconfig.json",
+      ".env.example"
+    ]
+  },
+  "then": {
+    "type": "askAgent",
+    "prompt": "A source file was just edited. Review the change and determine if it affects anything documented in README.md or any file under the docs/ folder (e.g., architecture.md, database-schema.md, security-guidelines.md, gameplay.md, etc.). If the change impacts documented behavior, APIs, architecture, configuration, database schema, or security guidelines, update the relevant documentation to reflect the change. If the change is minor or internal and doesn't affect any documented surface, do nothing."
+  }
+}

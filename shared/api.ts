@@ -474,6 +474,3 @@ export const sendApiRequest = async <T>({
 
   return promise
 }
-
-// Note: logTrackSuggestion function removed - suggested_tracks table should only be updated
-// when users directly add tracks to their playlist, not from API suggestions

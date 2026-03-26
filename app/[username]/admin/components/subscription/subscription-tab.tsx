@@ -383,10 +383,6 @@ export function SubscriptionTab(): JSX.Element {
               </li>
               <li className='flex items-center'>
                 <span className='mr-2 text-red-500'>✗</span>
-                Branding customization
-              </li>
-              <li className='flex items-center'>
-                <span className='mr-2 text-red-500'>✗</span>
                 Analytics
               </li>
             </ul>
@@ -404,10 +400,6 @@ export function SubscriptionTab(): JSX.Element {
               <li className='flex items-center'>
                 <span className='mr-2 text-green-500'>✓</span>
                 Track suggestions
-              </li>
-              <li className='flex items-center'>
-                <span className='mr-2 text-green-500'>✓</span>
-                Branding customization
               </li>
               <li className='flex items-center'>
                 <span className='mr-2 text-green-500'>✓</span>

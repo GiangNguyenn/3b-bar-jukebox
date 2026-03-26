@@ -5,7 +5,7 @@
   "scripts": {
     "dev": "next dev",
     "build": "npm run test && next build",
-    "test": "cross-env SPOTIFY_CLIENT_ID=mock SPOTIFY_CLIENT_SECRET=mock NEXT_PUBLIC_BASE_URL=http://localhost:3000 NEXT_PUBLIC_SUPABASE_URL=http://localhost:54321 NEXT_PUBLIC_SUPABASE_ANON_KEY=mock tsx --test services/game/__tests__/*.test.ts services/player/__tests__/*.test.ts services/__tests__/*.test.ts",
+    "test": "cross-env SPOTIFY_CLIENT_ID=mock SPOTIFY_CLIENT_SECRET=mock NEXT_PUBLIC_BASE_URL=http://localhost:3000 NEXT_PUBLIC_SUPABASE_URL=http://localhost:54321 NEXT_PUBLIC_SUPABASE_ANON_KEY=mock VENICE_AI_API_KEY=mock tsx --test services/game/__tests__/*.test.ts services/player/__tests__/*.test.ts services/__tests__/*.test.ts shared/constants/__tests__/*.test.ts app/api/ai-suggestions/__tests__/*.test.ts",
     "start": "next start",
     "lint:check": "next lint",
     "lint:fix": "next lint --fix",
@@ -66,6 +66,7 @@
     "eslint": "^8.56.0",
     "eslint-config-next": "^14.1.0",
     "eslint-plugin-unused-imports": "^4.1.4",
+    "fast-check": "^4.6.0",
     "husky": "^9.1.7",
     "postcss": "^8.4.35",
     "prettier-plugin-tailwindcss": "^0.6.11",

@@ -95,10 +95,8 @@ The application exposes several API endpoints under `app/api/` to handle various
 - **`app/api/playlists/[id]/`**: Manages individual playlists.
 - **`app/api/search/...`**: Searches for tracks on Spotify.
 - **`app/api/token/[username]/`**: Manages tokens for a specific user.
-- **`app/api/track-suggestions/`**: A consolidated endpoint for managing track suggestions.
-  - `GET ?latest=true`: Fetches the last suggested track.
-  - `POST`: Requests a new track suggestion based on the criteria in the body.
-  - `PUT`: Updates the "last suggested" track in the cache.
+- **`app/api/ai-suggestions/`**: AI-powered song suggestion endpoint using Venice AI.
+  - `POST`: Requests AI-generated song suggestions based on a prompt.
 
 ## 6. Data Management
 

@@ -3,18 +3,7 @@ import { sendApiRequest } from '@/shared/api'
 import { QueueManager } from './queueManager'
 import { LogLevel } from '@/hooks/ConsoleLogsProvider'
 import { SpotifyPlaybackState } from '@/shared/types/spotify'
-import {
-  FALLBACK_GENRES,
-  DEFAULT_YEAR_RANGE,
-  MIN_TRACK_POPULARITY,
-  DEFAULT_MAX_SONG_LENGTH_MINUTES,
-  DEFAULT_MAX_OFFSET
-} from '@/shared/constants/trackSuggestion'
 import { PLAYER_LIFECYCLE_CONFIG } from './playerLifecycleConfig'
-import {
-  TrackSuggestionsState,
-  isValidTrackSuggestionsState
-} from '@/shared/types/trackSuggestions'
 import { TrackDuplicateDetector } from '@/shared/utils/trackDuplicateDetector'
 import { playerLifecycleService } from '@/services/playerLifecycle'
 import { transferPlaybackToDevice } from '@/services/deviceManagement'
@@ -51,7 +40,9 @@ class AutoPlayService {
     new TrackDuplicateDetector()
   private autoFillTargetSize: number
   private autoFillMaxAttempts: number
-  private trackSuggestionsState: TrackSuggestionsState | null = null // User's track suggestions configuration
+  private activePrompt: string = ''
+  private autoFillDebounceTimer: ReturnType<typeof setTimeout> | null = null
+  private lastAutoFillCompletionTime = 0
   private isAutoPlayDisabled: boolean = false // Flag to temporarily disable auto-play during manual operations
   private isInitialized: boolean = false // Flag to track if the service is properly initialized
   private isPolling = false // Guard flag to prevent overlapping requests
@@ -173,47 +164,25 @@ class AutoPlayService {
 
   public updateQueue(queue: JukeboxQueueItem[]): void {
     this.queueManager.updateQueue(queue)
-    const currentQueueLength = queue.length
-
-    // Trigger auto-fill check if queue is below target size
-    // Only check if service is running, initialized, and we have username
-    if (
-      this.isRunning &&
-      this.isInitialized &&
-      this.username &&
-      currentQueueLength < this.autoFillTargetSize &&
-      !this.isAutoFilling
-    ) {
-      // Use setTimeout to avoid blocking queue update
-      setTimeout(() => {
-        void this.checkAndAutoFillQueue()
-      }, 500)
-    }
   }
 
-  public setTrackSuggestionsState(state: TrackSuggestionsState | null): void {
-    // Validate state before setting
-    if (state && !isValidTrackSuggestionsState(state)) {
-      return
+  private scheduleAutoFillCheck(delayMs: number = 500): void {
+    // Always coalesce into a single pending check
+    if (this.autoFillDebounceTimer) {
+      return // Already scheduled, don't reschedule
     }
+    this.autoFillDebounceTimer = setTimeout(() => {
+      this.autoFillDebounceTimer = null
+      void this.checkAndAutoFillQueue()
+    }, delayMs)
+  }
 
-    this.trackSuggestionsState = state
+  public setActivePrompt(prompt: string): void {
+    this.activePrompt = prompt
+  }
 
-    // Update autoFillTargetSize from track suggestions state if available
-    if (state?.autoFillTargetSize !== undefined) {
-      this.autoFillTargetSize = state.autoFillTargetSize
-    }
-
-    // If this is the first time setting the state and we have a queue, trigger an auto-fill check
-    if (state && this.isRunning && this.username) {
-      const queue = this.queueManager.getQueue()
-      if (queue.length < this.autoFillTargetSize) {
-        // Use setTimeout to avoid blocking the current operation
-        setTimeout(() => {
-          void this.checkAndAutoFillQueue()
-        }, 1000)
-      }
-    }
+  public setAutoFillTargetSize(targetSize: number): void {
+    this.autoFillTargetSize = targetSize
   }
 
   public disableAutoPlay(): void {
@@ -248,7 +217,7 @@ class AutoPlayService {
         now - this.lastQueueCheckTime > this.QUEUE_CHECK_INTERVAL
       ) {
         this.lastQueueCheckTime = now
-        void this.checkAndAutoFillQueue()
+        this.scheduleAutoFillCheck(0)
       }
 
       if (!currentState) {
@@ -427,8 +396,8 @@ class AutoPlayService {
       } else {
       }
 
-      // Check if queue is getting low and trigger auto-fill if needed
-      await this.checkAndAutoFillQueue()
+      // Schedule auto-fill check (debounced to prevent races)
+      this.scheduleAutoFillCheck(500)
 
       // At this point AutoPlayService has updated queue state and ensured
       // auto-fill runs when needed. Playback transitions themselves are
@@ -478,519 +447,245 @@ class AutoPlayService {
   }
 
   private async checkAndAutoFillQueue(): Promise<void> {
-    // Refresh queue from API to get accurate current size
-    const cachedQueue = this.queueManager.getQueue()
-    const cachedQueueLength = cachedQueue.length
-
-    const freshQueueLength = await this.refreshQueueFromAPI()
-    const currentQueueLength = freshQueueLength ?? cachedQueueLength
-
-    if (freshQueueLength === null && cachedQueueLength > 0) {
-    } else if (
-      freshQueueLength !== null &&
-      freshQueueLength !== cachedQueueLength
-    ) {
+    // Atomic guard: if already auto-filling, skip entirely
+    if (this.isAutoFilling) {
+      return
     }
 
-    // Check if queue is low (below target size)
-    if (
-      currentQueueLength < this.autoFillTargetSize &&
-      !this.isAutoFilling &&
-      this.username &&
-      this.isInitialized
-    ) {
-      // Additional check to ensure we have valid track suggestions state or fallback defaults
-      const hasValidState = this.trackSuggestionsState || true // Always allow auto-fill with fallbacks
-      this.onQueueLow?.()
+    // Cooldown: don't re-trigger within 15 seconds of last completion
+    const now = Date.now()
+    if (now - this.lastAutoFillCompletionTime < 15000) {
+      return
+    }
 
-      try {
-        this.isAutoFilling = true
+    // Set flag immediately to prevent concurrent calls
+    this.isAutoFilling = true
 
-        // Small delay to ensure track suggestions state is properly loaded
-        if (!this.trackSuggestionsState) {
-          await new Promise((resolve) => setTimeout(resolve, 1000))
-        } else {
-          // Guard against null/undefined before field checks
-          // Store in local variable to help TypeScript's control flow analysis
-          // This prevents the 'in' operator from failing if state becomes null between checks
-          const trackSuggestionsState = this.trackSuggestionsState
-          if (!trackSuggestionsState) {
-            return
-          }
+    try {
+      // Refresh queue from API to get accurate current size
+      const cachedQueue = this.queueManager.getQueue()
+      const cachedQueueLength = cachedQueue.length
 
-          // Validate that track suggestions state has required fields
-          const requiredFields = [
-            'genres',
-            'yearRange',
-            'popularity',
-            'allowExplicit',
-            'maxSongLength',
-            'maxOffset',
-            'autoFillTargetSize'
-          ]
-          const missingFields = requiredFields.filter(
-            (field: string) => !(field in trackSuggestionsState)
-          )
+      const freshQueueLength = await this.refreshQueueFromAPI()
+      const currentQueueLength = freshQueueLength ?? cachedQueueLength
 
-          if (missingFields.length > 0) {
-          }
-        }
-
+      // Check if queue is low (below target size)
+      if (
+        currentQueueLength < this.autoFillTargetSize &&
+        this.username &&
+        this.isInitialized
+      ) {
+        this.onQueueLow?.()
         await this.autoFillQueue()
-      } catch (error) {
-      } finally {
-        this.isAutoFilling = false
       }
-    } else {
-      // Log why auto-fill was not triggered
-      const reasons: string[] = []
-      if (currentQueueLength >= this.autoFillTargetSize) {
-        reasons.push(
-          `queue size (${currentQueueLength}) >= target (${this.autoFillTargetSize})`
-        )
-      }
-      if (this.isAutoFilling) {
-        reasons.push('auto-fill already in progress')
-      }
-      if (!this.username) {
-        reasons.push('no username available')
-      }
-      if (!this.isInitialized) {
-        reasons.push('service not initialized')
+    } catch (error) {
+      // Silently handle errors
+    } finally {
+      this.isAutoFilling = false
+      this.lastAutoFillCompletionTime = Date.now()
+      // Clear any pending timer to prevent immediate re-trigger
+      if (this.autoFillDebounceTimer) {
+        clearTimeout(this.autoFillDebounceTimer)
+        this.autoFillDebounceTimer = null
       }
     }
   }
 
   private async autoFillQueue(): Promise<void> {
-    if (!this.username) {
+    if (!this.username || !this.activePrompt) {
+      if (this.addLog) {
+        this.addLog(
+          'WARN',
+          `[SOURCE:NONE] Auto-fill skipped: username=${!!this.username}, activePrompt="${this.activePrompt?.slice(0, 50) || ''}"`,
+          'AutoPlayService'
+        )
+      }
       return
     }
 
-    // Check if we have valid track suggestions state
-    if (!this.trackSuggestionsState) {
+    if (this.addLog) {
+      this.addLog(
+        'INFO',
+        `[SOURCE:AI] Starting auto-fill with prompt: "${this.activePrompt.slice(0, 60)}..."`,
+        'AutoPlayService'
+      )
     }
 
-    const targetQueueSize = this.autoFillTargetSize // Target number of tracks in queue
-    const maxAttempts = this.autoFillMaxAttempts // Maximum attempts to prevent infinite loops
-    let attempts = 0
     let tracksAdded = 0
 
-    while (attempts < maxAttempts) {
-      attempts++
+    // Request a batch from AI
+    const currentQueue = this.queueManager.getQueue()
+    const excludedTrackIds = currentQueue.map(
+      (item) => item.tracks.spotify_track_id
+    )
 
-      // Check current queue size
-      const currentQueue = this.queueManager.getQueue()
-      const currentQueueSize = currentQueue.length
-
-      // If we've reached the target, stop
-      if (currentQueueSize >= targetQueueSize) {
-        break
-      }
+    try {
+      const controller = new AbortController()
+      const timeoutId = setTimeout(() => controller.abort(), 30000)
+      let response: Response
 
       try {
-        // Use user's track suggestions configuration for auto-fill with fallback defaults
-        // Handle the case where trackSuggestionsState might be null or undefined
-        const mergedTrackSuggestions = {
-          genres:
-            Array.isArray(this.trackSuggestionsState?.genres) &&
-            this.trackSuggestionsState.genres.length > 0
-              ? this.trackSuggestionsState.genres.filter(
-                  (genre: any) => typeof genre === 'string'
-                )
-              : [...FALLBACK_GENRES],
-          yearRange: Array.isArray(this.trackSuggestionsState?.yearRange)
-            ? ([
-                Math.max(
-                  1900,
-                  Math.min(
-                    new Date().getFullYear(),
-                    Math.floor(this.trackSuggestionsState.yearRange[0] ?? 1900)
-                  )
-                ),
-                Math.max(
-                  1900,
-                  Math.min(
-                    new Date().getFullYear(),
-                    Math.floor(
-                      this.trackSuggestionsState.yearRange[1] ??
-                        new Date().getFullYear()
-                    )
-                  )
-                )
-              ] as [number, number])
-            : DEFAULT_YEAR_RANGE,
-          popularity: Math.max(
-            0,
-            Math.min(
-              100,
-              this.trackSuggestionsState?.popularity ?? MIN_TRACK_POPULARITY
-            )
-          ),
-          allowExplicit: Boolean(
-            this.trackSuggestionsState?.allowExplicit ?? true
-          ),
-          maxSongLength: Math.max(
-            3,
-            Math.min(
-              20,
-              this.trackSuggestionsState?.maxSongLength ??
-                DEFAULT_MAX_SONG_LENGTH_MINUTES
-            )
-          ),
-          maxOffset: Math.max(
-            1,
-            Math.min(
-              10000,
-              this.trackSuggestionsState?.maxOffset ?? DEFAULT_MAX_OFFSET
-            )
+        response = await fetch('/api/ai-suggestions', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            prompt: this.activePrompt,
+            excludedTrackIds,
+            profileId: this.username
+          }),
+          signal: controller.signal
+        })
+      } finally {
+        clearTimeout(timeoutId)
+      }
+
+      if (!response.ok) {
+        const errorBody = await response.text().catch(() => 'unknown')
+        if (this.addLog) {
+          this.addLog(
+            'WARN',
+            `[SOURCE:AI] AI request failed (${response.status}): ${errorBody.slice(0, 200)}. Falling back to random track.`,
+            'AutoPlayService'
           )
         }
+        await this.fallbackToRandomTrack()
+        return
+      }
 
-        const requestBody = {
-          ...mergedTrackSuggestions
-        }
+      const result = (await response.json()) as {
+        success: boolean
+        tracks: Array<{ id: string; title: string; artist: string }>
+        error?: string
+      }
 
-        // Validate that all required fields are present
-        const requiredFields = [
-          'genres',
-          'yearRange',
-          'popularity',
-          'allowExplicit',
-          'maxSongLength',
-          'maxOffset'
-        ]
-        const missingFields = requiredFields.filter(
-          (field: string) => !(field in requestBody)
-        )
-
-        if (missingFields.length > 0) {
-          throw new Error(
-            `Missing required fields: ${missingFields.join(', ')}`
+      if (!result.success || !result.tracks || result.tracks.length === 0) {
+        if (this.addLog) {
+          this.addLog(
+            'WARN',
+            `[SOURCE:AI] AI returned no tracks: ${result.error || 'unknown'}. Falling back to random track.`,
+            'AutoPlayService'
           )
         }
+        await this.fallbackToRandomTrack()
+        return
+      }
 
-        // Get current queue to exclude existing tracks
-        const currentQueue = this.queueManager.getQueue()
-        let excludedTrackIds = currentQueue.map(
-          (item) => item.tracks.spotify_track_id
+      // Add all returned tracks to queue
+      if (this.addLog) {
+        this.addLog(
+          'INFO',
+          `[SOURCE:AI] Received ${result.tracks.length} tracks from AI, adding all to queue`,
+          'AutoPlayService'
         )
-
-        // Also exclude tracks from recent cooldown history (24-hour filter)
+      }
+      for (const track of result.tracks) {
         try {
-          const { loadCooldownState, getTracksInCooldown } = await import(
-            '@/shared/utils/suggestionsCooldown'
-          )
-          const contextId = this.username ?? 'default'
-          const cooldown = loadCooldownState(contextId)
-          const tracksInCooldown = getTracksInCooldown(cooldown)
-          if (tracksInCooldown.length > 0) {
-            excludedTrackIds = Array.from(
-              new Set([...excludedTrackIds, ...tracksInCooldown])
+          if (this.addLog) {
+            this.addLog(
+              'INFO',
+              `[SOURCE:AI] Adding AI track: "${track.title}" by ${track.artist} (${track.id})`,
+              'AutoPlayService'
             )
           }
+          await this.addTrackToQueue(track.id)
+          tracksAdded++
         } catch (error) {
-          // Non-critical: Cooldown loading failure doesn't prevent auto-fill,
-          // we just won't exclude tracks in cooldown this time
-        }
-
-        let response: Response
-        let errorBody: any
-
-        try {
-          const controller = new AbortController()
-          const timeoutId = setTimeout(() => controller.abort(), 15000) // 15s timeout for AI generation
-
-          try {
-            response = await fetch('/api/track-suggestions', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                ...requestBody,
-                excludedTrackIds
-              }),
-              signal: controller.signal
-            })
-          } finally {
-            clearTimeout(timeoutId)
-          }
-
-          if (!response.ok) {
-            const statusMessage = `REQUEST FAILED - Status: ${response.status}`
-            if (this.addLog) {
-              this.addLog(
-                'ERROR',
-                `Auto-fill request failed: ${response.status}`,
-                'AutoPlayService'
-              )
-            }
-
-            try {
-              errorBody = await response.json()
-
-              if (response.status === 400 && errorBody.errors) {
-                // Log validation errors
-                if (Array.isArray(errorBody.errors)) {
-                  errorBody.errors.forEach((error: any, index: number) => {})
-                }
-              }
-            } catch (parseError) {}
-
-            // Handle different types of 400 errors
-            if (response.status === 400) {
-              if (errorBody && errorBody.errors) {
-                // Validation error - log the validation errors
-                throw new Error(
-                  'Track suggestions validation failed. Please check your parameters.'
-                )
-              } else if (
-                errorBody &&
-                errorBody.success === false &&
-                errorBody.message
-              ) {
-                // No suitable tracks found - log the detailed error and inform user
-
-                if (errorBody.searchDetails) {
-                  if (errorBody.searchDetails.suggestions) {
-                  }
-                }
-
-                // Inform user about why no tracks were found
-                const errorMessage = errorBody.message
-                const suggestions = errorBody.searchDetails?.suggestions || []
-
-                // Don't try with different parameters - just inform the user
-                throw new Error(
-                  `No tracks found with your current settings. ${suggestions.length > 0 ? `Suggestions: ${suggestions.join(', ')}` : ''}`
-                )
-              }
-            }
-
-            throw new Error('Failed to get track suggestions for auto-fill.')
-          }
-        } catch (fetchError) {
-          const errorMessage = `FETCH ERROR: ${fetchError}`
           if (this.addLog) {
             this.addLog(
               'ERROR',
-              'Network error fetching track suggestions',
+              `[SOURCE:AI] Failed to add AI track ${track.title} to queue`,
               'AutoPlayService',
-              fetchError instanceof Error ? fetchError : undefined
+              error instanceof Error ? error : undefined
             )
           }
-          throw new Error('Failed to get track suggestions for auto-fill.')
         }
-
-        const suggestions = (await response.json()) as {
-          tracks: { id: string }[]
-        }
-
-        // If no tracks were suggested, try fallback
-        if (!suggestions.tracks || suggestions.tracks.length === 0) {
-          throw new Error('No track suggestions available')
-        }
-
-        // Add suggested tracks to the queue
-        for (const track of suggestions.tracks) {
-          // Check queue size before processing each track
-          const queueBeforeTrack = this.queueManager.getQueue()
-          const queueSizeBeforeTrack = queueBeforeTrack.length
-
-          if (queueSizeBeforeTrack >= targetQueueSize) {
-            return
-          }
-
-          try {
-            // Fetch full track details from Spotify
-            const trackDetails = await sendApiRequest<{
-              id: string
-              name: string
-              artists: Array<{ id: string; name: string }>
-              album: {
-                name: string
-                images: Array<{ url: string }>
-                release_date?: string
-              }
-              duration_ms: number
-              popularity: number
-              uri: string
-              explicit: boolean
-            }>({
-              path: `tracks/${track.id}`,
-              method: 'GET'
-            })
-
-            // Add track to queue
-            const controller = new AbortController()
-            const timeoutId = setTimeout(() => controller.abort(), 10000) // 10s timeout
-            let playlistResponse: Response
-
-            try {
-              playlistResponse = await fetch(`/api/playlist/${this.username}`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                  tracks: trackDetails,
-                  initialVotes: 1, // Auto-fill tracks get 1 vote
-                  source: 'system' // Mark as system-initiated
-                }),
-                signal: controller.signal
-              })
-            } finally {
-              clearTimeout(timeoutId)
-            }
-
-            if (!playlistResponse.ok) {
-              const playlistError = await playlistResponse.json()
-
-              // Handle 409 conflicts (track already in playlist) - this is not an error for auto-fill
-              if (playlistResponse.status === 409) {
-                continue // Skip this track and try the next one
-              }
-            } else {
-              tracksAdded++
-
-              // Check if we've reached the target queue size after adding this track
-              const currentQueueAfterAdd = this.queueManager.getQueue()
-              const currentQueueSizeAfterAdd = currentQueueAfterAdd.length
-
-              if (currentQueueSizeAfterAdd >= targetQueueSize) {
-                // Break out of both the track loop and the attempt loop
-                return
-              }
-
-              // Record track addition with timestamp for 24-hour cooldown
-              try {
-                const {
-                  loadCooldownState,
-                  recordTrackAddition,
-                  saveCooldownState
-                } = await import('@/shared/utils/suggestionsCooldown')
-                const contextId = this.username ?? 'default'
-                const cooldown = loadCooldownState(contextId)
-                const updated = recordTrackAddition(cooldown, trackDetails.id)
-                saveCooldownState(contextId, updated)
-              } catch (error) {
-                // Non-critical: Cooldown recording failure doesn't prevent track addition,
-                // we just won't track this particular track in the cooldown
-              }
-            }
-
-            // Update the last suggested track cache
-            try {
-              // Fetch artist genres for the track
-              let artistGenres: string[] = []
-              try {
-                if (trackDetails.artists && trackDetails.artists.length > 0) {
-                  const artistId = trackDetails.artists[0].id
-                  if (artistId && artistId.trim() !== '') {
-                    const controller = new AbortController()
-                    const timeoutId = setTimeout(() => controller.abort(), 5000)
-                    try {
-                      const artistResponse = await fetch(
-                        `https://api.spotify.com/v1/artists/${artistId}`,
-                        {
-                          headers: {
-                            Authorization: `Bearer ${await this.getAccessToken()}`
-                          },
-                          signal: controller.signal
-                        }
-                      )
-                      if (artistResponse.ok) {
-                        const artistData = await artistResponse.json()
-                        artistGenres = artistData.genres || []
-                      }
-                    } finally {
-                      clearTimeout(timeoutId)
-                    }
-                  }
-                }
-              } catch (genreError) {
-                // Continue with empty genres array if fetch fails
-              }
-
-              const controller = new AbortController()
-              const timeoutId = setTimeout(() => controller.abort(), 5000)
-              try {
-                await fetch('/api/track-suggestions', {
-                  method: 'PUT',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({
-                    name: trackDetails.name,
-                    artist: trackDetails.artists[0]?.name || 'Unknown Artist',
-                    album: trackDetails.album.name,
-                    uri: trackDetails.uri,
-                    popularity: trackDetails.popularity,
-                    duration_ms: trackDetails.duration_ms,
-                    preview_url: null, // Spotify API doesn't return preview_url in track details
-                    genres: artistGenres
-                  }),
-                  signal: controller.signal
-                })
-              } finally {
-                clearTimeout(timeoutId)
-              }
-            } catch (cacheError) {}
-
-            // Extract metadata for notification
-            const albumArtUrl =
-              trackDetails.album.images && trackDetails.album.images.length > 0
-                ? (trackDetails.album.images[0]?.url ?? null)
-                : null
-
-            const notificationMetadata = {
-              trackName: trackDetails.name,
-              artistName: trackDetails.artists[0]?.name || 'Unknown Artist',
-              albumName: trackDetails.album.name,
-              albumArtUrl,
-              allArtists: trackDetails.artists.map((artist) => artist.name),
-              durationMs: trackDetails.duration_ms,
-              popularity: trackDetails.popularity,
-              explicit: trackDetails.explicit,
-              isFallback: false
-            }
-
-            // Show popup notification for auto-added track
-            this.showAutoFillNotification(notificationMetadata)
-          } catch (error) {
-            const errorMessage = `Failed to add track ${track.id} to queue`
-            if (this.addLog) {
-              this.addLog(
-                'ERROR',
-                errorMessage,
-                'AutoPlayService',
-                error instanceof Error ? error : undefined
-              )
-            }
-          }
-        }
-
-        // Small delay between attempts to avoid overwhelming the API
-        await new Promise((resolve) => setTimeout(resolve, 1000))
-      } catch (error) {
-        // Fallback: Get a random track from the database
-        const fallbackSuccess = await this.fallbackToRandomTrack()
-
-        if (fallbackSuccess) {
-          tracksAdded++
-
-          // Check if we've reached the target queue size after fallback
-          const currentQueueAfterFallback = this.queueManager.getQueue()
-          const currentQueueSizeAfterFallback = currentQueueAfterFallback.length
-
-          if (currentQueueSizeAfterFallback >= targetQueueSize) {
-            return
-          }
-        }
-
-        // Small delay between fallback attempts
-        await new Promise((resolve) => setTimeout(resolve, 1000))
       }
-
-      if (attempts >= maxAttempts) {
+    } catch (error) {
+      if (this.addLog) {
+        this.addLog(
+          'ERROR',
+          `[SOURCE:AI] AI suggestions network error: ${error instanceof Error ? error.message : String(error)}. Falling back to random track.`,
+          'AutoPlayService',
+          error instanceof Error ? error : undefined
+        )
       }
-
-      const finalQueueSize = this.queueManager.getQueue().length
+      // Network/parse error — fall back to random track
+      await this.fallbackToRandomTrack()
     }
+
+    if (this.addLog) {
+      this.addLog(
+        'INFO',
+        `[SOURCE:AI] Auto-fill complete. Added ${tracksAdded} tracks total`,
+        'AutoPlayService'
+      )
+    }
+  }
+
+  private async addTrackToQueue(spotifyTrackId: string): Promise<void> {
+    // Fetch full track details from Spotify
+    const trackDetails = await sendApiRequest<{
+      id: string
+      name: string
+      artists: Array<{ id: string; name: string }>
+      album: {
+        name: string
+        images: Array<{ url: string }>
+        release_date?: string
+      }
+      duration_ms: number
+      popularity: number
+      uri: string
+      explicit: boolean
+    }>({
+      path: `tracks/${spotifyTrackId}`,
+      method: 'GET'
+    })
+
+    // Add track to queue via playlist API
+    const controller = new AbortController()
+    const timeoutId = setTimeout(() => controller.abort(), 10000)
+    let playlistResponse: Response
+
+    try {
+      playlistResponse = await fetch(`/api/playlist/${this.username}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          tracks: trackDetails,
+          initialVotes: 1,
+          source: 'system'
+        }),
+        signal: controller.signal
+      })
+    } finally {
+      clearTimeout(timeoutId)
+    }
+
+    if (!playlistResponse.ok) {
+      if (playlistResponse.status === 409) {
+        return // Track already in playlist, skip silently
+      }
+      throw new Error(`Failed to add track to playlist: ${playlistResponse.status}`)
+    }
+
+    // Show notification for auto-added track
+    const albumArtUrl =
+      trackDetails.album.images && trackDetails.album.images.length > 0
+        ? (trackDetails.album.images[0]?.url ?? null)
+        : null
+
+    this.showAutoFillNotification({
+      trackName: trackDetails.name,
+      artistName: trackDetails.artists[0]?.name || 'Unknown Artist',
+      albumName: trackDetails.album.name,
+      albumArtUrl,
+      allArtists: trackDetails.artists.map((artist) => artist.name),
+      durationMs: trackDetails.duration_ms,
+      popularity: trackDetails.popularity,
+      explicit: trackDetails.explicit,
+      isFallback: false
+    })
   }
 
   private async fallbackToRandomTrack(): Promise<boolean> {
@@ -998,29 +693,19 @@ class AutoPlayService {
       return false
     }
 
+    if (this.addLog) {
+      this.addLog(
+        'WARN',
+        '[SOURCE:FALLBACK] Falling back to random track from database',
+        'AutoPlayService'
+      )
+    }
+
     // Get current queue to exclude existing tracks
     const currentQueue = this.queueManager.getQueue()
-    let excludedTrackIds = currentQueue.map(
+    const excludedTrackIds = currentQueue.map(
       (item) => item.tracks.spotify_track_id
     )
-
-    // Also exclude tracks from recent cooldown history (24-hour filter)
-    try {
-      const { loadCooldownState, getTracksInCooldown } = await import(
-        '@/shared/utils/suggestionsCooldown'
-      )
-      const contextId = this.username ?? 'default'
-      const cooldown = loadCooldownState(contextId)
-      const tracksInCooldown = getTracksInCooldown(cooldown)
-      if (tracksInCooldown.length > 0) {
-        excludedTrackIds = Array.from(
-          new Set([...excludedTrackIds, ...tracksInCooldown])
-        )
-      }
-    } catch (error) {
-      // Non-critical: Cooldown loading failure doesn't prevent fallback track selection,
-      // we just won't exclude tracks in cooldown this time
-    }
 
     let attempts = 0
     const maxAttempts = 5
@@ -1047,7 +732,6 @@ class AutoPlayService {
         if (!response.ok) {
           const errorBody = await response.json()
           if (response.status === 404) {
-            // No tracks available after exclusion
             return false
           }
           throw new Error('Failed to get random track for fallback.')
@@ -1068,12 +752,10 @@ class AutoPlayService {
         }
 
         if (result.success && result.track) {
-          // Double-check exclusion (shouldn't be needed, but just in case)
           if (excludedTrackIds.includes(result.track.spotify_track_id)) {
             continue
           }
 
-          // Add the random track to the queue
           const playlistController = new AbortController()
           const playlistTimeoutId = setTimeout(
             () => playlistController.abort(),
@@ -1087,7 +769,7 @@ class AutoPlayService {
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
                 tracks: {
-                  id: result.track.spotify_track_id, // Use Spotify track ID, not database UUID
+                  id: result.track.spotify_track_id,
                   name: result.track.name,
                   artists: [{ name: result.track.artist }],
                   album: { name: result.track.album },
@@ -1095,8 +777,8 @@ class AutoPlayService {
                   popularity: result.track.popularity,
                   uri: result.track.spotify_url
                 },
-                initialVotes: 1, // Fallback tracks get 1 vote
-                source: 'fallback' // Mark as fallback-initiated
+                initialVotes: 1,
+                source: 'fallback'
               }),
               signal: playlistController.signal
             })
@@ -1105,45 +787,30 @@ class AutoPlayService {
           }
 
           if (!playlistResponse.ok) {
-            const playlistError = await playlistResponse.json()
             if (playlistResponse.status === 409) {
               continue
             }
             return false
-          } else {
           }
 
-          // Record track addition with timestamp for 24-hour cooldown
-          try {
-            const {
-              loadCooldownState,
-              recordTrackAddition,
-              saveCooldownState
-            } = await import('@/shared/utils/suggestionsCooldown')
-            const contextId = this.username ?? 'default'
-            const cooldown = loadCooldownState(contextId)
-            const updated = recordTrackAddition(
-              cooldown,
-              result.track.spotify_track_id
-            )
-            saveCooldownState(contextId, updated)
-          } catch (error) {
-            // Non-critical: Cooldown recording failure doesn't prevent track addition,
-            // we just won't track this particular track in the cooldown
-          }
-
-          // Show popup notification for fallback track
           this.showAutoFillNotification({
             trackName: result.track.name,
             artistName: result.track.artist,
             albumName: result.track.album,
-            albumArtUrl: null, // Fallback tracks from database don't have album art
+            albumArtUrl: null,
             allArtists: [result.track.artist],
             durationMs: result.track.duration_ms,
             popularity: result.track.popularity,
-            explicit: null, // Database doesn't store explicit flag
+            explicit: null,
             isFallback: true
           })
+          if (this.addLog) {
+            this.addLog(
+              'INFO',
+              `[SOURCE:FALLBACK] Added random track: "${result.track.name}" by ${result.track.artist} (${result.track.spotify_track_id})`,
+              'AutoPlayService'
+            )
+          }
           return true
         } else {
           return false

@@ -8,24 +8,25 @@ import {
 } from '@/hooks/useSpotifyPlayer'
 import { useConsoleLogsContext } from '@/hooks/ConsoleLogsProvider'
 import { usePlaylistData } from '@/hooks/usePlaylistData'
-import { useTrackSuggestions } from './components/track-suggestions/hooks/useTrackSuggestions'
 import { useSpotifyHealthMonitor } from '@/hooks/useSpotifyHealthMonitor'
 import { DiagnosticPanel } from './components/dashboard/components/diagnostic-panel'
 import { JukeboxSection } from './components/dashboard/components/jukebox-section'
 import { TrackSuggestionsTab } from './components/track-suggestions/track-suggestions-tab'
 import { PlaylistDisplay } from './components/playlist/playlist-display'
 import { AnalyticsTab } from './components/analytics/analytics-tab'
-import { BrandingTab } from './components/branding/branding-tab'
-// PremiumNotice removed to fix lint
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-
-import { type TrackSuggestionsState } from '@/shared/types/trackSuggestions'
 import { ErrorMessage } from '@/components/ui/error-message'
 import { Loading } from '@/components/ui'
 import { tokenManager } from '@/shared/token/tokenManager'
 import { queueManager } from '@/services/queueManager'
 import { AutoFillNotification } from '@/components/ui/auto-fill-notification'
 import { getAutoPlayService } from '@/services/autoPlayService'
+import {
+  AI_SUGGESTIONS_STORAGE_KEY,
+  PRESET_PROMPTS,
+  deriveActivePrompt
+} from '@/shared/constants/aiSuggestion'
+import type { AiSuggestionsState } from '@/shared/types/aiSuggestions'
 
 import { useGetProfile } from '@/hooks/useGetProfile'
 import { startFreshAuthentication } from '@/shared/utils/authCleanup'
@@ -46,7 +47,7 @@ export default function AdminPage(): JSX.Element {
   const [error, setError] = useState<string | null>(null)
   const [isSigningOut, setIsSigningOut] = useState(false)
   const [activeTab, setActiveTab] = useState<
-    'dashboard' | 'playlist' | 'settings' | 'logs' | 'analytics' | 'branding'
+    'dashboard' | 'playlist' | 'settings' | 'analytics'
   >('dashboard')
   const [copied, setCopied] = useState(false)
   const [showQRCode, setShowQRCode] = useState(false)
@@ -102,9 +103,7 @@ export default function AdminPage(): JSX.Element {
     optimisticUpdate
   } = usePlaylistData(username)
 
-  // Use the track suggestions hook (properly typed)
-  const trackSuggestions = useTrackSuggestions()
-  const updateTrackSuggestionsState = trackSuggestions.updateState
+
 
   // First, use the health monitor hook
   const healthStatus = useSpotifyHealthMonitor()
@@ -153,6 +152,32 @@ export default function AdminPage(): JSX.Element {
     return unsubscribe
   }, [])
 
+  // One-time prompt initialization from localStorage
+  const promptInitializedRef = useRef(false)
+  useEffect(() => {
+    if (promptInitializedRef.current || !username) return
+    promptInitializedRef.current = true
+
+    const autoPlayService = getAutoPlayService()
+    try {
+      const saved = localStorage.getItem(AI_SUGGESTIONS_STORAGE_KEY)
+      if (saved) {
+        const parsed = JSON.parse(saved) as AiSuggestionsState
+        const prompt = deriveActivePrompt(
+          parsed.selectedPresetId ?? null,
+          parsed.customPrompt ?? ''
+        )
+        if (prompt) autoPlayService.setActivePrompt(prompt)
+        if (parsed.autoFillTargetSize) autoPlayService.setAutoFillTargetSize(parsed.autoFillTargetSize)
+      } else {
+        const defaultPrompt = PRESET_PROMPTS[0]?.prompt ?? ''
+        if (defaultPrompt) autoPlayService.setActivePrompt(defaultPrompt)
+      }
+    } catch {
+      // localStorage read failed
+    }
+  }, [username])
+
   // Initialize AutoPlayService when username is available
   useEffect(() => {
     if (!username) {
@@ -195,37 +220,29 @@ export default function AdminPage(): JSX.Element {
       autoPlayService.updateQueue(queue)
     }
 
-    // Set initial track suggestions state
-    const trackSuggestionsState = trackSuggestions.state
-    if (trackSuggestionsState) {
-      autoPlayService.setTrackSuggestionsState(trackSuggestionsState)
-    }
-
     return (): void => {
       // Don't stop the service on unmount - it should keep running
       // The service is a singleton and should persist across re-renders
     }
-  }, [username, deviceId, isReady, queue, trackSuggestions.state, addLog])
+  }, [username, deviceId, isReady, queue, addLog])
 
   // Monitor connection status and trigger auto-fill on reconnection
+  const prevConnectionRef = useRef(healthStatus.connection)
   useEffect(() => {
-    if (healthStatus.connection === 'connected' && username) {
+    const wasDisconnected = prevConnectionRef.current !== 'connected'
+    prevConnectionRef.current = healthStatus.connection
+
+    if (healthStatus.connection === 'connected' && wasDisconnected && username) {
       const autoPlayService = getAutoPlayService()
       if (autoPlayService.isActive()) {
-        // Trigger immediate check when connection is restored
-        // This minimizes downtime after a disconnection
         addLog(
           'INFO',
           'Connection restored - triggering auto-fill check',
           'AdminPage'
         )
 
-        // Clear markAsPlayed cooldowns so tracks stuck during disconnection can be retried
         queueManager.clearFailedDeletes()
 
-        // Use type assertion to access private/protected method if needed,
-        // or rely on the fact that we can call public methods that trigger it.
-        // updateQueue triggers a check, so we can pass the current queue.
         if (queue) {
           autoPlayService.updateQueue(queue)
         }
@@ -269,22 +286,19 @@ export default function AdminPage(): JSX.Element {
         | 'dashboard'
         | 'playlist'
         | 'settings'
-        | 'logs'
         | 'analytics'
-        | 'branding'
     )
   }, [])
 
   const handleTrackSuggestionsStateChange = useCallback(
-    (state: TrackSuggestionsState): void => {
-      updateTrackSuggestionsState(state)
-      // Pass state to AutoPlayService
+    (state: { activePrompt: string; autoFillTargetSize: number }): void => {
       if (username) {
         const autoPlayService = getAutoPlayService()
-        autoPlayService.setTrackSuggestionsState(state)
+        autoPlayService.setActivePrompt(state.activePrompt)
+        autoPlayService.setAutoFillTargetSize(state.autoFillTargetSize)
       }
     },
-    [updateTrackSuggestionsState, username]
+    [username]
   )
 
   // Add graceful token error handling
@@ -407,7 +421,7 @@ export default function AdminPage(): JSX.Element {
           }}
           className='space-y-4'
         >
-          <TabsList className='grid w-full grid-cols-6 bg-gray-800/50'>
+          <TabsList className='grid w-full grid-cols-4 bg-gray-800/50'>
             <TabsTrigger
               value='dashboard'
               className='data-[state=active]:text-white data-[state=active]:bg-gray-700 data-[state=active]:font-semibold'
@@ -431,12 +445,6 @@ export default function AdminPage(): JSX.Element {
               className='data-[state=active]:text-white data-[state=active]:bg-gray-700 data-[state=active]:font-semibold'
             >
               Analytics
-            </TabsTrigger>
-            <TabsTrigger
-              value='branding'
-              className='data-[state=active]:text-white data-[state=active]:bg-gray-700 data-[state=active]:font-semibold'
-            >
-              Branding
             </TabsTrigger>
           </TabsList>
 
@@ -578,7 +586,6 @@ export default function AdminPage(): JSX.Element {
           <TabsContent value='settings'>
             <TrackSuggestionsTab
               onStateChange={handleTrackSuggestionsStateChange}
-              initialState={{ maxOffset: 10 }}
             />
           </TabsContent>
 
@@ -595,10 +602,6 @@ export default function AdminPage(): JSX.Element {
 
           <TabsContent value='analytics'>
             <AnalyticsTab username={username} />
-          </TabsContent>
-
-          <TabsContent value='branding'>
-            <BrandingTab />
           </TabsContent>
         </Tabs>
       </div>
