@@ -7,6 +7,13 @@ export interface PresetPrompt {
 
 export const PRESET_PROMPTS: PresetPrompt[] = [
   {
+    id: 'drinking-anthems',
+    label: 'Drinking Anthems',
+    emoji: '🍺',
+    prompt:
+      'Classic drinking songs, pub anthems, and bar singalongs. Songs about beer, whiskey, pubs, bars, and drinking culture from rock, country, folk, and pop.'
+  },
+  {
     id: 'party',
     label: 'Party',
     emoji: '🎉',
