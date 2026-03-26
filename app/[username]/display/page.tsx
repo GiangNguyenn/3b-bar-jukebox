@@ -1,15 +1,18 @@
 'use client'
 
 import { useParams } from 'next/navigation'
-import { useRef, useEffect } from 'react'
+import { useRef, useEffect, useState } from 'react'
 import type { ReactElement } from 'react'
 import { useNowPlayingTrack } from '@/hooks/useNowPlayingTrack'
 import { useAlbumColors } from '@/hooks/useAlbumColors'
+import { useDjSubtitles } from '@/hooks/useDjSubtitles'
+import { supabaseBrowser } from '@/lib/supabase-browser'
 
 import VisualizationContainer from '@/components/Display/VisualizationContainer'
 import TrackMetadata from '@/components/Display/TrackMetadata'
 import ColorBackground from '@/components/Display/ColorBackground'
 import QRCodeComponent from '@/components/Display/QRCode'
+import { SubtitleOverlay } from '@/components/Display/SubtitleOverlay'
 import { Loading } from '@/components/ui'
 import { ErrorMessage } from '@/components/ui'
 
@@ -17,6 +20,31 @@ export default function DisplayPage(): ReactElement {
   const params = useParams()
   const username = typeof params?.username === 'string' ? params.username : ''
   const hasInitialLoadRef = useRef(false)
+  const [profileId, setProfileId] = useState<string | null>(null)
+
+  // Resolve profileId from username for realtime subscriptions
+  useEffect(() => {
+    if (!username) return
+    console.warn(`[DisplayPage] resolving profileId for username="${username}"`)
+    supabaseBrowser
+      .from('profiles')
+      .select('id')
+      .ilike('display_name', username)
+      .single<{ id: string }>()
+      .then(({ data, error }) => {
+        if (error) {
+          console.warn('[DisplayPage] profile lookup error:', error.message)
+        } else if (data) {
+          console.warn(`[DisplayPage] resolved profileId=${data.id}`)
+          setProfileId(data.id)
+        } else {
+          console.warn('[DisplayPage] no profile found for username')
+        }
+      })
+  }, [username])
+
+  // DJ subtitle realtime subscription
+  const { subtitleText, isVisible } = useDjSubtitles({ profileId })
 
   // Fetch currently playing track with optimized polling
   const {
@@ -79,6 +107,7 @@ export default function DisplayPage(): ReactElement {
       <>
         <Loading fullScreen message='Loading display...' />
         {username && <QRCodeComponent username={username} />}
+        <SubtitleOverlay text={subtitleText} isVisible={isVisible} />
       </>
     )
   }
@@ -93,6 +122,7 @@ export default function DisplayPage(): ReactElement {
           </div>
         </div>
         {username && <QRCodeComponent username={username} />}
+        <SubtitleOverlay text={subtitleText} isVisible={isVisible} />
       </>
     )
   }
@@ -124,6 +154,7 @@ export default function DisplayPage(): ReactElement {
           </div>
         </div>
         {username && <QRCodeComponent username={username} />}
+        <SubtitleOverlay text={subtitleText} isVisible={isVisible} />
       </>
     )
   }
@@ -160,6 +191,7 @@ export default function DisplayPage(): ReactElement {
         </div>
       </div>
       {username && <QRCodeComponent username={username} />}
+      <SubtitleOverlay text={subtitleText} isVisible={isVisible} />
     </>
   )
 }

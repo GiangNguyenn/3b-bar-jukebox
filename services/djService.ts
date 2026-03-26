@@ -34,6 +34,8 @@ class DJService {
   private prefetchState: PrefetchState | null = null
   private recentScripts: string[] = []
   private isAnnouncementInProgress: boolean = false
+  private lastGeneratedScript: string | null = null
+  private lastOnTrackStartedId: string | null = null
 
   private constructor() {}
 
@@ -92,6 +94,18 @@ class DJService {
 
       audio.onended = () => {
         URL.revokeObjectURL(url)
+        // Fire-and-forget: clear announcement subtitle on display
+        const profileId = localStorage.getItem('profileId')
+        log(`announcement clear (onended) — profileId=${profileId}`)
+        if (profileId) {
+          fetch('/api/dj-announcement', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ profileId, clear: true })
+          })
+            .then((res) => log(`announcement clear response: ${res.status}`))
+            .catch((e) => warn('announcement clear failed:', e))
+        }
         if (waitForEnd) resolve()
         if (restoreVolume !== null) {
           log(`audio ended — ramping volume back to ${restoreVolume}%`)
@@ -100,6 +114,15 @@ class DJService {
       }
       audio.onerror = (e) => {
         URL.revokeObjectURL(url)
+        // Fire-and-forget: clear announcement subtitle on display
+        const profileId = localStorage.getItem('profileId')
+        if (profileId) {
+          fetch('/api/dj-announcement', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ profileId, clear: true })
+          }).catch(() => {})
+        }
         warn('audio playback error', e)
         if (waitForEnd) reject(e)
         if (restoreVolume !== null) {
@@ -210,6 +233,8 @@ class DJService {
         return null
       }
       log(`DJ script (${language}): "${data.script}"`)
+      // Store script for announcement at play time (not prefetch time)
+      this.lastGeneratedScript = data.script
       // Track recent scripts to avoid repetition
       this.recentScripts = [data.script, ...this.recentScripts].slice(
         0,
@@ -241,6 +266,12 @@ class DJService {
     _currentTrack: JukeboxQueueItem,
     nextTrack: JukeboxQueueItem | null
   ): void {
+    if (_currentTrack.id === this.lastOnTrackStartedId) {
+      log(`onTrackStarted | dedup — already processed track id=${_currentTrack.id}, skipping`)
+      return
+    }
+    this.lastOnTrackStartedId = _currentTrack.id
+
     const enabled = localStorage.getItem('djMode') === 'true'
     const freqRaw = localStorage.getItem('djFrequency') as DJFrequency | null
     const freq: DJFrequency =
@@ -348,6 +379,19 @@ class DJService {
 
     const duckOverlay = this.isDuckOverlayEnabled()
     log(`→ playing audio (duck=${duckOverlay})`)
+
+    // Persist announcement text to database for display subtitles
+    const profileId = localStorage.getItem('profileId')
+    log(`announcement persist — profileId=${profileId}, script="${this.lastGeneratedScript?.slice(0, 50)}"`)
+    if (profileId && this.lastGeneratedScript) {
+      fetch('/api/dj-announcement', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ profileId, scriptText: this.lastGeneratedScript })
+      })
+        .then((res) => log(`announcement set response: ${res.status}`))
+        .catch((e) => warn('announcement set failed:', e))
+    }
 
     this.isAnnouncementInProgress = true
     try {

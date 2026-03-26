@@ -7,3 +7,5 @@ export { default as LinearSpectrum } from './LinearSpectrum'
 export { default as VisualizationContainer } from './VisualizationContainer'
 export { default as QRCodeComponent } from './QRCode'
 export { default as VinylRecordPlaceholder } from './VinylRecordPlaceholder'
+
+export { SubtitleOverlay } from './SubtitleOverlay'

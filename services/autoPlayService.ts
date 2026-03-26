@@ -43,6 +43,7 @@ class AutoPlayService {
   private activePrompt: string = ''
   private autoFillDebounceTimer: ReturnType<typeof setTimeout> | null = null
   private lastAutoFillCompletionTime = 0
+  private lastNullStateAttemptTrackId: string | null = null
   private isAutoPlayDisabled: boolean = false // Flag to temporarily disable auto-play during manual operations
   private isInitialized: boolean = false // Flag to track if the service is properly initialized
   private isPolling = false // Guard flag to prevent overlapping requests
@@ -178,6 +179,13 @@ class AutoPlayService {
   }
 
   public setActivePrompt(prompt: string): void {
+    if (this.addLog) {
+      this.addLog(
+        'INFO',
+        `[PROMPT-UPDATE] "${this.activePrompt.slice(0, 40)}" → "${prompt.slice(0, 40)}"`,
+        'AutoPlayService'
+      )
+    }
     this.activePrompt = prompt
   }
 
@@ -225,9 +233,14 @@ class AutoPlayService {
         // enabled, and there are tracks waiting in the jukebox queue, delegate
         // starting the next track to PlayerLifecycleService so that all
         // track-to-track transitions go through a single, canonical path.
+        // Guard: only attempt once per track to prevent restart loops
         if (this.isInitialized && this.username && !this.isAutoPlayDisabled) {
           const nextTrack = this.queueManager.getNextTrack()
-          if (nextTrack) {
+          if (
+            nextTrack &&
+            nextTrack.tracks.spotify_track_id !== this.lastNullStateAttemptTrackId
+          ) {
+            this.lastNullStateAttemptTrackId = nextTrack.tracks.spotify_track_id
             try {
               await playerLifecycleService.skipToTrack(nextTrack)
             } catch (error) {}
@@ -238,6 +251,12 @@ class AutoPlayService {
       }
 
       const currentTrackId = currentState.item?.id
+
+      // Only clear the null-state guard when a DIFFERENT track is playing
+      // This prevents restart loops when Spotify API briefly returns null mid-playback
+      if (currentTrackId && currentTrackId !== this.lastNullStateAttemptTrackId) {
+        this.lastNullStateAttemptTrackId = null
+      }
       const isPlaying = currentState.is_playing
       const progress = currentState.progress_ms || 0
       const duration = currentState.item?.duration_ms || 0
@@ -556,6 +575,16 @@ class AutoPlayService {
         success: boolean
         tracks: Array<{ id: string; title: string; artist: string }>
         error?: string
+        recentlyPlayedCount?: number
+        recentlyPlayed?: string[]
+      }
+
+      if (this.addLog) {
+        this.addLog(
+          'INFO',
+          `[RECENTLY-PLAYED] ${result.recentlyPlayedCount ?? 0} tracks excluded: ${result.recentlyPlayed?.join(', ') || 'none'}`,
+          'AutoPlayService'
+        )
       }
 
       if (!result.success || !result.tracks || result.tracks.length === 0) {

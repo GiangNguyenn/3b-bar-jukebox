@@ -6,10 +6,12 @@ import { TrackDuplicateDetector } from '@/shared/utils/trackDuplicateDetector'
 import { PLAYER_LIFECYCLE_CONFIG } from '../playerLifecycleConfig'
 import { ensureTrackNotDuplicate, withErrorHandling } from './utils'
 import { buildTrackUri } from '@/shared/utils/spotifyUri'
+import { fuzzyTrackNameMatch } from '@/shared/utils/trackNameMatcher'
 import { upsertPlayedTrack } from '@/lib/trackUpsert'
 import { playbackService } from '@/services/player'
 import { DJService } from '@/services/djService'
 import { spotifyPlayerStore } from '@/hooks/spotifyPlayerStore'
+import { addToRecentlyPlayed } from '@/services/aiSuggestion'
 
 export interface PlaybackController {
   playTrackWithRetry(
@@ -26,6 +28,7 @@ export class QueueSynchronizer {
   private duplicateDetector = new TrackDuplicateDetector()
   private lastKnownState: PlayerSDKState | null = null
   private lastStateUpdateTime: number = 0
+  private lastForcePlayedTrackId: string | null = null
 
   constructor(private controller: PlaybackController) {}
 
@@ -126,6 +129,7 @@ export class QueueSynchronizer {
         const trackIdForUpsert = currentTrack.tracks.spotify_track_id
         void upsertPlayedTrack(trackIdForUpsert).catch(() => {})
 
+        this.lastForcePlayedTrackId = currentTrack.tracks.spotify_track_id
         this.currentQueueTrack = currentTrack
         queueManager.setCurrentlyPlayingTrack(
           currentTrack.tracks.spotify_track_id
@@ -174,7 +178,7 @@ export class QueueSynchronizer {
       const potentialMatches = queue
         .map((item) => ({
           item,
-          nameMatch: item.tracks.name.toLowerCase() === trackName.toLowerCase(),
+          nameMatch: fuzzyTrackNameMatch(item.tracks.name, trackName),
           uriMatch: false
         }))
         .filter((match) => match.nameMatch)
@@ -263,10 +267,26 @@ export class QueueSynchronizer {
         return
       }
 
+      // Capture the finished track's queue item BEFORE removal (need profile_id for recently played)
+      const finishedQueueItem = queueManager.getQueue().find(
+        item => item.tracks.spotify_track_id === currentSpotifyTrackId
+      ) ?? queueManager.getQueue().find(
+        item => fuzzyTrackNameMatch(item.tracks.name, currentTrackName)
+      ) ?? null
+
       await this.markFinishedTrackAsPlayed(
         currentSpotifyTrackId,
         currentTrackName
       )
+
+      // Record in recently_played_tracks if we have a profile_id (fire-and-forget)
+      if (finishedQueueItem?.profile_id) {
+        void addToRecentlyPlayed(finishedQueueItem.profile_id, {
+          spotifyTrackId: currentSpotifyTrackId,
+          title: currentTrack.name,
+          artist: currentTrack.artists[0]?.name ?? 'Unknown'
+        }).catch(() => {})
+      }
 
       queueManager.setCurrentlyPlayingTrack(null)
 
@@ -326,6 +346,7 @@ export class QueueSynchronizer {
     )
 
     if (matchingQueueItem) {
+      this.lastForcePlayedTrackId = null
       if (this.currentQueueTrack?.id !== matchingQueueItem.id) {
         this.currentQueueTrack = matchingQueueItem
       }
@@ -335,15 +356,17 @@ export class QueueSynchronizer {
 
         // Fix: Check for Track Relinking (Fuzzy Match)
         // If IDs don't match but Names do, Spotify might have linked to a different version of the same track.
-        const isFuzzyMatch =
-          expectedTrack.tracks.name.toLowerCase() ===
-          currentSpotifyTrack.name.toLowerCase()
+        const isFuzzyMatch = fuzzyTrackNameMatch(
+          expectedTrack.tracks.name,
+          currentSpotifyTrack.name
+        )
 
         if (isFuzzyMatch) {
           // Update the queue manager with the NEW ID so future checks pass
           // We don't change the DB ID, but we make the QueueManager aware via setCurrentlyPlayingTrack
           // and potentially update our local reference
           queueManager.setCurrentlyPlayingTrack(currentSpotifyTrack.id)
+          this.lastForcePlayedTrackId = null
 
           if (this.currentQueueTrack?.id === expectedTrack.id) {
             // Update our local tracking to avoid repeated fuzzy checks
@@ -354,6 +377,22 @@ export class QueueSynchronizer {
           return
         }
 
+        // Diagnostic logging: surface why the match failed
+        this.controller.log(
+          'warn',
+          `[QueueSync] Track mismatch — Spotify ID: ${currentSpotifyTrack.id}, ` +
+            `Queue ID: ${expectedTrack.tracks.spotify_track_id}, ` +
+            `Spotify name: "${currentSpotifyTrack.name}", ` +
+            `Queue name: "${expectedTrack.tracks.name}", ` +
+            `fuzzyMatch: ${isFuzzyMatch}`
+        )
+
+        // Force-play guard: prevent repeated playNextTrack() calls for the same track
+        if (currentSpotifyTrack.id === this.lastForcePlayedTrackId) {
+          return
+        }
+
+        this.lastForcePlayedTrackId = currentSpotifyTrack.id
         void this.playNextTrack(expectedTrack)
         return
       }

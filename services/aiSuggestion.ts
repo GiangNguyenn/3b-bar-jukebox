@@ -268,6 +268,21 @@ export async function getAiSuggestions(
 
 const RECENTLY_PLAYED_LIMIT = 100
 
+async function resolveProfileId(usernameOrId: string): Promise<string> {
+  // If it looks like a UUID, use it directly
+  if (usernameOrId.includes('-') && usernameOrId.length > 30) {
+    return usernameOrId
+  }
+  // Otherwise resolve username to profile UUID
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data } = await (supabase as any)
+    .from('profiles')
+    .select('id')
+    .ilike('display_name', usernameOrId)
+    .single()
+  return (data as { id: string } | null)?.id ?? usernameOrId
+}
+
 // Table type not yet in generated Supabase types (migration in task 4.1)
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const recentlyPlayedTable = () =>
@@ -284,9 +299,10 @@ export async function getRecentlyPlayed(
   profileId: string
 ): Promise<RecentlyPlayedEntry[]> {
   try {
+    const resolvedId = await resolveProfileId(profileId)
     const { data, error } = await recentlyPlayedTable()
       .select('spotify_track_id, title, artist')
-      .eq('profile_id', profileId)
+      .eq('profile_id', resolvedId)
       .order('played_at', { ascending: false })
       .limit(RECENTLY_PLAYED_LIMIT)
 
@@ -316,9 +332,10 @@ export async function addToRecentlyPlayed(
   entry: RecentlyPlayedEntry
 ): Promise<void> {
   try {
+    const resolvedId = await resolveProfileId(profileId)
     const { error: upsertError } = await recentlyPlayedTable().upsert(
       {
-        profile_id: profileId,
+        profile_id: resolvedId,
         spotify_track_id: entry.spotifyTrackId,
         title: entry.title,
         artist: entry.artist,
@@ -338,7 +355,7 @@ export async function addToRecentlyPlayed(
     // Delete oldest entries beyond the limit
     const { data: rows, error: fetchError } = await recentlyPlayedTable()
       .select('played_at')
-      .eq('profile_id', profileId)
+      .eq('profile_id', resolvedId)
       .order('played_at', { ascending: false })
       .range(RECENTLY_PLAYED_LIMIT - 1, RECENTLY_PLAYED_LIMIT - 1)
 
@@ -355,7 +372,7 @@ export async function addToRecentlyPlayed(
       const cutoff = typedRows[0].played_at
       const { error: deleteError } = await recentlyPlayedTable()
         .delete()
-        .eq('profile_id', profileId)
+        .eq('profile_id', resolvedId)
         .lt('played_at', cutoff)
 
       if (deleteError) {

@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
-import { getAiSuggestions, getRecentlyPlayed } from '@/services/aiSuggestion'
+import { getAiSuggestions, getRecentlyPlayed, addToRecentlyPlayed } from '@/services/aiSuggestion'
 import { createModuleLogger } from '@/shared/utils/logger'
+import { supabase } from '@/lib/supabase'
 
 const logger = createModuleLogger('AISuggestionsAPI')
 
@@ -58,11 +59,33 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   const { prompt, excludedTrackIds, profileId } = parsed.data
 
   try {
-    const recentlyPlayed = await getRecentlyPlayed(profileId)
+    // Resolve username to profile UUID for recently played lookups
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('id')
+      .ilike('display_name', profileId)
+      .single<{ id: string }>()
+
+    const resolvedProfileId = profile?.id ?? profileId
+    const recentlyPlayed = await getRecentlyPlayed(resolvedProfileId)
+
     const result = await getAiSuggestions(
       prompt,
       excludedTrackIds,
       recentlyPlayed
+    )
+
+    // Record returned tracks as recently played (non-blocking, fire-and-forget)
+    void Promise.all(
+      result.tracks.map((track) =>
+        addToRecentlyPlayed(resolvedProfileId, {
+          spotifyTrackId: track.spotifyTrackId,
+          title: track.title,
+          artist: track.artist
+        }).catch(() => {
+          // Non-critical: silently ignore failures
+        })
+      )
     )
 
     return NextResponse.json({
@@ -72,7 +95,9 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         title: t.title,
         artist: t.artist
       })),
-      failedResolutions: result.failedResolutions
+      failedResolutions: result.failedResolutions,
+      recentlyPlayedCount: recentlyPlayed.length,
+      recentlyPlayed: recentlyPlayed.map((t) => `${t.title} by ${t.artist}`)
     })
   } catch (error) {
     logger(

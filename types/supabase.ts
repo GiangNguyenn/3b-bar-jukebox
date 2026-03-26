@@ -10,7 +10,7 @@ export type Database = {
   // Allows to automatically instantiate createClient with right options
   // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
   __InternalSupabase: {
-    PostgrestVersion: '12.2.3 (519615d)'
+    PostgrestVersion: "12.2.3 (519615d)"
   }
   public: {
     Tables: {
@@ -18,19 +18,31 @@ export type Database = {
         Row: {
           cached_at: string | null
           id: string
+          related_artist_name: string | null
           related_spotify_artist_id: string
+          relationship_strength: number | null
+          relationship_type: string | null
+          source_artist_name: string | null
           source_spotify_artist_id: string
         }
         Insert: {
           cached_at?: string | null
           id?: string
+          related_artist_name?: string | null
           related_spotify_artist_id: string
+          relationship_strength?: number | null
+          relationship_type?: string | null
+          source_artist_name?: string | null
           source_spotify_artist_id: string
         }
         Update: {
           cached_at?: string | null
           id?: string
+          related_artist_name?: string | null
           related_spotify_artist_id?: string
+          relationship_strength?: number | null
+          relationship_type?: string | null
+          source_artist_name?: string | null
           source_spotify_artist_id?: string
         }
         Relationships: []
@@ -89,115 +101,6 @@ export type Database = {
         }
         Relationships: []
       }
-      branding_settings: {
-        Row: {
-          accent_color_1: string | null
-          accent_color_2: string | null
-          accent_color_3: string | null
-          background_color: string | null
-          created_at: string
-          favicon_url: string | null
-          font_family: string | null
-          font_size: string | null
-          font_weight: string | null
-          footer_text: string | null
-          gradient_direction: string | null
-          gradient_stops: string | null
-          gradient_type: string | null
-          id: string
-          logo_url: string | null
-          meta_description: string | null
-          open_graph_title: string | null
-          page_title: string | null
-          primary_color: string | null
-          profile_id: string
-          secondary_color: string | null
-          subtitle: string | null
-          text_color: string | null
-          updated_at: string
-          venue_name: string | null
-          welcome_message: string | null
-        }
-        Insert: {
-          accent_color_1?: string | null
-          accent_color_2?: string | null
-          accent_color_3?: string | null
-          background_color?: string | null
-          created_at?: string
-          favicon_url?: string | null
-          font_family?: string | null
-          font_size?: string | null
-          font_weight?: string | null
-          footer_text?: string | null
-          gradient_direction?: string | null
-          gradient_stops?: string | null
-          gradient_type?: string | null
-          id?: string
-          logo_url?: string | null
-          meta_description?: string | null
-          open_graph_title?: string | null
-          page_title?: string | null
-          primary_color?: string | null
-          profile_id: string
-          secondary_color?: string | null
-          subtitle?: string | null
-          text_color?: string | null
-          updated_at?: string
-          venue_name?: string | null
-          welcome_message?: string | null
-        }
-        Update: {
-          accent_color_1?: string | null
-          accent_color_2?: string | null
-          accent_color_3?: string | null
-          background_color?: string | null
-          created_at?: string
-          favicon_url?: string | null
-          font_family?: string | null
-          font_size?: string | null
-          font_weight?: string | null
-          footer_text?: string | null
-          gradient_direction?: string | null
-          gradient_stops?: string | null
-          gradient_type?: string | null
-          id?: string
-          logo_url?: string | null
-          meta_description?: string | null
-          open_graph_title?: string | null
-          page_title?: string | null
-          primary_color?: string | null
-          profile_id?: string
-          secondary_color?: string | null
-          subtitle?: string | null
-          text_color?: string | null
-          updated_at?: string
-          venue_name?: string | null
-          welcome_message?: string | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: 'branding_settings_profile_id_fkey'
-            columns: ['profile_id']
-            isOneToOne: true
-            referencedRelation: 'profiles'
-            referencedColumns: ['id']
-          },
-          {
-            foreignKeyName: 'branding_settings_profile_id_fkey'
-            columns: ['profile_id']
-            isOneToOne: true
-            referencedRelation: 'profiles_public'
-            referencedColumns: ['id']
-          },
-          {
-            foreignKeyName: 'branding_settings_profile_id_fkey'
-            columns: ['profile_id']
-            isOneToOne: true
-            referencedRelation: 'user_subscription_summary'
-            referencedColumns: ['profile_id']
-          }
-        ]
-      }
       conversations: {
         Row: {
           created_at: string
@@ -219,12 +122,61 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: 'conversations_match_id_fkey'
-            columns: ['match_id']
+            foreignKeyName: "conversations_match_id_fkey"
+            columns: ["match_id"]
             isOneToOne: true
-            referencedRelation: 'matches'
-            referencedColumns: ['id']
-          }
+            referencedRelation: "matches"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      dj_announcements: {
+        Row: {
+          created_at: string
+          id: string
+          is_active: boolean
+          profile_id: string
+          script_text: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          profile_id: string
+          script_text?: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          profile_id?: string
+          script_text?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "dj_announcements_profile_id_fkey"
+            columns: ["profile_id"]
+            isOneToOne: true
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "dj_announcements_profile_id_fkey"
+            columns: ["profile_id"]
+            isOneToOne: true
+            referencedRelation: "profiles_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "dj_announcements_profile_id_fkey"
+            columns: ["profile_id"]
+            isOneToOne: true
+            referencedRelation: "user_subscription_summary"
+            referencedColumns: ["profile_id"]
+          },
         ]
       }
       jukebox_queue: {
@@ -251,33 +203,33 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: 'jukebox_queue_profile_id_fkey'
-            columns: ['profile_id']
+            foreignKeyName: "jukebox_queue_profile_id_fkey"
+            columns: ["profile_id"]
             isOneToOne: false
-            referencedRelation: 'profiles'
-            referencedColumns: ['id']
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
           },
           {
-            foreignKeyName: 'jukebox_queue_profile_id_fkey'
-            columns: ['profile_id']
+            foreignKeyName: "jukebox_queue_profile_id_fkey"
+            columns: ["profile_id"]
             isOneToOne: false
-            referencedRelation: 'profiles_public'
-            referencedColumns: ['id']
+            referencedRelation: "profiles_public"
+            referencedColumns: ["id"]
           },
           {
-            foreignKeyName: 'jukebox_queue_profile_id_fkey'
-            columns: ['profile_id']
+            foreignKeyName: "jukebox_queue_profile_id_fkey"
+            columns: ["profile_id"]
             isOneToOne: false
-            referencedRelation: 'user_subscription_summary'
-            referencedColumns: ['profile_id']
+            referencedRelation: "user_subscription_summary"
+            referencedColumns: ["profile_id"]
           },
           {
-            foreignKeyName: 'jukebox_queue_track_id_fkey'
-            columns: ['track_id']
+            foreignKeyName: "jukebox_queue_track_id_fkey"
+            columns: ["track_id"]
             isOneToOne: false
-            referencedRelation: 'tracks'
-            referencedColumns: ['id']
-          }
+            referencedRelation: "tracks"
+            referencedColumns: ["id"]
+          },
         ]
       }
       likes: {
@@ -349,12 +301,12 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: 'messages_conversation_id_fkey'
-            columns: ['conversation_id']
+            foreignKeyName: "messages_conversation_id_fkey"
+            columns: ["conversation_id"]
             isOneToOne: false
-            referencedRelation: 'conversations'
-            referencedColumns: ['id']
-          }
+            referencedRelation: "conversations"
+            referencedColumns: ["id"]
+          },
         ]
       }
       playlists: {
@@ -391,10 +343,10 @@ export type Database = {
           desires: string[] | null
           discretion_assurance: string | null
           discretion_level:
-            | Database['public']['Enums']['discretion_level_type']
+            | Database["public"]["Enums"]["discretion_level_type"]
             | null
           disposable_income:
-            | Database['public']['Enums']['disposable_income_type']
+            | Database["public"]["Enums"]["disposable_income_type"]
             | null
           expectations: string[] | null
           lifestyle_interests: string[] | null
@@ -402,10 +354,10 @@ export type Database = {
           marital_status: string | null
           max_age: number | null
           meeting_frequency:
-            | Database['public']['Enums']['meeting_frequency_type']
+            | Database["public"]["Enums"]["meeting_frequency_type"]
             | null
           meeting_preference:
-            | Database['public']['Enums']['meeting_preference_type']
+            | Database["public"]["Enums"]["meeting_preference_type"]
             | null
           min_age: number | null
           preferred_genders: string[] | null
@@ -421,10 +373,10 @@ export type Database = {
           desires?: string[] | null
           discretion_assurance?: string | null
           discretion_level?:
-            | Database['public']['Enums']['discretion_level_type']
+            | Database["public"]["Enums"]["discretion_level_type"]
             | null
           disposable_income?:
-            | Database['public']['Enums']['disposable_income_type']
+            | Database["public"]["Enums"]["disposable_income_type"]
             | null
           expectations?: string[] | null
           lifestyle_interests?: string[] | null
@@ -432,10 +384,10 @@ export type Database = {
           marital_status?: string | null
           max_age?: number | null
           meeting_frequency?:
-            | Database['public']['Enums']['meeting_frequency_type']
+            | Database["public"]["Enums"]["meeting_frequency_type"]
             | null
           meeting_preference?:
-            | Database['public']['Enums']['meeting_preference_type']
+            | Database["public"]["Enums"]["meeting_preference_type"]
             | null
           min_age?: number | null
           preferred_genders?: string[] | null
@@ -451,10 +403,10 @@ export type Database = {
           desires?: string[] | null
           discretion_assurance?: string | null
           discretion_level?:
-            | Database['public']['Enums']['discretion_level_type']
+            | Database["public"]["Enums"]["discretion_level_type"]
             | null
           disposable_income?:
-            | Database['public']['Enums']['disposable_income_type']
+            | Database["public"]["Enums"]["disposable_income_type"]
             | null
           expectations?: string[] | null
           lifestyle_interests?: string[] | null
@@ -462,10 +414,10 @@ export type Database = {
           marital_status?: string | null
           max_age?: number | null
           meeting_frequency?:
-            | Database['public']['Enums']['meeting_frequency_type']
+            | Database["public"]["Enums"]["meeting_frequency_type"]
             | null
           meeting_preference?:
-            | Database['public']['Enums']['meeting_preference_type']
+            | Database["public"]["Enums"]["meeting_preference_type"]
             | null
           min_age?: number | null
           preferred_genders?: string[] | null
@@ -528,19 +480,19 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: 'profiles_subscription_id_fkey'
-            columns: ['subscription_id']
+            foreignKeyName: "profiles_subscription_id_fkey"
+            columns: ["subscription_id"]
             isOneToOne: false
-            referencedRelation: 'subscriptions'
-            referencedColumns: ['id']
+            referencedRelation: "subscriptions"
+            referencedColumns: ["id"]
           },
           {
-            foreignKeyName: 'profiles_subscription_id_fkey'
-            columns: ['subscription_id']
+            foreignKeyName: "profiles_subscription_id_fkey"
+            columns: ["subscription_id"]
             isOneToOne: false
-            referencedRelation: 'user_subscription_summary'
-            referencedColumns: ['subscription_id']
-          }
+            referencedRelation: "user_subscription_summary"
+            referencedColumns: ["subscription_id"]
+          },
         ]
       }
       subscriptions: {
@@ -585,26 +537,26 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: 'subscriptions_profile_id_fkey'
-            columns: ['profile_id']
+            foreignKeyName: "subscriptions_profile_id_fkey"
+            columns: ["profile_id"]
             isOneToOne: false
-            referencedRelation: 'profiles'
-            referencedColumns: ['id']
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
           },
           {
-            foreignKeyName: 'subscriptions_profile_id_fkey'
-            columns: ['profile_id']
+            foreignKeyName: "subscriptions_profile_id_fkey"
+            columns: ["profile_id"]
             isOneToOne: false
-            referencedRelation: 'profiles_public'
-            referencedColumns: ['id']
+            referencedRelation: "profiles_public"
+            referencedColumns: ["id"]
           },
           {
-            foreignKeyName: 'subscriptions_profile_id_fkey'
-            columns: ['profile_id']
+            foreignKeyName: "subscriptions_profile_id_fkey"
+            columns: ["profile_id"]
             isOneToOne: false
-            referencedRelation: 'user_subscription_summary'
-            referencedColumns: ['profile_id']
-          }
+            referencedRelation: "user_subscription_summary"
+            referencedColumns: ["profile_id"]
+          },
         ]
       }
       suggested_tracks: {
@@ -631,33 +583,33 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: 'suggested_tracks_profile_id_fkey'
-            columns: ['profile_id']
+            foreignKeyName: "suggested_tracks_profile_id_fkey"
+            columns: ["profile_id"]
             isOneToOne: false
-            referencedRelation: 'profiles'
-            referencedColumns: ['id']
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
           },
           {
-            foreignKeyName: 'suggested_tracks_profile_id_fkey'
-            columns: ['profile_id']
+            foreignKeyName: "suggested_tracks_profile_id_fkey"
+            columns: ["profile_id"]
             isOneToOne: false
-            referencedRelation: 'profiles_public'
-            referencedColumns: ['id']
+            referencedRelation: "profiles_public"
+            referencedColumns: ["id"]
           },
           {
-            foreignKeyName: 'suggested_tracks_profile_id_fkey'
-            columns: ['profile_id']
+            foreignKeyName: "suggested_tracks_profile_id_fkey"
+            columns: ["profile_id"]
             isOneToOne: false
-            referencedRelation: 'user_subscription_summary'
-            referencedColumns: ['profile_id']
+            referencedRelation: "user_subscription_summary"
+            referencedColumns: ["profile_id"]
           },
           {
-            foreignKeyName: 'suggested_tracks_track_id_fkey'
-            columns: ['track_id']
+            foreignKeyName: "suggested_tracks_track_id_fkey"
+            columns: ["track_id"]
             isOneToOne: false
-            referencedRelation: 'tracks'
-            referencedColumns: ['id']
-          }
+            referencedRelation: "tracks"
+            referencedColumns: ["id"]
+          },
         ]
       }
       tracks: {
@@ -743,19 +695,19 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: 'profiles_subscription_id_fkey'
-            columns: ['subscription_id']
+            foreignKeyName: "profiles_subscription_id_fkey"
+            columns: ["subscription_id"]
             isOneToOne: false
-            referencedRelation: 'subscriptions'
-            referencedColumns: ['id']
+            referencedRelation: "subscriptions"
+            referencedColumns: ["id"]
           },
           {
-            foreignKeyName: 'profiles_subscription_id_fkey'
-            columns: ['subscription_id']
+            foreignKeyName: "profiles_subscription_id_fkey"
+            columns: ["subscription_id"]
             isOneToOne: false
-            referencedRelation: 'user_subscription_summary'
-            referencedColumns: ['subscription_id']
-          }
+            referencedRelation: "user_subscription_summary"
+            referencedColumns: ["subscription_id"]
+          },
         ]
       }
       user_subscription_summary: {
@@ -781,9 +733,8 @@ export type Database = {
         Args: { user_profile_id: string }
         Returns: boolean
       }
-      exec_sql: { Args: { params?: string[]; sql: string }; Returns: Json }
       get_admin_spotify_credentials: {
-        Args: Record<PropertyKey, never>
+        Args: never
         Returns: {
           id: string
           spotify_access_token: string
@@ -791,9 +742,26 @@ export type Database = {
           spotify_token_expires_at: number
         }[]
       }
-      get_unique_genres: {
-        Args: Record<PropertyKey, never>
-        Returns: { genre: string }[]
+      get_random_tracks: {
+        Args: {
+          excluded_track_ids: string[]
+          genre_filters: string
+          limit_count: number
+          max_duration_ms: number
+          min_popularity: number
+          year_range_end: number
+          year_range_start: number
+        }
+        Returns: {
+          album_name: string
+          artists: Json
+          duration_ms: number
+          id: string
+          name: string
+          popularity: number
+          preview_url: string
+          release_date: string
+        }[]
       }
       get_track_popularity_histogram: {
         Args: { p_user_id: string }
@@ -807,6 +775,12 @@ export type Database = {
         Returns: {
           decade: string
           track_count: number
+        }[]
+      }
+      get_unique_genres: {
+        Args: never
+        Returns: {
+          genre: string
         }[]
       }
       get_user_plan_type: { Args: { user_profile_id: string }; Returns: string }
@@ -854,8 +828,10 @@ export type Database = {
               p_album_name: string
               p_artist_name: string
               p_duration_ms: number
+              p_genre: string
               p_popularity: number
               p_profile_id: string
+              p_release_year: number
               p_spotify_track_id: string
               p_spotify_url: string
               p_track_name: string
@@ -867,20 +843,15 @@ export type Database = {
               p_album_name: string
               p_artist_name: string
               p_duration_ms: number
-              p_genre: string
               p_popularity: number
               p_profile_id: string
-              p_release_year: number
               p_spotify_track_id: string
               p_spotify_url: string
               p_track_name: string
             }
             Returns: undefined
           }
-      refresh_user_subscription_summary: {
-        Args: Record<PropertyKey, never>
-        Returns: undefined
-      }
+      refresh_user_subscription_summary: { Args: never; Returns: undefined }
       rpc_get_dating_feed: {
         Args: { preferences?: Json; radius_km?: number; viewer_user_id: string }
         Returns: {
@@ -924,37 +895,37 @@ export type Database = {
       }
     }
     Enums: {
-      discretion_level_type: 'high' | 'medium' | 'low'
+      discretion_level_type: "high" | "medium" | "low"
       disposable_income_type:
-        | 'under_1k'
-        | '1k_3k'
-        | '3k_5k'
-        | '5k_10k'
-        | '10k_plus'
+        | "under_1k"
+        | "1k_3k"
+        | "3k_5k"
+        | "5k_10k"
+        | "10k_plus"
       gender_type:
-        | 'man'
-        | 'woman'
-        | 'non_binary'
-        | 'trans_man'
-        | 'trans_woman'
-        | 'genderqueer'
-        | 'agender'
-        | 'questioning'
-        | 'prefer_not_to_say'
-      meeting_frequency_type: 'flexible' | 'weekly' | 'biweekly' | 'monthly'
-      meeting_preference_type: 'public_only' | 'private_ok'
-      profile_type: 'recipient' | 'provider'
+        | "man"
+        | "woman"
+        | "non_binary"
+        | "trans_man"
+        | "trans_woman"
+        | "genderqueer"
+        | "agender"
+        | "questioning"
+        | "prefer_not_to_say"
+      meeting_frequency_type: "flexible" | "weekly" | "biweekly" | "monthly"
+      meeting_preference_type: "public_only" | "private_ok"
+      profile_type: "recipient" | "provider"
       sexuality_type:
-        | 'straight'
-        | 'gay'
-        | 'lesbian'
-        | 'bisexual'
-        | 'pansexual'
-        | 'asexual'
-        | 'queer'
-        | 'questioning'
-        | 'demisexual'
-        | 'prefer_not_to_say'
+        | "straight"
+        | "gay"
+        | "lesbian"
+        | "bisexual"
+        | "pansexual"
+        | "asexual"
+        | "queer"
+        | "questioning"
+        | "demisexual"
+        | "prefer_not_to_say"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -962,33 +933,33 @@ export type Database = {
   }
 }
 
-type DatabaseWithoutInternals = Omit<Database, '__InternalSupabase'>
+type DatabaseWithoutInternals = Omit<Database, "__InternalSupabase">
 
-type DefaultSchema = DatabaseWithoutInternals[Extract<keyof Database, 'public'>]
+type DefaultSchema = DatabaseWithoutInternals[Extract<keyof Database, "public">]
 
 export type Tables<
   DefaultSchemaTableNameOrOptions extends
-    | keyof (DefaultSchema['Tables'] & DefaultSchema['Views'])
+    | keyof (DefaultSchema["Tables"] & DefaultSchema["Views"])
     | { schema: keyof DatabaseWithoutInternals },
   TableName extends DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
-    ? keyof (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions['schema']]['Tables'] &
-        DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions['schema']]['Views'])
-    : never = never
+    ? keyof (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
+        DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])
+    : never = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
-  ? (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions['schema']]['Tables'] &
-      DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions['schema']]['Views'])[TableName] extends {
+  ? (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
+      DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])[TableName] extends {
       Row: infer R
     }
     ? R
     : never
-  : DefaultSchemaTableNameOrOptions extends keyof (DefaultSchema['Tables'] &
-        DefaultSchema['Views'])
-    ? (DefaultSchema['Tables'] &
-        DefaultSchema['Views'])[DefaultSchemaTableNameOrOptions] extends {
+  : DefaultSchemaTableNameOrOptions extends keyof (DefaultSchema["Tables"] &
+        DefaultSchema["Views"])
+    ? (DefaultSchema["Tables"] &
+        DefaultSchema["Views"])[DefaultSchemaTableNameOrOptions] extends {
         Row: infer R
       }
       ? R
@@ -997,23 +968,23 @@ export type Tables<
 
 export type TablesInsert<
   DefaultSchemaTableNameOrOptions extends
-    | keyof DefaultSchema['Tables']
+    | keyof DefaultSchema["Tables"]
     | { schema: keyof DatabaseWithoutInternals },
   TableName extends DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
-    ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions['schema']]['Tables']
-    : never = never
+    ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
+    : never = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
-  ? DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions['schema']]['Tables'][TableName] extends {
+  ? DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"][TableName] extends {
       Insert: infer I
     }
     ? I
     : never
-  : DefaultSchemaTableNameOrOptions extends keyof DefaultSchema['Tables']
-    ? DefaultSchema['Tables'][DefaultSchemaTableNameOrOptions] extends {
+  : DefaultSchemaTableNameOrOptions extends keyof DefaultSchema["Tables"]
+    ? DefaultSchema["Tables"][DefaultSchemaTableNameOrOptions] extends {
         Insert: infer I
       }
       ? I
@@ -1022,23 +993,23 @@ export type TablesInsert<
 
 export type TablesUpdate<
   DefaultSchemaTableNameOrOptions extends
-    | keyof DefaultSchema['Tables']
+    | keyof DefaultSchema["Tables"]
     | { schema: keyof DatabaseWithoutInternals },
   TableName extends DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
-    ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions['schema']]['Tables']
-    : never = never
+    ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
+    : never = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
-  ? DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions['schema']]['Tables'][TableName] extends {
+  ? DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"][TableName] extends {
       Update: infer U
     }
     ? U
     : never
-  : DefaultSchemaTableNameOrOptions extends keyof DefaultSchema['Tables']
-    ? DefaultSchema['Tables'][DefaultSchemaTableNameOrOptions] extends {
+  : DefaultSchemaTableNameOrOptions extends keyof DefaultSchema["Tables"]
+    ? DefaultSchema["Tables"][DefaultSchemaTableNameOrOptions] extends {
         Update: infer U
       }
       ? U
@@ -1047,75 +1018,75 @@ export type TablesUpdate<
 
 export type Enums<
   DefaultSchemaEnumNameOrOptions extends
-    | keyof DefaultSchema['Enums']
+    | keyof DefaultSchema["Enums"]
     | { schema: keyof DatabaseWithoutInternals },
   EnumName extends DefaultSchemaEnumNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
-    ? keyof DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions['schema']]['Enums']
-    : never = never
+    ? keyof DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"]
+    : never = never,
 > = DefaultSchemaEnumNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
-  ? DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions['schema']]['Enums'][EnumName]
-  : DefaultSchemaEnumNameOrOptions extends keyof DefaultSchema['Enums']
-    ? DefaultSchema['Enums'][DefaultSchemaEnumNameOrOptions]
+  ? DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"][EnumName]
+  : DefaultSchemaEnumNameOrOptions extends keyof DefaultSchema["Enums"]
+    ? DefaultSchema["Enums"][DefaultSchemaEnumNameOrOptions]
     : never
 
 export type CompositeTypes<
   PublicCompositeTypeNameOrOptions extends
-    | keyof DefaultSchema['CompositeTypes']
+    | keyof DefaultSchema["CompositeTypes"]
     | { schema: keyof DatabaseWithoutInternals },
   CompositeTypeName extends PublicCompositeTypeNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
-    ? keyof DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions['schema']]['CompositeTypes']
-    : never = never
+    ? keyof DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"]
+    : never = never,
 > = PublicCompositeTypeNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
-  ? DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions['schema']]['CompositeTypes'][CompositeTypeName]
-  : PublicCompositeTypeNameOrOptions extends keyof DefaultSchema['CompositeTypes']
-    ? DefaultSchema['CompositeTypes'][PublicCompositeTypeNameOrOptions]
+  ? DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"][CompositeTypeName]
+  : PublicCompositeTypeNameOrOptions extends keyof DefaultSchema["CompositeTypes"]
+    ? DefaultSchema["CompositeTypes"][PublicCompositeTypeNameOrOptions]
     : never
 
 export const Constants = {
   public: {
     Enums: {
-      discretion_level_type: ['high', 'medium', 'low'],
+      discretion_level_type: ["high", "medium", "low"],
       disposable_income_type: [
-        'under_1k',
-        '1k_3k',
-        '3k_5k',
-        '5k_10k',
-        '10k_plus'
+        "under_1k",
+        "1k_3k",
+        "3k_5k",
+        "5k_10k",
+        "10k_plus",
       ],
       gender_type: [
-        'man',
-        'woman',
-        'non_binary',
-        'trans_man',
-        'trans_woman',
-        'genderqueer',
-        'agender',
-        'questioning',
-        'prefer_not_to_say'
+        "man",
+        "woman",
+        "non_binary",
+        "trans_man",
+        "trans_woman",
+        "genderqueer",
+        "agender",
+        "questioning",
+        "prefer_not_to_say",
       ],
-      meeting_frequency_type: ['flexible', 'weekly', 'biweekly', 'monthly'],
-      meeting_preference_type: ['public_only', 'private_ok'],
-      profile_type: ['recipient', 'provider'],
+      meeting_frequency_type: ["flexible", "weekly", "biweekly", "monthly"],
+      meeting_preference_type: ["public_only", "private_ok"],
+      profile_type: ["recipient", "provider"],
       sexuality_type: [
-        'straight',
-        'gay',
-        'lesbian',
-        'bisexual',
-        'pansexual',
-        'asexual',
-        'queer',
-        'questioning',
-        'demisexual',
-        'prefer_not_to_say'
-      ]
-    }
-  }
+        "straight",
+        "gay",
+        "lesbian",
+        "bisexual",
+        "pansexual",
+        "asexual",
+        "queer",
+        "questioning",
+        "demisexual",
+        "prefer_not_to_say",
+      ],
+    },
+  },
 } as const

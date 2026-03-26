@@ -127,6 +127,13 @@ export default function AdminPage(): JSX.Element {
   // Get premium status
   const { profile } = useGetProfile()
 
+  // Persist profileId to localStorage for DJService announcement integration
+  useEffect(() => {
+    if (profile?.id) {
+      localStorage.setItem('profileId', profile.id)
+    }
+  }, [profile?.id])
+
   // Extract token health from healthStatus to avoid duplicate API calls
   const tokenHealth = {
     status: healthStatus.token,
@@ -289,7 +296,7 @@ export default function AdminPage(): JSX.Element {
 
   const handleTrackSuggestionsStateChange = useCallback(
     (state: { activePrompt: string; autoFillTargetSize: number }): void => {
-      if (username) {
+      if (username && state.activePrompt) {
         const autoPlayService = getAutoPlayService()
         autoPlayService.setActivePrompt(state.activePrompt)
         autoPlayService.setAutoFillTargetSize(state.autoFillTargetSize)
