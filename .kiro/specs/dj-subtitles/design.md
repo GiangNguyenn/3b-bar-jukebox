@@ -77,9 +77,9 @@ The feature adds four new pieces to the existing architecture:
 ```typescript
 // POST handler
 interface DjAnnouncementRequest {
-  profileId: string        // UUID of the venue profile
-  scriptText?: string      // The DJ script text (omit when clearing)
-  clear?: boolean          // When true, marks the announcement as inactive
+  profileId: string // UUID of the venue profile
+  scriptText?: string // The DJ script text (omit when clearing)
+  clear?: boolean // When true, marks the announcement as inactive
 }
 
 // Response: 200 on success, 400 on validation error, 500 on DB error
@@ -90,6 +90,7 @@ interface DjAnnouncementResponse {
 ```
 
 Validation rules:
+
 - `profileId` is required and must be a non-empty string
 - Either `scriptText` (non-empty string) or `clear: true` must be provided
 - If both are provided, `clear` takes precedence
@@ -104,14 +105,15 @@ interface UseDjSubtitlesOptions {
 }
 
 interface UseDjSubtitlesResult {
-  subtitleText: string | null  // null when no active subtitle
-  isVisible: boolean           // controls AnimatePresence
+  subtitleText: string | null // null when no active subtitle
+  isVisible: boolean // controls AnimatePresence
 }
 
 function useDjSubtitles(options: UseDjSubtitlesOptions): UseDjSubtitlesResult
 ```
 
 Behavior:
+
 - Subscribes to `postgres_changes` on `dj_announcements` filtered by `profile_id`
 - On active announcement: sets `subtitleText` and `isVisible = true`, starts 30s timeout
 - On inactive announcement or timeout: sets `isVisible = false`, then clears `subtitleText` after fade-out completes
@@ -129,6 +131,7 @@ interface SubtitleOverlayProps {
 ```
 
 Rendering:
+
 - Uses Framer Motion `AnimatePresence` with `motion.div` for fade-in/fade-out
 - Positioned `fixed` at bottom-center, above the QR code (`bottom: 6rem`)
 - Semi-transparent dark background panel (`bg-black/70`)
@@ -178,50 +181,54 @@ ALTER PUBLICATION supabase_realtime ADD TABLE public.dj_announcements;
 ### Realtime Subscription Filter
 
 The display page subscribes with:
+
 ```typescript
 supabase
   .channel(`dj_announcements_${profileId}`)
-  .on('postgres_changes', {
-    event: '*',
-    schema: 'public',
-    table: 'dj_announcements',
-    filter: `profile_id=eq.${profileId}`
-  }, callback)
+  .on(
+    'postgres_changes',
+    {
+      event: '*',
+      schema: 'public',
+      table: 'dj_announcements',
+      filter: `profile_id=eq.${profileId}`
+    },
+    callback
+  )
   .subscribe()
 ```
 
-
 ## Correctness Properties
 
-*A property is a characteristic or behavior that should hold true across all valid executions of a system — essentially, a formal statement about what the system should do. Properties serve as the bridge between human-readable specifications and machine-verifiable correctness guarantees.*
+_A property is a characteristic or behavior that should hold true across all valid executions of a system — essentially, a formal statement about what the system should do. Properties serve as the bridge between human-readable specifications and machine-verifiable correctness guarantees._
 
 ### Property 1: Invalid announcement requests are rejected
 
-*For any* request body where `profileId` is missing/empty OR neither a non-empty `scriptText` nor `clear: true` is provided, the announcement API validation function shall return an error result and never produce a database payload.
+_For any_ request body where `profileId` is missing/empty OR neither a non-empty `scriptText` nor `clear: true` is provided, the announcement API validation function shall return an error result and never produce a database payload.
 
 **Validates: Requirements 1.3**
 
 ### Property 2: Announcement API payload construction
 
-*For any* valid profile ID and either a non-empty script text (set action) or a clear flag (clear action), the API payload construction function shall produce a Supabase upsert object where: `profile_id` equals the input profile ID, `is_active` is `true` when setting and `false` when clearing, and `script_text` equals the input text when setting or empty string when clearing.
+_For any_ valid profile ID and either a non-empty script text (set action) or a clear flag (clear action), the API payload construction function shall produce a Supabase upsert object where: `profile_id` equals the input profile ID, `is_active` is `true` when setting and `false` when clearing, and `script_text` equals the input text when setting or empty string when clearing.
 
 **Validates: Requirements 1.2, 2.3**
 
 ### Property 3: Realtime payload maps to visibility state
 
-*For any* Supabase realtime payload from the `dj_announcements` table containing a `script_text` string and an `is_active` boolean, the subtitle hook's derived state shall have `isVisible` equal to the payload's `is_active` value, and `subtitleText` equal to the payload's `script_text` when active or `null` when inactive.
+_For any_ Supabase realtime payload from the `dj_announcements` table containing a `script_text` string and an `is_active` boolean, the subtitle hook's derived state shall have `isVisible` equal to the payload's `is_active` value, and `subtitleText` equal to the payload's `script_text` when active or `null` when inactive.
 
 **Validates: Requirements 3.2, 3.3**
 
 ### Property 4: Subtitle auto-hides after timeout
 
-*For any* active announcement, if no clear signal (inactive update) is received within 30 seconds, the subtitle hook shall set `isVisible` to `false` automatically.
+_For any_ active announcement, if no clear signal (inactive update) is received within 30 seconds, the subtitle hook shall set `isVisible` to `false` automatically.
 
 **Validates: Requirements 5.1, 5.2**
 
 ### Property 5: New announcement resets timeout
 
-*For any* sequence of two active announcements received within 30 seconds of each other, the timeout shall be reset by the second announcement, so the subtitle remains visible for 30 seconds from the most recent announcement rather than from the first.
+_For any_ sequence of two active announcements received within 30 seconds of each other, the timeout shall be reset by the second announcement, so the subtitle remains visible for 30 seconds from the most recent announcement rather than from the first.
 
 **Validates: Requirements 5.3**
 
@@ -229,12 +236,12 @@ supabase
 
 ### API Route Errors
 
-| Scenario | Response | Client Impact |
-|---|---|---|
-| Missing/invalid `profileId` | 400 with error message | DJService logs warning, audio continues |
-| Missing `scriptText` and no `clear` flag | 400 with error message | DJService logs warning, audio continues |
-| Supabase write failure | 500 with error message | DJService logs warning, audio continues |
-| Unexpected server error | 500 with generic message | DJService logs warning, audio continues |
+| Scenario                                 | Response                 | Client Impact                           |
+| ---------------------------------------- | ------------------------ | --------------------------------------- |
+| Missing/invalid `profileId`              | 400 with error message   | DJService logs warning, audio continues |
+| Missing `scriptText` and no `clear` flag | 400 with error message   | DJService logs warning, audio continues |
+| Supabase write failure                   | 500 with error message   | DJService logs warning, audio continues |
+| Unexpected server error                  | 500 with generic message | DJService logs warning, audio continues |
 
 ### DJService Error Handling
 
@@ -257,6 +264,7 @@ The project already uses `fast-check` with the Node.js built-in test runner (`no
 **Test files and their properties:**
 
 1. `app/api/dj-announcement/__tests__/route.test.ts`
+
    - Property 1: Invalid request rejection — generate random invalid request bodies and verify validation rejects them
    - Property 2: Payload construction — generate random valid profile IDs and script texts, verify correct upsert payloads
 

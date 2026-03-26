@@ -35,7 +35,12 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       .select()
 
     if (error) {
-      console.warn('[dj-announcement] upsert error:', error.message, error.code, error.details)
+      console.warn(
+        '[dj-announcement] upsert error:',
+        error.message,
+        error.code,
+        error.details
+      )
       logger('ERROR', `Failed to upsert announcement: ${error.message}`)
       return NextResponse.json(
         { success: false, error: 'Database write failed' },
@@ -43,7 +48,10 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       )
     }
 
-    console.warn('[dj-announcement] upsert success, rows:', JSON.stringify(data))
+    console.warn(
+      '[dj-announcement] upsert success, rows:',
+      JSON.stringify(data)
+    )
     return NextResponse.json({ success: true })
   } catch (err) {
     logger(

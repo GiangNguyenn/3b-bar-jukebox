@@ -39,10 +39,7 @@ global.localStorage = localStorageMock
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
-function makeQueueItem(
-  spotifyTrackId: string,
-  name: string
-): JukeboxQueueItem {
+function makeQueueItem(spotifyTrackId: string, name: string): JukeboxQueueItem {
   return {
     id: `queue-${spotifyTrackId}`,
     profile_id: 'profile-1',
@@ -120,8 +117,24 @@ function randomTrackId(seed: number): string {
 }
 
 function randomTrackName(seed: number): string {
-  const prefixes = ['Song', 'Track', 'Melody', 'Beat', 'Rhythm', 'Tune', 'Anthem', 'Ballad']
-  const suffixes = ['of Love', 'in the Night', 'Forever', 'Rising', 'Falling', 'Dreams']
+  const prefixes = [
+    'Song',
+    'Track',
+    'Melody',
+    'Beat',
+    'Rhythm',
+    'Tune',
+    'Anthem',
+    'Ballad'
+  ]
+  const suffixes = [
+    'of Love',
+    'in the Night',
+    'Forever',
+    'Rising',
+    'Falling',
+    'Dreams'
+  ]
   const s1 = (seed * 1103515245 + 12345) & 0x7fffffff
   const s2 = (s1 * 1103515245 + 12345) & 0x7fffffff
   return `${prefixes[s1 % prefixes.length]} ${suffixes[s2 % suffixes.length]}`
@@ -218,7 +231,12 @@ describe('Preservation: Exact Match, Empty Queue, and Genuine Mismatch Behavior'
         const queueSize = 3 + (seed % 3)
         const items: JukeboxQueueItem[] = []
         for (let i = 0; i < queueSize; i++) {
-          items.push(makeQueueItem(randomTrackId(seed * 100 + i), randomTrackName(seed * 100 + i)))
+          items.push(
+            makeQueueItem(
+              randomTrackId(seed * 100 + i),
+              randomTrackName(seed * 100 + i)
+            )
+          )
         }
         queueManager.updateQueue(items)
         queueManager.setCurrentlyPlayingTrack(null)
@@ -335,7 +353,10 @@ describe('Preservation: Exact Match, Empty Queue, and Genuine Mismatch Behavior'
       synchronizer.setCurrentQueueTrack(queueItem)
 
       // SDK reports a completely different track (different ID AND different name)
-      const sdkState = makePlayingState('wrong-track-id', 'Completely Different Song')
+      const sdkState = makePlayingState(
+        'wrong-track-id',
+        'Completely Different Song'
+      )
       const playNextTrackSpy = mock.method(synchronizer, 'playNextTrack')
 
       synchronizer.syncQueueWithPlayback(sdkState)
@@ -438,9 +459,16 @@ describe('Preservation: Exact Match, Empty Queue, and Genuine Mismatch Behavior'
       queueManager.updateQueue([queueItem])
       synchronizer.setCurrentQueueTrack(queueItem)
 
-      const sdkState = makePlayingState('different-track-id', 'Different Song', true)
+      const sdkState = makePlayingState(
+        'different-track-id',
+        'Different Song',
+        true
+      )
       const playNextTrackSpy = mock.method(synchronizer, 'playNextTrack')
-      const setCurrentlyPlayingSpy = mock.method(queueManager, 'setCurrentlyPlayingTrack')
+      const setCurrentlyPlayingSpy = mock.method(
+        queueManager,
+        'setCurrentlyPlayingTrack'
+      )
 
       synchronizer.syncQueueWithPlayback(sdkState)
 
@@ -469,7 +497,12 @@ describe('Preservation: Exact Match, Empty Queue, and Genuine Mismatch Behavior'
         const queueSize = 1 + (seed % 4)
         const items: JukeboxQueueItem[] = []
         for (let i = 0; i < queueSize; i++) {
-          items.push(makeQueueItem(randomTrackId(seed * 100 + i), randomTrackName(seed * 100 + i)))
+          items.push(
+            makeQueueItem(
+              randomTrackId(seed * 100 + i),
+              randomTrackName(seed * 100 + i)
+            )
+          )
         }
         queueManager.updateQueue(items)
         queueManager.setCurrentlyPlayingTrack(null)

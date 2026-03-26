@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
-import { getAiSuggestions, getRecentlyPlayed, addToRecentlyPlayed } from '@/services/aiSuggestion'
+import {
+  getAiSuggestions,
+  getRecentlyPlayed,
+  addToRecentlyPlayed
+} from '@/services/aiSuggestion'
 import { createModuleLogger } from '@/shared/utils/logger'
 import { supabase } from '@/lib/supabase'
 

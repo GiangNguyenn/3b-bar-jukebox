@@ -1,6 +1,7 @@
 # Implementation Plan
 
 - [x] 1. Write bug condition exploration test
+
   - **Property 1: Bug Condition** — Track Finish Does Not Record Recently Played
   - **CRITICAL**: This test MUST FAIL on unfixed code — failure confirms the bug exists
   - **DO NOT attempt to fix the test or the code when it fails**
@@ -22,6 +23,7 @@
   - _Requirements: 1.1, 2.1, 2.2_
 
 - [x] 2. Write preservation property tests (BEFORE implementing fix)
+
   - **Property 2: Preservation** — Track Transition Behavior Unchanged
   - **IMPORTANT**: Follow observation-first methodology
   - Create test file `services/playerLifecycle/__tests__/QueueSynchronizer.recentlyPlayed.preservation.test.ts`
@@ -44,6 +46,7 @@
 - [x] 3. Fix recently played tracking
 
   - [x] 3.1 Implement the fix in `handleTrackFinishedImpl()`
+
     - Import `addToRecentlyPlayed` from `@/services/aiSuggestion` at the top of `QueueSynchronizer.ts`
     - Inside the `executePlayback` callback in `handleTrackFinishedImpl()`, BEFORE calling `markFinishedTrackAsPlayed()`, capture the finished track's queue item: look up via `queueManager.getQueue().find(item => item.tracks.spotify_track_id === currentSpotifyTrackId)` or fuzzy name match via `fuzzyTrackNameMatch`
     - After `markFinishedTrackAsPlayed()` completes (still inside the callback), if a queue item was found (has `profile_id`), call `addToRecentlyPlayed()` as fire-and-forget: `void addToRecentlyPlayed(finishedQueueItem.profile_id, { spotifyTrackId: currentSpotifyTrackId, title: currentTrack.name, artist: currentTrack.artists[0]?.name ?? 'Unknown' }).catch(() => {})`
@@ -56,6 +59,7 @@
     - _Requirements: 1.1, 2.1, 2.2, 3.1, 3.2, 3.3, 3.4_
 
   - [x] 3.2 Verify bug condition exploration test now passes
+
     - **Property 1: Expected Behavior** — Track Finish Records Recently Played
     - **IMPORTANT**: Re-run the SAME test from task 1 — do NOT write a new test
     - The test from task 1 encodes the expected behavior

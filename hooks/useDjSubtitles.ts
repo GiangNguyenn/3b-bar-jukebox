@@ -64,7 +64,9 @@ export function useDjSubtitles(
       return
     }
 
-    console.warn(`[useDjSubtitles] subscribing to dj_announcements for profileId=${profileId}`)
+    console.warn(
+      `[useDjSubtitles] subscribing to dj_announcements for profileId=${profileId}`
+    )
 
     const channel = supabaseBrowser
       .channel(`dj_announcements_${profileId}`)
@@ -77,7 +79,10 @@ export function useDjSubtitles(
           filter: `profile_id=eq.${profileId}`
         },
         (payload) => {
-          console.warn('[useDjSubtitles] realtime payload received:', JSON.stringify(payload))
+          console.warn(
+            '[useDjSubtitles] realtime payload received:',
+            JSON.stringify(payload)
+          )
           const row = payload.new as AnnouncementPayload | undefined
           if (!row) {
             console.warn('[useDjSubtitles] no row in payload.new')
@@ -85,7 +90,9 @@ export function useDjSubtitles(
           }
 
           const state = deriveSubtitleState(row)
-          console.warn(`[useDjSubtitles] derived state: isVisible=${state.isVisible}, text="${state.subtitleText}"`)
+          console.warn(
+            `[useDjSubtitles] derived state: isVisible=${state.isVisible}, text="${state.subtitleText}"`
+          )
           setSubtitleText(state.subtitleText)
           setIsVisible(state.isVisible)
 

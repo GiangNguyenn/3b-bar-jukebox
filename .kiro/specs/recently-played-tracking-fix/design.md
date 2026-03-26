@@ -23,6 +23,7 @@ The `recently_played_tracks` table is never populated when tracks finish playing
 The bug manifests when a track finishes playing naturally and `handleTrackFinishedImpl()` processes the completion. The method calls `markFinishedTrackAsPlayed()` to remove the track from the queue, but never calls `addToRecentlyPlayed()` to record the track in the `recently_played_tracks` table. The track metadata (spotify_track_id, name, artist) is available from the `PlayerSDKState.track_window.current_track`, and the `profile_id` is available from the matched queue item — but neither is used to write a recently-played record.
 
 **Formal Specification:**
+
 ```
 FUNCTION isBugCondition(input)
   INPUT: input of type { state: PlayerSDKState, queue: JukeboxQueueItem[] }
@@ -52,6 +53,7 @@ END FUNCTION
 ### Preservation Requirements
 
 **Unchanged Behaviors:**
+
 - `markFinishedTrackAsPlayed()` continues to remove the finished track from the queue via `queueManager.markAsPlayed()`
 - Track transitions (find next track → DJ announce → play next) continue to work identically
 - The existing `addToRecentlyPlayed()` fire-and-forget calls in `/api/ai-suggestions` route remain unchanged
@@ -62,6 +64,7 @@ END FUNCTION
 
 **Scope:**
 All inputs that do NOT involve a track finishing naturally via `handleTrackFinishedImpl()` should be completely unaffected by this fix. This includes:
+
 - Manual track skips
 - Queue enforcement via `syncQueueWithPlayback()`
 - `playNextTrack()` calls from any source
@@ -103,6 +106,7 @@ Assuming our root cause analysis is correct:
 **Function**: `handleTrackFinishedImpl()`
 
 **Specific Changes**:
+
 1. **Capture queue item before removal**: Before calling `markFinishedTrackAsPlayed()`, look up the finished track's queue item to extract `profile_id`. The queue item can be found using `queueManager.getQueue().find(item => item.tracks.spotify_track_id === currentSpotifyTrackId)` or by fuzzy name match (same logic `markFinishedTrackAsPlayed` uses internally).
 
 2. **Add `addToRecentlyPlayed()` call**: After `markFinishedTrackAsPlayed()` completes (still inside the `executePlayback` callback), call `addToRecentlyPlayed()` as fire-and-forget using `void ... .catch(() => {})`. Use the `profile_id` from the captured queue item, `currentSpotifyTrackId` for the track ID, `currentTrack.name` for the title, and `currentTrack.artists[0]?.name` for the artist.
@@ -126,12 +130,14 @@ The testing strategy follows a two-phase approach: first, surface counterexample
 **Test Plan**: Write tests that mock `addToRecentlyPlayed` and call `handleTrackFinished()` with a valid SDK state representing a naturally finished track. Assert that `addToRecentlyPlayed` is called. Run these tests on the UNFIXED code to observe failures (it won't be called).
 
 **Test Cases**:
+
 1. **Basic Track Finish Test**: Simulate a track finishing naturally with a matching queue item — `addToRecentlyPlayed` should be called but WON'T be on unfixed code
 2. **Correct Arguments Test**: Verify `addToRecentlyPlayed` is called with the correct `profile_id`, `spotifyTrackId`, `title`, and `artist` — will fail on unfixed code
 3. **Fuzzy Match Track Finish Test**: Simulate a track finishing where the queue match is by fuzzy name only — `addToRecentlyPlayed` should still be called but WON'T be on unfixed code
 4. **No Queue Match Test**: Simulate a track finishing with no queue match at all — `addToRecentlyPlayed` should NOT be called (no `profile_id` available)
 
 **Expected Counterexamples**:
+
 - `addToRecentlyPlayed` is never invoked during `handleTrackFinishedImpl` on unfixed code
 - The `recently_played_tracks` table remains empty after tracks finish playing
 
@@ -140,6 +146,7 @@ The testing strategy follows a two-phase approach: first, surface counterexample
 **Goal**: Verify that for all inputs where the bug condition holds, the fixed function produces the expected behavior.
 
 **Pseudocode:**
+
 ```
 FOR ALL input WHERE isBugCondition(input) DO
   result := handleTrackFinishedImpl_fixed(input.state)
@@ -157,6 +164,7 @@ END FOR
 **Goal**: Verify that for all inputs where the bug condition does NOT hold, the fixed function produces the same result as the original function.
 
 **Pseudocode:**
+
 ```
 FOR ALL input WHERE NOT isBugCondition(input) DO
   ASSERT handleTrackFinishedImpl_original(input) = handleTrackFinishedImpl_fixed(input)
@@ -168,6 +176,7 @@ END FOR
 ```
 
 **Testing Approach**: Property-based testing is recommended for preservation checking because:
+
 - It generates many test cases automatically across the input domain (random track IDs, names, queue configurations)
 - It catches edge cases that manual unit tests might miss (empty artists array, null track, duplicate detector rejections)
 - It provides strong guarantees that track-transition behavior is unchanged for all inputs
@@ -175,6 +184,7 @@ END FOR
 **Test Plan**: Observe behavior on UNFIXED code first for track transitions (queue removal, next track selection, playback start), then write property-based tests capturing that behavior.
 
 **Test Cases**:
+
 1. **Queue Removal Preservation**: Verify that `markFinishedTrackAsPlayed` is still called with the correct track ID and name — same behavior before and after fix
 2. **Next Track Selection Preservation**: Verify that `findNextValidTrack` is called and its result drives playback — same behavior before and after fix
 3. **Playback Start Preservation**: Verify that `playNextTrackImpl` is called for the next track — same behavior before and after fix

@@ -7,6 +7,7 @@ Persist DJ announcement text to Supabase and display it as subtitles on the publ
 ## Tasks
 
 - [x] 1. Create database migration for `dj_announcements` table
+
   - [x] 1.1 Apply migration via Supabase MCP `apply_migration` tool (name: `create_dj_announcements`)
     - Define `dj_announcements` table with `id` (UUID PK, default `gen_random_uuid()`), `profile_id` (UUID FK to `profiles(id)` ON DELETE CASCADE), `script_text` (TEXT NOT NULL DEFAULT ''), `is_active` (BOOLEAN NOT NULL DEFAULT false), `created_at` (TIMESTAMPTZ DEFAULT now()), `updated_at` (TIMESTAMPTZ DEFAULT now())
     - Add UNIQUE constraint on `profile_id` so each venue has at most one row
@@ -16,7 +17,9 @@ Persist DJ announcement text to Supabase and display it as subtitles on the publ
     - _Requirements: 6.1, 6.2, 6.3, 6.4_
 
 - [x] 2. Implement announcement API route and validation
+
   - [x] 2.1 Create `app/api/dj-announcement/route.ts` POST handler
+
     - Accept JSON body with `profileId` (required string), optional `scriptText` (non-empty string), optional `clear` (boolean)
     - Validate: `profileId` required and non-empty; either `scriptText` or `clear: true` must be provided; if both, `clear` takes precedence
     - On set action: upsert `dj_announcements` with `profile_id`, `script_text`, `is_active: true`, `updated_at: now()`; conflict on `profile_id`
@@ -26,6 +29,7 @@ Persist DJ announcement text to Supabase and display it as subtitles on the publ
     - _Requirements: 1.2, 1.3, 1.4, 2.3_
 
   - [x] 2.2 Write property test for invalid request rejection (Property 1)
+
     - **Property 1: Invalid announcement requests are rejected**
     - Generate random request bodies where `profileId` is missing/empty OR neither `scriptText` nor `clear: true` is provided
     - Verify the validation function returns an error and never produces a database payload
@@ -38,12 +42,14 @@ Persist DJ announcement text to Supabase and display it as subtitles on the publ
     - Test file: `app/api/dj-announcement/__tests__/route.test.ts`
     - **Validates: Requirements 1.2, 2.3**
 
-
 - [x] 3. Checkpoint - Ensure all tests pass
+
   - Ensure all tests pass, ask the user if questions arise.
 
 - [x] 4. Integrate DJService with announcement API
+
   - [x] 4.1 Modify `services/djService.ts` to post announcement text after script generation
+
     - In `_doFetchAudioBlob`, after successfully receiving the script from `/api/dj-script` and before calling `/api/dj-tts`, fire-and-forget a POST to `/api/dj-announcement` with `{ profileId, scriptText: data.script }`
     - Read `profileId` from `localStorage` (key: `profileId`), matching the existing pattern for admin settings
     - Use `.catch(() => {})` so failures never block or delay audio playback
@@ -51,6 +57,7 @@ Persist DJ announcement text to Supabase and display it as subtitles on the publ
     - _Requirements: 1.1, 1.4_
 
   - [x] 4.2 Modify `services/djService.ts` to clear announcement on audio end and error
+
     - In `playAudioBlob`, on `audio.onended` callback, fire-and-forget a POST to `/api/dj-announcement` with `{ profileId, clear: true }`
     - In `playAudioBlob`, on `audio.onerror` callback, fire-and-forget the same clear request
     - Use `.catch(() => {})` so failures never block volume restoration or other cleanup
@@ -64,7 +71,9 @@ Persist DJ announcement text to Supabase and display it as subtitles on the publ
     - _Requirements: 1.1, 1.4, 2.1, 2.2_
 
 - [x] 5. Implement display-side hook and UI component
+
   - [x] 5.1 Create `hooks/useDjSubtitles.ts` realtime subscription hook
+
     - Accept `{ profileId: string | null }` options
     - Subscribe to `postgres_changes` on `dj_announcements` table filtered by `profile_id` using the existing Supabase anon client from `@/lib/supabase`
     - On active announcement (INSERT or UPDATE with `is_active: true`): set `subtitleText` to `script_text`, set `isVisible` to `true`, start/reset a 30-second timeout
@@ -75,6 +84,7 @@ Persist DJ announcement text to Supabase and display it as subtitles on the publ
     - _Requirements: 3.1, 3.2, 3.3, 5.1, 5.2, 5.3_
 
   - [x] 5.2 Write property test for realtime payload to visibility mapping (Property 3)
+
     - **Property 3: Realtime payload maps to visibility state**
     - Generate random payloads with varying `is_active` and `script_text` values
     - Verify `isVisible` equals `is_active` and `subtitleText` equals `script_text` when active, `null` when inactive
@@ -82,6 +92,7 @@ Persist DJ announcement text to Supabase and display it as subtitles on the publ
     - **Validates: Requirements 3.2, 3.3**
 
   - [x] 5.3 Write property test for auto-hide timeout (Property 4)
+
     - **Property 4: Subtitle auto-hides after timeout**
     - Activate subtitle, advance fake timers by 30 seconds without a clear signal
     - Verify `isVisible` becomes `false`
@@ -89,6 +100,7 @@ Persist DJ announcement text to Supabase and display it as subtitles on the publ
     - **Validates: Requirements 5.1, 5.2**
 
   - [x] 5.4 Write property test for timeout reset on new announcement (Property 5)
+
     - **Property 5: New announcement resets timeout**
     - Send two active announcements within 30 seconds; verify timeout resets from the second announcement
     - Test file: `hooks/__tests__/useDjSubtitles.test.ts`
@@ -105,6 +117,7 @@ Persist DJ announcement text to Supabase and display it as subtitles on the publ
     - _Requirements: 3.4, 3.5, 4.1, 4.2, 4.3_
 
 - [x] 6. Wire hook and overlay into the display page
+
   - [x] 6.1 Integrate `useDjSubtitles` and `SubtitleOverlay` into `app/[username]/display/page.tsx`
     - Look up the venue's `profile_id` from the `username` param (reuse the same Supabase query pattern as `usePlaylistData`)
     - Pass `profileId` to `useDjSubtitles` hook

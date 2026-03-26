@@ -38,10 +38,7 @@ global.localStorage = localStorageMock
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
-function makeQueueItem(
-  spotifyTrackId: string,
-  name: string
-): JukeboxQueueItem {
+function makeQueueItem(spotifyTrackId: string, name: string): JukeboxQueueItem {
   return {
     id: `queue-${spotifyTrackId}`,
     profile_id: 'profile-1',
@@ -64,10 +61,7 @@ function makeQueueItem(
   }
 }
 
-function makePlayingState(
-  trackId: string,
-  trackName: string
-): PlayerSDKState {
+function makePlayingState(trackId: string, trackName: string): PlayerSDKState {
   return {
     paused: false,
     position: 60000,

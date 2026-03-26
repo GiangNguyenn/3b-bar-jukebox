@@ -268,11 +268,18 @@ export class QueueSynchronizer {
       }
 
       // Capture the finished track's queue item BEFORE removal (need profile_id for recently played)
-      const finishedQueueItem = queueManager.getQueue().find(
-        item => item.tracks.spotify_track_id === currentSpotifyTrackId
-      ) ?? queueManager.getQueue().find(
-        item => fuzzyTrackNameMatch(item.tracks.name, currentTrackName)
-      ) ?? null
+      const finishedQueueItem =
+        queueManager
+          .getQueue()
+          .find(
+            (item) => item.tracks.spotify_track_id === currentSpotifyTrackId
+          ) ??
+        queueManager
+          .getQueue()
+          .find((item) =>
+            fuzzyTrackNameMatch(item.tracks.name, currentTrackName)
+          ) ??
+        null
 
       await this.markFinishedTrackAsPlayed(
         currentSpotifyTrackId,

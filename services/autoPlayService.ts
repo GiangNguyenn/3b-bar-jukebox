@@ -238,7 +238,8 @@ class AutoPlayService {
           const nextTrack = this.queueManager.getNextTrack()
           if (
             nextTrack &&
-            nextTrack.tracks.spotify_track_id !== this.lastNullStateAttemptTrackId
+            nextTrack.tracks.spotify_track_id !==
+              this.lastNullStateAttemptTrackId
           ) {
             this.lastNullStateAttemptTrackId = nextTrack.tracks.spotify_track_id
             try {
@@ -254,7 +255,10 @@ class AutoPlayService {
 
       // Only clear the null-state guard when a DIFFERENT track is playing
       // This prevents restart loops when Spotify API briefly returns null mid-playback
-      if (currentTrackId && currentTrackId !== this.lastNullStateAttemptTrackId) {
+      if (
+        currentTrackId &&
+        currentTrackId !== this.lastNullStateAttemptTrackId
+      ) {
         this.lastNullStateAttemptTrackId = null
       }
       const isPlaying = currentState.is_playing

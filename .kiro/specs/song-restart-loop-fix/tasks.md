@@ -1,6 +1,7 @@
 # Implementation Plan
 
 - [x] 1. Write bug condition exploration test
+
   - **Property 1: Bug Condition** — Fuzzy Name Mismatch Triggers Restart Loop
   - **CRITICAL**: This test MUST FAIL on unfixed code — failure confirms the bug exists
   - **DO NOT attempt to fix the test or the code when it fails**
@@ -20,6 +21,7 @@
   - _Requirements: 1.1, 1.2, 2.1, 2.2_
 
 - [x] 2. Write preservation property tests (BEFORE implementing fix)
+
   - **Property 2: Preservation** — Exact Match, Empty Queue, and Genuine Mismatch Behavior
   - **IMPORTANT**: Follow observation-first methodology
   - Create test file `services/playerLifecycle/__tests__/QueueSynchronizer.preservation.test.ts`
@@ -38,6 +40,7 @@
 - [x] 3. Fix song restart loop
 
   - [x] 3.1 Create `shared/utils/trackNameMatcher.ts` with fuzzy matching utilities
+
     - Implement `normalizeTrackName(name: string): string` — lowercase, strip parenthetical suffixes like "(feat. X)", "(Remastered 2011)", "(Deluxe Edition)", "(Live)", strip dash suffixes like "- Remastered", trim whitespace
     - Implement `fuzzyTrackNameMatch(queueName: string, spotifyName: string): boolean` — compare normalized versions, return true if base names match
     - Use `createModuleLogger` for any logging (never raw console.log)
@@ -48,6 +51,7 @@
     - _Requirements: 2.1_
 
   - [x] 3.2 Update `syncQueueWithPlayback()` in `QueueSynchronizer.ts` — replace simple toLowerCase comparison with fuzzyTrackNameMatch
+
     - Import `fuzzyTrackNameMatch` from `@/shared/utils/trackNameMatcher`
     - Replace `expectedTrack.tracks.name.toLowerCase() === currentSpotifyTrack.name.toLowerCase()` with `fuzzyTrackNameMatch(expectedTrack.tracks.name, currentSpotifyTrack.name)`
     - _Bug_Condition: isBugCondition(input) where track names differ by parenthetical suffixes_
@@ -56,6 +60,7 @@
     - _Requirements: 2.1_
 
   - [x] 3.3 Add force-play guard to `QueueSynchronizer.ts` — prevent repeated playNextTrack() calls for the same track
+
     - Add private field `lastForcePlayedTrackId: string | null = null`
     - In `syncQueueWithPlayback()`, before calling `playNextTrack()`, check if `currentSpotifyTrack.id === this.lastForcePlayedTrackId` — if so, skip the call
     - Set `lastForcePlayedTrackId = currentSpotifyTrack.id` when `playNextTrack()` is called
@@ -66,15 +71,18 @@
     - _Requirements: 2.2, 2.3_
 
   - [x] 3.4 Add diagnostic logging in `syncQueueWithPlayback()` when match fails
+
     - Before calling `playNextTrack()`, log via `this.controller.log()`: Spotify track ID, expected queue track ID, both track names, fuzzy match result
     - Use `createModuleLogger` conventions — no raw console.log
     - _Requirements: 2.5_
 
   - [x] 3.5 Update `playNextTrackImpl()` — set lastForcePlayedTrackId on successful play
+
     - After successful `playTrackWithRetry()`, set `this.lastForcePlayedTrackId = currentTrack.tracks.spotify_track_id`
     - _Requirements: 2.2_
 
   - [x] 3.6 Add deduplication in `DJService.onTrackStarted()` — prevent repeated log clutter
+
     - Add private field `lastOnTrackStartedId: string | null = null` to DJService
     - At the start of `onTrackStarted()`, check if `_currentTrack.id === this.lastOnTrackStartedId` — if so, log a concise deduplication message and return early (skip prefetch)
     - Set `lastOnTrackStartedId = _currentTrack.id` on first call for a new track
@@ -85,12 +93,14 @@
     - _Requirements: 2.4_
 
   - [x] 3.7 Update `markFinishedTrackAsPlayed()` — use fuzzyTrackNameMatch for fallback matching
+
     - Import `fuzzyTrackNameMatch` from `@/shared/utils/trackNameMatcher`
     - Replace `item.tracks.name.toLowerCase() === trackName.toLowerCase()` with `fuzzyTrackNameMatch(item.tracks.name, trackName)`
     - _Preservation: fallback matching becomes more robust without changing behavior for exact name matches_
     - _Requirements: 2.1_
 
   - [x] 3.8 Verify bug condition exploration test now passes
+
     - **Property 1: Expected Behavior** — Fuzzy Name Mismatch No Longer Triggers Restart Loop
     - **IMPORTANT**: Re-run the SAME test from task 1 — do NOT write a new test
     - The test from task 1 encodes the expected behavior

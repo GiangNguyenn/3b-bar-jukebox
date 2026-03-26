@@ -28,7 +28,11 @@ let addToRecentlyPlayedCalls: SpyCall[] = []
 // Pre-load the real aiSuggestion module so it's in the cache
 const aiSuggestionReal = require('@/services/aiSuggestion')
 const aiSuggestionCacheKey = Object.keys(require.cache).find(
-  (k) => k.includes('aiSuggestion') && k.includes('services') && !k.includes('__tests__') && !k.includes('constants')
+  (k) =>
+    k.includes('aiSuggestion') &&
+    k.includes('services') &&
+    !k.includes('__tests__') &&
+    !k.includes('constants')
 )!
 
 // Build a proxy that intercepts addToRecentlyPlayed but delegates everything else
@@ -53,10 +57,14 @@ if (aiSuggestionCacheKey && require.cache[aiSuggestionCacheKey]) {
 
 // NOW import QueueSynchronizer and other deps that may use aiSuggestion
 // eslint-disable-next-line @typescript-eslint/no-var-requires
-const { QueueSynchronizer } = require('../QueueSynchronizer') as typeof import('../QueueSynchronizer')
-const { playbackService } = require('@/services/player') as typeof import('@/services/player')
-const { queueManager } = require('@/services/queueManager') as typeof import('@/services/queueManager')
-const { DJService } = require('@/services/djService') as typeof import('@/services/djService')
+const { QueueSynchronizer } =
+  require('../QueueSynchronizer') as typeof import('../QueueSynchronizer')
+const { playbackService } =
+  require('@/services/player') as typeof import('@/services/player')
+const { queueManager } =
+  require('@/services/queueManager') as typeof import('@/services/queueManager')
+const { DJService } =
+  require('@/services/djService') as typeof import('@/services/djService')
 
 // ─── localStorage mock (not available in Node.js test environment) ───────────
 const localStorageStore: Record<string, string> = {}
@@ -186,7 +194,11 @@ describe('Bug Condition: Track Finish Does Not Record Recently Played', () => {
     const controller = makeRecordingController()
     const synchronizer = new QueueSynchronizer(controller)
 
-    const queueItem = makeQueueItem('track-abc123', 'Bohemian Rhapsody', 'profile-1')
+    const queueItem = makeQueueItem(
+      'track-abc123',
+      'Bohemian Rhapsody',
+      'profile-1'
+    )
     const nextItem = makeQueueItem('track-next', 'Another Song', 'profile-1')
     queueManager.updateQueue([queueItem, nextItem])
     queueManager.setCurrentlyPlayingTrack('track-abc123')
@@ -229,8 +241,16 @@ describe('Bug Condition: Track Finish Does Not Record Recently Played', () => {
     const controller = makeRecordingController()
     const synchronizer = new QueueSynchronizer(controller)
 
-    const queueItem = makeQueueItem('track-xyz789', 'Stairway to Heaven', 'venue-owner-42')
-    const nextItem = makeQueueItem('track-next', 'Another Song', 'venue-owner-42')
+    const queueItem = makeQueueItem(
+      'track-xyz789',
+      'Stairway to Heaven',
+      'venue-owner-42'
+    )
+    const nextItem = makeQueueItem(
+      'track-next',
+      'Another Song',
+      'venue-owner-42'
+    )
     queueManager.updateQueue([queueItem, nextItem])
     queueManager.setCurrentlyPlayingTrack('track-xyz789')
 
@@ -261,7 +281,7 @@ describe('Bug Condition: Track Finish Does Not Record Recently Played', () => {
     assert.equal(
       call.profileId,
       'venue-owner-42',
-      'profileId should come from the queue item\'s profile_id'
+      "profileId should come from the queue item's profile_id"
     )
     assert.equal(
       call.entry.spotifyTrackId,
@@ -293,7 +313,11 @@ describe('Bug Condition: Track Finish Does Not Record Recently Played', () => {
     const synchronizer = new QueueSynchronizer(controller)
 
     // Queue has a DIFFERENT track — no match for the finishing track
-    const unrelatedItem = makeQueueItem('track-different', 'Unrelated Song', 'profile-1')
+    const unrelatedItem = makeQueueItem(
+      'track-different',
+      'Unrelated Song',
+      'profile-1'
+    )
     const nextItem = makeQueueItem('track-next', 'Next Song', 'profile-1')
     queueManager.updateQueue([unrelatedItem, nextItem])
     queueManager.setCurrentlyPlayingTrack('track-orphan')

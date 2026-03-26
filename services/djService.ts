@@ -267,7 +267,9 @@ class DJService {
     nextTrack: JukeboxQueueItem | null
   ): void {
     if (_currentTrack.id === this.lastOnTrackStartedId) {
-      log(`onTrackStarted | dedup — already processed track id=${_currentTrack.id}, skipping`)
+      log(
+        `onTrackStarted | dedup — already processed track id=${_currentTrack.id}, skipping`
+      )
       return
     }
     this.lastOnTrackStartedId = _currentTrack.id
@@ -382,12 +384,17 @@ class DJService {
 
     // Persist announcement text to database for display subtitles
     const profileId = localStorage.getItem('profileId')
-    log(`announcement persist — profileId=${profileId}, script="${this.lastGeneratedScript?.slice(0, 50)}"`)
+    log(
+      `announcement persist — profileId=${profileId}, script="${this.lastGeneratedScript?.slice(0, 50)}"`
+    )
     if (profileId && this.lastGeneratedScript) {
       fetch('/api/dj-announcement', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ profileId, scriptText: this.lastGeneratedScript })
+        body: JSON.stringify({
+          profileId,
+          scriptText: this.lastGeneratedScript
+        })
       })
         .then((res) => log(`announcement set response: ${res.status}`))
         .catch((e) => warn('announcement set failed:', e))

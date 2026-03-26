@@ -18,10 +18,14 @@ import type { JukeboxQueueItem } from '@/shared/types/queue'
 import type { PlayerSDKState } from '../types'
 
 // ─── Import real modules (no aiSuggestion interception needed for preservation) ─
-const { QueueSynchronizer } = require('../QueueSynchronizer') as typeof import('../QueueSynchronizer')
-const { playbackService } = require('@/services/player') as typeof import('@/services/player')
-const { queueManager } = require('@/services/queueManager') as typeof import('@/services/queueManager')
-const { DJService } = require('@/services/djService') as typeof import('@/services/djService')
+const { QueueSynchronizer } =
+  require('../QueueSynchronizer') as typeof import('../QueueSynchronizer')
+const { playbackService } =
+  require('@/services/player') as typeof import('@/services/player')
+const { queueManager } =
+  require('@/services/queueManager') as typeof import('@/services/queueManager')
+const { DJService } =
+  require('@/services/djService') as typeof import('@/services/djService')
 
 // ─── localStorage mock (not available in Node.js test environment) ───────────
 const localStorageStore: Record<string, string> = {}
@@ -139,15 +143,40 @@ function randomTrackId(seed: number): string {
 }
 
 function randomTrackName(seed: number): string {
-  const prefixes = ['Song', 'Track', 'Melody', 'Beat', 'Rhythm', 'Tune', 'Anthem', 'Ballad']
-  const suffixes = ['of Love', 'in the Night', 'Forever', 'Rising', 'Falling', 'Dreams', 'Echoes', 'Waves']
+  const prefixes = [
+    'Song',
+    'Track',
+    'Melody',
+    'Beat',
+    'Rhythm',
+    'Tune',
+    'Anthem',
+    'Ballad'
+  ]
+  const suffixes = [
+    'of Love',
+    'in the Night',
+    'Forever',
+    'Rising',
+    'Falling',
+    'Dreams',
+    'Echoes',
+    'Waves'
+  ]
   const s1 = (seed * 1103515245 + 12345) & 0x7fffffff
   const s2 = (s1 * 1103515245 + 12345) & 0x7fffffff
   return `${prefixes[s1 % prefixes.length]} ${suffixes[s2 % suffixes.length]}`
 }
 
 function randomArtistName(seed: number): string {
-  const names = ['The Rockers', 'DJ Smooth', 'Luna', 'Neon Pulse', 'Echo Chamber', 'Velvet']
+  const names = [
+    'The Rockers',
+    'DJ Smooth',
+    'Luna',
+    'Neon Pulse',
+    'Echo Chamber',
+    'Velvet'
+  ]
   const s = (seed * 1103515245 + 12345) & 0x7fffffff
   return names[s % names.length]
 }
@@ -198,7 +227,11 @@ describe('Preservation: Track Transition Behavior Unchanged', () => {
         const profileId = randomProfileId(seed)
 
         const queueItem = makeQueueItem(trackId, trackName, profileId)
-        const nextItem = makeQueueItem(randomTrackId(seed + 1000), 'Next Song', profileId)
+        const nextItem = makeQueueItem(
+          randomTrackId(seed + 1000),
+          'Next Song',
+          profileId
+        )
         queueManager.updateQueue([queueItem, nextItem])
         queueManager.setCurrentlyPlayingTrack(trackId)
 
@@ -211,7 +244,10 @@ describe('Preservation: Track Transition Behavior Unchanged', () => {
         synchronizer.setLastKnownState(lastKnownState)
         synchronizer.setCurrentQueueTrack(queueItem)
 
-        const markPlayedSpy = mock.method(synchronizer, 'markFinishedTrackAsPlayed')
+        const markPlayedSpy = mock.method(
+          synchronizer,
+          'markFinishedTrackAsPlayed'
+        )
         const djInstance = DJService.getInstance()
         mock.method(djInstance, 'maybeAnnounce', async () => {})
 
@@ -271,7 +307,9 @@ describe('Preservation: Track Transition Behavior Unchanged', () => {
         // Some seeds get a third item to vary queue depth
         const items = [currentItem, nextItem]
         if (seed % 3 === 0) {
-          items.push(makeQueueItem(randomTrackId(seed + 2000), 'Third Song', profileId))
+          items.push(
+            makeQueueItem(randomTrackId(seed + 2000), 'Third Song', profileId)
+          )
         }
 
         queueManager.updateQueue(items)
@@ -327,7 +365,11 @@ describe('Preservation: Track Transition Behavior Unchanged', () => {
         const profileId = randomProfileId(seed)
 
         const queueItem = makeQueueItem(trackId, trackName, profileId)
-        const nextItem = makeQueueItem(randomTrackId(seed + 1000), 'Next Song', profileId)
+        const nextItem = makeQueueItem(
+          randomTrackId(seed + 1000),
+          'Next Song',
+          profileId
+        )
         queueManager.updateQueue([queueItem, nextItem])
         queueManager.setCurrentlyPlayingTrack(trackId)
 
@@ -345,7 +387,10 @@ describe('Preservation: Track Transition Behavior Unchanged', () => {
         const detector = synchronizer.getDuplicateDetector()
         mock.method(detector, 'shouldProcessTrack', () => false)
 
-        const markPlayedSpy = mock.method(synchronizer, 'markFinishedTrackAsPlayed')
+        const markPlayedSpy = mock.method(
+          synchronizer,
+          'markFinishedTrackAsPlayed'
+        )
         const djInstance = DJService.getInstance()
         mock.method(djInstance, 'maybeAnnounce', async () => {})
 
@@ -409,7 +454,11 @@ describe('Preservation: Track Transition Behavior Unchanged', () => {
         synchronizer.setCurrentQueueTrack(currentItem)
 
         const djInstance = DJService.getInstance()
-        const announceSpy = mock.method(djInstance, 'maybeAnnounce', async () => {})
+        const announceSpy = mock.method(
+          djInstance,
+          'maybeAnnounce',
+          async () => {}
+        )
 
         await synchronizer.handleTrackFinished(finishedState)
         await playbackService.waitForCompletion()
@@ -420,7 +469,8 @@ describe('Preservation: Track Transition Behavior Unchanged', () => {
           `maybeAnnounce should be called once (seed=${seed})`
         )
 
-        const announceArg = announceSpy.mock.calls[0].arguments[0] as JukeboxQueueItem
+        const announceArg = announceSpy.mock.calls[0]
+          .arguments[0] as JukeboxQueueItem
         assert.equal(
           announceArg.tracks.spotify_track_id,
           nextId,

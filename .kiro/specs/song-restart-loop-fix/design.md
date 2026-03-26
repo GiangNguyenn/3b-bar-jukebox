@@ -21,6 +21,7 @@ A playing track restarts in an infinite loop (~20 s cycle) because `syncQueueWit
 The bug manifests when `syncQueueWithPlayback()` runs for a currently-playing track whose Spotify ID does not exactly match any queue item's `spotify_track_id`, AND the existing case-sensitive name comparison also fails due to metadata differences (parenthetical suffixes, featuring artist variations, remaster tags). This causes `playNextTrack()` to be called, which restarts the same track, generating a new SDK state change that re-enters `syncQueueWithPlayback()` — creating an infinite loop.
 
 **Formal Specification:**
+
 ```
 FUNCTION isBugCondition(input)
   INPUT: input of type { sdkState: PlayerSDKState, queue: JukeboxQueueItem[], currentQueueTrack: JukeboxQueueItem | null }
@@ -57,6 +58,7 @@ END FUNCTION
 ### Preservation Requirements
 
 **Unchanged Behaviors:**
+
 - Exact Spotify track ID matches continue to update `currentQueueTrack` and `setCurrentlyPlayingTrack` without calling `playNextTrack()`
 - Natural track transitions (track finishes → next track starts) continue to call `onTrackStarted()` and trigger DJ prefetch
 - Queue enforcement for genuinely mismatched tracks (completely different song playing) continues to call `playNextTrack()` with the expected track
@@ -66,6 +68,7 @@ END FUNCTION
 
 **Scope:**
 All inputs where the Spotify track ID exactly matches a queue item, or where the queue is empty, or where a genuinely different track is playing, should be completely unaffected by this fix. The fix only changes behavior for:
+
 - Track name comparison logic (more robust fuzzy matching)
 - Repeated `playNextTrack()` calls for the same track (force-play guard)
 - `onTrackStarted()` logging (deduplication)
@@ -108,6 +111,7 @@ Assuming our root cause analysis is correct:
 **Purpose**: Robust fuzzy track name matching utility
 
 **Specific Changes**:
+
 1. **`normalizeTrackName(name: string): string`**: Strip parenthetical suffixes like "(feat. X)", "(Remastered 2011)", "(Deluxe Edition)", "- Remastered", etc. Convert to lowercase. Trim whitespace.
 2. **`fuzzyTrackNameMatch(queueName: string, spotifyName: string): boolean`**: Compare normalized versions of both names. Return true if the base track names match after normalization.
 
@@ -118,6 +122,7 @@ Assuming our root cause analysis is correct:
 **Function**: `syncQueueWithPlayback()`
 
 **Specific Changes**:
+
 1. **Replace simple `toLowerCase()` comparison with `fuzzyTrackNameMatch()`**: Import and use the new utility for the track relinking check, so names like "Dirrty" and "Dirrty (feat. Redman)" are recognized as the same track.
 2. **Add force-play guard**: Track the last force-played Spotify track ID in a new private field `lastForcePlayedTrackId: string | null`. Before calling `playNextTrack()`, check if `currentSpotifyTrack.id === this.lastForcePlayedTrackId`. If so, skip the call. Set the field when `playNextTrack()` is called; clear it when a different track starts playing or an exact match is found.
 3. **Add diagnostic logging**: When the match fails and `playNextTrack()` is about to be called, log the Spotify track ID, expected queue track ID, both track names, and the fuzzy match result using `this.controller.log()`.
@@ -128,8 +133,7 @@ Assuming our root cause analysis is correct:
 
 **Function**: `playNextTrackImpl()`
 
-**Specific Changes**:
-4. **Update force-play guard on successful play**: After a successful `playTrackWithRetry()`, set `lastForcePlayedTrackId` to the track's `spotify_track_id` so that `syncQueueWithPlayback()` won't re-trigger for this track.
+**Specific Changes**: 4. **Update force-play guard on successful play**: After a successful `playTrackWithRetry()`, set `lastForcePlayedTrackId` to the track's `spotify_track_id` so that `syncQueueWithPlayback()` won't re-trigger for this track.
 
 ---
 
@@ -137,8 +141,7 @@ Assuming our root cause analysis is correct:
 
 **Function**: `onTrackStarted()`
 
-**Specific Changes**:
-5. **Add deduplication for repeated calls**: Track the last track ID that `onTrackStarted()` was called for in a new private field `lastOnTrackStartedId: string | null`. If called again for the same `_currentTrack.id`, log a single concise deduplication message instead of the full roll/threshold log line, and return early (skip prefetch logic).
+**Specific Changes**: 5. **Add deduplication for repeated calls**: Track the last track ID that `onTrackStarted()` was called for in a new private field `lastOnTrackStartedId: string | null`. If called again for the same `_currentTrack.id`, log a single concise deduplication message instead of the full roll/threshold log line, and return early (skip prefetch logic).
 
 ---
 
@@ -146,8 +149,7 @@ Assuming our root cause analysis is correct:
 
 **Function**: `markFinishedTrackAsPlayed()`
 
-**Specific Changes**:
-6. **Use `fuzzyTrackNameMatch()` for fallback matching**: Replace the existing `item.tracks.name.toLowerCase() === trackName.toLowerCase()` comparison with `fuzzyTrackNameMatch()` for consistency.
+**Specific Changes**: 6. **Use `fuzzyTrackNameMatch()` for fallback matching**: Replace the existing `item.tracks.name.toLowerCase() === trackName.toLowerCase()` comparison with `fuzzyTrackNameMatch()` for consistency.
 
 ## Testing Strategy
 
@@ -162,12 +164,14 @@ The testing strategy follows a two-phase approach: first, surface counterexample
 **Test Plan**: Write unit tests that call `syncQueueWithPlayback()` with SDK states where the track ID doesn't match any queue item but the track name is a fuzzy match (with parenthetical suffixes). Run these tests on the UNFIXED code to observe that `playNextTrack()` is called (demonstrating the bug).
 
 **Test Cases**:
+
 1. **Featuring Artist Suffix Test**: SDK reports "Dirrty (feat. Redman)", queue has "Dirrty" — `playNextTrack()` should NOT be called but WILL be on unfixed code
 2. **Remaster Suffix Test**: SDK reports "Bohemian Rhapsody - Remastered 2011", queue has "Bohemian Rhapsody" — will fail on unfixed code
 3. **Repeated Force-Play Test**: Call `syncQueueWithPlayback()` twice with the same mismatched state — `playNextTrack()` should only be called once but WILL be called twice on unfixed code
 4. **DJService Deduplication Test**: Call `onTrackStarted()` twice for the same track — should log deduplication message but WON'T on unfixed code
 
 **Expected Counterexamples**:
+
 - `playNextTrack()` is called for tracks that are actually the same song with different metadata
 - `playNextTrack()` is called repeatedly for the same track on consecutive state changes
 - `onTrackStarted()` logs full roll/threshold details for every repeated call
@@ -177,6 +181,7 @@ The testing strategy follows a two-phase approach: first, surface counterexample
 **Goal**: Verify that for all inputs where the bug condition holds, the fixed function produces the expected behavior.
 
 **Pseudocode:**
+
 ```
 FOR ALL input WHERE isBugCondition(input) DO
   result := syncQueueWithPlayback_fixed(input.sdkState)
@@ -190,6 +195,7 @@ END FOR
 **Goal**: Verify that for all inputs where the bug condition does NOT hold, the fixed function produces the same result as the original function.
 
 **Pseudocode:**
+
 ```
 FOR ALL input WHERE NOT isBugCondition(input) DO
   ASSERT syncQueueWithPlayback_original(input) = syncQueueWithPlayback_fixed(input)
@@ -197,6 +203,7 @@ END FOR
 ```
 
 **Testing Approach**: Property-based testing is recommended for preservation checking because:
+
 - It generates many test cases automatically across the input domain (random track names, IDs, queue configurations)
 - It catches edge cases that manual unit tests might miss (empty names, special characters, very long names)
 - It provides strong guarantees that behavior is unchanged for all non-buggy inputs
@@ -204,6 +211,7 @@ END FOR
 **Test Plan**: Observe behavior on UNFIXED code first for exact-match inputs and genuine-mismatch inputs, then write property-based tests capturing that behavior.
 
 **Test Cases**:
+
 1. **Exact ID Match Preservation**: Verify that when Spotify track ID matches a queue item, `currentQueueTrack` is updated and `playNextTrack()` is NOT called — same behavior before and after fix
 2. **Empty Queue Preservation**: Verify that when queue is empty, `currentlyPlayingTrack` is set to null — same behavior before and after fix
 3. **Genuine Mismatch Preservation**: Verify that when a completely different track is playing (no fuzzy name match), `playNextTrack()` IS called — same behavior before and after fix
