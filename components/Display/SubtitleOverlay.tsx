@@ -1,5 +1,6 @@
 'use client'
 
+import React from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 
 interface SubtitleOverlayProps {
@@ -7,7 +8,7 @@ interface SubtitleOverlayProps {
   isVisible: boolean
 }
 
-export function SubtitleOverlay({ text, isVisible }: SubtitleOverlayProps) {
+export function SubtitleOverlay({ text, isVisible }: SubtitleOverlayProps): React.ReactElement | null {
   return (
     <AnimatePresence>
       {isVisible && text && (

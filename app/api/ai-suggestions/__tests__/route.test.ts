@@ -3,7 +3,7 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
 import fc from 'fast-check'
-import { aiSuggestionsRequestSchema } from '../route'
+import { aiSuggestionsRequestSchema } from '@/shared/validations/aiSuggestionSchemas'
 
 const PBT_CONFIG = { numRuns: 100 }
 

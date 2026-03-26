@@ -31,7 +31,8 @@ export function buildUserMessage(
   ]
 
   if (allExcluded.length > 0) {
-    message += '\n\nDo NOT suggest any of these recently played or currently queued songs:'
+    message +=
+      '\n\nDo NOT suggest any of these recently played or currently queued songs:'
     allExcluded.forEach((entry, i) => {
       message += `\n${i + 1}. "${entry.title}" by ${entry.artist}`
     })

@@ -386,7 +386,7 @@ export class QueueSynchronizer {
 
         // Diagnostic logging: surface why the match failed
         this.controller.log(
-          'warn',
+          'WARN',
           `[QueueSync] Track mismatch — Spotify ID: ${currentSpotifyTrack.id}, ` +
             `Queue ID: ${expectedTrack.tracks.spotify_track_id}, ` +
             `Spotify name: "${currentSpotifyTrack.name}", ` +

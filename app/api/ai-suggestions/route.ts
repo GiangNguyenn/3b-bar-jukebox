@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { z } from 'zod'
 import {
   getAiSuggestions,
   getRecentlyPlayed,
@@ -7,23 +6,11 @@ import {
 } from '@/services/aiSuggestion'
 import { createModuleLogger } from '@/shared/utils/logger'
 import { supabase } from '@/lib/supabase'
+import { aiSuggestionsRequestSchema } from '@/shared/validations/aiSuggestionSchemas'
 
 const logger = createModuleLogger('AISuggestionsAPI')
 
 export const maxDuration = 30
-
-export const aiSuggestionsRequestSchema = z.object({
-  prompt: z
-    .string()
-    .min(1, 'Prompt must not be empty')
-    .max(500, 'Prompt must be 500 characters or fewer'),
-  excludedTrackIds: z.array(z.string()),
-  queuedTracks: z.array(z.object({
-    title: z.string(),
-    artist: z.string()
-  })).optional().default([]),
-  profileId: z.string().min(1, 'Profile ID must not be empty')
-})
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
   const apiKey = process.env.VENICE_AI_API_KEY
