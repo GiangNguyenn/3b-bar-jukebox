@@ -31,10 +31,10 @@ function buildEnglishSystemPrompt(
   )
 }
 
-describe('Property 5: English prompt contains resolved personality fragment', () => {
+void describe('Property 5: English prompt contains resolved personality fragment', () => {
   // **Validates: Requirements 4.1, 4.2, 4.4**
 
-  it('for any valid personality ID, the English prompt contains that personality prompt fragment', () => {
+  void it('for any valid personality ID, the English prompt contains that personality prompt fragment', () => {
     fc.assert(
       fc.property(
         fc.constantFrom(...DJ_PERSONALITY_IDS),
@@ -54,7 +54,7 @@ describe('Property 5: English prompt contains resolved personality fragment', ()
     )
   })
 
-  it('for any invalid or missing personality, the prompt contains the default chill fragment', () => {
+  void it('for any invalid or missing personality, the prompt contains the default chill fragment', () => {
     const defaultFragment = DJ_PERSONALITIES.find(
       (p) => p.value === DEFAULT_DJ_PERSONALITY
     )!.prompt
@@ -82,7 +82,7 @@ describe('Property 5: English prompt contains resolved personality fragment', ()
     )
   })
 
-  it('when a non-chill personality is selected, "laid back, relaxed and chill" must not appear', () => {
+  void it('when a non-chill personality is selected, "laid back, relaxed and chill" must not appear', () => {
     const nonChillIds = DJ_PERSONALITY_IDS.filter((id) => id !== 'chill')
 
     fc.assert(
@@ -121,10 +121,10 @@ function buildSystemPrompt(
 
 const ENGLISH_PERSONALITY_FRAGMENTS = DJ_PERSONALITIES.map((p) => p.prompt)
 
-describe('Property 6: Vietnamese prompt isolation', () => {
+void describe('Property 6: Vietnamese prompt isolation', () => {
   // **Validates: Requirements 4.3**
 
-  it('for any personality value, when language is vietnamese, the system prompt starts with the fixed Vietnamese prompt', () => {
+  void it('for any personality value, when language is vietnamese, the system prompt starts with the fixed Vietnamese prompt', () => {
     fc.assert(
       fc.property(
         fc.oneof(
@@ -150,7 +150,7 @@ describe('Property 6: Vietnamese prompt isolation', () => {
     )
   })
 
-  it('for any personality value, when language is vietnamese, the system prompt must not contain any English personality prompt fragment', () => {
+  void it('for any personality value, when language is vietnamese, the system prompt must not contain any English personality prompt fragment', () => {
     fc.assert(
       fc.property(
         fc.oneof(

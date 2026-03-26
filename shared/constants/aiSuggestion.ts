@@ -11,7 +11,7 @@ export const PRESET_PROMPTS: PresetPrompt[] = [
     label: 'Drinking Anthems',
     emoji: '🍺',
     prompt:
-      'Classic drinking songs, pub anthems, and bar singalongs. Songs about beer, whiskey, pubs, bars, and drinking culture from rock, country, folk, and pop.'
+      'Classic drinking songs, pub anthems, and bar singalongs. Songs about beer, whiskey, pubs, bars, and drinking culture from rock, folk, and pop. Do not include country songs.'
   },
   {
     id: 'party',

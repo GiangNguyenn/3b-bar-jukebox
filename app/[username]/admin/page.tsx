@@ -38,6 +38,7 @@ import { QRCodeComponent } from '@/components/ui'
 
 import { useAdminTokenManagement } from '@/hooks/useAdminTokenManagement'
 import { usePlaybackEnforcer } from '@/hooks/usePlaybackEnforcer'
+import { usePublishNowPlaying } from '@/hooks/usePublishNowPlaying'
 
 // Recovery removed
 
@@ -368,6 +369,9 @@ export default function AdminPage(): JSX.Element {
 
   // Enforce single-device playback
   usePlaybackEnforcer(true) // Always enabled when admin page is loaded
+
+  // Publish now-playing state to Supabase for realtime display updates
+  usePublishNowPlaying(profile?.id ?? null)
 
   // Only show loading if we have no queue data at all
   if (queueLoading && (!queue || queue.length === 0) && !playlistError) {

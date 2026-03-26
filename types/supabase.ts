@@ -309,6 +309,67 @@ export type Database = {
           }
         ]
       }
+      now_playing: {
+        Row: {
+          album_art_url: string | null
+          album_name: string | null
+          artist_name: string | null
+          duration_ms: number | null
+          is_playing: boolean
+          profile_id: string
+          progress_ms: number | null
+          spotify_track_id: string | null
+          track_name: string | null
+          updated_at: string
+        }
+        Insert: {
+          album_art_url?: string | null
+          album_name?: string | null
+          artist_name?: string | null
+          duration_ms?: number | null
+          is_playing?: boolean
+          profile_id: string
+          progress_ms?: number | null
+          spotify_track_id?: string | null
+          track_name?: string | null
+          updated_at?: string
+        }
+        Update: {
+          album_art_url?: string | null
+          album_name?: string | null
+          artist_name?: string | null
+          duration_ms?: number | null
+          is_playing?: boolean
+          profile_id?: string
+          progress_ms?: number | null
+          spotify_track_id?: string | null
+          track_name?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'now_playing_profile_id_fkey'
+            columns: ['profile_id']
+            isOneToOne: true
+            referencedRelation: 'profiles'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'now_playing_profile_id_fkey'
+            columns: ['profile_id']
+            isOneToOne: true
+            referencedRelation: 'profiles_public'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'now_playing_profile_id_fkey'
+            columns: ['profile_id']
+            isOneToOne: true
+            referencedRelation: 'user_subscription_summary'
+            referencedColumns: ['profile_id']
+          }
+        ]
+      }
       playlists: {
         Row: {
           created_at: string
@@ -492,6 +553,55 @@ export type Database = {
             isOneToOne: false
             referencedRelation: 'user_subscription_summary'
             referencedColumns: ['subscription_id']
+          }
+        ]
+      }
+      recently_played_tracks: {
+        Row: {
+          artist: string
+          id: string
+          played_at: string
+          profile_id: string
+          spotify_track_id: string
+          title: string
+        }
+        Insert: {
+          artist: string
+          id?: string
+          played_at?: string
+          profile_id: string
+          spotify_track_id: string
+          title: string
+        }
+        Update: {
+          artist?: string
+          id?: string
+          played_at?: string
+          profile_id?: string
+          spotify_track_id?: string
+          title?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'recently_played_tracks_profile_id_fkey'
+            columns: ['profile_id']
+            isOneToOne: false
+            referencedRelation: 'profiles'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'recently_played_tracks_profile_id_fkey'
+            columns: ['profile_id']
+            isOneToOne: false
+            referencedRelation: 'profiles_public'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'recently_played_tracks_profile_id_fkey'
+            columns: ['profile_id']
+            isOneToOne: false
+            referencedRelation: 'user_subscription_summary'
+            referencedColumns: ['profile_id']
           }
         ]
       }

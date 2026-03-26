@@ -3,7 +3,7 @@
 import { useParams } from 'next/navigation'
 import { useRef, useEffect, useState } from 'react'
 import type { ReactElement } from 'react'
-import { useNowPlayingTrack } from '@/hooks/useNowPlayingTrack'
+import { useNowPlayingRealtime } from '@/hooks/useNowPlayingRealtime'
 import { useAlbumColors } from '@/hooks/useAlbumColors'
 import { useDjSubtitles } from '@/hooks/useDjSubtitles'
 import { supabaseBrowser } from '@/lib/supabase-browser'
@@ -46,15 +46,14 @@ export default function DisplayPage(): ReactElement {
   // DJ subtitle realtime subscription
   const { subtitleText, isVisible } = useDjSubtitles({ profileId })
 
-  // Fetch currently playing track with optimized polling
+  // Now-playing via Supabase Realtime (with 30s fallback polling)
   const {
     data: playbackState,
     error: playbackError,
     isLoading: isPlaybackLoading
-  } = useNowPlayingTrack({
-    token: null, // Use admin credentials for public display
-    enabled: true,
-    refetchInterval: 15000 // Poll every 15 seconds - reduces API calls significantly while maintaining smooth UX
+  } = useNowPlayingRealtime({
+    profileId,
+    fallbackInterval: 30000
   })
 
   // Extract track values with proper dependency management

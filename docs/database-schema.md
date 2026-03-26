@@ -188,3 +188,26 @@ CREATE TRIGGER branding_settings_updated_at
     FOR EACH ROW
     EXECUTE FUNCTION update_branding_settings_updated_at();
 ```
+
+### `now_playing`
+
+```sql
+-- Stores the current playback state for each venue, enabling realtime
+-- display updates via Supabase Realtime subscriptions.
+CREATE TABLE public.now_playing (
+    profile_id uuid NOT NULL,
+    spotify_track_id text NULL,
+    track_name text NULL,
+    artist_name text NULL,
+    album_name text NULL,
+    album_art_url text NULL,
+    duration_ms integer NULL,
+    is_playing boolean NOT NULL DEFAULT false,
+    progress_ms integer NULL DEFAULT 0,
+    updated_at timestamp with time zone NOT NULL DEFAULT timezone('utc'::text, now()),
+    CONSTRAINT now_playing_pkey PRIMARY KEY (profile_id),
+    CONSTRAINT now_playing_profile_id_fkey FOREIGN KEY (profile_id) REFERENCES public.profiles(id) ON DELETE CASCADE
+);
+```
+
+This table is upserted by `services/nowPlayingPublisher.ts` whenever the track or play/pause state changes. The public display page subscribes to realtime changes on this table via `hooks/useNowPlayingRealtime.ts`, with a fallback polling interval as a safety net.
