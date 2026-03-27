@@ -8,6 +8,10 @@ import { TrackDuplicateDetector } from '@/shared/utils/trackDuplicateDetector'
 import { playerLifecycleService } from '@/services/playerLifecycle'
 import { transferPlaybackToDevice } from '@/services/deviceManagement'
 import { buildTrackUri } from '@/shared/utils/spotifyUri'
+import { recoveryManager } from '@/services/player/recoveryManager'
+import { createModuleLogger } from '@/shared/utils/logger'
+
+const log = createModuleLogger('AutoPlayService')
 
 interface AutoPlayServiceConfig {
   checkInterval?: number // How often to check playback state (default: 5 seconds)
@@ -57,6 +61,7 @@ class AutoPlayService {
         error?: Error
       ) => void)
     | null = null
+  private unsubscribeSuspension: (() => void) | null = null
 
   constructor(config: AutoPlayServiceConfig = {}) {
     this.checkInterval = config.checkInterval || 1000 // Increased to 1000ms baseline to reduce API calls
@@ -79,6 +84,24 @@ class AutoPlayService {
 
     this.isRunning = true
     this.isPolling = false // Reset polling state
+
+    // Subscribe to token suspension changes
+    this.unsubscribeSuspension = recoveryManager.onSuspensionChange(
+      (suspended) => {
+        if (suspended) {
+          log('WARN', 'Token suspended — pausing polling')
+          if (this.intervalRef) {
+            clearInterval(this.intervalRef)
+            this.intervalRef = null
+          }
+        } else {
+          log('INFO', 'Token recovered — resuming polling')
+          if (this.isRunning) {
+            this.startPolling()
+          }
+        }
+      }
+    )
 
     // Start with the configured check interval
     this.startPolling()
@@ -139,6 +162,12 @@ class AutoPlayService {
     if (this.intervalRef) {
       clearInterval(this.intervalRef)
       this.intervalRef = null
+    }
+
+    // Clean up suspension listener
+    if (this.unsubscribeSuspension) {
+      this.unsubscribeSuspension()
+      this.unsubscribeSuspension = null
     }
   }
 
@@ -206,6 +235,11 @@ class AutoPlayService {
   }
 
   private async checkPlaybackState(): Promise<void> {
+    // Skip API calls when token is suspended — recovery in progress
+    if (recoveryManager.isTokenSuspended()) {
+      return
+    }
+
     // Prevent overlapping polling requests to avoid race conditions
     if (this.isPolling) {
       return

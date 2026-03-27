@@ -1,6 +1,7 @@
 import { getAppAccessToken } from '@/services/spotify/auth'
 import { getBaseUrl } from '@/shared/utils/domain'
 import { TokenError } from '@/shared/types/token'
+import type { EndpointFailureDetail } from '@/shared/types/token'
 import {
   safeParseTokenResponse,
   safeParseTokenHealthResponse,
@@ -56,6 +57,9 @@ class TokenManager {
   private refreshPromise: Promise<string> | null = null
   private refreshInProgress = false
   private onRefreshCallbacks: Array<() => void> = []
+  private lastRefreshAttemptDetails: EndpointFailureDetail[] = []
+  private lastSuccessfulRefresh: number | null = null
+  private tokenExpiryTime: number | null = null
 
   private constructor(config: TokenManagerConfig) {
     this.config = {
@@ -84,6 +88,31 @@ class TokenManager {
         this.onRefreshCallbacks.splice(index, 1)
       }
     }
+  }
+
+  /**
+   * Get per-endpoint failure details from the most recent refreshToken call.
+   */
+  public getLastRefreshAttemptDetails(): EndpointFailureDetail[] {
+    return this.lastRefreshAttemptDetails
+  }
+
+  /**
+   * Get token-related timestamps for diagnostics.
+   */
+  public getTokenTimestamps(): {
+    lastSuccessfulRefresh?: number
+    tokenExpiryTime?: number
+  } {
+    const result: { lastSuccessfulRefresh?: number; tokenExpiryTime?: number } =
+      {}
+    if (this.lastSuccessfulRefresh !== null) {
+      result.lastSuccessfulRefresh = this.lastSuccessfulRefresh
+    }
+    if (this.tokenExpiryTime !== null) {
+      result.tokenExpiryTime = this.tokenExpiryTime
+    }
+    return result
   }
 
   private notifyRefreshSuccess(): void {
@@ -241,6 +270,9 @@ class TokenManager {
     let lastError: Error | null = null
     let lastErrorCode: string | undefined
 
+    // Clear previous attempt details
+    this.lastRefreshAttemptDetails = []
+
     // Define token endpoints in priority order
     const endpoints = this.buildTokenEndpoints()
 
@@ -249,6 +281,8 @@ class TokenManager {
         const result = await this.tryTokenEndpoint(endpoint)
         if (result.token) {
           this.tokenCache = { token: result.token, expiry: result.expiry }
+          this.lastSuccessfulRefresh = Date.now()
+          this.tokenExpiryTime = result.expiry
           this.notifyRefreshSuccess()
           return result.token
         }
@@ -258,13 +292,20 @@ class TokenManager {
         }
       }
 
-      // All endpoints failed
+      // All endpoints failed — trigger coordinated suspension
       const errorMessage =
         'Failed to get token from user, admin, or public endpoints.'
       const error = lastError || new TokenError(errorMessage, lastErrorCode)
       if (addLog) {
         addLog('ERROR', errorMessage, 'TokenManager', error)
       }
+
+      // Lazy import to avoid circular dependency
+      const { recoveryManager } = await import(
+        '@/services/player/recoveryManager'
+      )
+      recoveryManager.enterSuspendedState(this.lastRefreshAttemptDetails)
+
       throw error
     } catch (error) {
       if (addLog) {
@@ -386,7 +427,9 @@ class TokenManager {
         return { expiry: 0 }
       }
 
-      // Non-OK response — try to extract error details
+      // Non-OK response — capture HTTP error details
+      let errorCode: string | undefined
+      let errorMessage: string | undefined
       try {
         const errorDataRaw = await response.json()
         const errorResult = this.parseErrorResponse(
@@ -394,18 +437,36 @@ class TokenManager {
           endpoint.label
         )
         if (errorResult.error) {
-          return {
-            expiry: 0,
-            error: errorResult.error,
-            errorCode: errorResult.code
-          }
+          errorCode = errorResult.code
+          errorMessage = errorResult.error.message
         }
       } catch {
         // Ignore JSON parse failures on error responses
       }
+
+      // Record failure detail for diagnostics
+      this.lastRefreshAttemptDetails.push({
+        endpoint: endpoint.label,
+        httpStatus: response.status,
+        errorCode,
+        errorMessage,
+        timestamp: Date.now()
+      })
+
+      if (errorCode || errorMessage) {
+        return {
+          expiry: 0,
+          error: new TokenError(
+            errorMessage ??
+              `${endpoint.label} token endpoint returned ${response.status}`,
+            errorCode
+          ),
+          errorCode
+        }
+      }
       return { expiry: 0 }
     } catch (fetchError) {
-      // Network/timeout errors — log and continue to next endpoint
+      // Network/timeout errors — log and record failure detail
       if (addLog) {
         addLog(
           'WARN',
@@ -414,6 +475,16 @@ class TokenManager {
           fetchError instanceof Error ? fetchError : undefined
         )
       }
+
+      this.lastRefreshAttemptDetails.push({
+        endpoint: endpoint.label,
+        httpStatus: 0,
+        errorCode: 'NETWORK_ERROR',
+        errorMessage:
+          fetchError instanceof Error ? fetchError.message : 'Unknown error',
+        timestamp: Date.now()
+      })
+
       return { expiry: 0 }
     }
   }

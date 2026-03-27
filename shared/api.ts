@@ -163,6 +163,7 @@ async function processRequestQueue() {
 
 import { tokenManager } from './token/tokenManager'
 import { getAppAccessToken } from '@/services/spotify/auth'
+import { recoveryManager } from '@/services/player/recoveryManager'
 
 export const sendApiRequest = async <T>({
   path,
@@ -178,6 +179,18 @@ export const sendApiRequest = async <T>({
   statisticsTracker,
   timeout = 30000 // Default 30s timeout to allow for IPv6 fallback
 }: ApiProps): Promise<T> => {
+  // 0. Suspension Guard: Fail fast if token recovery is in progress
+  if (
+    !isLocalApi &&
+    !providedToken &&
+    !useAppToken &&
+    recoveryManager.isTokenSuspended()
+  ) {
+    throw new ApiError('Token refresh suspended — recovery in progress', {
+      status: 503
+    })
+  }
+
   // 1. Circuit Breaker: Fail fast if globally rate limited
   if (!isLocalApi && isRateLimited()) {
     const waitSeconds = Math.ceil((globalRateLimitReset - Date.now()) / 1000)

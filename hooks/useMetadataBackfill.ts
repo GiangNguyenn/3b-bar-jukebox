@@ -3,6 +3,7 @@ import { useUserToken } from './useUserToken'
 import { backfillRandomMissingTrack } from '@/services/game/metadataBackfill'
 import { createModuleLogger } from '@/shared/utils/logger'
 import { showToast } from '@/lib/toast'
+import { recoveryManager } from '@/services/player/recoveryManager'
 
 const logger = createModuleLogger('useMetadataBackfill')
 
@@ -18,6 +19,8 @@ export function useMetadataBackfill() {
     if (!accessToken) return
 
     const runBackfill = async () => {
+      if (recoveryManager.isTokenSuspended()) return
+
       // Prevent concurrent runs
       if (isRunningRef.current) return
 

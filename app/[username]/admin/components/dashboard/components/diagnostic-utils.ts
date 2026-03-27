@@ -1,7 +1,9 @@
-import type { HealthStatus } from '@/shared/types/health'
+import type { HealthStatus, DiagnosticEvent } from '@/shared/types/health'
 import type { PlayerStatus } from '@/hooks/useSpotifyPlayer'
 
 import { formatAbsoluteTime } from '@/lib/utils'
+import { tokenManager } from '@/shared/token/tokenManager'
+import { recoveryManager } from '@/services/player/recoveryManager'
 
 export function hasErrorStatus(healthStatus: HealthStatus): boolean {
   return (
@@ -142,6 +144,140 @@ function getLogTimeSpan(
   }
 }
 
+/**
+ * Token-related keywords used to identify root cause errors in events and logs.
+ */
+const TOKEN_KEYWORDS = /token|refresh|401|auth|expired/i
+
+/**
+ * Deduplicate consecutive identical diagnostic events.
+ * Collapses runs of events with the same message into a single entry
+ * with count and time range.
+ */
+function deduplicateEvents(
+  events: DiagnosticEvent[]
+): Array<{
+  message: string
+  count: number
+  firstSeen: number
+  lastSeen: number
+}> {
+  if (events.length === 0) return []
+
+  const result: Array<{
+    message: string
+    count: number
+    firstSeen: number
+    lastSeen: number
+  }> = []
+
+  let current = {
+    message: events[0].message,
+    count: 1,
+    firstSeen: events[0].timestamp,
+    lastSeen: events[0].timestamp
+  }
+
+  for (let i = 1; i < events.length; i++) {
+    const event = events[i]
+    if (event.message === current.message) {
+      current.count++
+      current.lastSeen = event.timestamp
+    } else {
+      result.push(current)
+      current = {
+        message: event.message,
+        count: 1,
+        firstSeen: event.timestamp,
+        lastSeen: event.timestamp
+      }
+    }
+  }
+  result.push(current)
+
+  return result
+}
+
+/**
+ * Build root cause analysis from recent events and console logs.
+ * Identifies the earliest token-related error and constructs a causal chain.
+ */
+function buildRootCauseAnalysis(
+  events: DiagnosticEvent[],
+  logs: ConsoleLogEntry[]
+): {
+  earliestTokenError: { message: string; timestamp: number } | null
+  causalChain: string[]
+  tokenTimestamps: { lastSuccessfulRefresh?: number; tokenExpiryTime?: number }
+  endpointFailures: Array<{
+    endpoint: string
+    httpStatus: number
+    errorCode?: string
+    errorMessage?: string
+    timestamp: number
+  }>
+} {
+  // Find earliest token-related error in events
+  let earliestTokenError: { message: string; timestamp: number } | null = null
+  for (const event of events) {
+    if (TOKEN_KEYWORDS.test(event.message)) {
+      if (
+        !earliestTokenError ||
+        event.timestamp < earliestTokenError.timestamp
+      ) {
+        earliestTokenError = {
+          message: event.message,
+          timestamp: event.timestamp
+        }
+      }
+    }
+  }
+
+  // Also check logs for earlier token errors
+  for (const log of logs) {
+    if (log.level !== 'ERROR' && log.level !== 'WARN') continue
+    if (!TOKEN_KEYWORDS.test(log.message)) continue
+    const logTs = new Date(log.timestamp).getTime()
+    if (isNaN(logTs)) continue
+    if (!earliestTokenError || logTs < earliestTokenError.timestamp) {
+      earliestTokenError = { message: log.message, timestamp: logTs }
+    }
+  }
+
+  // Build causal chain: token failure → downstream cascade
+  const causalChain: string[] = []
+  if (earliestTokenError) {
+    causalChain.push(
+      `Token failure: ${earliestTokenError.message} at ${new Date(earliestTokenError.timestamp).toISOString()}`
+    )
+
+    // Look for downstream errors that occurred after the token failure
+    const downstreamErrors = new Set<string>()
+    for (const event of events) {
+      if (
+        event.timestamp > earliestTokenError.timestamp &&
+        !TOKEN_KEYWORDS.test(event.message)
+      ) {
+        downstreamErrors.add(event.message)
+      }
+    }
+    Array.from(downstreamErrors).forEach((msg) => {
+      causalChain.push(`Downstream cascade: ${msg}`)
+    })
+  }
+
+  // Get token timestamps and endpoint failure details
+  const tokenTimestamps = tokenManager.getTokenTimestamps()
+  const recoveryDiag = recoveryManager.getDiagnostics()
+
+  return {
+    earliestTokenError,
+    causalChain,
+    tokenTimestamps,
+    endpointFailures: recoveryDiag.lastFailureDetails
+  }
+}
+
 export function formatDiagnosticsForClipboard(
   healthStatus: HealthStatus,
   isReady: boolean,
@@ -234,6 +370,20 @@ export function formatDiagnosticsForClipboard(
         (l) =>
           `[${l.level}] ${new Date(l.timestamp).toISOString().split('T')[1].slice(0, 12)} ${l.message}`
       )
+    },
+    // ─── Additive enrichment fields ─────────────────────────────────────
+    rootCauseAnalysis: buildRootCauseAnalysis(
+      healthStatus.recentEvents ?? [],
+      logs
+    ),
+    deduplicatedEvents: deduplicateEvents(healthStatus.recentEvents ?? []),
+    tokenRecovery: {
+      disconnectedAt:
+        healthStatus.connection === 'disconnected'
+          ? ((healthStatus as unknown as Record<string, unknown>)
+              .disconnectedAt ?? null)
+          : null,
+      recoveryState: recoveryManager.getDiagnostics()
     }
   }
 

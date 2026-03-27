@@ -9,6 +9,7 @@ import {
   attemptDeviceRecovery,
   shouldAttemptDeviceRecovery
 } from '@/recovery/deviceRecovery'
+import { recoveryManager } from '@/services/player/recoveryManager'
 
 type DeviceHealthStatus =
   | 'healthy'
@@ -33,6 +34,8 @@ export function useDeviceHealth(deviceId: string | null): DeviceHealthStatus {
   const isRecoveringRef = useRef<boolean>(false)
 
   const checkDeviceHealth = async (): Promise<void> => {
+    if (recoveryManager.isTokenSuspended()) return
+
     if (!deviceId) {
       setDeviceStatus('unknown')
       return

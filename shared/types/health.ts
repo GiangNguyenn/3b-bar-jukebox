@@ -21,6 +21,11 @@ export interface HealthStatus {
   queueState?: QueueState
   failureMetrics?: FailureMetrics
   systemInfo?: SystemInfo
+  disconnectedAt?: number
+  tokenTimestamps?: {
+    lastSuccessfulRefresh?: number
+    tokenExpiryTime?: number
+  }
   connectivityInvestigation?: ConnectivityInvestigation
   internalState?: {
     authRetryCount: number

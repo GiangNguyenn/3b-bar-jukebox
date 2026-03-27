@@ -43,6 +43,18 @@ export interface TokenHealthResponse {
 }
 
 /**
+ * Per-endpoint failure detail captured during token refresh attempts.
+ * Used by RecoveryManager to track why each endpoint failed.
+ */
+export interface EndpointFailureDetail {
+  endpoint: string
+  httpStatus: number
+  errorCode?: string
+  errorMessage?: string
+  timestamp: number
+}
+
+/**
  * Error codes that indicate the jukebox is offline
  */
 export const OFFLINE_ERROR_CODES = [
