@@ -6,7 +6,7 @@ export class PlayerEventHandler {
     private service: PlayerLifecycleService,
     private onStatusChange: (status: string, error?: string) => void,
     private onDeviceIdChange: (deviceId: string) => void,
-    private onPlaybackStateChange: (state: SpotifyPlaybackState) => void
+    private onPlaybackStateChange: (state: SpotifyPlaybackState | null) => void
   ) {}
 
   attachListeners(player: Spotify.Player): void {

@@ -1,7 +1,7 @@
 'use client'
 
 import { useParams } from 'next/navigation'
-import { useRef, useEffect, useState } from 'react'
+import { useRef, useEffect } from 'react'
 import type { ReactElement } from 'react'
 import { useNowPlayingRealtime } from '@/hooks/useNowPlayingRealtime'
 import { useAlbumColors } from '@/hooks/useAlbumColors'

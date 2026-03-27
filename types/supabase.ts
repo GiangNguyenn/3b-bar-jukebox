@@ -722,6 +722,82 @@ export type Database = {
           }
         ]
       }
+      trivia_questions: {
+        Row: {
+          correct_index: number
+          created_at: string
+          id: string
+          options: Json
+          profile_id: string
+          question: string
+          spotify_track_id: string
+        }
+        Insert: {
+          correct_index: number
+          created_at?: string
+          id?: string
+          options: Json
+          profile_id: string
+          question: string
+          spotify_track_id: string
+        }
+        Update: {
+          correct_index?: number
+          created_at?: string
+          id?: string
+          options?: Json
+          profile_id?: string
+          question?: string
+          spotify_track_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'trivia_questions_profile_id_fkey'
+            columns: ['profile_id']
+            isOneToOne: false
+            referencedRelation: 'profiles'
+            referencedColumns: ['id']
+          }
+        ]
+      }
+      trivia_scores: {
+        Row: {
+          first_score_at: string | null
+          id: string
+          player_name: string
+          profile_id: string
+          score: number
+          session_id: string
+          updated_at: string
+        }
+        Insert: {
+          first_score_at?: string | null
+          id?: string
+          player_name: string
+          profile_id: string
+          score?: number
+          session_id: string
+          updated_at?: string
+        }
+        Update: {
+          first_score_at?: string | null
+          id?: string
+          player_name?: string
+          profile_id?: string
+          score?: number
+          session_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'trivia_scores_profile_id_fkey'
+            columns: ['profile_id']
+            isOneToOne: false
+            referencedRelation: 'profiles'
+            referencedColumns: ['id']
+          }
+        ]
+      }
       tracks: {
         Row: {
           album: string
@@ -839,6 +915,15 @@ export type Database = {
       }
     }
     Functions: {
+      trivia_determine_winner_and_reset: {
+        Args: {
+          p_profile_id: string
+        }
+        Returns: {
+          winner_name: string
+          winner_score: number
+        }[]
+      }
       check_premium_access: {
         Args: { user_profile_id: string }
         Returns: boolean
