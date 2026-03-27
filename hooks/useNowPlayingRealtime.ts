@@ -104,37 +104,57 @@ export function useNowPlayingRealtime({
       return
     }
 
-    // Initial fetch
-    void fetchFromTable()
+    // Extracted so it can be called on initial mount AND on tab focus recovery
+    const subscribe = () => {
+      // Tear down any existing channel before creating a new one
+      if (channelRef.current) {
+        supabaseBrowser.removeChannel(channelRef.current)
+        channelRef.current = null
+      }
 
-    // Subscribe to realtime changes
-    const channel = supabaseBrowser
-      .channel(`now_playing_${profileId}`)
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'now_playing',
-          filter: `profile_id=eq.${profileId}`
-        },
-        (payload) => {
-          const row = payload.new as NowPlayingRow | undefined
-          if (row) {
-            setData(rowToPlaybackState(row))
+      const channel = supabaseBrowser
+        .channel(`now_playing_${profileId}`)
+        .on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: 'now_playing',
+            filter: `profile_id=eq.${profileId}`
+          },
+          (payload) => {
+            const row = payload.new as NowPlayingRow | undefined
+            if (row) {
+              setData(rowToPlaybackState(row))
+            }
           }
-        }
-      )
-      .subscribe((status) => {
-        console.warn(`[useNowPlayingRealtime] subscription status: ${status}`)
-      })
+        )
+        .subscribe((status) => {
+          console.warn(`[useNowPlayingRealtime] subscription status: ${status}`)
+        })
 
-    channelRef.current = channel
+      channelRef.current = channel
+    }
+
+    // Initial fetch + subscribe
+    void fetchFromTable()
+    subscribe()
 
     // Fallback polling (safety net if realtime drops)
     intervalRef.current = setInterval(() => {
       void fetchFromTable()
     }, fallbackInterval)
+
+    // iOS Safari kills WebSockets and pauses timers when the tab is backgrounded.
+    // On tab focus: re-fetch the latest state AND reconnect the Realtime channel
+    // so future song changes are detected live again, not just the current one.
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        void fetchFromTable()
+        subscribe()
+      }
+    }
+    document.addEventListener('visibilitychange', handleVisibilityChange)
 
     return () => {
       if (channelRef.current) {
@@ -145,6 +165,7 @@ export function useNowPlayingRealtime({
         clearInterval(intervalRef.current)
         intervalRef.current = null
       }
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
     }
   }, [profileId, fallbackInterval, fetchFromTable])
 
