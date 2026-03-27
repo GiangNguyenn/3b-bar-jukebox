@@ -5,10 +5,12 @@ import { SpotifyPlaybackState } from '@/shared/types/spotify'
 
 /**
  * Creates a smoothly ticking progress state based on the server's playback state.
- * Advances the progress by 1 second locally when `is_playing` is true, 
+ * Advances the progress by 1 second locally when `is_playing` is true,
  * eliminating the need to poll the server for progress updates.
  */
-export function useSmoothProgress(playbackState: SpotifyPlaybackState | null): [number | null, React.Dispatch<React.SetStateAction<number | null>>] {
+export function useSmoothProgress(
+  playbackState: SpotifyPlaybackState | null
+): [number | null, React.Dispatch<React.SetStateAction<number | null>>] {
   const [localProgress, setLocalProgress] = useState<number | null>(null)
 
   useEffect(() => {

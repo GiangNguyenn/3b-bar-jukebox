@@ -36,9 +36,9 @@ export function usePlaybackControls(): {
     if (!deviceId) return
 
     // Explicitly manually activate the Spotify Web Player's audio element.
-    // Calling this during a direct user-click handler inherently unlocks the 
+    // Calling this during a direct user-click handler inherently unlocks the
     // browser's restrictive autoplay policies, ensuring that when the Spotify
-    // servers inevitably ping the iframe down the WebSocket pipeline to start 
+    // servers inevitably ping the iframe down the WebSocket pipeline to start
     // playing the music, the browser won't silently drop the audio.
     const player = playerLifecycleService.getPlayer()
     if (player && typeof player.activateElement === 'function') {
@@ -108,11 +108,24 @@ export function usePlaybackControls(): {
 
           try {
             // Play next track from queue
-            addLog('INFO', '[handlePlayPause] Awaiting playNextFromQueue...', 'Playback')
+            addLog(
+              'INFO',
+              '[handlePlayPause] Awaiting playNextFromQueue...',
+              'Playback'
+            )
             await playerLifecycleService.playNextFromQueue()
-            addLog('INFO', '[handlePlayPause] playNextFromQueue successfully completed!', 'Playback')
+            addLog(
+              'INFO',
+              '[handlePlayPause] playNextFromQueue successfully completed!',
+              'Playback'
+            )
           } catch (playbackErr) {
-            addLog('ERROR', `[handlePlayPause] playNextFromQueue threw an error!`, 'Playback', playbackErr instanceof Error ? playbackErr : undefined)
+            addLog(
+              'ERROR',
+              `[handlePlayPause] playNextFromQueue threw an error!`,
+              'Playback',
+              playbackErr instanceof Error ? playbackErr : undefined
+            )
           }
 
           // Ensure manual pause flag is cleared (handled by playNextTrack, but good for safety)

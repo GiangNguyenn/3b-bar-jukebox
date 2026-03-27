@@ -255,18 +255,26 @@ export class QueueSynchronizer {
 
   private async handleTrackFinishedImpl(state: PlayerSDKState): Promise<void> {
     // Rely on the last known state to identify the track that JUST finished playing!
-    // If the SDK completely zeros out the context on finish, relying purely on the 
+    // If the SDK completely zeros out the context on finish, relying purely on the
     // new `state` causes us to early return and fatally break the automatic progression flow.
-    const finishedTrack = this.lastKnownState?.track_window?.current_track || state.track_window?.current_track
+    const finishedTrack =
+      this.lastKnownState?.track_window?.current_track ||
+      state.track_window?.current_track
     if (!finishedTrack?.id) {
-      this.getLogger()('WARN', '[QueueSync] Cannot handle track finish: No track context found.')
+      this.getLogger()(
+        'WARN',
+        '[QueueSync] Cannot handle track finish: No track context found.'
+      )
       return
     }
 
     const currentSpotifyTrackId = finishedTrack.id
     const currentTrackName = finishedTrack.name || 'Unknown'
 
-    this.getLogger()('INFO', `[QueueSync] Automatically progressing past finished track: ${currentTrackName}`)
+    this.getLogger()(
+      'INFO',
+      `[QueueSync] Automatically progressing past finished track: ${currentTrackName}`
+    )
 
     // First serialized operation: mark played + find next track
     let nextTrack: JukeboxQueueItem | null = null
@@ -429,7 +437,10 @@ export class QueueSynchronizer {
 
     // Scenario A: Track completely ended, Spotify natively deleted the context
     if (lastTrack && !currentTrack) {
-      this.getLogger()('INFO', '[isTrackFinished] Track ended (context fully cleared by SDK)')
+      this.getLogger()(
+        'INFO',
+        '[isTrackFinished] Track ended (context fully cleared by SDK)'
+      )
       return true
     }
 
@@ -439,7 +450,10 @@ export class QueueSynchronizer {
 
     // Scenario B: Context naturally progressed to a completely different track natively
     if (lastTrack.uri !== currentTrack.uri) {
-      this.getLogger()('INFO', `[isTrackFinished] Native track progression detected: ${lastTrack.name} -> ${currentTrack.name}`)
+      this.getLogger()(
+        'INFO',
+        `[isTrackFinished] Native track progression detected: ${lastTrack.name} -> ${currentTrack.name}`
+      )
       return true
     }
 
@@ -447,11 +461,15 @@ export class QueueSynchronizer {
     const trackJustFinished =
       !this.lastKnownState.paused &&
       state.paused &&
-      (state.position === 0 || this.lastKnownState.duration - state.position < 2000) &&
+      (state.position === 0 ||
+        this.lastKnownState.duration - state.position < 2000) &&
       this.lastKnownState.position > 2000
 
     if (trackJustFinished) {
-      this.getLogger()('INFO', '[isTrackFinished] Track naturally paused at end')
+      this.getLogger()(
+        'INFO',
+        '[isTrackFinished] Track naturally paused at end'
+      )
       return true
     }
 

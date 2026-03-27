@@ -45,12 +45,14 @@ export function JukeboxSection({
 
   const { profileId, isLoading: isProfileLoading } = useProfileId()
 
-  const { data: currentlyPlaying, isLoading: isTrackLoading } = useNowPlayingRealtime({
-    profileId,
-    fallbackInterval: 30000
-  })
+  const { data: currentlyPlaying, isLoading: isTrackLoading } =
+    useNowPlayingRealtime({
+      profileId,
+      fallbackInterval: 30000
+    })
 
-  const [smoothProgress, setSmoothProgress] = useSmoothProgress(currentlyPlaying)
+  const [smoothProgress, setSmoothProgress] =
+    useSmoothProgress(currentlyPlaying)
   const isLoading = isProfileLoading || isTrackLoading
 
   const { handlePlayPause, handleSkip, isActuallyPlaying, isSkipLoading } =
@@ -187,8 +189,7 @@ export function JukeboxSection({
                 </div>
               </div>
               <div className='text-xs text-gray-400'>
-                {smoothProgress !== null &&
-                currentlyPlaying.item.duration_ms
+                {smoothProgress !== null && currentlyPlaying.item.duration_ms
                   ? formatProgress(
                       smoothProgress,
                       currentlyPlaying.item.duration_ms
@@ -198,33 +199,32 @@ export function JukeboxSection({
             </div>
 
             {/* Progress Bar - Clickable */}
-            {smoothProgress !== null &&
-              currentlyPlaying.item.duration_ms && (
-                <div className='space-y-1'>
+            {smoothProgress !== null && currentlyPlaying.item.duration_ms && (
+              <div className='space-y-1'>
+                <div
+                  ref={progressBarRef}
+                  className='h-2 w-full cursor-pointer rounded-full bg-gray-700 transition-all hover:h-2.5'
+                  onClick={handleClick}
+                  onMouseDown={handleMouseDown}
+                  onMouseMove={handleMouseMove}
+                  onMouseUp={handleMouseUp}
+                  onMouseLeave={handleMouseLeave}
+                  title='Click or drag to seek'
+                >
                   <div
-                    ref={progressBarRef}
-                    className='h-2 w-full cursor-pointer rounded-full bg-gray-700 transition-all hover:h-2.5'
-                    onClick={handleClick}
-                    onMouseDown={handleMouseDown}
-                    onMouseMove={handleMouseMove}
-                    onMouseUp={handleMouseUp}
-                    onMouseLeave={handleMouseLeave}
-                    title='Click or drag to seek'
-                  >
-                    <div
-                      className={`pointer-events-none h-full rounded-full transition-all ${isSeeking ? 'bg-blue-500' : 'bg-green-500'}`}
-                      style={{
-                        width: `${getProgressPercentage(smoothProgress, currentlyPlaying.item.duration_ms)}%`,
-                        transitionDuration: isSeeking ? '0ms' : '1000ms'
-                      }}
-                    />
-                  </div>
-                  <div className='flex justify-between text-xs text-gray-400'>
-                    <span>{formatTime(smoothProgress)}</span>
-                    <span>{formatTime(currentlyPlaying.item.duration_ms)}</span>
-                  </div>
+                    className={`pointer-events-none h-full rounded-full transition-all ${isSeeking ? 'bg-blue-500' : 'bg-green-500'}`}
+                    style={{
+                      width: `${getProgressPercentage(smoothProgress, currentlyPlaying.item.duration_ms)}%`,
+                      transitionDuration: isSeeking ? '0ms' : '1000ms'
+                    }}
+                  />
                 </div>
-              )}
+                <div className='flex justify-between text-xs text-gray-400'>
+                  <span>{formatTime(smoothProgress)}</span>
+                  <span>{formatTime(currentlyPlaying.item.duration_ms)}</span>
+                </div>
+              </div>
+            )}
           </div>
         )}
 

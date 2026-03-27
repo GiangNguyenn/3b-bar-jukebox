@@ -36,9 +36,12 @@ export function useProfileId(explicitUsername?: string) {
       .single<{ id: string }>()
       .then(({ data, error: fetchError }) => {
         if (!isMounted) return
-        
+
         if (fetchError) {
-          console.warn('[useProfileId] profile lookup error:', fetchError.message)
+          console.warn(
+            '[useProfileId] profile lookup error:',
+            fetchError.message
+          )
           setError(fetchError.message)
         } else if (data) {
           setProfileId(data.id)

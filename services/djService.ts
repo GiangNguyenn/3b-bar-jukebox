@@ -47,7 +47,8 @@ class DJService {
   private getAudioContext(): AudioContext | null {
     if (!this.audioContext) {
       try {
-        const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext
+        const AudioContextClass =
+          window.AudioContext || (window as any).webkitAudioContext
         if (AudioContextClass) {
           this.audioContext = new AudioContextClass()
         }
@@ -122,7 +123,9 @@ class DJService {
 
           audio.addEventListener('play', () => {
             if (audioCtx.state === 'suspended') {
-              audioCtx.resume().catch((e) => warn('Failed to resume AudioContext', e))
+              audioCtx
+                .resume()
+                .catch((e) => warn('Failed to resume AudioContext', e))
             }
           })
         }

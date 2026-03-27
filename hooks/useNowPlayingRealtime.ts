@@ -97,7 +97,7 @@ export function useNowPlayingRealtime({
   // Initial fetch + realtime subscription
   useEffect(() => {
     if (!profileId) {
-      // If we don't have a profileId, we can't fetch. 
+      // If we don't have a profileId, we can't fetch.
       // Components should use useProfileId's isLoading to handle the 'waiting for profile' state.
       // We set false here so we don't block indefinitely if no profile ever comes.
       setIsLoading(false)

@@ -207,8 +207,6 @@ export function usePlaylistData(username?: string) {
     }
   }, [])
 
-
-
   // Set up real-time subscription
   const setupRealtimeSubscription = useCallback(
     async (profileId: string): Promise<void> => {

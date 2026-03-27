@@ -77,7 +77,8 @@ export default function DisplayPage(): ReactElement {
 
   // Only show loading on initial load (before first response completes)
   // After initial load completes, never show loading screen even during background polling
-  const isInitialLoading = !hasInitialLoadRef.current && (isPlaybackLoading || isProfileLoading)
+  const isInitialLoading =
+    !hasInitialLoadRef.current && (isPlaybackLoading || isProfileLoading)
 
   // Loading state - only show on initial load
   if (isInitialLoading) {
