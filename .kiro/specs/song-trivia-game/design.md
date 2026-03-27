@@ -97,6 +97,7 @@ interface TriviaQuestionResponse {
 ```
 
 **Logic**:
+
 1. Check `trivia_questions` for existing row matching `(profile_id, spotify_track_id)`
 2. If cached, return it
 3. If not, call Venice AI with a system prompt instructing it to generate a music trivia question with 4 options in JSON format
@@ -105,6 +106,7 @@ interface TriviaQuestionResponse {
 6. Cache in `trivia_questions` and return
 
 **Venice AI prompt structure**:
+
 ```
 System: You are a music trivia question generator. Given a song, generate one multiple-choice trivia question about the song, artist, album, or genre. Return ONLY valid JSON: {"question": "...", "options": ["A", "B", "C", "D"], "correctIndex": 0}. The correctIndex must be 0-3 indicating which option is correct. Make questions fun and varied in difficulty.
 
@@ -129,6 +131,7 @@ interface ScoreSubmitResponse {
 ```
 
 **Logic**:
+
 1. Validate inputs (profile_id, session_id, player_name length 1–20)
 2. Upsert into `trivia_scores`: increment `score` by 1, update `player_name`, set `first_score_at` if null
 3. Return new total score
@@ -149,6 +152,7 @@ interface ResetResponse {
 ```
 
 **Logic**:
+
 1. Call Supabase RPC `trivia_determine_winner_and_reset(p_profile_id)` which atomically:
    - Selects the top scorer (highest score, earliest `first_score_at` for ties)
    - Deletes all rows for the venue
@@ -186,6 +190,7 @@ interface UseTriviaGameResult {
 ```
 
 **Responsibilities**:
+
 - Listens to `useNowPlayingRealtime` for song changes
 - Fetches/generates trivia question on song change
 - Manages answer selection state (one answer per question)
@@ -217,6 +222,7 @@ interface UseTriviaLeaderboardResult {
 ```
 
 **Responsibilities**:
+
 - Initial fetch of all `trivia_scores` rows where `score > 0` for the venue
 - Subscribes to Realtime `postgres_changes` on `trivia_scores` filtered by `profile_id`
 - Sorts entries by score descending, then `first_score_at` ascending for ties
@@ -259,6 +265,7 @@ Top-level page component. Replaces the existing DGS game page entirely.
 ```
 
 **Sub-components**:
+
 - `NowPlayingHeader` — displays song name, artist, album art
 - `TriviaQuestion` — question text + 4 answer buttons with correct/incorrect visual feedback
 - `PlayerScore` — current score display + countdown timer
@@ -380,4 +387,3 @@ export const resetRequestSchema = z.object({
   profile_id: z.string().uuid()
 })
 ```
-

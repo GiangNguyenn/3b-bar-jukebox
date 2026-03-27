@@ -33,7 +33,7 @@ void test('POST /api/trivia', async (t) => {
       method: 'POST',
       body: JSON.stringify({
         profile_id: 'bad-uuid',
-        spotify_track_id: 'track1',
+        spotify_track_id: 'track1'
       })
     })
 

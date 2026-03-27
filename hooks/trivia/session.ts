@@ -5,7 +5,7 @@ export const PLAYER_NAME_KEY = 'trivia_player_name'
 
 export function getOrCreateSession(): string {
   if (typeof window === 'undefined') return ''
-  
+
   let sessionId = localStorage.getItem(SESSION_KEY)
   if (!sessionId) {
     sessionId = crypto.randomUUID()

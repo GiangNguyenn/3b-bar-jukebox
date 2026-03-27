@@ -22,17 +22,21 @@ export function TriviaQuestion({
 }: TriviaQuestionProps): React.ReactElement | null {
   if (error) {
     return (
-      <div className="p-6 bg-red-900/30 rounded-xl border border-red-800/50 mb-6 text-center">
-        <p className="text-red-400 font-medium">Failed to load trivia: {error}</p>
+      <div className='mb-6 rounded-xl border border-red-800/50 bg-red-900/30 p-6 text-center'>
+        <p className='font-medium text-red-400'>
+          Failed to load trivia: {error}
+        </p>
       </div>
     )
   }
 
   if (isLoading) {
     return (
-      <div className="p-8 bg-zinc-900/30 rounded-xl mb-6 flex flex-col items-center justify-center min-h-[300px]">
-        <div className="w-8 h-8 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin mb-4" />
-        <p className="text-zinc-400 font-medium animate-pulse">Generating trivia question...</p>
+      <div className='mb-6 flex min-h-[300px] flex-col items-center justify-center rounded-xl bg-zinc-900/30 p-8'>
+        <div className='mb-4 h-8 w-8 animate-spin rounded-full border-4 border-indigo-500 border-t-transparent' />
+        <p className='animate-pulse font-medium text-zinc-400'>
+          Generating trivia question...
+        </p>
       </div>
     )
   }
@@ -42,12 +46,12 @@ export function TriviaQuestion({
   }
 
   return (
-    <div className="bg-zinc-900/40 border border-zinc-800 rounded-xl p-4 md:p-6 mb-6">
-      <h3 className="text-xl md:text-2xl font-bold text-white mb-6 leading-relaxed">
+    <div className='mb-6 rounded-xl border border-zinc-800 bg-zinc-900/40 p-4 md:p-6'>
+      <h3 className='text-white mb-6 text-xl font-bold leading-relaxed md:text-2xl'>
         {question.question}
       </h3>
 
-      <div className="flex flex-col gap-3">
+      <div className='flex flex-col gap-3'>
         {question.options.map((opt, idx) => {
           const isSelected = selectedAnswer === idx
           const isCorrectAnswer = idx === question.correctIndex
@@ -85,13 +89,13 @@ export function TriviaQuestion({
       </div>
 
       {selectedAnswer !== null && (
-        <div className="mt-6 text-center animate-in fade-in slide-in-from-bottom-2 duration-300">
+        <div className='mt-6 text-center duration-300 animate-in fade-in slide-in-from-bottom-2'>
           {isCorrect ? (
-            <div className="inline-block px-4 py-2 bg-green-900/50 text-green-400 font-bold rounded-full border border-green-800">
+            <div className='inline-block rounded-full border border-green-800 bg-green-900/50 px-4 py-2 font-bold text-green-400'>
               ✓ Correct! +1 Point
             </div>
           ) : (
-            <div className="inline-block px-4 py-2 bg-red-900/50 text-red-400 font-bold rounded-full border border-red-800">
+            <div className='inline-block rounded-full border border-red-800 bg-red-900/50 px-4 py-2 font-bold text-red-400'>
               ✗ Incorrect!
             </div>
           )}

@@ -20,7 +20,9 @@ export interface UseTriviaLeaderboardResult {
   error: string | null
 }
 
-export function useTriviaLeaderboard({ profileId }: UseTriviaLeaderboardOptions): UseTriviaLeaderboardResult {
+export function useTriviaLeaderboard({
+  profileId
+}: UseTriviaLeaderboardOptions): UseTriviaLeaderboardResult {
   const [entries, setEntries] = useState<LeaderboardEntry[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -28,20 +30,23 @@ export function useTriviaLeaderboard({ profileId }: UseTriviaLeaderboardOptions)
   const fetchLeaderboard = useCallback(async () => {
     if (!profileId) return
 
-    const { data, error: fetchError } = await supabaseBrowser
+    const { data, error: fetchError } = (await supabaseBrowser
       .from('trivia_scores')
       .select('session_id, player_name, score, first_score_at')
       .eq('profile_id', profileId)
       .gt('score', 0)
       .order('score', { ascending: false })
-      .order('first_score_at', { ascending: true }) as { data: LeaderboardEntry[] | null, error: any }
+      .order('first_score_at', { ascending: true })) as {
+      data: LeaderboardEntry[] | null
+      error: any
+    }
 
     if (fetchError) {
       setError(fetchError.message)
     } else if (data) {
       setEntries(data)
     }
-    
+
     setIsLoading(false)
   }, [profileId])
 

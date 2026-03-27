@@ -9,13 +9,17 @@ export interface LeaderboardProps {
   isLoading: boolean
 }
 
-export function Leaderboard({ entries, currentSessionId, isLoading }: LeaderboardProps): React.ReactElement {
+export function Leaderboard({
+  entries,
+  currentSessionId,
+  isLoading
+}: LeaderboardProps): React.ReactElement {
   const [isOpen, setIsOpen] = useState(false)
 
   if (isLoading) {
     return (
-      <div className="w-full bg-zinc-900/30 rounded-xl p-4 flex items-center justify-center min-h-[60px]">
-        <div className="w-5 h-5 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin" />
+      <div className='flex min-h-[60px] w-full items-center justify-center rounded-xl bg-zinc-900/30 p-4'>
+        <div className='h-5 w-5 animate-spin rounded-full border-2 border-indigo-500 border-t-transparent' />
       </div>
     )
   }
@@ -26,67 +30,80 @@ export function Leaderboard({ entries, currentSessionId, isLoading }: Leaderboar
   const myRank = myIndex !== -1 ? myIndex + 1 : '-'
 
   return (
-    <div className="w-full bg-zinc-900/40 border border-zinc-800 rounded-xl overflow-hidden mb-8">
-      <button 
+    <div className='mb-8 w-full overflow-hidden rounded-xl border border-zinc-800 bg-zinc-900/40'>
+      <button
         onClick={() => setIsOpen(!isOpen)}
-        className="w-full p-4 flex items-center justify-between hover:bg-zinc-800/50 transition-colors"
+        className='flex w-full items-center justify-between p-4 transition-colors hover:bg-zinc-800/50'
       >
-        <div className="flex items-center gap-3">
-          <span className="text-lg font-bold text-white">🏆 Live Leaderboard</span>
+        <div className='flex items-center gap-3'>
+          <span className='text-white text-lg font-bold'>
+            🏆 Live Leaderboard
+          </span>
         </div>
-        
-        <div className="flex items-center gap-4">
+
+        <div className='flex items-center gap-4'>
           {myEntry && !isOpen && (
-            <div className="px-3 py-1 bg-indigo-900/30 text-indigo-300 text-sm rounded-full font-medium border border-indigo-800/50 hidden sm:block">
+            <div className='hidden rounded-full border border-indigo-800/50 bg-indigo-900/30 px-3 py-1 text-sm font-medium text-indigo-300 sm:block'>
               Rank: #{myRank} • {myEntry.score} pts
             </div>
           )}
-          
-          <svg 
-            className={`w-5 h-5 text-zinc-400 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`} 
-            fill="none" 
-            stroke="currentColor" 
-            viewBox="0 0 24 24"
+
+          <svg
+            className={`h-5 w-5 text-zinc-400 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`}
+            fill='none'
+            stroke='currentColor'
+            viewBox='0 0 24 24'
           >
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+            <path
+              strokeLinecap='round'
+              strokeLinejoin='round'
+              strokeWidth={2}
+              d='M19 9l-7 7-7-7'
+            />
           </svg>
         </div>
       </button>
 
       {isOpen && (
-        <div className="pb-4">
-          <div className="h-px bg-zinc-800 w-full mb-2" />
-          
+        <div className='pb-4'>
+          <div className='mb-2 h-px w-full bg-zinc-800' />
+
           {entries.length === 0 ? (
-            <div className="p-6 text-center text-zinc-500 italic">
+            <div className='p-6 text-center italic text-zinc-500'>
               No scores yet this hour. Be the first!
             </div>
           ) : (
-            <div className="flex flex-col gap-1 px-2 max-h-80 overflow-y-auto">
+            <div className='flex max-h-80 flex-col gap-1 overflow-y-auto px-2'>
               {entries.map((entry, idx) => {
                 const isMe = entry.session_id === currentSessionId
                 const rank = idx + 1
-                
+
                 let rankColor = 'text-zinc-500 font-medium'
                 if (rank === 1) rankColor = 'text-yellow-400 font-black'
                 else if (rank === 2) rankColor = 'text-zinc-300 font-bold'
                 else if (rank === 3) rankColor = 'text-orange-400 font-bold'
 
                 return (
-                  <div 
-                    key={entry.session_id} 
-                    className={`flex items-center justify-between p-3 rounded-lg ${isMe ? 'bg-indigo-900/30 border border-indigo-800/50' : 'hover:bg-zinc-800/30'}`}
+                  <div
+                    key={entry.session_id}
+                    className={`flex items-center justify-between rounded-lg p-3 ${isMe ? 'border border-indigo-800/50 bg-indigo-900/30' : 'hover:bg-zinc-800/30'}`}
                   >
-                    <div className="flex items-center gap-4">
+                    <div className='flex items-center gap-4'>
                       <span className={`w-6 text-center ${rankColor}`}>
                         {rank}
                       </span>
-                      <span className={`font-medium ${isMe ? 'text-indigo-300' : 'text-zinc-200'}`}>
+                      <span
+                        className={`font-medium ${isMe ? 'text-indigo-300' : 'text-zinc-200'}`}
+                      >
                         {entry.player_name}
-                        {isMe && <span className="ml-2 text-xs bg-indigo-500/20 px-2 py-0.5 rounded text-indigo-400">You</span>}
+                        {isMe && (
+                          <span className='ml-2 rounded bg-indigo-500/20 px-2 py-0.5 text-xs text-indigo-400'>
+                            You
+                          </span>
+                        )}
                       </span>
                     </div>
-                    <span className="font-mono text-zinc-400 font-bold">
+                    <span className='font-mono font-bold text-zinc-400'>
                       {entry.score}
                     </span>
                   </div>

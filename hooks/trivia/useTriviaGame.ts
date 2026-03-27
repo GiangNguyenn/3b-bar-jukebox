@@ -2,7 +2,13 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useNowPlayingRealtime } from '@/hooks/useNowPlayingRealtime'
-import { getOrCreateSession, getSavedPlayerName, savePlayerName, getSavedAnswers, saveAnswer } from './session'
+import {
+  getOrCreateSession,
+  getSavedPlayerName,
+  savePlayerName,
+  getSavedAnswers,
+  saveAnswer
+} from './session'
 import type { TriviaQuestionResponse } from '@/shared/validations/trivia'
 import type { SpotifyPlaybackState } from '@/shared/types/spotify'
 
@@ -35,7 +41,10 @@ function getSecondsUntilNextHour() {
   return Math.max(0, Math.floor((nextHour.getTime() - now.getTime()) / 1000))
 }
 
-export function useTriviaGame({ profileId, username }: UseTriviaGameOptions): UseTriviaGameResult {
+export function useTriviaGame({
+  profileId,
+  username
+}: UseTriviaGameOptions): UseTriviaGameResult {
   const [sessionId, setSessionId] = useState('')
   const [playerName, setPlayerName] = useState('')
   const [hasJoined, setHasJoined] = useState(false)
@@ -44,7 +53,7 @@ export function useTriviaGame({ profileId, username }: UseTriviaGameOptions): Us
   const [selectedAnswer, setSelectedAnswer] = useState<number | null>(null)
   const [isCorrect, setIsCorrect] = useState<boolean | null>(null)
   const [score, setScore] = useState(0)
-  
+
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [timeUntilReset, setTimeUntilReset] = useState(0)
@@ -69,7 +78,7 @@ export function useTriviaGame({ profileId, username }: UseTriviaGameOptions): Us
   // Timer loop for hourly reset
   useEffect(() => {
     setTimeUntilReset(getSecondsUntilNextHour())
-    
+
     const interval = setInterval(() => {
       const secondsLeft = getSecondsUntilNextHour()
       setTimeUntilReset(secondsLeft)
@@ -150,32 +159,44 @@ export function useTriviaGame({ profileId, username }: UseTriviaGameOptions): Us
     setHasJoined(true)
   }, [])
 
-  const selectAnswer = useCallback((index: number) => {
-    if (selectedAnswer !== null || !question || !profileId || !hasJoined) return
+  const selectAnswer = useCallback(
+    (index: number) => {
+      if (selectedAnswer !== null || !question || !profileId || !hasJoined)
+        return
 
-    setSelectedAnswer(index)
-    const correct = index === question.correctIndex
-    setIsCorrect(correct)
+      setSelectedAnswer(index)
+      const correct = index === question.correctIndex
+      setIsCorrect(correct)
 
-    if (nowPlaying?.item?.id) {
-      saveAnswer(nowPlaying.item.id, index)
-    }
+      if (nowPlaying?.item?.id) {
+        saveAnswer(nowPlaying.item.id, index)
+      }
 
-    if (correct) {
-      setScore(s => s + 1)
-      
-      // Fire and forget score submission
-      fetch('/api/trivia/scores', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          profile_id: profileId,
-          session_id: sessionId,
-          player_name: playerName
-        })
-      }).catch(console.error)
-    }
-  }, [selectedAnswer, question, profileId, hasJoined, sessionId, playerName, nowPlaying])
+      if (correct) {
+        setScore((s) => s + 1)
+
+        // Fire and forget score submission
+        fetch('/api/trivia/scores', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            profile_id: profileId,
+            session_id: sessionId,
+            player_name: playerName
+          })
+        }).catch(console.error)
+      }
+    },
+    [
+      selectedAnswer,
+      question,
+      profileId,
+      hasJoined,
+      sessionId,
+      playerName,
+      nowPlaying
+    ]
+  )
 
   return {
     question,

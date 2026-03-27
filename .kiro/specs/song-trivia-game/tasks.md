@@ -7,7 +7,9 @@ Replace the existing DGS music game with a song trivia game. Implementation proc
 ## Tasks
 
 - [x] 1. Create database schema and migrations
+
   - [x] 1.1 Apply Supabase migration for `trivia_questions` table
+
     - Use the Supabase MCP `apply_migration` tool to apply the `trivia_questions` table DDL
     - Include UUID primary key, `profile_id` FK to profiles, `spotify_track_id`, `question`, `options` (JSONB), `correct_index` (SMALLINT 0–3), `created_at`
     - Add UNIQUE constraint on `(profile_id, spotify_track_id)`
@@ -16,6 +18,7 @@ Replace the existing DGS music game with a song trivia game. Implementation proc
     - _Requirements: 8.1, 8.2_
 
   - [x] 1.2 Apply Supabase migration for `trivia_scores` table
+
     - Use the Supabase MCP `apply_migration` tool to apply the `trivia_scores` table DDL
     - Include UUID primary key, `profile_id` FK, `session_id`, `player_name` (1–20 chars), `score` (integer >= 0), `first_score_at`, `updated_at`
     - Add UNIQUE constraint on `(profile_id, session_id)`
@@ -30,7 +33,9 @@ Replace the existing DGS music game with a song trivia game. Implementation proc
     - _Requirements: 6.1, 6.3, 6.4_
 
 - [ ] 2. Create shared validation schemas and types
+
   - [ ] 2.1 Create Zod validation schemas in `shared/validations/trivia.ts`
+
     - Define `triviaQuestionRequestSchema` (profile_id uuid, spotify_track_id, track_name, artist_name, album_name — all non-empty strings)
     - Define `triviaQuestionResponseSchema` (question, options as 4-string tuple, correctIndex 0–3)
     - Define `scoreSubmitRequestSchema` (profile_id uuid, session_id non-empty, player_name 1–20 chars)
@@ -45,7 +50,9 @@ Replace the existing DGS music game with a song trivia game. Implementation proc
     - Use `node:test` and `node:assert`
 
 - [x] 3. Implement trivia question generation API
+
   - [x] 3.1 Create `POST /api/trivia/route.ts` for question generation
+
     - Parse and validate request body with `triviaQuestionRequestSchema`
     - Check `trivia_questions` table for cached question matching `(profile_id, spotify_track_id)`
     - If cached, return the cached question
@@ -67,7 +74,9 @@ Replace the existing DGS music game with a song trivia game. Implementation proc
     - _Requirements: 1.2, 1.3, 1.4, 8.2_
 
 - [/] 4. Implement score submission API
+
   - [ ] 4.1 Create `POST /api/trivia/scores/route.ts` for score submission
+
     - Parse and validate request body with `scoreSubmitRequestSchema`
     - Upsert into `trivia_scores`: increment `score` by 1, update `player_name`, set `first_score_at` to `now()` if currently null
     - Return `{ success: true, new_score }` on success
@@ -83,7 +92,9 @@ Replace the existing DGS music game with a song trivia game. Implementation proc
     - _Requirements: 3.2, 4.3_
 
 - [ ] 5. Implement hourly reset API
+
   - [ ] 5.1 Create `POST /api/trivia/reset/route.ts` for hourly reset
+
     - Parse and validate request body with `resetRequestSchema`
     - Call Supabase RPC `trivia_determine_winner_and_reset(p_profile_id)`
     - If winner exists, upsert a DJ announcement into `dj_announcements` with a winner congratulations script text and `is_active: true`
@@ -100,10 +111,13 @@ Replace the existing DGS music game with a song trivia game. Implementation proc
     - _Requirements: 6.1, 6.3, 6.4_
 
 - [ ] 6. Checkpoint — Verify API layer
+
   - Ensure all tests pass, ask the user if questions arise.
 
 - [x] 7. Implement React hooks
+
   - [x] 7.1 Create `useTriviaGame` hook in `hooks/trivia/useTriviaGame.ts`
+
     - Accept `profileId` and `username` as options
     - Manage player session: generate `sessionId` (crypto.randomUUID) and store with `playerName` in localStorage
     - Expose `hasJoined`, `joinGame(name)`, `setPlayerName(name)` for name entry flow
@@ -119,6 +133,7 @@ Replace the existing DGS music game with a song trivia game. Implementation proc
     - _Requirements: 1.1, 2.1, 2.2, 2.3, 2.5, 3.1, 3.2, 3.3, 3.4, 4.1, 4.2, 4.4, 4.5, 6.5, 7.1, 8.3, 8.4_
 
   - [x] 7.2 Create `useTriviaLeaderboard` hook in `hooks/trivia/useTriviaLeaderboard.ts`
+
     - Accept `profileId` as option
     - Initial fetch: query `trivia_scores` where `profile_id` matches and `score > 0`, ordered by score DESC then `first_score_at` ASC
     - Subscribe to Supabase Realtime `postgres_changes` on `trivia_scores` filtered by `profile_id`
@@ -136,13 +151,16 @@ Replace the existing DGS music game with a song trivia game. Implementation proc
     - _Requirements: 4.1, 4.2, 4.4_
 
 - [x] 8. Implement UI components
+
   - [ ] 8.1 Create `NowPlayingHeader` component in `app/[username]/game/components/NowPlayingHeader.tsx`
+
     - Display album art, song name, and artist name
     - Show a waiting state when no song is playing (requirement 2.4)
     - Responsive layout for mobile (min 320px viewport)
     - _Requirements: 9.1, 9.6, 2.4_
 
   - [ ] 8.2 Create `TriviaQuestion` component in `app/[username]/game/components/TriviaQuestion.tsx`
+
     - Display question text prominently
     - Render 4 answer option buttons arranged vertically
     - On answer selection: highlight correct answer green, incorrect answer red (requirements 3.1, 3.5)
@@ -151,11 +169,13 @@ Replace the existing DGS music game with a song trivia game. Implementation proc
     - _Requirements: 9.2, 9.3, 3.1, 3.3, 3.5, 2.3_
 
   - [ ] 8.3 Create `PlayerScore` component in `app/[username]/game/components/PlayerScore.tsx`
+
     - Display current player score
     - Display countdown timer showing time until next hourly reset (MM:SS format)
     - _Requirements: 3.4, 6.5_
 
   - [ ] 8.4 Create `Leaderboard` component in `app/[username]/game/components/Leaderboard.tsx`
+
     - Render a collapsible section with ranked player list
     - Highlight the current player entry (match by `sessionId`)
     - Show player rank, name, and score
@@ -169,10 +189,13 @@ Replace the existing DGS music game with a song trivia game. Implementation proc
     - _Requirements: 4.1, 4.3_
 
 - [ ] 9. Checkpoint — Verify components render
+
   - Ensure all tests pass, ask the user if questions arise.
 
 - [x] 10. Wire everything together in the game page
+
   - [ ] 10.1 Replace `app/[username]/game/page.tsx` with trivia game page
+
     - Remove all existing DGS game imports and logic
     - Use `useParams` to get `username`, `useProfileId` to resolve `profileId`
     - Initialize `useTriviaGame` and `useTriviaLeaderboard` hooks

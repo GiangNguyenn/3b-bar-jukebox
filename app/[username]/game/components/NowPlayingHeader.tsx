@@ -8,34 +8,48 @@ export interface NowPlayingHeaderProps {
   albumArtUrl: string | null
 }
 
-export function NowPlayingHeader({ trackName, artistName, albumArtUrl }: NowPlayingHeaderProps): React.ReactElement {
+export function NowPlayingHeader({
+  trackName,
+  artistName,
+  albumArtUrl
+}: NowPlayingHeaderProps): React.ReactElement {
   if (!trackName || !artistName) {
     return (
-      <div className="flex flex-col items-center justify-center p-8 bg-zinc-900/50 rounded-xl my-4 text-center">
-        <h2 className="text-xl font-bold text-zinc-300">Waiting for music...</h2>
-        <p className="text-sm text-zinc-500 mt-2">The game will begin when the next song starts playing.</p>
+      <div className='my-4 flex flex-col items-center justify-center rounded-xl bg-zinc-900/50 p-8 text-center'>
+        <h2 className='text-xl font-bold text-zinc-300'>
+          Waiting for music...
+        </h2>
+        <p className='mt-2 text-sm text-zinc-500'>
+          The game will begin when the next song starts playing.
+        </p>
       </div>
     )
   }
 
   return (
-    <div className="flex flex-col sm:flex-row items-center sm:items-start gap-4 p-4 md:p-6 bg-zinc-900/40 rounded-xl mb-6 shadow-inner border border-zinc-800">
+    <div className='mb-6 flex flex-col items-center gap-4 rounded-xl border border-zinc-800 bg-zinc-900/40 p-4 shadow-inner sm:flex-row sm:items-start md:p-6'>
       {albumArtUrl ? (
         <img
           src={albumArtUrl}
           alt={`Album art for ${trackName}`}
-          className="w-32 h-32 sm:w-24 sm:h-24 rounded-lg shadow-xl object-cover"
+          className='h-32 w-32 rounded-lg object-cover shadow-xl sm:h-24 sm:w-24'
         />
       ) : (
-        <div className="w-32 h-32 sm:w-24 sm:h-24 rounded-lg shadow-xl bg-zinc-800 flex items-center justify-center">
-          <span className="text-zinc-500">No Art</span>
+        <div className='flex h-32 w-32 items-center justify-center rounded-lg bg-zinc-800 shadow-xl sm:h-24 sm:w-24'>
+          <span className='text-zinc-500'>No Art</span>
         </div>
       )}
-      <div className="flex-1 text-center sm:text-left mt-2 sm:mt-0 overflow-hidden">
-        <h2 className="text-2xl font-black text-white truncate w-full" title={trackName}>
+      <div className='mt-2 flex-1 overflow-hidden text-center sm:mt-0 sm:text-left'>
+        <h2
+          className='text-white w-full truncate text-2xl font-black'
+          title={trackName}
+        >
           {trackName}
         </h2>
-        <p className="text-lg text-zinc-400 mt-1 truncate w-full" title={artistName}>
+        <p
+          className='mt-1 w-full truncate text-lg text-zinc-400'
+          title={artistName}
+        >
           {artistName}
         </p>
       </div>

@@ -28,8 +28,8 @@ void test('POST /api/trivia/scores', async (t) => {
 
     const response = await POST(req)
     assert.strictEqual(response.status, 400)
-    
-    const body = await response.json() as { issues: unknown[] }
+
+    const body = (await response.json()) as { issues: unknown[] }
     assert.ok(body.issues.length > 0)
   })
 })

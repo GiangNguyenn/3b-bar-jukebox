@@ -17,7 +17,11 @@ export default function GamePage(): React.ReactElement {
   const username = params?.username as string
 
   // Resolve venue profile id
-  const { profileId, isLoading: isProfileLoading, error: profileError } = useProfileId(username || '')
+  const {
+    profileId,
+    isLoading: isProfileLoading,
+    error: profileError
+  } = useProfileId(username || '')
 
   // Initialize Game engine and Leaderboard using the profile ID
   const gameState = useTriviaGame({
@@ -31,45 +35,51 @@ export default function GamePage(): React.ReactElement {
 
   if (isProfileLoading) {
     return (
-      <div className="min-h-screen bg-black flex items-center justify-center p-4">
-        <div className="w-8 h-8 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin" />
+      <div className='flex min-h-screen items-center justify-center bg-black p-4'>
+        <div className='h-8 w-8 animate-spin rounded-full border-4 border-indigo-500 border-t-transparent' />
       </div>
     )
   }
 
   if (profileError || !profileId) {
     return (
-      <div className="min-h-screen bg-black flex items-center justify-center p-4">
-        <div className="bg-red-900/30 p-6 rounded-xl border border-red-800">
-          <h2 className="text-xl font-bold text-red-500 mb-2">Venue Not Found</h2>
-          <p className="text-red-400">Could not find a venue with the username @{username}</p>
+      <div className='flex min-h-screen items-center justify-center bg-black p-4'>
+        <div className='rounded-xl border border-red-800 bg-red-900/30 p-6'>
+          <h2 className='mb-2 text-xl font-bold text-red-500'>
+            Venue Not Found
+          </h2>
+          <p className='text-red-400'>
+            Could not find a venue with the username @{username}
+          </p>
         </div>
       </div>
     )
   }
 
   // Derive true score from leaderboard if available, otherwise fallback to optimistic local score
-  const myEntry = leaderboardState.entries.find((e) => e.session_id === gameState.sessionId)
+  const myEntry = leaderboardState.entries.find(
+    (e) => e.session_id === gameState.sessionId
+  )
   const displayScore = myEntry ? myEntry.score : gameState.score
 
   return (
-    <div className="min-h-screen bg-black text-zinc-100 font-sans selection:bg-indigo-500/30">
-      <div className="max-w-3xl mx-auto w-full p-4 sm:p-6 md:p-8 pt-6 sm:pt-10">
-        <header className="mb-8 text-center">
-          <h1 className="text-3xl font-black tracking-tight bg-gradient-to-r from-indigo-400 to-purple-400 bg-clip-text text-transparent">
+    <div className='min-h-screen bg-black font-sans text-zinc-100 selection:bg-indigo-500/30'>
+      <div className='mx-auto w-full max-w-3xl p-4 pt-6 sm:p-6 sm:pt-10 md:p-8'>
+        <header className='mb-8 text-center'>
+          <h1 className='bg-gradient-to-r from-indigo-400 to-purple-400 bg-clip-text text-3xl font-black tracking-tight text-transparent'>
             Song Trivia
           </h1>
         </header>
 
-        {!gameState.hasJoined && (
-          <NameEntryModal onJoin={gameState.joinGame} />
-        )}
+        {!gameState.hasJoined && <NameEntryModal onJoin={gameState.joinGame} />}
 
-        <main className="flex flex-col gap-2">
-          <NowPlayingHeader 
+        <main className='flex flex-col gap-2'>
+          <NowPlayingHeader
             trackName={gameState.nowPlaying?.item?.name ?? null}
             artistName={gameState.nowPlaying?.item?.artists[0]?.name ?? null}
-            albumArtUrl={gameState.nowPlaying?.item?.album.images?.[0]?.url ?? null}
+            albumArtUrl={
+              gameState.nowPlaying?.item?.album.images?.[0]?.url ?? null
+            }
           />
 
           <TriviaQuestion
