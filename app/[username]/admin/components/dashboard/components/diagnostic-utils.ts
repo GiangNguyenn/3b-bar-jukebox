@@ -154,9 +154,7 @@ const TOKEN_KEYWORDS = /token|refresh|401|auth|expired/i
  * Collapses runs of events with the same message into a single entry
  * with count and time range.
  */
-function deduplicateEvents(
-  events: DiagnosticEvent[]
-): Array<{
+function deduplicateEvents(events: DiagnosticEvent[]): Array<{
   message: string
   count: number
   firstSeen: number
