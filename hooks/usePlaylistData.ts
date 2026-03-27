@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { supabaseBrowser } from '@/lib/supabase-browser'
 import { JukeboxQueueItem } from '@/shared/types/queue'
+import { useProfileId } from '@/hooks/useProfileId'
 import { useConsoleLogsContext } from './ConsoleLogsProvider'
 import { queueManager } from '@/services/queueManager'
 import { queryWithRetry } from '@/lib/supabaseQuery'
@@ -19,6 +20,7 @@ export function usePlaylistData(username?: string) {
   const [error, setError] = useState<string | null>(null)
   const [isStale, setIsStale] = useState(false)
   const [isRealtimeConnected, setIsRealtimeConnected] = useState(false)
+  const { profileId, isLoading: isProfileLoading } = useProfileId(username)
   const { addLog } = useConsoleLogsContext()
   const supabase = supabaseBrowser
   const subscriptionRef = useRef<any>(null)
@@ -122,11 +124,7 @@ export function usePlaylistData(username?: string) {
         setIsStale(false)
 
         lastPollTimeRef.current = Date.now()
-        addLog(
-          'INFO',
-          `Queue data fetched successfully: ${queueData.length} tracks`,
-          'usePlaylistData'
-        )
+        // Removed verbose logging around routine fetches
       } catch (err) {
         // Categorize the error for better user feedback
         const { type: errorType, message: errorMessage } =
@@ -209,50 +207,7 @@ export function usePlaylistData(username?: string) {
     }
   }, [])
 
-  // Get profile ID for real-time subscriptions
-  const getProfileId = useCallback(async (): Promise<string | null> => {
-    if (!username) return null
 
-    try {
-      const { data: profile, error: profileError } = await queryWithRetry<{
-        id: string
-      }>(
-        supabase
-          .from('profiles')
-          .select('id')
-          .ilike('display_name', username)
-          .single<{ id: string }>(),
-        undefined,
-        `Fetch profile for username: ${username}`
-      )
-
-      if (profileError ?? !profile) {
-        const errorToLog =
-          profileError instanceof Error
-            ? profileError
-            : profileError !== null && profileError !== undefined
-              ? new Error(String(profileError))
-              : new Error('No profile returned')
-        addLog(
-          'ERROR',
-          `Failed to fetch profile for username: ${username}`,
-          'usePlaylistData',
-          errorToLog
-        )
-        return null
-      }
-
-      return profile.id
-    } catch (err) {
-      addLog(
-        'ERROR',
-        `Error getting profile ID: ${err instanceof Error ? err.message : 'Unknown error'}`,
-        'usePlaylistData',
-        err instanceof Error ? err : undefined
-      )
-      return null
-    }
-  }, [username, supabase, addLog])
 
   // Set up real-time subscription
   const setupRealtimeSubscription = useCallback(
@@ -334,11 +289,11 @@ export function usePlaylistData(username?: string) {
 
   // Initial setup
   useEffect(() => {
+    if (isProfileLoading) return
+
     const initialize = async (): Promise<void> => {
       if (!username) return
 
-      // Get profile ID first
-      const profileId = await getProfileId()
       if (!profileId) {
         setError('Profile not found')
         setIsLoading(false)
@@ -373,7 +328,8 @@ export function usePlaylistData(username?: string) {
     }
   }, [
     username,
-    getProfileId,
+    profileId,
+    isProfileLoading,
     fetchQueue,
     setupRealtimeSubscription,
     startPolling,
@@ -404,12 +360,13 @@ export function usePlaylistData(username?: string) {
   // The queueManager is the single source of truth used by the player
   return {
     data: queue, // React state is synced from queueManager, so it matches exactly what the player sees
-    isLoading,
+    isLoading: isLoading || isProfileLoading,
     isRefreshing,
     error,
     isStale,
     mutate,
     optimisticUpdate,
-    isRealtimeConnected
+    isRealtimeConnected,
+    profileId
   }
 }

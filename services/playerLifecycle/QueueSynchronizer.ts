@@ -63,7 +63,10 @@ export class QueueSynchronizer {
       message: string,
       context?: string,
       error?: Error
-    ) => {}
+    ) => {
+      // Defer to the controller's logger so it correctly displays in the UI console
+      this.controller.log(level, message, error)
+    }
   }
 
   /**
@@ -251,13 +254,19 @@ export class QueueSynchronizer {
   }
 
   private async handleTrackFinishedImpl(state: PlayerSDKState): Promise<void> {
-    const currentTrack = state.track_window?.current_track
-    if (!currentTrack?.id) {
+    // Rely on the last known state to identify the track that JUST finished playing!
+    // If the SDK completely zeros out the context on finish, relying purely on the 
+    // new `state` causes us to early return and fatally break the automatic progression flow.
+    const finishedTrack = this.lastKnownState?.track_window?.current_track || state.track_window?.current_track
+    if (!finishedTrack?.id) {
+      this.getLogger()('WARN', '[QueueSync] Cannot handle track finish: No track context found.')
       return
     }
 
-    const currentSpotifyTrackId = currentTrack.id
-    const currentTrackName = currentTrack.name || 'Unknown'
+    const currentSpotifyTrackId = finishedTrack.id
+    const currentTrackName = finishedTrack.name || 'Unknown'
+
+    this.getLogger()('INFO', `[QueueSync] Automatically progressing past finished track: ${currentTrackName}`)
 
     // First serialized operation: mark played + find next track
     let nextTrack: JukeboxQueueItem | null = null
@@ -290,8 +299,8 @@ export class QueueSynchronizer {
       if (finishedQueueItem?.profile_id) {
         void addToRecentlyPlayed(finishedQueueItem.profile_id, {
           spotifyTrackId: currentSpotifyTrackId,
-          title: currentTrack.name,
-          artist: currentTrack.artists[0]?.name ?? 'Unknown'
+          title: finishedTrack.name,
+          artist: finishedTrack.artists[0]?.name ?? 'Unknown'
         }).catch(() => {})
       }
 
@@ -418,23 +427,35 @@ export class QueueSynchronizer {
     const lastTrack = this.lastKnownState.track_window?.current_track
     const currentTrack = state.track_window?.current_track
 
+    // Scenario A: Track completely ended, Spotify natively deleted the context
+    if (lastTrack && !currentTrack) {
+      this.getLogger()('INFO', '[isTrackFinished] Track ended (context fully cleared by SDK)')
+      return true
+    }
+
     if (!lastTrack || !currentTrack) {
       return false
     }
 
+    // Scenario B: Context naturally progressed to a completely different track natively
     if (lastTrack.uri !== currentTrack.uri) {
-      return false
+      this.getLogger()('INFO', `[isTrackFinished] Native track progression detected: ${lastTrack.name} -> ${currentTrack.name}`)
+      return true
     }
 
+    // Scenario C: Track finished but Spotify paused it correctly at position 0, or lazily at duration length
     const trackJustFinished =
       !this.lastKnownState.paused &&
       state.paused &&
-      state.position === 0 &&
+      (state.position === 0 || this.lastKnownState.duration - state.position < 2000) &&
       this.lastKnownState.position > 2000
 
     if (trackJustFinished) {
+      this.getLogger()('INFO', '[isTrackFinished] Track naturally paused at end')
       return true
     }
+
+    // Scenario D: Track seamlessly repeated
 
     const wasNearEnd =
       this.lastKnownState.duration > 0 &&

@@ -1,6 +1,8 @@
 'use client'
 import Image from 'next/image'
-import { useNowPlayingTrack } from '@/hooks/useNowPlayingTrack'
+import { useNowPlayingRealtime } from '@/hooks/useNowPlayingRealtime'
+import { useProfileId } from '@/hooks/useProfileId'
+import { useSmoothProgress } from '@/hooks/useSmoothProgress'
 import { Loading } from '@/components/ui'
 import { usePlaybackControls } from '../../../hooks/usePlaybackControls'
 import { useSpotifyPlayerStore } from '@/hooks/useSpotifyPlayer'
@@ -41,11 +43,15 @@ export function JukeboxSection({
     }
   }, [])
 
-  const { data: currentlyPlaying, isLoading } = useNowPlayingTrack({
-    token: null, // Use admin credentials
-    enabled: true,
-    refetchInterval: 20000 // Poll every 20 seconds - reduces API calls while maintaining reasonable responsiveness
+  const { profileId, isLoading: isProfileLoading } = useProfileId()
+
+  const { data: currentlyPlaying, isLoading: isTrackLoading } = useNowPlayingRealtime({
+    profileId,
+    fallbackInterval: 30000
   })
+
+  const [smoothProgress, setSmoothProgress] = useSmoothProgress(currentlyPlaying)
+  const isLoading = isProfileLoading || isTrackLoading
 
   const { handlePlayPause, handleSkip, isActuallyPlaying, isSkipLoading } =
     usePlaybackControls()
@@ -90,6 +96,7 @@ export function JukeboxSection({
       clickPercentage * currentlyPlaying.item.duration_ms
     )
 
+    setSmoothProgress(seekPosition)
     setIsSeeking(true)
     try {
       await sendApiRequest({
@@ -180,10 +187,10 @@ export function JukeboxSection({
                 </div>
               </div>
               <div className='text-xs text-gray-400'>
-                {currentlyPlaying.progress_ms &&
+                {smoothProgress !== null &&
                 currentlyPlaying.item.duration_ms
                   ? formatProgress(
-                      currentlyPlaying.progress_ms,
+                      smoothProgress,
                       currentlyPlaying.item.duration_ms
                     )
                   : formatTime(currentlyPlaying.item.duration_ms)}
@@ -191,7 +198,7 @@ export function JukeboxSection({
             </div>
 
             {/* Progress Bar - Clickable */}
-            {currentlyPlaying.progress_ms &&
+            {smoothProgress !== null &&
               currentlyPlaying.item.duration_ms && (
                 <div className='space-y-1'>
                   <div
@@ -207,13 +214,13 @@ export function JukeboxSection({
                     <div
                       className={`pointer-events-none h-full rounded-full transition-all ${isSeeking ? 'bg-blue-500' : 'bg-green-500'}`}
                       style={{
-                        width: `${getProgressPercentage(currentlyPlaying.progress_ms, currentlyPlaying.item.duration_ms)}%`,
+                        width: `${getProgressPercentage(smoothProgress, currentlyPlaying.item.duration_ms)}%`,
                         transitionDuration: isSeeking ? '0ms' : '1000ms'
                       }}
                     />
                   </div>
                   <div className='flex justify-between text-xs text-gray-400'>
-                    <span>{formatTime(currentlyPlaying.progress_ms)}</span>
+                    <span>{formatTime(smoothProgress)}</span>
                     <span>{formatTime(currentlyPlaying.item.duration_ms)}</span>
                   </div>
                 </div>

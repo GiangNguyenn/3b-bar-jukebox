@@ -2,7 +2,7 @@
 
 import { Suspense, useEffect, useState, useCallback } from 'react'
 import Image from 'next/image'
-import { useNowPlayingTrack } from '@/hooks/useNowPlayingTrack'
+import { useNowPlayingRealtime } from '@/hooks/useNowPlayingRealtime'
 import { useArtistExtract } from '@/hooks/useArtistExtract'
 import { usePlaylistData } from '@/hooks/usePlaylistData'
 import { TrackDetails } from '@/shared/types/spotify'
@@ -34,13 +34,13 @@ export default function PlaylistPage(): JSX.Element {
     error: playlistError,
     isRefreshing: isPlaylistRefreshing,
     mutate: refreshQueue,
-    optimisticUpdate
+    optimisticUpdate,
+    profileId
   } = usePlaylistData(username)
 
-  const { data: currentlyPlaying } = useNowPlayingTrack({
-    token: null, // Don't use user token for public pages
-    enabled: true, // Always enabled for public pages
-    refetchInterval: 20000 // Poll every 20 seconds - reduces API calls while maintaining reasonable responsiveness
+  const { data: currentlyPlaying } = useNowPlayingRealtime({
+    profileId,
+    fallbackInterval: 30000
   })
 
   // Force refresh queue when currently playing track changes

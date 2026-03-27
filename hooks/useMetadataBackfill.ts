@@ -23,7 +23,6 @@ export function useMetadataBackfill() {
 
       isRunningRef.current = true
       try {
-        logger('INFO', 'Starting periodic metadata backfill...')
         const result = await backfillRandomMissingTrack(accessToken)
 
         if (result) {

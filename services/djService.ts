@@ -40,8 +40,23 @@ class DJService {
   private isAnnouncementInProgress: boolean = false
   private lastGeneratedScript: string | null = null
   private lastOnTrackStartedId: string | null = null
+  private audioContext: AudioContext | null = null
 
   private constructor() {}
+
+  private getAudioContext(): AudioContext | null {
+    if (!this.audioContext) {
+      try {
+        const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext
+        if (AudioContextClass) {
+          this.audioContext = new AudioContextClass()
+        }
+      } catch (err) {
+        warn('Failed to create AudioContext', err)
+      }
+    }
+    return this.audioContext
+  }
 
   static getInstance(): DJService {
     if (!DJService.instance) {
@@ -95,6 +110,25 @@ class DJService {
     return new Promise<void>((resolve, reject) => {
       const url = URL.createObjectURL(blob)
       const audio = new Audio(url)
+
+      try {
+        const audioCtx = this.getAudioContext()
+        if (audioCtx) {
+          const track = audioCtx.createMediaElementSource(audio)
+          const gainNode = audioCtx.createGain()
+          gainNode.gain.value = 2.5 // Boost DJ voice volume by 2.5x
+          track.connect(gainNode)
+          gainNode.connect(audioCtx.destination)
+
+          audio.addEventListener('play', () => {
+            if (audioCtx.state === 'suspended') {
+              audioCtx.resume().catch((e) => warn('Failed to resume AudioContext', e))
+            }
+          })
+        }
+      } catch (err) {
+        warn('Failed to apply audio gain:', err)
+      }
 
       audio.onended = () => {
         URL.revokeObjectURL(url)
@@ -292,14 +326,14 @@ class DJService {
     const roll = Math.random()
     const threshold = FREQUENCY_MAP[freq]
 
+    /* 
     log(
       `onTrackStarted | enabled=${enabled} freq=${freq} roll=${roll.toFixed(2)} threshold=${threshold} next="${nextTrack?.tracks?.name ?? 'none'}"`
     )
+    */
 
     if (!enabled || roll >= threshold) {
-      log(
-        `→ skipping prefetch (${!enabled ? 'DJ disabled' : `roll ${roll.toFixed(2)} ≥ ${threshold}`})`
-      )
+      // log(`→ skipping prefetch (${!enabled ? 'DJ disabled' : `roll ${roll.toFixed(2)} ≥ ${threshold}`})`)
       this.prefetchState = null
       return
     }

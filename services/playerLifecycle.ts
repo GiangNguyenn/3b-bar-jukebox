@@ -209,9 +209,25 @@ class PlayerLifecycleService {
         const errorMessage =
           error instanceof Error ? error.message : String(error)
 
-        // Handle "Restriction violated" by skipping to next track
-        if (errorMessage.includes('Restriction violated')) {
-          return false // Don't retry, just skip this track
+        // Handle "Restriction violated" or "Device not found"
+        // On the first attempt, this may simply mean the device is not active yet (e.g. fresh load).
+        // We can safely try transferring playback to it explicitly, then retrying.
+        if (
+          attempt === 0 &&
+          (errorMessage.includes('Restriction violated') ||
+            errorMessage.includes('Device not found') ||
+            errorMessage.includes('404'))
+        ) {
+          this.log(
+            'INFO',
+            `Playback restriction on first attempt. Attempting to activate device ${deviceId}...`
+          )
+          // Attempt to activate the device (shouldPlay: true, aggressively wake up audio context)
+          await transferPlaybackToDevice(deviceId, 3, 1000, true, true)
+          // Continue to backoff and retry
+        } else if (errorMessage.includes('Restriction violated')) {
+          this.log('WARN', 'Restriction violated on retry, skipping track.')
+          return false // Don't retry further, just skip this track
         }
 
         // If we've exhausted retries, fail
@@ -383,7 +399,8 @@ class PlayerLifecycleService {
           images: currentTrack.album.images
         }
       },
-      is_playing: !state.paused,
+      // Prevent stale SDK events from overwriting an optimistic pause
+      is_playing: this.isManualPause ? false : !state.paused,
       progress_ms: state.position,
       timestamp: Date.now(),
       context: { uri: '' },
@@ -401,7 +418,7 @@ class PlayerLifecycleService {
 
   private async handlePlayerStateChanged(
     state: PlayerSDKState,
-    onPlaybackStateChange: (state: SpotifyPlaybackState) => void
+    onPlaybackStateChange: (state: SpotifyPlaybackState | null) => void
   ): Promise<void> {
     try {
       // Issue #13: SDK state updates indicate this device is active.
@@ -415,15 +432,13 @@ class PlayerLifecycleService {
       this.queueSynchronizer.setLastKnownState(state)
 
       const transformedState = this.transformStateForUI(state)
-      if (transformedState) {
-        onPlaybackStateChange(transformedState)
-      }
+      onPlaybackStateChange(transformedState)
     } catch (error) {}
   }
 
   private async processStateChange(
     state: PlayerSDKState,
-    onPlaybackStateChange: (state: SpotifyPlaybackState) => void
+    onPlaybackStateChange: (state: SpotifyPlaybackState | null) => void
   ): Promise<void> {
     // Serialization: If a state change is already being processed, queue this one
     if (this.stateChangeInProgress) {
@@ -458,7 +473,7 @@ class PlayerLifecycleService {
     message: string,
     onStatusChange: (status: string, error?: string) => void,
     onDeviceIdChange: (deviceId: string) => void,
-    onPlaybackStateChange: (state: SpotifyPlaybackState) => void
+    onPlaybackStateChange: (state: SpotifyPlaybackState | null) => void
   ): Promise<void> {
     // Phase 3: Check if recovery is possible
     if (!recoveryManager.canAttemptRecovery()) {
@@ -568,7 +583,7 @@ class PlayerLifecycleService {
   async forceRecovery(
     onStatusChange: (status: string, error?: string) => void,
     onDeviceIdChange: (deviceId: string) => void,
-    onPlaybackStateChange: (state: SpotifyPlaybackState) => void
+    onPlaybackStateChange: (state: SpotifyPlaybackState | null) => void
   ): Promise<void> {
     // Phase 3: Reset recovery state on device ready
     recoveryManager.recordSuccess()
@@ -712,7 +727,7 @@ class PlayerLifecycleService {
    */
   handlePlayerStateChangeEvent(
     state: unknown,
-    onPlaybackStateChange: (state: SpotifyPlaybackState) => void,
+    onPlaybackStateChange: (state: SpotifyPlaybackState | null) => void,
     onStatusChange: (status: string, error?: string) => void,
     onDeviceIdChange: (deviceId: string) => void
   ): void {
@@ -767,7 +782,7 @@ class PlayerLifecycleService {
   async createPlayer(
     onStatusChange: (status: string, error?: string) => void,
     onDeviceIdChange: (deviceId: string) => void,
-    onPlaybackStateChange: (state: SpotifyPlaybackState) => void
+    onPlaybackStateChange: (state: SpotifyPlaybackState | null) => void
   ): Promise<string> {
     // Check preconditions
     if (typeof window === 'undefined') {

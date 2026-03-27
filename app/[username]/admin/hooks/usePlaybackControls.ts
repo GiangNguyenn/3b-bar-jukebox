@@ -33,7 +33,38 @@ export function usePlaybackControls(): {
   }, [playbackState, isTransitionInProgress])
 
   const handlePlayPause = useCallback(async (): Promise<void> => {
-    if (!deviceId || !playbackState) return
+    if (!deviceId) return
+
+    // Explicitly manually activate the Spotify Web Player's audio element.
+    // Calling this during a direct user-click handler inherently unlocks the 
+    // browser's restrictive autoplay policies, ensuring that when the Spotify
+    // servers inevitably ping the iframe down the WebSocket pipeline to start 
+    // playing the music, the browser won't silently drop the audio.
+    const player = playerLifecycleService.getPlayer()
+    if (player && typeof player.activateElement === 'function') {
+      player.activateElement().catch(() => {
+        // Silently ignore activation errors (e.g. if already active)
+      })
+    }
+
+    if (!playbackState) {
+      // If there's no current playback state (e.g. freshly loaded and nothing playing),
+      // we should attempt to start playback from the queue.
+      setIsLoading(true)
+      try {
+        await playerLifecycleService.playNextFromQueue()
+      } catch (error) {
+        addLog(
+          'ERROR',
+          'Failed to start playback from empty state',
+          'Playback',
+          error instanceof Error ? error : undefined
+        )
+      } finally {
+        setIsLoading(false)
+      }
+      return
+    }
 
     const originalState = playbackState
     const isPlaying = getIsActuallyPlaying()
@@ -68,7 +99,6 @@ export function usePlaybackControls(): {
             )
           : false
 
-        // If queue has tracks but current track isn't one of them, skip instead of resume
         if (queue.length > 0 && currentTrackId && !isTrackInQueue) {
           addLog(
             'WARN',
@@ -76,8 +106,14 @@ export function usePlaybackControls(): {
             'Playback'
           )
 
-          // Play next track from queue
-          await playerLifecycleService.playNextFromQueue()
+          try {
+            // Play next track from queue
+            addLog('INFO', '[handlePlayPause] Awaiting playNextFromQueue...', 'Playback')
+            await playerLifecycleService.playNextFromQueue()
+            addLog('INFO', '[handlePlayPause] playNextFromQueue successfully completed!', 'Playback')
+          } catch (playbackErr) {
+            addLog('ERROR', `[handlePlayPause] playNextFromQueue threw an error!`, 'Playback', playbackErr instanceof Error ? playbackErr : undefined)
+          }
 
           // Ensure manual pause flag is cleared (handled by playNextTrack, but good for safety)
           playerLifecycleService.setManualPause(false)

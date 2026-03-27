@@ -6,7 +6,7 @@ import type { ReactElement } from 'react'
 import { useNowPlayingRealtime } from '@/hooks/useNowPlayingRealtime'
 import { useAlbumColors } from '@/hooks/useAlbumColors'
 import { useDjSubtitles } from '@/hooks/useDjSubtitles'
-import { supabaseBrowser } from '@/lib/supabase-browser'
+import { useProfileId } from '@/hooks/useProfileId'
 
 import VisualizationContainer from '@/components/Display/VisualizationContainer'
 import TrackMetadata from '@/components/Display/TrackMetadata'
@@ -20,28 +20,7 @@ export default function DisplayPage(): ReactElement {
   const params = useParams()
   const username = typeof params?.username === 'string' ? params.username : ''
   const hasInitialLoadRef = useRef(false)
-  const [profileId, setProfileId] = useState<string | null>(null)
-
-  // Resolve profileId from username for realtime subscriptions
-  useEffect(() => {
-    if (!username) return
-    console.warn(`[DisplayPage] resolving profileId for username="${username}"`)
-    supabaseBrowser
-      .from('profiles')
-      .select('id')
-      .ilike('display_name', username)
-      .single<{ id: string }>()
-      .then(({ data, error }) => {
-        if (error) {
-          console.warn('[DisplayPage] profile lookup error:', error.message)
-        } else if (data) {
-          console.warn(`[DisplayPage] resolved profileId=${data.id}`)
-          setProfileId(data.id)
-        } else {
-          console.warn('[DisplayPage] no profile found for username')
-        }
-      })
-  }, [username])
+  const { profileId, isLoading: isProfileLoading } = useProfileId(username)
 
   // DJ subtitle realtime subscription
   const { subtitleText, isVisible } = useDjSubtitles({ profileId })
@@ -88,17 +67,17 @@ export default function DisplayPage(): ReactElement {
   // Track when initial load completes - when isLoading transitions from true to false
   // This means we've received at least one response (data, null from 204, or error)
   useEffect(() => {
-    if (!isPlaybackLoading && !hasInitialLoadRef.current) {
+    if (!isPlaybackLoading && !isProfileLoading && !hasInitialLoadRef.current) {
       hasInitialLoadRef.current = true
     }
-  }, [isPlaybackLoading])
+  }, [isPlaybackLoading, isProfileLoading])
 
   // Combine error states (audio features are optional, so don't treat their errors as critical)
   const hasError = Boolean(playbackError ?? colorsError)
 
   // Only show loading on initial load (before first response completes)
   // After initial load completes, never show loading screen even during background polling
-  const isInitialLoading = !hasInitialLoadRef.current && isPlaybackLoading
+  const isInitialLoading = !hasInitialLoadRef.current && (isPlaybackLoading || isProfileLoading)
 
   // Loading state - only show on initial load
   if (isInitialLoading) {

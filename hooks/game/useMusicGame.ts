@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { useNowPlayingTrack } from '@/hooks/useNowPlayingTrack'
+import { useNowPlayingRealtime } from '@/hooks/useNowPlayingRealtime'
+import { useProfileId } from '@/hooks/useProfileId'
 import type { SpotifyPlaybackState, TrackDetails } from '@/shared/types/spotify'
 import { sendApiRequest } from '@/shared/api'
 import type { TargetArtist } from '@/services/gameService'
@@ -207,15 +208,17 @@ export function useMusicGame({
   }, [players])
 
   // Poll Now Playing
+  const { profileId, isLoading: isProfileLoading } = useProfileId(username)
   const {
     data: nowPlaying,
     error: nowPlayingError,
-    isLoading: isNowPlayingLoading
-  } = useNowPlayingTrack({
-    token: null,
-    enabled: true,
-    refetchInterval: 15000
+    isLoading: isTrackLoading
+  } = useNowPlayingRealtime({
+    profileId,
+    fallbackInterval: 15000
   })
+
+  const isNowPlayingLoading = isProfileLoading || isTrackLoading
 
   // --- Game Flow Logic ---
 
