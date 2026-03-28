@@ -62,7 +62,10 @@ export function useTriviaGame({
   const lastFetchedTrackIdRef = useRef<string | null>(null)
   const isResettingRef = useRef<boolean>(false)
 
-  const { data: nowPlaying } = useNowPlayingRealtime({ profileId, fallbackInterval: 5000 })
+  const { data: nowPlaying } = useNowPlayingRealtime({
+    profileId,
+    fallbackInterval: 5000
+  })
 
   // Initialize session
   useEffect(() => {

@@ -64,6 +64,7 @@
     - _Requirements: 2.1, 2.3_
 
   - [x] 3.3 Verify bug condition exploration test now passes
+
     - **Property 1: Expected Behavior** — Song Change Detected After Visibility Restore
     - **IMPORTANT**: Re-run the SAME test from task 1 — do NOT write a new test
     - The test from task 1 encodes the expected behavior: burst polling activates after visibility restore (2s interval for 10s), and useTriviaGame passes fallbackInterval: 5000

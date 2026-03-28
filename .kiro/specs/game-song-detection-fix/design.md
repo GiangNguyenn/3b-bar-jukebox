@@ -47,6 +47,7 @@ END FUNCTION
 ### Preservation Requirements
 
 **Unchanged Behaviors:**
+
 - When the tab is in the foreground and the Realtime subscription is active, song changes are detected via Realtime with no additional polling overhead (requirement 3.1)
 - When a song change is detected (via Realtime, polling, or visibility recovery), `useTriviaGame` fetches a new trivia question, resets answer state, and displays the new question (requirement 3.2)
 - When the user refreshes the page after answering, the previously saved answer is restored from localStorage (requirement 3.3)
@@ -54,6 +55,7 @@ END FUNCTION
 
 **Scope:**
 All inputs where the tab remains in the foreground, or where no song change occurs during backgrounding, should be completely unaffected by this fix. This includes:
+
 - Normal foreground Realtime-driven song detection
 - Play/pause state changes
 - Page refreshes and answer restoration
@@ -124,11 +126,13 @@ The testing strategy follows a two-phase approach: first, surface counterexample
 **Test Plan**: Write tests that simulate the visibility change lifecycle — background the tab, change the now_playing data, restore visibility — and measure how long it takes for the hook to reflect the new track. Run these tests on the UNFIXED code to observe the 30s detection gap.
 
 **Test Cases**:
+
 1. **Stale Detection After Background**: Simulate tab backgrounding → update now_playing row → restore visibility → assert hook still has old track ID after 5 seconds (will fail on unfixed code — 30s polling means stale data persists)
 2. **No Burst Polling**: After visibility restore on unfixed code → verify no accelerated polling occurs → only the single fetchFromTable fires (will fail on unfixed code — no burst mechanism exists)
 3. **Game Page Default Interval**: Verify useTriviaGame calls useNowPlayingRealtime with default 30s interval (will fail on unfixed code — game page doesn't pass a shorter interval)
 
 **Expected Counterexamples**:
+
 - After visibility restore, the hook returns stale track data for up to 30 seconds
 - No burst polling mechanism exists — only a single fetch fires on visibility change
 - The game page relies on the 30s default polling interval
@@ -138,6 +142,7 @@ The testing strategy follows a two-phase approach: first, surface counterexample
 **Goal**: Verify that for all inputs where the bug condition holds, the fixed function produces the expected behavior.
 
 **Pseudocode:**
+
 ```
 FOR ALL input WHERE isBugCondition(input) DO
   result := useNowPlayingRealtime_fixed(input)
@@ -154,6 +159,7 @@ END FOR
 **Goal**: Verify that for all inputs where the bug condition does NOT hold, the fixed function produces the same result as the original function.
 
 **Pseudocode:**
+
 ```
 FOR ALL input WHERE NOT isBugCondition(input) DO
   ASSERT useNowPlayingRealtime_original(input) = useNowPlayingRealtime_fixed(input)
@@ -163,6 +169,7 @@ END FOR
 ```
 
 **Testing Approach**: Property-based testing is recommended for preservation checking because:
+
 - It generates many test cases automatically across the input domain (various track IDs, playback states, timing scenarios)
 - It catches edge cases that manual unit tests might miss (e.g., rapid consecutive visibility changes, same track ID across transitions)
 - It provides strong guarantees that behavior is unchanged for all non-buggy inputs
@@ -170,6 +177,7 @@ END FOR
 **Test Plan**: Observe behavior on UNFIXED code first for foreground scenarios (Realtime updates, play/pause changes, page refreshes), then write property-based tests capturing that behavior.
 
 **Test Cases**:
+
 1. **Foreground Realtime Preservation**: Verify that when the tab stays in the foreground, Realtime updates are delivered and no burst polling is triggered — observe on unfixed code, then verify after fix
 2. **Play/Pause Preservation**: Verify that play/pause state changes (same track ID) do not trigger new trivia question fetches — observe on unfixed code, then verify after fix
 3. **Answer Persistence Preservation**: Verify that localStorage answer restoration works identically after the fix — observe on unfixed code, then verify after fix

@@ -42,7 +42,6 @@ interface NowPlayingRow {
   updated_at: string
 }
 
-
 /**
  * Reimplementation of rowToPlaybackState for testing.
  * Mirrors the logic in hooks/useNowPlayingRealtime.ts exactly.
@@ -83,16 +82,20 @@ const validNowPlayingRowArb = fc.record({
   profile_id: fc.uuid(),
   spotify_track_id: fc.string({ minLength: 1, maxLength: 30 }),
   track_name: fc.string({ minLength: 1, maxLength: 100 }),
-  artist_name: fc.oneof(fc.string({ minLength: 1, maxLength: 50 }), fc.constant(null)),
-  album_name: fc.oneof(fc.string({ minLength: 1, maxLength: 50 }), fc.constant(null)),
-  album_art_url: fc.oneof(
-    fc.webUrl(),
+  artist_name: fc.oneof(
+    fc.string({ minLength: 1, maxLength: 50 }),
     fc.constant(null)
   ),
+  album_name: fc.oneof(
+    fc.string({ minLength: 1, maxLength: 50 }),
+    fc.constant(null)
+  ),
+  album_art_url: fc.oneof(fc.webUrl(), fc.constant(null)),
   duration_ms: fc.oneof(fc.integer({ min: 0, max: 600000 }), fc.constant(null)),
   is_playing: fc.boolean(),
   progress_ms: fc.oneof(fc.integer({ min: 0, max: 600000 }), fc.constant(null)),
-  updated_at: fc.integer({ min: 1577836800000, max: 1893456000000 })
+  updated_at: fc
+    .integer({ min: 1577836800000, max: 1893456000000 })
     .map((ts) => new Date(ts).toISOString())
 })
 
@@ -107,10 +110,10 @@ const nullTrackRowArb = fc.record({
   duration_ms: fc.constant(null),
   is_playing: fc.boolean(),
   progress_ms: fc.constant(null),
-  updated_at: fc.integer({ min: 1577836800000, max: 1893456000000 })
+  updated_at: fc
+    .integer({ min: 1577836800000, max: 1893456000000 })
     .map((ts) => new Date(ts).toISOString())
 })
-
 
 // ─── Test Suite ──────────────────────────────────────────────────────────────
 
@@ -190,12 +193,15 @@ describe('Preservation: Foreground Realtime and Game Behavior Unchanged', () => 
     fc.assert(
       fc.property(nullTrackRowArb, (row) => {
         const result = rowToPlaybackState(row)
-        assert.equal(result, null, 'Null track fields should produce null result')
+        assert.equal(
+          result,
+          null,
+          'Null track fields should produce null result'
+        )
       }),
       { numRuns: 50 }
     )
   })
-
 
   /**
    * Property 2b: Foreground Realtime — no burst timers in foreground path
@@ -235,7 +241,8 @@ describe('Preservation: Foreground Realtime and Game Behavior Unchanged', () => 
 
           // Normal fallback polling via setInterval + fallbackInterval
           assert.ok(
-            hookSource.includes('setInterval') && hookSource.includes('fallbackInterval'),
+            hookSource.includes('setInterval') &&
+              hookSource.includes('fallbackInterval'),
             'Hook should use setInterval with fallbackInterval for normal polling'
           )
 
@@ -266,7 +273,6 @@ describe('Preservation: Foreground Realtime and Game Behavior Unchanged', () => 
       { numRuns: 20 }
     )
   })
-
 
   /**
    * Property 2c: Play/pause updates (same track ID) — no re-fetch
@@ -300,7 +306,9 @@ describe('Preservation: Foreground Realtime and Game Behavior Unchanged', () => 
 
           // The early return guard exists: same track ID → skip fetch
           assert.ok(
-            triviaSource.includes('currentTrackId === lastFetchedTrackIdRef.current'),
+            triviaSource.includes(
+              'currentTrackId === lastFetchedTrackIdRef.current'
+            ),
             'useTriviaGame should check currentTrackId against lastFetchedTrackIdRef'
           )
 
@@ -337,14 +345,18 @@ describe('Preservation: Foreground Realtime and Game Behavior Unchanged', () => 
 
     fc.assert(
       fc.property(
-        fc.record({
-          oldTrackId: fc.string({ minLength: 1, maxLength: 30 }),
-          newTrackId: fc.string({ minLength: 1, maxLength: 30 })
-        }).filter((r) => r.oldTrackId !== r.newTrackId),
+        fc
+          .record({
+            oldTrackId: fc.string({ minLength: 1, maxLength: 30 }),
+            newTrackId: fc.string({ minLength: 1, maxLength: 30 })
+          })
+          .filter((r) => r.oldTrackId !== r.newTrackId),
         () => {
           // After the dedup guard, the code sets lastFetchedTrackIdRef
           assert.ok(
-            triviaSource.includes('lastFetchedTrackIdRef.current = currentTrackId'),
+            triviaSource.includes(
+              'lastFetchedTrackIdRef.current = currentTrackId'
+            ),
             'useTriviaGame should update lastFetchedTrackIdRef on song change'
           )
 

@@ -113,8 +113,7 @@ describe('Bug Condition: Stale Song Detection After Tab Backgrounding', () => {
     // BUG CONDITION: The handler should reference burstIntervalRef to start
     // accelerated polling. Currently it only calls fetchFromTable() and subscribe().
     assert.ok(
-      handlerBody.includes('burstIntervalRef') ||
-        handlerBody.includes('burst'),
+      handlerBody.includes('burstIntervalRef') || handlerBody.includes('burst'),
       'handleVisibilityChange should start burst polling on visibility restore — ' +
         'Counterexample: The handler only calls fetchFromTable() once and subscribe(). ' +
         'If the single fetch races with the DB write and returns stale data, the user ' +
@@ -139,10 +138,7 @@ describe('Bug Condition: Stale Song Detection After Tab Backgrounding', () => {
     const callMatch = triviaSource.match(
       /useNowPlayingRealtime\(\s*\{([^}]*)\}\s*\)/
     )
-    assert.ok(
-      callMatch,
-      'useTriviaGame should call useNowPlayingRealtime'
-    )
+    assert.ok(callMatch, 'useTriviaGame should call useNowPlayingRealtime')
 
     const callArgs = callMatch[1]
 

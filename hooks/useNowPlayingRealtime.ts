@@ -184,7 +184,9 @@ export function useNowPlayingRealtime({
             burstIntervalRef.current = null
           }
           burstTimeoutRef.current = null
-          console.warn('[useNowPlayingRealtime] burst polling ended, resuming normal interval')
+          console.warn(
+            '[useNowPlayingRealtime] burst polling ended, resuming normal interval'
+          )
           intervalRef.current = setInterval(() => {
             void fetchFromTable()
           }, fallbackInterval)
