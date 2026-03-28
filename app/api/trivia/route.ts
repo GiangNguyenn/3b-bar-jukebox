@@ -77,19 +77,36 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     // 2. Generate via Venice AI
     logger('INFO', `Generating new trivia for track ${spotify_track_id}`)
 
-    const systemPrompt = `You are a music trivia master. Generate a multiple-choice trivia question about the song or artist provided.
-The question MUST be accurate, interesting, and moderately difficult.
-CRITICAL RULE: DO NOT EVER ask what album the song is from or what year it was released. Avoid basic chart position questions.
-Instead, focus on:
-- Interesting behind-the-scenes production facts
-- Meaning or inspiration behind the lyrics
-- The artist's history, influences, or personal life context
-- Pop culture appearances (movies, TV shows, games)
-- Guest performers, samples, or unique instruments used
+    const systemPrompt = `You are a music trivia expert. Your single most important rule is FACTUAL ACCURACY — never state or imply anything you are not 100% certain is true.
 
-You MUST respond with a valid JSON object matching this schema exactly:
+Generate one multiple-choice trivia question about the song or artist provided. Follow these rules strictly:
+
+FACTUAL ACCURACY (highest priority):
+- Only assert facts you are highly confident about. If you are unsure of a detail, do NOT use it.
+- It is far better to ask a simple, verifiable question than an interesting but potentially wrong one.
+- All four answer options must be plausible, but only ONE must be correct. Do not invent fake options that could be confused with real facts.
+
+PREFERRED QUESTION TYPES (use in order of confidence):
+1. Songwriting or production credits (e.g., who co-wrote or produced the track)
+2. Confirmed samples or interpolations used in the song
+3. Well-known featured artists or guest performers
+4. Genre, musical movement, or style the artist is primarily associated with
+5. Country or city the artist is originally from
+6. Widely reported awards the song or artist won (e.g., Grammy wins)
+7. Confirmed appearances in major films, TV shows, or commercials
+8. Instrument or vocal technique that is a defining characteristic of the artist
+
+AVOID:
+- Specific release years or album names
+- Chart positions
+- Obscure biographical details or anecdotes you are not certain about
+- Lyrics interpretation (too subjective and unverifiable)
+- Any claim that requires precise recall of an exact date, quote, or statistic
+
+RESPONSE FORMAT:
+You MUST respond with ONLY a valid JSON object — no markdown, no explanation, no extra text:
 {"question": "...", "options": ["A", "B", "C", "D"], "correctIndex": 0}
-Do not include any other text or markdown formatting outside the JSON object.`
+The correctIndex is the zero-based index of the correct answer in the options array.`
 
     const veniceResponse = await fetch(
       'https://api.venice.ai/api/v1/chat/completions',
@@ -106,10 +123,10 @@ Do not include any other text or markdown formatting outside the JSON object.`
             { role: 'system', content: systemPrompt },
             {
               role: 'user',
-              content: `Generate a fascinating and unique trivia question focusing on the song "${track_name}" by ${artist_name} (from the album "${album_name}"). Remember, absolutely NO questions about the album name or release year! Provide 4 options and the correct index.`
+              content: `Generate a trivia question about the song "${track_name}" by ${artist_name} (album: "${album_name}"). Prioritise facts you are certain about. If you cannot think of a confidently known fact, fall back to a safe question about the artist's genre, home country, or a well-known collaborator. Provide 4 answer options and the correctIndex.`
             }
           ],
-          max_tokens: 300
+          max_tokens: 350
         })
       }
     )
