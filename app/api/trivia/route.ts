@@ -142,10 +142,14 @@ The correctIndex is the zero-based index of the correct answer in the options ar
               role: 'user',
               content: `Generate a trivia question about the song "${track_name}" by ${artist_name} (album: "${album_name}").
 
-${recentQuestionTexts.length > 0 ? `RECENT QUESTIONS ALREADY ASKED (do NOT repeat the same question type as any of these):
+${
+  recentQuestionTexts.length > 0
+    ? `RECENT QUESTIONS ALREADY ASKED (do NOT repeat the same question type as any of these):
 ${recentQuestionTexts.map((q, i) => `${i + 1}. ${q}`).join('\n')}
 
-Choose a question type from Q1–Q8 that is clearly different from the types used above.` : 'No recent questions. Choose whichever question type (Q1–Q8) you are most confident about.'}
+Choose a question type from Q1–Q8 that is clearly different from the types used above.`
+    : 'No recent questions. Choose whichever question type (Q1–Q8) you are most confident about.'
+}
 
 Prioritise facts you are certain about. If you cannot think of a confidently known fact in the chosen type, fall back to a safe question about the artist's genre, home country, or a well-known collaborator. Provide 4 answer options and the correctIndex.`
             }
