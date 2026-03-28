@@ -68,6 +68,8 @@ export function useNowPlayingRealtime({
   const [error, setError] = useState<string | null>(null)
   const channelRef = useRef<RealtimeChannel | null>(null)
   const intervalRef = useRef<NodeJS.Timeout | null>(null)
+  const burstIntervalRef = useRef<NodeJS.Timeout | null>(null)
+  const burstTimeoutRef = useRef<NodeJS.Timeout | null>(null)
 
   const fetchFromTable = useCallback(async () => {
     if (!profileId) return
@@ -152,6 +154,41 @@ export function useNowPlayingRealtime({
       if (document.visibilityState === 'visible') {
         void fetchFromTable()
         subscribe()
+
+        // Clear any existing burst timers to prevent overlapping bursts
+        if (burstIntervalRef.current) {
+          clearInterval(burstIntervalRef.current)
+          burstIntervalRef.current = null
+        }
+        if (burstTimeoutRef.current) {
+          clearTimeout(burstTimeoutRef.current)
+          burstTimeoutRef.current = null
+        }
+
+        // Pause normal polling during burst
+        if (intervalRef.current) {
+          clearInterval(intervalRef.current)
+          intervalRef.current = null
+        }
+
+        // Start accelerated burst polling every 2s
+        console.warn('[useNowPlayingRealtime] burst polling activated')
+        burstIntervalRef.current = setInterval(() => {
+          void fetchFromTable()
+        }, 2000)
+
+        // After 10s, end burst and restart normal fallback polling
+        burstTimeoutRef.current = setTimeout(() => {
+          if (burstIntervalRef.current) {
+            clearInterval(burstIntervalRef.current)
+            burstIntervalRef.current = null
+          }
+          burstTimeoutRef.current = null
+          console.warn('[useNowPlayingRealtime] burst polling ended, resuming normal interval')
+          intervalRef.current = setInterval(() => {
+            void fetchFromTable()
+          }, fallbackInterval)
+        }, 10000)
       }
     }
     document.addEventListener('visibilitychange', handleVisibilityChange)
@@ -164,6 +201,14 @@ export function useNowPlayingRealtime({
       if (intervalRef.current) {
         clearInterval(intervalRef.current)
         intervalRef.current = null
+      }
+      if (burstIntervalRef.current) {
+        clearInterval(burstIntervalRef.current)
+        burstIntervalRef.current = null
+      }
+      if (burstTimeoutRef.current) {
+        clearTimeout(burstTimeoutRef.current)
+        burstTimeoutRef.current = null
       }
       document.removeEventListener('visibilitychange', handleVisibilityChange)
     }
