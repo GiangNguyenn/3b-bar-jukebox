@@ -95,15 +95,32 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     // All available types — ordered so that universally-safe ones come first
     // (they work regardless of how obscure or niche the artist is)
     const ALL_QUESTION_TYPES = [
-      'Q1', 'Q2', 'Q3', 'Q4', 'Q5', 'Q6', 'Q7', 'Q8',
-      'Q9', 'Q10', 'Q11', 'Q12', 'Q13', 'Q14', 'Q15', 'Q16'
+      'Q1',
+      'Q2',
+      'Q3',
+      'Q4',
+      'Q5',
+      'Q6',
+      'Q7',
+      'Q8',
+      'Q9',
+      'Q10',
+      'Q11',
+      'Q12',
+      'Q13',
+      'Q14',
+      'Q15',
+      'Q16'
     ]
     const usedSet = new Set(recentTypesUsed)
     // Pick the first type not used recently; if all used, start over from Q1
     const targetType =
       ALL_QUESTION_TYPES.find((t) => !usedSet.has(t)) ?? ALL_QUESTION_TYPES[0]
 
-    logger('INFO', `Targeting question type ${targetType} for track ${spotify_track_id} (recent: ${Array.from(usedSet).join(', ') || 'none'})`)
+    logger(
+      'INFO',
+      `Targeting question type ${targetType} for track ${spotify_track_id} (recent: ${Array.from(usedSet).join(', ') || 'none'})`
+    )
 
     // 4. Generate via Venice AI
     logger('INFO', `Generating new trivia for track ${spotify_track_id}`)
@@ -111,28 +128,39 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     // Q1-Q8: low-risk music questions about the current track/artist
     // Q9-Q16: universal general knowledge (no artist context — zero hallucination risk)
     const QUESTION_TYPE_DESCRIPTIONS: Record<string, string> = {
-      Q1:  'Genre ancestry — which iconic musical movement, legendary scene, or classic artist this artist draws directly from',
-      Q2:  'Country or city roots — the country or city the artist is from, framed in an interesting way',
-      Q3:  'Instrument mastery — a surprising instrument this artist plays, or the primary instrument central to their signature sound',
-      Q4:  'Collaboration story — a famous artist they worked with closely, a notable feature, or a supergroup they belong to',
-      Q5:  'Record label journey — which influential label signed them, or how they got their deal',
-      Q6:  'Career milestone — a surprising or impressive achievement: award, chart breakthrough, streaming record, or industry first',
-      Q7:  'Cultural crossover — an appearance in film, TV, gaming, a commercial, or a viral cultural moment',
-      Q8:  'Origin story — how or where the artist launched their career, or a surprising fact about their musical beginnings',
+      Q1: 'Genre ancestry — which iconic musical movement, legendary scene, or classic artist this artist draws directly from',
+      Q2: 'Country or city roots — the country or city the artist is from, framed in an interesting way',
+      Q3: 'Instrument mastery — a surprising instrument this artist plays, or the primary instrument central to their signature sound',
+      Q4: 'Collaboration story — a famous artist they worked with closely, a notable feature, or a supergroup they belong to',
+      Q5: 'Record label journey — which influential label signed them, or how they got their deal',
+      Q6: 'Career milestone — a surprising or impressive achievement: award, chart breakthrough, streaming record, or industry first',
+      Q7: 'Cultural crossover — an appearance in film, TV, gaming, a commercial, or a viral cultural moment',
+      Q8: 'Origin story — how or where the artist launched their career, or a surprising fact about their musical beginnings',
       // General knowledge — completely independent of the song/artist
-      Q9:  'GENERAL: World geography or famous landmarks — e.g. capital cities, largest oceans, famous mountains or structures',
+      Q9: 'GENERAL: World geography or famous landmarks — e.g. capital cities, largest oceans, famous mountains or structures',
       Q10: 'GENERAL: Science or nature fact — e.g. planets, human body, animals, chemistry, or physics (well-established textbook facts only)',
       Q11: 'GENERAL: Famous inventors or inventions — e.g. who invented the telephone, the World Wide Web, or the light bulb',
       Q12: 'GENERAL: Iconic movies or global box office — e.g. highest-grossing films, famous franchises, iconic directors',
       Q13: 'GENERAL: Olympic sports or global sporting records — e.g. Olympic rings, FIFA World Cup records, world athletics records',
       Q14: 'GENERAL: Famous artworks or their creators — e.g. who painted the Mona Lisa, Sistine Chapel, Starry Night',
       Q15: 'GENERAL: Universally known world firsts — e.g. first Moon landing, first aeroplane flight, first Olympic Games host city',
-      Q16: 'GENERAL: Mathematics or logic — e.g. number of sides on shapes, value of pi, basic number theory (universally agreed facts only)',
+      Q16: 'GENERAL: Mathematics or logic — e.g. number of sides on shapes, value of pi, basic number theory (universally agreed facts only)'
     }
 
-    const isGeneralKnowledge = ['Q9','Q10','Q11','Q12','Q13','Q14','Q15','Q16'].includes(targetType)
+    const isGeneralKnowledge = [
+      'Q9',
+      'Q10',
+      'Q11',
+      'Q12',
+      'Q13',
+      'Q14',
+      'Q15',
+      'Q16'
+    ].includes(targetType)
 
-    const targetDescription = QUESTION_TYPE_DESCRIPTIONS[targetType] ?? 'general music knowledge about the artist'
+    const targetDescription =
+      QUESTION_TYPE_DESCRIPTIONS[targetType] ??
+      'general music knowledge about the artist'
 
     const systemPrompt = isGeneralKnowledge
       ? `You are a bar trivia host writing fun general knowledge questions for an international audience. Your highest priority is FACTUAL ACCURACY — only use universally agreed, well-established facts that any educated adult would accept as indisputably correct. The question must be accessible to someone from any country.

@@ -92,7 +92,11 @@ export function useTriviaGame({
   // Question fetching logic
   useEffect(() => {
     if (!profileId || !nowPlaying || !nowPlaying.item) return
-    if (typeof window !== 'undefined' && localStorage.getItem('triviaEnabled') !== 'true') return
+    if (
+      typeof window !== 'undefined' &&
+      localStorage.getItem('triviaEnabled') !== 'true'
+    )
+      return
 
     const currentTrackId = nowPlaying.item.id
     if (currentTrackId === lastFetchedTrackIdRef.current) return

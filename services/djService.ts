@@ -395,7 +395,11 @@ class DJService {
       const ttsRes = await fetch('/api/dj-tts', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text, language: 'english', voice: resolvedVoice })
+        body: JSON.stringify({
+          text,
+          language: 'english',
+          voice: resolvedVoice
+        })
       })
       if (!ttsRes.ok) {
         warn(`announceTriviaWinner | /api/dj-tts ${ttsRes.status}`)

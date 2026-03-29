@@ -18,9 +18,7 @@ interface AnnouncementRow {
  *
  * Must be used on the admin page — the only page with an active audio context.
  */
-export function useTriviaWinnerAnnouncement(
-  profileId: string | null
-): void {
+export function useTriviaWinnerAnnouncement(profileId: string | null): void {
   const channelRef = useRef<RealtimeChannel | null>(null)
 
   useEffect(() => {

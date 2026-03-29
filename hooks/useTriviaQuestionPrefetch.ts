@@ -21,7 +21,12 @@ export function useTriviaQuestionPrefetch(profileId: string | null): void {
   useEffect(() => {
     if (!profileId) return
 
-    const prefetch = (trackId: string, trackName: string, artistName: string, albumName: string) => {
+    const prefetch = (
+      trackId: string,
+      trackName: string,
+      artistName: string,
+      albumName: string
+    ) => {
       if (!getTriviaEnabled()) return
       if (trackId === lastPrefetchedTrackIdRef.current) return
       if (isFetchingRef.current) return
@@ -29,7 +34,9 @@ export function useTriviaQuestionPrefetch(profileId: string | null): void {
       lastPrefetchedTrackIdRef.current = trackId
       isFetchingRef.current = true
 
-      console.log(`[useTriviaQuestionPrefetch] pre-generating question for "${trackName}" by ${artistName}`)
+      console.log(
+        `[useTriviaQuestionPrefetch] pre-generating question for "${trackName}" by ${artistName}`
+      )
 
       fetch('/api/trivia', {
         method: 'POST',
@@ -44,12 +51,19 @@ export function useTriviaQuestionPrefetch(profileId: string | null): void {
       })
         .then((res) => {
           if (!res.ok) {
-            console.warn('[useTriviaQuestionPrefetch] prefetch failed:', res.status)
+            console.warn(
+              '[useTriviaQuestionPrefetch] prefetch failed:',
+              res.status
+            )
           } else {
-            console.log('[useTriviaQuestionPrefetch] question cached successfully')
+            console.log(
+              '[useTriviaQuestionPrefetch] question cached successfully'
+            )
           }
         })
-        .catch((e) => console.warn('[useTriviaQuestionPrefetch] prefetch error:', e))
+        .catch((e) =>
+          console.warn('[useTriviaQuestionPrefetch] prefetch error:', e)
+        )
         .finally(() => {
           isFetchingRef.current = false
         })
