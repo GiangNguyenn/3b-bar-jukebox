@@ -26,7 +26,6 @@ export function useTriviaLeaderboard({
   const [entries, setEntries] = useState<LeaderboardEntry[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [realtimeOk, setRealtimeOk] = useState(false)
 
   const fetchLeaderboard = useCallback(async () => {
     if (!profileId) return
@@ -74,30 +73,26 @@ export function useTriviaLeaderboard({
           void fetchLeaderboard()
         }
       )
-      .subscribe((status) => {
-        if (status === 'SUBSCRIBED') {
-          setRealtimeOk(true)
-        } else if (status === 'CLOSED' || status === 'CHANNEL_ERROR') {
-          setRealtimeOk(false)
-        }
-      })
+      .subscribe()
 
     return () => {
       supabaseBrowser.removeChannel(channel)
     }
   }, [profileId, fetchLeaderboard])
 
-  // Polling fallback — activates when Realtime WebSocket is unavailable
-  // (e.g. Firefox ETP on localhost, strict venue firewalls, Supabase outage)
+  // Polling safety net — runs at all times to guarantee eventual consistency.
+  // Realtime provides instant updates; polling catches cases where Realtime
+  // is "subscribed" but silently fails to deliver change events
+  // (e.g. Firefox ETP on localhost, strict venue firewalls, Supabase outage).
   useEffect(() => {
-    if (!profileId || realtimeOk) return
+    if (!profileId) return
 
     const interval = setInterval(() => {
       void fetchLeaderboard()
     }, 5000)
 
     return () => clearInterval(interval)
-  }, [profileId, realtimeOk, fetchLeaderboard])
+  }, [profileId, fetchLeaderboard])
 
   return { entries, isLoading, error }
 }
