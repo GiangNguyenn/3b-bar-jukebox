@@ -41,6 +41,7 @@ class DJService {
   private lastGeneratedScript: string | null = null
   private lastOnTrackStartedId: string | null = null
   private audioContext: AudioContext | null = null
+  private announcementQueue: Array<() => Promise<void>> = []
 
   private constructor() {}
 
@@ -184,6 +185,61 @@ class DJService {
 
       if (!waitForEnd) resolve()
     })
+  }
+
+  private async duckAndPlay(
+    audioBlob: Blob,
+    scriptText: string | null,
+    waitForEnd: boolean
+  ): Promise<void> {
+    let originalVolume = 100
+    try {
+      const state = await SpotifyApiService.getInstance().getPlaybackState()
+      originalVolume = state?.device?.volume_percent ?? 100
+    } catch {
+      warn('could not read current volume, assuming 100%')
+    }
+
+    const duckedVolume = Math.round(originalVolume * 0.2)
+    log(`duck: ${originalVolume}% → ${duckedVolume}%`)
+
+    try {
+      await SpotifyApiService.getInstance().setVolume(duckedVolume)
+    } catch {
+      warn('setVolume failed during duck, playing without ducking')
+    }
+
+    // Re-apply duck after Spotify's play command may reset volume
+    setTimeout(() => {
+      SpotifyApiService.getInstance()
+        .setVolume(duckedVolume)
+        .catch(() => {})
+    }, 500)
+
+    // Persist announcement text for display subtitles
+    if (scriptText) {
+      const profileId = localStorage.getItem('profileId')
+      if (profileId) {
+        fetch('/api/dj-announcement', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ profileId, scriptText })
+        }).catch(() => {})
+      }
+    }
+
+    await this.playAudioBlob(audioBlob, waitForEnd, originalVolume)
+  }
+
+  private drainQueue(): void {
+    this.isAnnouncementInProgress = false
+    const next = this.announcementQueue.shift()
+    if (next) {
+      this.isAnnouncementInProgress = true
+      next()
+        .catch(() => {})
+        .finally(() => this.drainQueue())
+    }
   }
 
   private rampVolume(targetVolume: number, durationMs: number): void {
@@ -377,48 +433,52 @@ class DJService {
       log('announceTriviaWinner | DJ disabled, skipping')
       return
     }
-    if (this.isAnnouncementInProgress) {
-      log('announceTriviaWinner | announcement already in progress, skipping')
-      return
-    }
 
-    log(`announceTriviaWinner | text="${text.slice(0, 60)}..."`)
+    const execute = async (): Promise<void> => {
+      log(`announceTriviaWinner | text="${text.slice(0, 60)}..."`)
 
-    const rawVoice = localStorage.getItem('djVoice')
-    const resolvedVoice =
-      typeof rawVoice === 'string' && DJ_VOICE_IDS.includes(rawVoice)
-        ? rawVoice
-        : DEFAULT_DJ_VOICE
+      const rawVoice = localStorage.getItem('djVoice')
+      const resolvedVoice =
+        typeof rawVoice === 'string' && DJ_VOICE_IDS.includes(rawVoice)
+          ? rawVoice
+          : DEFAULT_DJ_VOICE
 
-    let blob: Blob | null = null
-    try {
-      const ttsRes = await fetch('/api/dj-tts', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          text,
-          language: 'english',
-          voice: resolvedVoice
+      let blob: Blob | null = null
+      try {
+        const ttsRes = await fetch('/api/dj-tts', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            text,
+            language: 'english',
+            voice: resolvedVoice
+          })
         })
-      })
-      if (!ttsRes.ok) {
-        warn(`announceTriviaWinner | /api/dj-tts ${ttsRes.status}`)
+        if (!ttsRes.ok) {
+          warn(`announceTriviaWinner | /api/dj-tts ${ttsRes.status}`)
+          return
+        }
+        blob = await ttsRes.blob()
+        log(`announceTriviaWinner | blob ${blob.size} bytes`)
+      } catch (e) {
+        err('announceTriviaWinner | TTS fetch failed', e)
         return
       }
-      blob = await ttsRes.blob()
-      log(`announceTriviaWinner | blob ${blob.size} bytes`)
-    } catch (e) {
-      err('announceTriviaWinner | TTS fetch failed', e)
+
+      await this.duckAndPlay(blob, text, true)
+    }
+
+    if (this.isAnnouncementInProgress) {
+      log('announceTriviaWinner | queuing behind in-progress announcement')
+      this.announcementQueue.push(execute)
       return
     }
 
     this.isAnnouncementInProgress = true
     try {
-      await this.playAudioBlob(blob, true, null)
-    } catch (e) {
-      err('announceTriviaWinner | playback error', e)
+      await execute()
     } finally {
-      this.isAnnouncementInProgress = false
+      this.drainQueue()
     }
   }
 
@@ -426,12 +486,6 @@ class DJService {
     const enabled = localStorage.getItem('djMode') === 'true'
     if (!enabled) {
       log('maybeAnnounce | DJ disabled, skipping')
-      return
-    }
-
-    // Guard: never run two announcements concurrently
-    if (this.isAnnouncementInProgress) {
-      log('maybeAnnounce | announcement already in progress, skipping')
       return
     }
 
@@ -480,53 +534,47 @@ class DJService {
     const duckOverlay = this.isDuckOverlayEnabled()
     log(`→ playing audio (duck=${duckOverlay})`)
 
-    // Persist announcement text to database for display subtitles
-    const profileId = localStorage.getItem('profileId')
-    log(
-      `announcement persist — profileId=${profileId}, script="${this.lastGeneratedScript?.slice(0, 50)}"`
-    )
-    if (profileId && this.lastGeneratedScript) {
-      fetch('/api/dj-announcement', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          profileId,
-          scriptText: this.lastGeneratedScript
-        })
-      })
-        .then((res) => log(`announcement set response: ${res.status}`))
-        .catch((e) => warn('announcement set failed:', e))
+    const capturedBlob = audioBlob
+    const capturedScript = this.lastGeneratedScript
+
+    const execute = async (): Promise<void> => {
+      if (duckOverlay) {
+        await this.duckAndPlay(capturedBlob, capturedScript, false)
+      } else {
+        // Persist announcement text for display subtitles (non-duck path)
+        const profileId = localStorage.getItem('profileId')
+        log(
+          `announcement persist — profileId=${profileId}, script="${capturedScript?.slice(0, 50)}"`
+        )
+        if (profileId && capturedScript) {
+          fetch('/api/dj-announcement', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              profileId,
+              scriptText: capturedScript
+            })
+          })
+            .then((res) => log(`announcement set response: ${res.status}`))
+            .catch((e) => warn('announcement set failed:', e))
+        }
+        await this.playAudioBlob(capturedBlob, true, null)
+      }
+    }
+
+    if (this.isAnnouncementInProgress) {
+      log('maybeAnnounce | queuing behind in-progress announcement')
+      this.announcementQueue.push(execute)
+      return
     }
 
     this.isAnnouncementInProgress = true
     try {
-      if (duckOverlay) {
-        let originalVolume = 100
-        try {
-          const state = await SpotifyApiService.getInstance().getPlaybackState()
-          originalVolume = state?.device?.volume_percent ?? 100
-        } catch {
-          warn('could not read current volume, assuming 100%')
-        }
-        const duckedVolume = Math.round(originalVolume * 0.2)
-        log(`duck: ${originalVolume}% → ${duckedVolume}%`)
-        await SpotifyApiService.getInstance()
-          .setVolume(duckedVolume)
-          .catch((e) => warn('setVolume failed', e))
-        // Re-apply duck after Spotify's play command may reset volume
-        setTimeout(() => {
-          SpotifyApiService.getInstance()
-            .setVolume(duckedVolume)
-            .catch(() => {})
-        }, 500)
-        await this.playAudioBlob(audioBlob, false, originalVolume)
-      } else {
-        await this.playAudioBlob(audioBlob, true, null)
-      }
+      await execute()
     } catch (e) {
       err('unexpected error during playback', e)
     } finally {
-      this.isAnnouncementInProgress = false
+      this.drainQueue()
     }
   }
 }
