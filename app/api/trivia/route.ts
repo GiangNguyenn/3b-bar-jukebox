@@ -77,53 +77,95 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     // 2. Fetch recent questions for this profile to inform diversity
     const { data: recentQuestions } = await supabaseAdmin
       .from('trivia_questions')
-      .select('question')
+      .select('question, question_type')
       .eq('profile_id', profile_id)
       .neq('spotify_track_id', spotify_track_id)
       .order('created_at', { ascending: false })
-      .limit(8)
+      .limit(15)
 
-    const recentQuestionTexts: string[] =
-      recentQuestions?.map((r) => r.question) ?? []
+    // Build two lists: typed labels (preferred) and raw text (fallback for old rows)
+    const recentTypesUsed: string[] = []
+    const recentQuestionTexts: string[] = []
+    for (const r of recentQuestions ?? []) {
+      if (r.question_type) recentTypesUsed.push(r.question_type as string)
+      recentQuestionTexts.push(r.question as string)
+    }
 
-    // 3. Generate via Venice AI
+    // 3. Deterministically pick the target question type
+    // All available types — ordered so that universally-safe ones come first
+    // (they work regardless of how obscure or niche the artist is)
+    const ALL_QUESTION_TYPES = [
+      'Q1', 'Q2', 'Q3', 'Q4', 'Q5', 'Q6', 'Q7', 'Q8',
+      'Q9', 'Q10', 'Q11', 'Q12', 'Q13', 'Q14', 'Q15', 'Q16'
+    ]
+    const usedSet = new Set(recentTypesUsed)
+    // Pick the first type not used recently; if all used, start over from Q1
+    const targetType =
+      ALL_QUESTION_TYPES.find((t) => !usedSet.has(t)) ?? ALL_QUESTION_TYPES[0]
+
+    logger('INFO', `Targeting question type ${targetType} for track ${spotify_track_id} (recent: ${Array.from(usedSet).join(', ') || 'none'})`)
+
+    // 4. Generate via Venice AI
     logger('INFO', `Generating new trivia for track ${spotify_track_id}`)
 
-    const systemPrompt = `You are a music trivia expert. Your single most important rule is FACTUAL ACCURACY — never state or imply anything you are not 100% certain is true.
+    // Q1-Q8: low-risk music questions about the current track/artist
+    // Q9-Q16: universal general knowledge (no artist context — zero hallucination risk)
+    const QUESTION_TYPE_DESCRIPTIONS: Record<string, string> = {
+      Q1:  'Genre ancestry — which iconic musical movement, legendary scene, or classic artist this artist draws directly from',
+      Q2:  'Country or city roots — the country or city the artist is from, framed in an interesting way',
+      Q3:  'Instrument mastery — a surprising instrument this artist plays, or the primary instrument central to their signature sound',
+      Q4:  'Collaboration story — a famous artist they worked with closely, a notable feature, or a supergroup they belong to',
+      Q5:  'Record label journey — which influential label signed them, or how they got their deal',
+      Q6:  'Career milestone — a surprising or impressive achievement: award, chart breakthrough, streaming record, or industry first',
+      Q7:  'Cultural crossover — an appearance in film, TV, gaming, a commercial, or a viral cultural moment',
+      Q8:  'Origin story — how or where the artist launched their career, or a surprising fact about their musical beginnings',
+      // General knowledge — completely independent of the song/artist
+      Q9:  'GENERAL: World geography or famous landmarks — e.g. capital cities, largest oceans, famous mountains or structures',
+      Q10: 'GENERAL: Science or nature fact — e.g. planets, human body, animals, chemistry, or physics (well-established textbook facts only)',
+      Q11: 'GENERAL: Famous inventors or inventions — e.g. who invented the telephone, the World Wide Web, or the light bulb',
+      Q12: 'GENERAL: Iconic movies or global box office — e.g. highest-grossing films, famous franchises, iconic directors',
+      Q13: 'GENERAL: Olympic sports or global sporting records — e.g. Olympic rings, FIFA World Cup records, world athletics records',
+      Q14: 'GENERAL: Famous artworks or their creators — e.g. who painted the Mona Lisa, Sistine Chapel, Starry Night',
+      Q15: 'GENERAL: Universally known world firsts — e.g. first Moon landing, first aeroplane flight, first Olympic Games host city',
+      Q16: 'GENERAL: Mathematics or logic — e.g. number of sides on shapes, value of pi, basic number theory (universally agreed facts only)',
+    }
 
-Generate one multiple-choice trivia question about the song or artist provided. Follow these rules strictly:
+    const isGeneralKnowledge = ['Q9','Q10','Q11','Q12','Q13','Q14','Q15','Q16'].includes(targetType)
 
-FACTUAL ACCURACY (highest priority):
-- Only assert facts you are highly confident about. If you are unsure of a detail, do NOT use it.
-- It is far better to ask a simple, verifiable question than an interesting but potentially wrong one.
-- All four answer options must be plausible, but only ONE must be correct. Do not invent fake options that could be confused with real facts.
+    const targetDescription = QUESTION_TYPE_DESCRIPTIONS[targetType] ?? 'general music knowledge about the artist'
 
-DIVERSITY (second highest priority):
-- The user will supply a list of recent questions that have already been asked. Study them to identify which question types have been used.
-- You MUST choose a question type or angle that has NOT been used recently.
-- The available question types are labelled Q1–Q8 below. Rotate through them.
+    const systemPrompt = isGeneralKnowledge
+      ? `You are a bar trivia host writing fun general knowledge questions for an international audience. Your highest priority is FACTUAL ACCURACY — only use universally agreed, well-established facts that any educated adult would accept as indisputably correct. The question must be accessible to someone from any country.
 
-PREFERRED QUESTION TYPES (labelled Q1–Q8, use in order of factual confidence):
-Q1. Songwriting or production credits (e.g., who co-wrote or produced the track)
-Q2. Confirmed samples or interpolations used in the song
-Q3. Well-known featured artists or guest performers
-Q4. Genre, musical movement, or style the artist is primarily associated with
-Q5. Country or city the artist is originally from
-Q6. Widely reported awards the song or artist won (e.g., Grammy wins)
-Q7. Confirmed appearances in major films, TV shows, or commercials
-Q8. Instrument or vocal technique that is a defining characteristic of the artist
+QUESTION TYPE: ${targetType} — ${targetDescription}
 
-AVOID:
-- Specific release years or album names
-- Chart positions
-- Obscure biographical details or anecdotes you are not certain about
-- Lyrics interpretation (too subjective and unverifiable)
-- Any claim that requires precise recall of an exact date, quote, or statistic
+RULES:
+- Only use facts you are 100% certain about — facts that appear in every textbook and encyclopedia.
+- All four answer options must be plausible, but only ONE must be correct.
+- Do not invent or approximate facts.
+- Questions should be fun and interesting, not obscure.
 
-RESPONSE FORMAT:
-You MUST respond with ONLY a valid JSON object — no markdown, no explanation, no extra text:
-{"question": "...", "options": ["A", "B", "C", "D"], "correctIndex": 0}
-The correctIndex is the zero-based index of the correct answer in the options array.`
+RESPOND with ONLY a valid JSON object — no markdown, no explanation:
+{"question": "...", "options": ["A", "B", "C", "D"], "correctIndex": 0, "questionType": "${targetType}"}`
+      : `You are a music trivia expert writing questions for a fun bar trivia game. Your two core priorities are:
+1. FACTUAL ACCURACY — never state anything you are not 100% certain is true.
+2. ENTERTAINMENT — the question should be genuinely interesting and fun. A great trivia question surprises people or makes them say "I didn't know that!"
+
+Generate one multiple-choice trivia question about the song or artist provided.
+
+QUESTION TYPE (mandatory): ${targetType} — ${targetDescription}
+Do not switch to a different type.
+
+FACTUAL ACCURACY RULES:
+- Only assert facts you are highly confident about.
+- All four answer options must be plausible, but only ONE must be correct.
+- Do not invent fake details that could be confused with real facts.
+- If you cannot form a confident question of type ${targetType} for this artist, generate the most interesting factual question you can about this artist — but still label it ${targetType}.
+
+AVOID: specific release years, exact chart positions, lyrics interpretation.
+
+RESPOND with ONLY a valid JSON object — no markdown, no explanation:
+{"question": "...", "options": ["A", "B", "C", "D"], "correctIndex": 0, "questionType": "${targetType}"}`
 
     const veniceResponse = await fetch(
       'https://api.venice.ai/api/v1/chat/completions',
@@ -136,25 +178,17 @@ The correctIndex is the zero-based index of the correct answer in the options ar
         signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
         body: JSON.stringify({
           model: ENGLISH_LLM_MODEL,
+          temperature: 0.9,
           messages: [
             { role: 'system', content: systemPrompt },
             {
               role: 'user',
-              content: `Generate a trivia question about the song "${track_name}" by ${artist_name} (album: "${album_name}").
-
-${
-  recentQuestionTexts.length > 0
-    ? `RECENT QUESTIONS ALREADY ASKED (do NOT repeat the same question type as any of these):
-${recentQuestionTexts.map((q, i) => `${i + 1}. ${q}`).join('\n')}
-
-Choose a question type from Q1–Q8 that is clearly different from the types used above.`
-    : 'No recent questions. Choose whichever question type (Q1–Q8) you are most confident about.'
-}
-
-Prioritise facts you are certain about. If you cannot think of a confidently known fact in the chosen type, fall back to a safe question about the artist's genre, home country, or a well-known collaborator. Provide 4 answer options and the correctIndex.`
+              content: isGeneralKnowledge
+                ? `Generate a fun and interesting ${targetType} general knowledge question suitable for an international bar trivia audience. Category: ${targetDescription}. Provide 4 answer options and the correctIndex.`
+                : `Generate a ${targetType} trivia question about the song "${track_name}" by ${artist_name} (album: "${album_name}"). Question type must be ${targetType}. Provide 4 answer options and the correctIndex.`
             }
           ],
-          max_tokens: 350
+          max_tokens: 400
         })
       }
     )
@@ -210,6 +244,12 @@ Prioritise facts you are certain about. If you cannot think of a confidently kno
     }
 
     const { question, options, correctIndex } = validatedAI.data
+    // Extract questionType if the AI returned it (it may not for first rollout)
+    const questionType =
+      typeof (parsedContent as Record<string, unknown>).questionType ===
+      'string'
+        ? ((parsedContent as Record<string, unknown>).questionType as string)
+        : null
 
     // 3. Shuffle options and adjust correctIndex
     const indexedOptions = options.map((opt, i) => ({
@@ -237,6 +277,7 @@ Prioritise facts you are certain about. If you cannot think of a confidently kno
           question,
           options: finalOptions,
           correct_index: finalCorrectIndex,
+          ...(questionType ? { question_type: questionType } : {}),
           created_at: new Date().toISOString()
         },
         { onConflict: 'profile_id, spotify_track_id' }
@@ -245,6 +286,10 @@ Prioritise facts you are certain about. If you cannot think of a confidently kno
     if (insertError) {
       logger('ERROR', 'Failed to cache generated question', insertError.message)
       // still return success to the user!
+    }
+
+    if (questionType) {
+      logger('INFO', `Question type selected by AI: ${questionType}`)
     }
 
     return NextResponse.json({

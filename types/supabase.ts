@@ -730,6 +730,7 @@ export type Database = {
           options: Json
           profile_id: string
           question: string
+          question_type: string | null
           spotify_track_id: string
         }
         Insert: {
@@ -739,6 +740,7 @@ export type Database = {
           options: Json
           profile_id: string
           question: string
+          question_type?: string | null
           spotify_track_id: string
         }
         Update: {
@@ -748,6 +750,7 @@ export type Database = {
           options?: Json
           profile_id?: string
           question?: string
+          question_type?: string | null
           spotify_track_id?: string
         }
         Relationships: [

@@ -16,6 +16,7 @@ import { DJLanguageSelect } from './dj-language-select'
 import { DJVoiceSelect } from './dj-voice-select'
 import { DJPersonalitySelect } from './dj-personality-select'
 import { DuckOverlayToggle } from './duck-overlay-toggle'
+import { TriviaGameToggle } from './trivia-game-toggle'
 
 interface JukeboxSectionProps {
   className?: string
@@ -323,11 +324,20 @@ export function JukeboxSection({
 
         {/* DJ Mode */}
         <DJModeToggle />
-        <DJFrequencySelect />
-        <DJLanguageSelect />
-        <DJVoiceSelect />
-        <DJPersonalitySelect />
-        <DuckOverlayToggle />
+        {isDjModeEnabled && (
+          <>
+            <DJFrequencySelect />
+            <DJLanguageSelect />
+            <DJVoiceSelect />
+            <DJPersonalitySelect />
+            <DuckOverlayToggle />
+          </>
+        )}
+
+        {/* Trivia Game */}
+        <div className='mt-1 border-t border-gray-700 pt-2'>
+          <TriviaGameToggle />
+        </div>
       </div>
     </div>
   )

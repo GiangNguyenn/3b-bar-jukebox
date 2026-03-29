@@ -60,7 +60,6 @@ export function useTriviaGame({
 
   // We track the last fetched track id so we don't refetch infinitely
   const lastFetchedTrackIdRef = useRef<string | null>(null)
-  const isResettingRef = useRef<boolean>(false)
 
   const { data: nowPlaying } = useNowPlayingRealtime({
     profileId,
@@ -78,37 +77,22 @@ export function useTriviaGame({
     }
   }, [])
 
-  // Timer loop for hourly reset
+  // Timer loop — display-only countdown. The actual reset is triggered by
+  // the admin page via useTriviaResetTimer, which is always running.
   useEffect(() => {
     setTimeUntilReset(getSecondsUntilNextHour())
 
     const interval = setInterval(() => {
-      const secondsLeft = getSecondsUntilNextHour()
-      setTimeUntilReset(secondsLeft)
-
-      if (secondsLeft === 0 && !isResettingRef.current && profileId) {
-        // Trigger reset
-        isResettingRef.current = true
-        fetch('/api/trivia/reset', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ profile_id: profileId })
-        }).finally(() => {
-          setScore(0)
-          // Wait a bit before allowing another reset to prevent spamming right at the 0 boundary
-          setTimeout(() => {
-            isResettingRef.current = false
-          }, 3000)
-        })
-      }
+      setTimeUntilReset(getSecondsUntilNextHour())
     }, 1000)
 
     return () => clearInterval(interval)
-  }, [profileId])
+  }, [])
 
   // Question fetching logic
   useEffect(() => {
     if (!profileId || !nowPlaying || !nowPlaying.item) return
+    if (typeof window !== 'undefined' && localStorage.getItem('triviaEnabled') !== 'true') return
 
     const currentTrackId = nowPlaying.item.id
     if (currentTrackId === lastFetchedTrackIdRef.current) return

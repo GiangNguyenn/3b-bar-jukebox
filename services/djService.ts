@@ -372,6 +372,52 @@ class DJService {
     }
   }
 
+  async announceTriviaWinner(text: string): Promise<void> {
+    if (!this.isEnabled()) {
+      log('announceTriviaWinner | DJ disabled, skipping')
+      return
+    }
+    if (this.isAnnouncementInProgress) {
+      log('announceTriviaWinner | announcement already in progress, skipping')
+      return
+    }
+
+    log(`announceTriviaWinner | text="${text.slice(0, 60)}..."`)
+
+    const rawVoice = localStorage.getItem('djVoice')
+    const resolvedVoice =
+      typeof rawVoice === 'string' && DJ_VOICE_IDS.includes(rawVoice)
+        ? rawVoice
+        : DEFAULT_DJ_VOICE
+
+    let blob: Blob | null = null
+    try {
+      const ttsRes = await fetch('/api/dj-tts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text, language: 'english', voice: resolvedVoice })
+      })
+      if (!ttsRes.ok) {
+        warn(`announceTriviaWinner | /api/dj-tts ${ttsRes.status}`)
+        return
+      }
+      blob = await ttsRes.blob()
+      log(`announceTriviaWinner | blob ${blob.size} bytes`)
+    } catch (e) {
+      err('announceTriviaWinner | TTS fetch failed', e)
+      return
+    }
+
+    this.isAnnouncementInProgress = true
+    try {
+      await this.playAudioBlob(blob, true, null)
+    } catch (e) {
+      err('announceTriviaWinner | playback error', e)
+    } finally {
+      this.isAnnouncementInProgress = false
+    }
+  }
+
   async maybeAnnounce(nextTrack: JukeboxQueueItem): Promise<void> {
     const enabled = localStorage.getItem('djMode') === 'true'
     if (!enabled) {

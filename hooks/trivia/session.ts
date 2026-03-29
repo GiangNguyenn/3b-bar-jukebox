@@ -3,25 +3,54 @@
 export const SESSION_KEY = 'trivia_session'
 export const PLAYER_NAME_KEY = 'trivia_player_name'
 
+const TTL_MS = 24 * 60 * 60 * 1000 // 24 hours
+
+interface StoredEntry {
+  value: string
+  expiresAt: number
+}
+
+function readEntry(key: string): string {
+  try {
+    const raw = localStorage.getItem(key)
+    if (!raw) return ''
+    const entry: StoredEntry = JSON.parse(raw)
+    if (Date.now() > entry.expiresAt) {
+      localStorage.removeItem(key)
+      return ''
+    }
+    return entry.value
+  } catch {
+    // Legacy plain-string values or corrupt data – treat as expired
+    localStorage.removeItem(key)
+    return ''
+  }
+}
+
+function writeEntry(key: string, value: string): void {
+  const entry: StoredEntry = { value, expiresAt: Date.now() + TTL_MS }
+  localStorage.setItem(key, JSON.stringify(entry))
+}
+
 export function getOrCreateSession(): string {
   if (typeof window === 'undefined') return ''
 
-  let sessionId = localStorage.getItem(SESSION_KEY)
-  if (!sessionId) {
-    sessionId = crypto.randomUUID()
-    localStorage.setItem(SESSION_KEY, sessionId)
-  }
+  const existing = readEntry(SESSION_KEY)
+  if (existing) return existing
+
+  const sessionId = crypto.randomUUID()
+  writeEntry(SESSION_KEY, sessionId)
   return sessionId
 }
 
 export function getSavedPlayerName(): string {
   if (typeof window === 'undefined') return ''
-  return localStorage.getItem(PLAYER_NAME_KEY) || ''
+  return readEntry(PLAYER_NAME_KEY)
 }
 
 export function savePlayerName(name: string): void {
   if (typeof window === 'undefined') return
-  localStorage.setItem(PLAYER_NAME_KEY, name)
+  writeEntry(PLAYER_NAME_KEY, name)
 }
 
 export const ANSWERS_KEY = 'trivia_answers_v1'

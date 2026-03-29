@@ -14,7 +14,7 @@ export function Leaderboard({
   currentSessionId,
   isLoading
 }: LeaderboardProps): React.ReactElement {
-  const [isOpen, setIsOpen] = useState(false)
+  const [isOpen, setIsOpen] = useState(true)
 
   if (isLoading) {
     return (
@@ -43,7 +43,7 @@ export function Leaderboard({
 
         <div className='flex items-center gap-4'>
           {myEntry && !isOpen && (
-            <div className='hidden rounded-full border border-indigo-800/50 bg-indigo-900/30 px-3 py-1 text-sm font-medium text-indigo-300 sm:block'>
+            <div className='rounded-full border border-indigo-800/50 bg-indigo-900/30 px-3 py-1 text-sm font-medium text-indigo-300'>
               Rank: #{myRank} • {myEntry.score} pts
             </div>
           )}
