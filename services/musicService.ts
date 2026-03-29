@@ -1,15 +1,18 @@
 import { cache } from '@/shared/utils/cache'
 import type { SpotifyArtist, TrackDetails } from '@/shared/types/spotify'
-import type { DgsOptionTrack } from '@/services/game/dgsTypes'
 import type { TargetArtist } from '@/services/gameService'
-import type { ApiStatisticsTracker } from './game/apiStatisticsTracker'
-import * as dgsCache from './game/dgsCache'
-import * as dgsDb from './game/dgsDb'
+import type { ApiStatisticsTracker } from '@/shared/apiCallCategorizer'
 import * as spotifyApi from './spotifyApiServer'
+import {
+  batchGetArtistProfilesWithCache,
+  batchUpsertArtistProfiles
+} from './game/artistCache'
 import { sendApiRequest } from '@/shared/api'
-import { getFromArtistGraph, saveToArtistGraph } from './game/artistGraph'
 import { supabase } from '@/lib/supabase'
 import { SupabaseClient } from '@supabase/supabase-js'
+import { createModuleLogger } from '@/shared/utils/logger'
+
+const log = createModuleLogger('MusicService')
 
 export interface ArtistProfile {
   id: string
@@ -18,19 +21,6 @@ export interface ArtistProfile {
   popularity: number
   followers?: number
   images?: { url: string; height?: number; width?: number }[]
-}
-
-// Logger helper for consistent logging
-const logger = (
-  level: 'INFO' | 'WARN' | 'ERROR',
-  message: string,
-  context: string = 'MusicService',
-  error?: Error
-) => {
-  console.log(
-    `[${new Date().toISOString()}] [${level}] [${context}] ${message}`,
-    error || ''
-  )
 }
 
 /**
@@ -50,7 +40,7 @@ export type DataResponse<T> = {
 
 /**
  * Unified Music Data Service
- * Implements strict layered architecture: Memory -> Database -> Spotify -> Async DB Update
+ * Implements strict layered architecture: Memory -> Database -> Spotify
  */
 export const musicService = {
   /**
@@ -69,11 +59,8 @@ export const musicService = {
     }
 
     try {
-      // 2. Database & Spotify (Unified via dgsCache batch operation)
-      const profiles = await dgsCache.batchGetArtistProfilesWithCache(
-        [artistId],
-        token
-      )
+      // 2. Database & Spotify (via artistCache batch operation)
+      const profiles = await batchGetArtistProfilesWithCache([artistId], token)
       const fetched = profiles.get(artistId)
 
       if (fetched) {
@@ -86,12 +73,10 @@ export const musicService = {
         }
 
         cache.set(memKey, profile)
-        // If it came from batchGet, we trust it; broadly labeling as SpotifyAPI/Database depending on internal hit
-        // dgsCache updates cache automatically.
         return { data: profile, source: DataSource.Database }
       }
     } catch (err) {
-      logger(
+      log(
         'ERROR',
         `Failed to fetch artist ${artistId}`,
         'getArtist',
@@ -109,22 +94,7 @@ export const musicService = {
     trackId: string,
     token: string
   ): Promise<DataResponse<TrackDetails | null>> {
-    // 1. Database Cache (Tier 2)
-    try {
-      const dbTrack = await dgsDb.getTrackByIdFromDb(trackId)
-      if (dbTrack) {
-        return { data: dbTrack, source: DataSource.Database }
-      }
-    } catch (error) {
-      logger(
-        'WARN',
-        `DB cache check failed for track ${trackId}`,
-        'getTrack',
-        error as Error
-      )
-    }
-
-    // 2. Spotify API (Tier 3)
+    // Direct Spotify API call
     try {
       const track = await sendApiRequest<TrackDetails>({
         path: `/tracks/${trackId}`,
@@ -132,18 +102,13 @@ export const musicService = {
         token
       })
 
-      // 3. Lazy Write-Back (REQ-DAT-01)
-      if (track) {
-        void dgsCache.upsertTrackDetails([track])
-      }
-
       return { data: track, source: DataSource.SpotifyAPI }
     } catch (error) {
-      logger(
+      log(
         'WARN',
         `Failed to fetch track ${trackId}`,
         'getTrack',
-        error as Error
+        error instanceof Error ? error : undefined
       )
       return { data: null, source: DataSource.Fallback }
     }
@@ -169,21 +134,7 @@ export const musicService = {
       return { data: cached, source: DataSource.MemoryCache }
     }
 
-    // 2. Database Cache
-    const dbTracksMap = await dgsCache.batchGetTopTracksFromDb(
-      [artistId],
-      token,
-      statisticsTracker
-    )
-    const dbTracks = dbTracksMap.get(artistId)
-
-    if (dbTracks && dbTracks.length > 0) {
-      statisticsTracker?.recordCacheHit('topTracks', 'database')
-      cache.set(memKey, dbTracks)
-      return { data: dbTracks, source: DataSource.Database }
-    }
-
-    // 3. Spotify API
+    // 2. Spotify API (via spotifyApiServer which handles its own memory cache)
     try {
       const spotifyTracks = await spotifyApi.getArtistTopTracksServer(
         artistId,
@@ -193,18 +144,11 @@ export const musicService = {
 
       if (spotifyTracks.length > 0) {
         statisticsTracker?.recordFromSpotify('topTracks', spotifyTracks.length)
-        // 4. Async Update (Fire and forget)
-        void dgsDb.upsertTrackDetails(spotifyTracks)
-        void dgsCache.upsertTopTracks(
-          artistId,
-          spotifyTracks.map((t) => t.id)
-        )
-
         cache.set(memKey, spotifyTracks)
         return { data: spotifyTracks, source: DataSource.SpotifyAPI }
       }
     } catch (err) {
-      logger(
+      log(
         'ERROR',
         `Failed to fetch top tracks for ${artistId}`,
         'getTopTracks',
@@ -235,10 +179,8 @@ export const musicService = {
       return { data: cached, source: DataSource.MemoryCache }
     }
 
-    // 2. Spotify API (via getRelatedArtistsServer which handles graph cache, DB cache, and API fallback)
-    // Note: We removed duplicate graph cache check here since getRelatedArtistsServer already handles it
+    // 2. Spotify API (via spotifyApiServer which handles memory cache and API fallback)
     try {
-      // Pass statisticsTracker through so getRelatedArtistsServer can track API calls internally
       const related = await spotifyApi.getRelatedArtistsServer(
         artistId,
         token,
@@ -246,12 +188,11 @@ export const musicService = {
       )
 
       if (related.length > 0) {
-        // getRelatedArtistsServer handles its own tracking (cache hits and API items)
         cache.set(memKey, related)
         return { data: related, source: DataSource.SpotifyAPI }
       }
     } catch (err) {
-      logger(
+      log(
         'ERROR',
         `Failed to fetch related candidates for ${artistId}`,
         'getRelatedArtists',
@@ -279,15 +220,14 @@ export const musicService = {
       .limit(limit)
 
     if (!error && artists && artists.length >= 20) {
-      // Map DB result to TargetArtist, ensuring id is always spotify_artist_id
       const mappedArtists: TargetArtist[] = artists.map((a: any) => ({
-        id: a.spotify_artist_id, // Map Spotify ID to id
+        id: a.spotify_artist_id,
         name: a.name,
         spotify_artist_id: a.spotify_artist_id,
         genres: a.genres || [],
         popularity: a.popularity,
-        followers: 0, // Default to 0 as not in DB
-        image_url: undefined // Default to undefined as not in DB
+        followers: 0,
+        image_url: undefined
       }))
 
       return {
@@ -296,8 +236,8 @@ export const musicService = {
       }
     }
 
-    // 2. Fallback (Logging only, as this method relies on DB or caller to provide fallback logic via other methods)
-    logger('WARN', 'Insufficient popular artists in DB.', 'getPopularArtists')
+    // 2. Fallback
+    log('WARN', 'Insufficient popular artists in DB.', 'getPopularArtists')
     return {
       data: (artists as TargetArtist[]) || [],
       source: DataSource.Database
@@ -320,7 +260,7 @@ export const musicService = {
       .limit(limit)
 
     if (error) {
-      logger(
+      log(
         'ERROR',
         `Failed to search artists with query "${query}"`,
         'searchArtists',
@@ -383,15 +323,13 @@ export const musicService = {
     }
 
     // 2. Spotify Fallback
-    logger(
+    log(
       'INFO',
       'DB popular artists empty/low. Seeding from Spotify.',
       'getPopularArtistsWithFallback'
     )
 
     try {
-      // 2. Spotify Fallback
-      // Fetch 50 artists using 5 queries due to new limit=10 constraint
       const searchPromises = [0, 10, 20, 30, 40].map((offset) =>
         sendApiRequest<{ artists: { items: any[] } }>({
           path: `search?q=year:2022-2025&type=artist&limit=10&offset=${offset}`,
@@ -399,11 +337,11 @@ export const musicService = {
           token,
           useAppToken: !token
         }).catch((err) => {
-          logger(
+          log(
             'WARN',
             `Search page offset ${offset} failed`,
             'getPopularArtistsWithFallback',
-            err
+            err instanceof Error ? err : undefined
           )
           return null
         })
@@ -434,7 +372,6 @@ export const musicService = {
 
       // 3. Fire-and-forget Update
       if (fetchedArtists.length > 0) {
-        // Transform to CachedArtistProfile for upsert
         const profilesToUpsert = fetchedArtists.map((a) => ({
           id: a.id!,
           name: a.name,
@@ -443,7 +380,7 @@ export const musicService = {
           followers: { total: a.followers || 0 }
         }))
 
-        void dgsCache.batchUpsertArtistProfiles(profilesToUpsert)
+        void batchUpsertArtistProfiles(profilesToUpsert)
       }
 
       // Return combined list (DB + Fetched)
@@ -461,7 +398,7 @@ export const musicService = {
         source: DataSource.SpotifyAPI
       }
     } catch (err) {
-      logger(
+      log(
         'ERROR',
         'Failed to fetch fallback popular artists',
         'getPopularArtistsWithFallback',
@@ -472,67 +409,5 @@ export const musicService = {
         source: DataSource.Database
       }
     }
-  },
-
-  /**
-   * Search Tracks by Genre
-   */
-  searchTracksByGenre: async (
-    genres: string[],
-    token: string,
-    limit: number = 20
-  ): Promise<DataResponse<DgsOptionTrack[]>> => {
-    const memKey = `genre_search:${genres.sort().join(',')}:${limit}`
-    const cached = cache.get<DgsOptionTrack[]>(memKey)
-    if (cached) {
-      return { data: cached, source: DataSource.MemoryCache }
-    }
-
-    try {
-      const tracks = await spotifyApi.searchTracksByGenreServer(
-        genres,
-        token,
-        limit
-      )
-
-      // 2. Fire-and-Forget Update
-      void dgsDb.upsertTrackDetails(tracks)
-
-      const optionTracks: DgsOptionTrack[] = tracks.map((t) => ({
-        track: t,
-        artist: {
-          id: t.artists?.[0]?.id || 'unknown',
-          name: t.artists?.[0]?.name || 'Unknown',
-          uri: '',
-          genres: [],
-          popularity: 0,
-          images: []
-        },
-        metrics: {
-          source: 'target_insertion',
-          simScore: 0,
-          aAttraction: 0,
-          bAttraction: 0,
-          gravityScore: 0,
-          stabilizedScore: 0,
-          finalScore: 0,
-          popularityBand: 'mid',
-          vicinityDistances: {} as any,
-          currentSongAttraction: 0
-        } as any
-      }))
-
-      cache.set(memKey, optionTracks)
-      return { data: optionTracks, source: DataSource.SpotifyAPI }
-    } catch (err) {
-      logger(
-        'ERROR',
-        'Failed to search tracks by genre',
-        'searchTracksByGenre',
-        err instanceof Error ? err : undefined
-      )
-    }
-
-    return { data: [], source: DataSource.Fallback }
   }
 }

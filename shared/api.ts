@@ -1,8 +1,8 @@
 import { SpotifyErrorResponse } from './types/spotify'
 import { getLogger } from './utils/logger'
 import { cache } from './utils/cache'
-import type { ApiStatisticsTracker } from '../services/game/apiStatisticsTracker'
-import { categorizeApiCall } from '../services/game/apiStatisticsTracker'
+import type { ApiStatisticsTracker } from './apiCallCategorizer'
+import { categorizeApiCall } from './apiCallCategorizer'
 
 export interface ApiErrorOptions {
   status?: number

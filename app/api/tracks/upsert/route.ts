@@ -6,7 +6,7 @@ import {
   safeBackfillTrackGenre,
   safeBackfillArtistGenres
 } from '@/services/game/genreBackfill'
-import { upsertArtistProfile } from '@/services/game/dgsCache'
+import { upsertArtistProfile } from '@/services/game/artistCache'
 
 const logger = createModuleLogger('TrackUpsert')
 

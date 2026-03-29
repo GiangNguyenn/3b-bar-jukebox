@@ -8,8 +8,8 @@ import { createModuleLogger } from '@/shared/utils/logger'
 import {
   batchGetArtistProfilesWithCache,
   batchUpsertArtistProfiles
-} from './dgsCache'
-import type { ApiStatisticsTracker } from './apiStatisticsTracker'
+} from './artistCache'
+import type { ApiStatisticsTracker } from '@/shared/apiCallCategorizer'
 
 const logger = createModuleLogger('GenreSimilarity')
 

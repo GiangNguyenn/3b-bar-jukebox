@@ -6,7 +6,7 @@
 import { supabase, queryWithRetry } from '@/lib/supabase'
 import { sendApiRequest } from '@/shared/api'
 import { createModuleLogger } from '@/shared/utils/logger'
-import { upsertArtistProfile } from './dgsCache'
+import { upsertArtistProfile } from './artistCache'
 import { GENRE_MAPPINGS, COMPOUND_GENRE_MAPPINGS } from './genreConstants'
 
 const logger = createModuleLogger('GenreBackfill')

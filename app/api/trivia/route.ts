@@ -87,8 +87,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     const recentTypesUsed: string[] = []
     const recentQuestionTexts: string[] = []
     for (const r of recentQuestions ?? []) {
-      if (r.question_type) recentTypesUsed.push(r.question_type as string)
-      recentQuestionTexts.push(r.question as string)
+      if (r.question_type) recentTypesUsed.push(r.question_type)
+      recentQuestionTexts.push(r.question)
     }
 
     // 3. Deterministically pick the target question type

@@ -5,18 +5,14 @@
 import { sendApiRequest } from '@/shared/api'
 import type { SpotifyArtist, TrackDetails } from '@/shared/types/spotify'
 import { cache } from '@/shared/utils/cache'
-import type { ApiStatisticsTracker } from './game/apiStatisticsTracker'
-import {
-  getCachedRelatedArtists,
-  upsertRelatedArtists,
-  getCachedTopTracks,
-  upsertTopTracks
-} from './game/dgsCache'
-import { fetchTracksByGenreFromDb, upsertTrackDetails } from './game/dgsDb'
+import { createModuleLogger } from '@/shared/utils/logger'
+import type { ApiStatisticsTracker } from '@/shared/apiCallCategorizer'
+
+const log = createModuleLogger('spotifyApiServer')
 
 /**
  * Fetches artists related to the given artist (server-side only)
- * Uses hybrid approach: pre-computed graph → genre similarity (fast fallback)
+ * Uses memory cache with direct Spotify API fallback
  * @param artistId - The Spotify artist ID
  * @param token - Optional user token. If provided, uses this token instead of app token.
  * @param statisticsTracker - Optional statistics tracker for performance monitoring
@@ -31,130 +27,64 @@ export async function getRelatedArtistsServer(
     throw new Error('Artist ID is required')
   }
 
-  console.log('[spotifyApiServer] Hybrid lookup for artist:', artistId)
+  log('LOG', `Looking up related artists for: ${artistId}`)
 
   // Check in-memory cache first (fastest)
   const memCacheKey = `related-artists:${artistId}`
   const memCached = cache.get<SpotifyArtist[]>(memCacheKey)
   if (memCached) {
-    console.log(
-      '[spotifyApiServer] Memory cache hit for related artists:',
-      artistId
-    )
+    log('LOG', `Memory cache hit for related artists: ${artistId}`)
     statisticsTracker?.recordCacheHit('relatedArtists', 'memory')
     return memCached
   }
 
-  // TIER 1: Check pre-computed graph (instant, 0 API calls)
-  const { getFromArtistGraph, saveToArtistGraph } = await import(
-    './game/artistGraph'
+  // Direct Spotify API call
+  log(
+    'LOG',
+    `Cache miss: fetching related artists from Spotify for ${artistId}`
   )
-  const cachedRelations = await getFromArtistGraph(artistId, 0.3, 50, () => {
-    // Track graph cache hit
-    statisticsTracker?.recordCacheHit('relatedArtists', 'database')
-  })
 
-  // Lower threshold: use graph cache if we have at least 5 results
-  if (cachedRelations.length >= 5) {
-    console.log(
-      '[spotifyApiServer] Graph cache hit:',
-      cachedRelations.length,
-      'artists'
+  try {
+    const response = await sendApiRequest<{ artists: SpotifyArtist[] }>({
+      path: `/artists/${artistId}/related-artists`,
+      method: 'GET',
+      token,
+      useAppToken: !token,
+      retryConfig: {
+        maxRetries: 3,
+        baseDelay: 1000,
+        maxDelay: 10000
+      },
+      statisticsTracker
+    })
+
+    const artists = response.artists ?? []
+
+    if (statisticsTracker && artists.length > 0) {
+      statisticsTracker.recordFromSpotify('relatedArtists', artists.length)
+    }
+
+    // Store in memory cache (10-minute TTL, or 1-minute for empty results)
+    cache.set(
+      memCacheKey,
+      artists,
+      artists.length > 0 ? 10 * 60 * 1000 : 60 * 1000
     )
-    statisticsTracker?.recordCacheHit('relatedArtists', 'database')
-    // Store in memory cache
-    cache.set(memCacheKey, cachedRelations, 10 * 60 * 1000)
-    return cachedRelations
-  }
-
-  // If we have SOME graph results (even if < 5), use them to avoid timeouts
-  // during cold cache periods. This prevents making expensive API calls
-  // when the graph has partial data. The DGS engine will supplement with DB fallback.
-  if (cachedRelations.length >= 3) {
-    console.log(
-      '[spotifyApiServer] Partial graph cache hit:',
-      cachedRelations.length,
-      'artists (returning early to avoid timeout)'
+    return artists
+  } catch (error) {
+    log(
+      'ERROR',
+      `Failed to fetch related artists: ${error instanceof Error ? error.message : String(error)}`,
+      undefined,
+      error instanceof Error ? error : undefined
     )
-    statisticsTracker?.recordCacheHit('relatedArtists', 'database')
-    cache.set(memCacheKey, cachedRelations, 10 * 60 * 1000)
-    return cachedRelations
+    return []
   }
-
-  // TIER 1.5: Check database cache for related artists
-  // This provides a fast fallback when graph cache is empty
-  const dbCachedIds = await getCachedRelatedArtists(artistId)
-  if (dbCachedIds.length > 0) {
-    console.log(
-      '[spotifyApiServer] Database cache hit:',
-      dbCachedIds.length,
-      'artists'
-    )
-    statisticsTracker?.recordCacheHit('relatedArtists', 'database')
-    // Convert to minimal SpotifyArtist objects for compatibility
-    const dbArtists = dbCachedIds.map((id) => ({ id, name: '' }))
-    cache.set(memCacheKey, dbArtists, 10 * 60 * 1000)
-    return dbArtists
-  }
-
-  // TIER 2: Database-Only Approach (Genre Similarity + Popular Artists)
-  // Uses database queries instead of deprecated Spotify API
-  console.log(
-    '[spotifyApiServer] Using database-only approach for related artists'
-  )
-
-  const { getRelatedArtistsFromDatabase } = await import(
-    './game/relatedArtistsDb'
-  )
-  let artists = await getRelatedArtistsFromDatabase(artistId)
-
-  if (artists.length > 0 && statisticsTracker) {
-    // These are from database, not Spotify API
-    statisticsTracker.recordCacheHit('relatedArtists', 'database')
-  }
-
-  console.log(
-    '[spotifyApiServer] Database lookup found:',
-    artists.length,
-    'artists'
-  )
-
-  // Save to graph for future lookups if we got results
-  if (artists.length > 0) {
-    void saveToArtistGraph(
-      artistId,
-      artists[0]?.name || 'Unknown Artist',
-      artists.map((a) => ({ ...a, type: 'database' }))
-    )
-  }
-
-  // Store in memory cache (even if empty, to avoid retrying immediately)
-  cache.set(
-    memCacheKey,
-    artists,
-    artists.length > 0 ? 10 * 60 * 1000 : 60 * 1000
-  )
-  return artists
 }
 
 /**
- * OLD MULTI-LEVEL APPROACH BELOW (DEPRECATED - Removed ~400 lines)
- * The code below has been replaced by the hybrid approach above
- *
- * Old approach issues:
- * - Level 1 + Level 2 top tracks fetching = 50+ sequential API calls
- * - Each call added ~1 second = 50+ second load times
- * - Genre fallback with 3 genres = additional 10-15 seconds
- *
- * New hybrid approach:
- * - Tier 1 (graph cache): 0 API calls, <50ms
- * - Tier 2 (genre similarity): 1-2 API calls, 2-5 seconds
- * - Result: 95%+ instant after warmup, 2-5s cold start
- */
-
-/**
  * Searches for tracks by genre to find similar music
- * Uses database-first approach: checks DB cache first, then Spotify API as fallback
+ * Uses direct Spotify API search
  * @param genres - Array of genres to search
  * @param token - Optional user token
  * @param limit - Number of tracks to return
@@ -166,24 +96,9 @@ export async function searchTracksByGenreServer(
 ): Promise<TrackDetails[]> {
   if (!genres.length) return []
 
-  // DATABASE-FIRST: Check database cache first
-  const dbResult = await fetchTracksByGenreFromDb({
-    genres,
-    minPopularity: 15,
-    maxPopularity: 100,
-    limit,
-    excludeSpotifyTrackIds: new Set() // No exclusions needed for general genre search
-  })
-
-  if (dbResult.tracks.length > 0) {
-    console.log(
-      `[spotifyApiServer] DB cache hit for genre search: ${dbResult.tracks.length} tracks for genres: ${genres.slice(0, 3).join(', ')}`
-    )
-    return dbResult.tracks.slice(0, limit)
-  }
-
-  console.log(
-    `[spotifyApiServer] DB cache miss for genre search, fetching from Spotify: ${genres.slice(0, 3).join(', ')}`
+  log(
+    'LOG',
+    `Searching tracks by genre from Spotify: ${genres.slice(0, 3).join(', ')}`
   )
 
   try {
@@ -198,19 +113,14 @@ export async function searchTracksByGenreServer(
       useAppToken: !token
     })
 
-    const tracks = response.tracks?.items ?? []
-
-    // FIRE-AND-FORGET: Update database cache
-    if (tracks.length > 0) {
-      void upsertTrackDetails(tracks)
-    }
-
-    return tracks
+    return response.tracks?.items ?? []
   } catch (error) {
-    console.error('[spotifyApiServer] Failed to search tracks by genre:', {
-      genres,
-      error: error instanceof Error ? error.message : String(error)
-    })
+    log(
+      'ERROR',
+      `Failed to search tracks by genre: ${error instanceof Error ? error.message : String(error)}`,
+      undefined,
+      error instanceof Error ? error : undefined
+    )
     return []
   }
 }
@@ -226,7 +136,7 @@ export async function getArtistAlbumsServer(
 ): Promise<Array<{ id: string; name: string; release_date?: string }>> {
   // Validate artist ID before making API calls
   if (!artistId || artistId.trim() === '') {
-    console.error('[spotifyApiServer] Invalid or empty artist ID provided')
+    log('ERROR', 'Invalid or empty artist ID provided')
     return []
   }
 
@@ -242,10 +152,12 @@ export async function getArtistAlbumsServer(
 
     return response.items ?? []
   } catch (error) {
-    console.error('[spotifyApiServer] Failed to fetch artist albums:', {
-      artistId,
-      error: error instanceof Error ? error.message : String(error)
-    })
+    log(
+      'ERROR',
+      `Failed to fetch artist albums: ${error instanceof Error ? error.message : String(error)}`,
+      undefined,
+      error instanceof Error ? error : undefined
+    )
     return []
   }
 }
@@ -271,19 +183,22 @@ export async function getAlbumTracksServer(
 
     return response.items ?? []
   } catch (error) {
-    console.error('[spotifyApiServer] Failed to fetch album tracks:', {
-      albumId,
-      error: error instanceof Error ? error.message : String(error)
-    })
+    log(
+      'ERROR',
+      `Failed to fetch album tracks: ${error instanceof Error ? error.message : String(error)}`,
+      undefined,
+      error instanceof Error ? error : undefined
+    )
     return []
   }
 }
 
 /**
  * Fetches the top tracks for a given artist (server-side only)
- * Uses database-first approach with consistent caching
+ * Uses memory cache with direct Spotify API fallback
  * @param artistId - The Spotify artist ID
  * @param token - Optional user token. If provided, uses this token instead of app token.
+ * @param statisticsTracker - Optional statistics tracker for performance monitoring
  */
 export async function getArtistTopTracksServer(
   artistId: string,
@@ -292,7 +207,7 @@ export async function getArtistTopTracksServer(
 ): Promise<TrackDetails[]> {
   // Validate artist ID before making API calls
   if (!artistId || artistId.trim() === '') {
-    console.error('[spotifyApiServer] Invalid or empty artist ID provided')
+    log('ERROR', 'Invalid or empty artist ID provided')
     return []
   }
 
@@ -300,56 +215,18 @@ export async function getArtistTopTracksServer(
   const memCacheKey = `artist-top-tracks:${artistId}`
   const memCached = cache.get<TrackDetails[]>(memCacheKey)
   if (memCached) {
-    console.log('[spotifyApiServer] Memory cache hit for top tracks:', artistId)
-    // Note: Statistics tracking is handled by callers to avoid double-counting
+    log('LOG', `Memory cache hit for top tracks: ${artistId}`)
     return memCached
   }
 
-  // DATABASE-FIRST: Check database cache using consistent pattern
-  const dbCachedTrackIds = await getCachedTopTracks(artistId)
-  if (dbCachedTrackIds.length > 0) {
-    console.log(
-      '[spotifyApiServer] DB cache hit:',
-      dbCachedTrackIds.length,
-      'top tracks for',
-      artistId
-    )
-
-    // Fetch full track details from DB
-    const { batchGetTrackDetailsWithCache } = await import('./game/dgsCache')
-    const trackDetailsMap = await batchGetTrackDetailsWithCache(
-      dbCachedTrackIds,
-      token || '',
-      statisticsTracker
-    )
-
-    const tracks = dbCachedTrackIds
-      .map((id) => trackDetailsMap.get(id))
-      .filter((t): t is TrackDetails => t !== undefined)
-
-    if (tracks.length > 0) {
-      // Store in memory cache (10-minute TTL)
-      cache.set(memCacheKey, tracks, 10 * 60 * 1000)
-      return tracks
-    }
-
-    console.log(
-      '[spotifyApiServer] DB cache hit but track details missing, falling back to Spotify',
-      artistId
-    )
-  }
-
-  console.log(
-    '[spotifyApiServer] Cache miss: fetching top tracks from Spotify for',
-    artistId
-  )
+  log('LOG', `Cache miss: fetching top tracks from Spotify for ${artistId}`)
 
   try {
     const response = await sendApiRequest<{ tracks: TrackDetails[] }>({
-      path: `artists/${artistId}/top-tracks?market=US`, // Market is required for top tracks
+      path: `artists/${artistId}/top-tracks?market=US`,
       method: 'GET',
-      token, // Use provided token if available, otherwise useAppToken will be used
-      useAppToken: !token, // Only use app token if no user token provided
+      token,
+      useAppToken: !token,
       retryConfig: {
         maxRetries: 3,
         baseDelay: 1000,
@@ -364,18 +241,17 @@ export async function getArtistTopTracksServer(
       statisticsTracker.recordFromSpotify('topTracks', 1)
     }
 
-    // FIRE-AND-FORGET: Save to database cache
-    void upsertTopTracks(
-      artistId,
-      tracks.map((t) => t.id)
-    )
-
     // Store in memory cache (10-minute TTL)
     cache.set(memCacheKey, tracks, 10 * 60 * 1000)
 
     return tracks
   } catch (error) {
-    console.error('[spotifyApiServer] getArtistTopTracksServer error:', error)
+    log(
+      'ERROR',
+      `getArtistTopTracksServer error: ${error instanceof Error ? error.message : String(error)}`,
+      undefined,
+      error instanceof Error ? error : undefined
+    )
     throw new Error(
       `Failed to fetch artist top tracks: ${
         error instanceof Error ? error.message : 'Unknown error'
