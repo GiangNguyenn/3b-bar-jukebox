@@ -24,9 +24,6 @@ const ROOT = path.resolve(__dirname, '..', '..')
 // Requirement 6.1, 6.2, 6.3
 
 const SHARED_UTILITIES = [
-  'services/game/genreBackfill.ts',
-  'services/game/metadataBackfill.ts',
-  'services/game/genreConstants.ts',
   'services/game/genreSimilarity.ts'
 ] as const
 

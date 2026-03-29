@@ -116,7 +116,7 @@ void describe('Property 4: Subtitle auto-hides after timeout', () => {
     }, SUBTITLE_TIMEOUT_MS)
 
     // Verify timeout was registered with correct delay
-    const timer = timers.find((t) => t.id === timeoutId)
+    const timer = timers.find((t) => t.id === (timeoutId as unknown as number))
     assert.ok(timer, 'timeout should be registered')
     assert.equal(timer.delay, 30_000, 'timeout should be 30 seconds')
 
