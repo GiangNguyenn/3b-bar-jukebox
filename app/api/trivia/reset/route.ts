@@ -53,11 +53,14 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
       const { error: announceError } = await supabaseAdmin
         .from('dj_announcements')
-        .insert({
-          profile_id,
-          script_text: announcementText,
-          is_active: true
-        })
+        .upsert(
+          {
+            profile_id,
+            script_text: announcementText,
+            is_active: true
+          },
+          { onConflict: 'profile_id' }
+        )
 
       if (announceError) {
         // Log but don't fail the reset operation entirely

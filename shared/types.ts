@@ -9,18 +9,4 @@ export interface TokenResponse {
   creation_time: number
 }
 
-/**
- * @deprecated This interface is legacy and should not be used in new code.
- * Use types from @/shared/types/token.ts instead.
- * This interface will be removed in a future version.
- */
-export interface TokenInfo {
-  lastRefresh: number
-  expiresIn: number
-  scope: string
-  type: string
-  lastActualRefresh: number
-  expiryTime: number
-}
-
 // Add any other non-Spotify types here

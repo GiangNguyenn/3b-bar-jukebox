@@ -4,7 +4,6 @@ import { useEffect, useState } from 'react'
 import { useRouter, useParams } from 'next/navigation'
 import { supabaseBrowser } from '@/lib/supabase-browser'
 import { Loading } from '@/components/ui/loading'
-import { useMetadataBackfill } from '@/hooks/useMetadataBackfill'
 
 export function ProtectedRoute({
   children
@@ -109,9 +108,6 @@ export function ProtectedRoute({
 
     void checkSessionAndPremium()
   }, [router, supabase, missingEnv, username])
-
-  // Run metadata backfill in background for authenticated admins
-  useMetadataBackfill()
 
   if (missingEnv) {
     return (

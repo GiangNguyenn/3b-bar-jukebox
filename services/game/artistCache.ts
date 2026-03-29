@@ -3,18 +3,15 @@
  * Extracted from dgsCache.ts — provides DB-first lookups for artist data
  * to minimize Spotify API calls.
  *
- * Used by genreBackfill.ts, genreSimilarity.ts, and app/api/tracks/upsert/route.ts
+ * Used by app/api/tracks/upsert/route.ts
  */
 
 import { supabase, queryWithRetry } from '@/lib/supabase'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 import { sendApiRequest } from '@/shared/api'
 import { createModuleLogger } from '@/shared/utils/logger'
-import { backfillArtistGenres } from './genreBackfill'
 import { ApiStatisticsTracker } from '@/shared/apiCallCategorizer'
 
-// Re-export for consumers that previously imported via dgsCache
-export { safeBackfillArtistGenres } from './genreBackfill'
 export type { ApiStatisticsTracker }
 
 const logger = createModuleLogger('ArtistCache')
@@ -340,10 +337,7 @@ export async function batchGetArtistProfilesWithCache(
               follower_count: artist.followers?.total
             })
 
-            // If Spotify returned no genres, queue fallback backfill
-            if (!artist.genres || artist.genres.length === 0) {
-              void backfillArtistGenres(artist.id, artist.name, token)
-            }
+
           }
         }
       }

@@ -2,10 +2,6 @@ import { NextRequest, NextResponse } from 'next/server'
 import { sendApiRequest } from '@/shared/api'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 import { createModuleLogger } from '@/shared/utils/logger'
-import {
-  safeBackfillTrackGenre,
-  safeBackfillArtistGenres
-} from '@/services/game/genreBackfill'
 import { upsertArtistProfile } from '@/services/game/artistCache'
 
 const logger = createModuleLogger('TrackUpsert')
@@ -150,22 +146,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
           popularity: undefined,
           follower_count: undefined
         })
-        // If genre still null, queue full backfill to enrich artist
-        if (!genre) {
-          void safeBackfillArtistGenres(primaryArtist.id, primaryArtist.name)
-        }
       }
-    }
-
-    // If genre still missing, queue async backfill for the track
-    if (!genre) {
-      const primaryArtistName = trackData.artists?.[0]?.name ?? 'Unknown Artist'
-      void safeBackfillTrackGenre(
-        trackData.id,
-        primaryArtistName,
-        releaseYear,
-        trackData.popularity ?? null
-      )
     }
 
     return NextResponse.json({ success: true })

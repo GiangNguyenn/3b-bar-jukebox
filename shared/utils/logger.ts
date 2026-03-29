@@ -21,12 +21,6 @@ export function getLogger(): Promise<LogFunction> {
   return loggerPromise
 }
 
-// This function is kept for compatibility, but the new
-// promise-based approach is preferred.
-export function initializeLoggers(logFunction: LogFunction) {
-  // You can add other logger initializations here if needed
-}
-
 export function createModuleLogger(moduleName: string) {
   return (
     level: 'LOG' | 'INFO' | 'WARN' | 'ERROR',

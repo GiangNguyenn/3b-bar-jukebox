@@ -10,7 +10,7 @@ import {
   useRef,
   useMemo
 } from 'react'
-import { initializeLoggers, setLogger } from '@/shared/utils/logger'
+import { setLogger } from '@/shared/utils/logger'
 
 export type LogLevel = 'LOG' | 'INFO' | 'WARN' | 'ERROR'
 export type LogEntry = {
@@ -122,7 +122,6 @@ export function ConsoleLogsProvider({
 
   useEffect(() => {
     setLogger(addLog)
-    initializeLoggers(addLog)
   }, [addLog])
 
   useEffect(() => {

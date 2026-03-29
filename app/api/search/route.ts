@@ -6,7 +6,6 @@ import { createModuleLogger } from '@/shared/utils/logger'
 import { queryWithRetry } from '@/lib/supabaseQuery'
 import { refreshTokenWithRetry } from '@/recovery/tokenRecovery'
 import { updateTokenInDatabase } from '@/recovery/tokenDatabaseUpdate'
-import { safeBackfillTrackGenre } from '@/services/game/genreBackfill'
 
 // Set up logger for this module
 const logger = createModuleLogger('Search')
@@ -140,18 +139,6 @@ export async function GET(
           'INFO',
           `DB search hit: returning ${dbTracks.length} results for query: ${query}`
         )
-
-        // Queue async backfill for any tracks missing genres
-        dbTracks.forEach((track) => {
-          if (!track.genre && track.artist) {
-            void safeBackfillTrackGenre(
-              track.spotify_track_id,
-              track.artist,
-              track.release_year ?? null,
-              track.popularity ?? null
-            )
-          }
-        })
 
         // Convert DB results to Spotify API format
         const formattedTracks = dbTracks.map((track) => ({

@@ -71,8 +71,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     const systemPrompt = isVietnamese
       ? 'Không quá 2 câu có thể đọc trong 10 giây hoặc ít hơn. Bạn là một DJ radio tên "DJ 3B" đang chơi nhạc tại quán bia thủ công "3B Saigon". Hãy viết một đoạn giới thiệu ngắn bằng tiếng Việt tự nhiên cho bài hát tiếp theo. Ngắn gọn và tự nhiên. Chỉ thỉnh thoảng mới nhắc đến bia hoặc quán bar, không phải lần nào cũng nhắc.' +
         recentScriptsNote
-      : `No more than 2 sentences that can be spoken in 10 seconds or less.  English language only.  You are a ${personalityPrompt} DJ playing music in a craft beer bar called 3B Saigon. Write a short announcement of no more than 2 sentences introducing the next track. Be informative but concise. Only occasionally mention beer or the bar — most of the time just focus on the music.` +
-        'You are aware that you are an AI with a female voice though do not say that.  Never mention the date or time.' +
+      : `No more than 2 sentences that can be spoken in 10 seconds or less. English language only. Use only standard ASCII characters — no special symbols, accented letters, Unicode punctuation, or non-English characters. You are a ${personalityPrompt} DJ playing music in a craft beer bar called 3B Saigon. Write a short announcement of no more than 2 sentences introducing the next track. Be informative but concise. Only occasionally mention beer or the bar — most of the time just focus on the music.` +
+        'You are aware that you are an AI with a female voice though do not say that. Never mention the date or time.' +
         recentScriptsNote
 
     const veniceResponse = await fetch(
@@ -126,10 +126,29 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       )
     }
 
+    // For English scripts, normalize common Unicode punctuation to ASCII
+    // equivalents and strip any remaining non-ASCII characters so the TTS
+    // model only receives clean, speakable text.
+    const sanitizedScript = isVietnamese
+      ? script
+      : script
+          .replace(/[\u2018\u2019\u02BC]/g, "'") // curly single quotes / apostrophes
+          .replace(/[\u201C\u201D]/g, '"') // curly double quotes
+          .replace(/\u2013/g, '-') // en dash
+          .replace(/\u2014/g, ' - ') // em dash
+          .replace(/\u2026/g, '...') // ellipsis
+          .replace(/[^\x20-\x7E\n]/g, '') // strip remaining non-ASCII printable chars
+          .trim()
+
     // Reject garbled model output — repeated backslashes or excessive
     // non-ASCII characters indicate an inference glitch.
-    const backslashRatio = (script.match(/\\/g) ?? []).length / script.length
-    if (backslashRatio > 0.1 || /\\{3,}/.test(script)) {
+    const backslashRatio =
+      (sanitizedScript.match(/\\/g) ?? []).length / sanitizedScript.length
+    if (
+      backslashRatio > 0.1 ||
+      /\\{3,}/.test(sanitizedScript) ||
+      sanitizedScript.length === 0
+    ) {
       console.error(
         '[dj-script] Garbled script rejected:',
         script.slice(0, 200)
@@ -140,7 +159,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       )
     }
 
-    return NextResponse.json({ script })
+    return NextResponse.json({ script: sanitizedScript })
   } catch {
     return NextResponse.json(
       { error: 'Failed to contact Venice AI' },
