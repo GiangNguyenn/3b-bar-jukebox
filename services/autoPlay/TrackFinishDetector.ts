@@ -33,7 +33,8 @@ export function hasTrackFinished(
   const hasProgressed = progress > (lastState.progress_ms ?? 0)
 
   const isAtEnd = duration > 0 && duration - progress < TRACK_END_THRESHOLD_MS
-  const isNearEnd = duration > 0 && duration - progress < TRACK_END_THRESHOLD_MS / 2
+  const isNearEnd =
+    duration > 0 && duration - progress < TRACK_END_THRESHOLD_MS / 2
   const hasStalled = !hasProgressed && wasPlaying && isSameTrack
 
   return (

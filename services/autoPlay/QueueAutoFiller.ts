@@ -6,7 +6,12 @@ import { createModuleLogger } from '@/shared/utils/logger'
 
 const log = createModuleLogger('QueueAutoFiller')
 
-type LogFn = (level: LogLevel, message: string, context?: string, error?: Error) => void
+type LogFn = (
+  level: LogLevel,
+  message: string,
+  context?: string,
+  error?: Error
+) => void
 
 interface AutoFillNotificationMetadata {
   trackName: string
@@ -164,7 +169,9 @@ export class QueueAutoFiller {
 
     let tracksAdded = 0
     const currentQueue = this.queueManager.getQueue()
-    const excludedTrackIds = currentQueue.map((item) => item.tracks.spotify_track_id)
+    const excludedTrackIds = currentQueue.map(
+      (item) => item.tracks.spotify_track_id
+    )
     const queuedTracks = currentQueue.map((item) => ({
       title: item.tracks.name,
       artist: item.tracks.artist
@@ -321,7 +328,9 @@ export class QueueAutoFiller {
 
     if (!playlistResponse.ok) {
       if (playlistResponse.status === 409) return // Already in playlist
-      throw new Error(`Failed to add track to playlist: ${playlistResponse.status}`)
+      throw new Error(
+        `Failed to add track to playlist: ${playlistResponse.status}`
+      )
     }
 
     const albumArtUrl =
@@ -346,10 +355,16 @@ export class QueueAutoFiller {
     if (!this.username) return false
 
     if (this.addLog) {
-      this.addLog('WARN', '[SOURCE:FALLBACK] Falling back to random track from database', 'QueueAutoFiller')
+      this.addLog(
+        'WARN',
+        '[SOURCE:FALLBACK] Falling back to random track from database',
+        'QueueAutoFiller'
+      )
     }
 
-    const excludedTrackIds = this.queueManager.getQueue().map((item) => item.tracks.spotify_track_id)
+    const excludedTrackIds = this.queueManager
+      .getQueue()
+      .map((item) => item.tracks.spotify_track_id)
 
     for (let attempt = 0; attempt < 5; attempt++) {
       try {
@@ -391,7 +406,10 @@ export class QueueAutoFiller {
         if (excludedTrackIds.includes(result.track.spotify_track_id)) continue
 
         const playlistController = new AbortController()
-        const playlistTimeoutId = setTimeout(() => playlistController.abort(), 10000)
+        const playlistTimeoutId = setTimeout(
+          () => playlistController.abort(),
+          10000
+        )
         let playlistResponse: Response
         try {
           playlistResponse = await fetch(`/api/playlist/${this.username}`, {

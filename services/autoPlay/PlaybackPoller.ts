@@ -21,7 +21,10 @@ export class PlaybackPoller {
   private unsubscribeSuspension: (() => void) | null = null
   private readonly callbacks: PlaybackPollerCallbacks
 
-  constructor(callbacks: PlaybackPollerCallbacks, initialIntervalMs = DEFAULT_INTERVAL_MS) {
+  constructor(
+    callbacks: PlaybackPollerCallbacks,
+    initialIntervalMs = DEFAULT_INTERVAL_MS
+  ) {
     this.callbacks = callbacks
     this.intervalMs = initialIntervalMs
   }
@@ -31,15 +34,17 @@ export class PlaybackPoller {
     this.isRunning = true
     this.isPolling = false
 
-    this.unsubscribeSuspension = recoveryManager.onSuspensionChange((suspended) => {
-      if (suspended) {
-        log('WARN', 'Token suspended — pausing polling')
-        this.clearInterval()
-      } else {
-        log('INFO', 'Token recovered — resuming polling')
-        if (this.isRunning) this.startInterval()
+    this.unsubscribeSuspension = recoveryManager.onSuspensionChange(
+      (suspended) => {
+        if (suspended) {
+          log('WARN', 'Token suspended — pausing polling')
+          this.clearInterval()
+        } else {
+          log('INFO', 'Token recovered — resuming polling')
+          if (this.isRunning) this.startInterval()
+        }
       }
-    })
+    )
 
     this.startInterval()
   }

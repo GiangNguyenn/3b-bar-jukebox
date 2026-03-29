@@ -23,9 +23,7 @@ const ROOT = path.resolve(__dirname, '..', '..')
 // ─── Shared Utilities (services/game/) ──────────────────────────────────────
 // Requirement 6.1, 6.2, 6.3
 
-const SHARED_UTILITIES = [
-  'services/game/genreSimilarity.ts'
-] as const
+const SHARED_UTILITIES = ['services/game/genreSimilarity.ts'] as const
 
 // ─── New Extracted Modules ──────────────────────────────────────────────────
 // Requirement 6.1, 6.2

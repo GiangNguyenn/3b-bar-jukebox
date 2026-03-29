@@ -103,7 +103,12 @@ export class AutoPlayService {
   }
 
   public setLogger(
-    logger: (level: LogLevel, message: string, context?: string, error?: Error) => void
+    logger: (
+      level: LogLevel,
+      message: string,
+      context?: string,
+      error?: Error
+    ) => void
   ): void {
     this.autoFiller.setLogger(logger)
   }
@@ -177,7 +182,11 @@ export class AutoPlayService {
   private async handleState(currentState: SpotifyPlaybackState): Promise<void> {
     // Throttled queue check
     const now = Date.now()
-    if (this.isInitialized && this.username && now - this.lastQueueCheckTime > this.QUEUE_CHECK_INTERVAL) {
+    if (
+      this.isInitialized &&
+      this.username &&
+      now - this.lastQueueCheckTime > this.QUEUE_CHECK_INTERVAL
+    ) {
       this.lastQueueCheckTime = now
       this.autoFiller.schedule(0)
     }
@@ -195,7 +204,10 @@ export class AutoPlayService {
     }
 
     // Detect track finish and handle transition
-    if (this.lastPlaybackState && hasTrackFinished(currentState, this.lastPlaybackState)) {
+    if (
+      this.lastPlaybackState &&
+      hasTrackFinished(currentState, this.lastPlaybackState)
+    ) {
       try {
         await this.handleTrackFinished(currentTrackId)
       } catch {}
@@ -209,7 +221,11 @@ export class AutoPlayService {
       is_playing: currentState.is_playing,
       progress_ms: currentState.progress_ms,
       item: currentState.item
-        ? { id: currentState.item.id, duration_ms: currentState.item.duration_ms, name: currentState.item.name }
+        ? {
+            id: currentState.item.id,
+            duration_ms: currentState.item.duration_ms,
+            name: currentState.item.name
+          }
         : null
     } as SpotifyPlaybackState
     this.lastTrackId = currentTrackId ?? null
@@ -247,16 +263,18 @@ export class AutoPlayService {
     }
   }
 
-  private async handleTrackFinished(trackId: string | undefined): Promise<void> {
+  private async handleTrackFinished(
+    trackId: string | undefined
+  ): Promise<void> {
     if (!trackId) return
     if (!this.duplicateDetector.shouldProcessTrack(trackId)) return
 
     this.onTrackFinished?.(trackId)
 
     try {
-      const queueItem = this.queueManager.getQueue().find(
-        (item) => item.tracks.spotify_track_id === trackId
-      )
+      const queueItem = this.queueManager
+        .getQueue()
+        .find((item) => item.tracks.spotify_track_id === trackId)
 
       if (queueItem) {
         try {
@@ -282,7 +300,9 @@ export class AutoPlayService {
 
 let autoPlayServiceInstance: AutoPlayService | null = null
 
-export function getAutoPlayService(config?: AutoPlayServiceConfig): AutoPlayService {
+export function getAutoPlayService(
+  config?: AutoPlayServiceConfig
+): AutoPlayService {
   if (!autoPlayServiceInstance) {
     autoPlayServiceInstance = new AutoPlayService(config)
   }
