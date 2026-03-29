@@ -36,13 +36,23 @@ export function useTriviaWinnerAnnouncement(profileId: string | null): void {
     function handleAnnouncement(rowId: string, scriptText: string): void {
       // Dedup key uses rowId + scriptText since the row ID never changes (upsert on profile_id)
       const dedupKey = `${rowId}:${scriptText}`
-      console.warn('[WinnerAnnouncement] handleAnnouncement called — rowId:', rowId, 'dedupKey:', dedupKey.slice(0, 80))
+      console.warn(
+        '[WinnerAnnouncement] handleAnnouncement called — rowId:',
+        rowId,
+        'dedupKey:',
+        dedupKey.slice(0, 80)
+      )
       if (processedIds.current.has(dedupKey)) {
-        console.warn('[WinnerAnnouncement] SKIPPED — already processed dedupKey:', dedupKey.slice(0, 80))
+        console.warn(
+          '[WinnerAnnouncement] SKIPPED — already processed dedupKey:',
+          dedupKey.slice(0, 80)
+        )
         return
       }
       processedIds.current.add(dedupKey)
-      console.warn('[WinnerAnnouncement] marking row as processed in DB and calling djService.announceTriviaWinner')
+      console.warn(
+        '[WinnerAnnouncement] marking row as processed in DB and calling djService.announceTriviaWinner'
+      )
 
       // Mark as processed in DB to prevent re-delivery
       void supabaseBrowser
@@ -55,10 +65,15 @@ export function useTriviaWinnerAnnouncement(profileId: string | null): void {
 
     function startPolling(pid: string): void {
       if (pollIntervalRef.current) {
-        console.warn('[WinnerAnnouncement] startPolling — already polling, skipping')
+        console.warn(
+          '[WinnerAnnouncement] startPolling — already polling, skipping'
+        )
         return
       }
-      console.warn('[WinnerAnnouncement] startPolling — starting 10s poll for profileId:', pid)
+      console.warn(
+        '[WinnerAnnouncement] startPolling — starting 10s poll for profileId:',
+        pid
+      )
 
       pollIntervalRef.current = setInterval(async () => {
         try {
@@ -69,10 +84,15 @@ export function useTriviaWinnerAnnouncement(profileId: string | null): void {
             .eq('is_active', true)
             .order('created_at', { ascending: true })
 
-          console.warn('[WinnerAnnouncement] poll result — rows:', data?.length ?? 0)
+          console.warn(
+            '[WinnerAnnouncement] poll result — rows:',
+            data?.length ?? 0
+          )
           if (!data?.length) return
           if (!getTriviaEnabled()) {
-            console.warn('[WinnerAnnouncement] poll — trivia disabled, skipping')
+            console.warn(
+              '[WinnerAnnouncement] poll — trivia disabled, skipping'
+            )
             return
           }
 
@@ -104,21 +124,37 @@ export function useTriviaWinnerAnnouncement(profileId: string | null): void {
           filter: `profile_id=eq.${profileId}`
         },
         (payload) => {
-          console.warn('[WinnerAnnouncement] Realtime event received:', JSON.stringify(payload))
+          console.warn(
+            '[WinnerAnnouncement] Realtime event received:',
+            JSON.stringify(payload)
+          )
           const row = payload.new as AnnouncementRow | undefined
           if (!row?.is_active || !row.script_text || !row.id) {
-            console.warn('[WinnerAnnouncement] Realtime — skipping (is_active:', row?.is_active, 'script_text:', !!row?.script_text, 'id:', !!row?.id, ')')
+            console.warn(
+              '[WinnerAnnouncement] Realtime — skipping (is_active:',
+              row?.is_active,
+              'script_text:',
+              !!row?.script_text,
+              'id:',
+              !!row?.id,
+              ')'
+            )
             return
           }
           if (!getTriviaEnabled()) {
-            console.warn('[WinnerAnnouncement] Realtime — trivia disabled, skipping')
+            console.warn(
+              '[WinnerAnnouncement] Realtime — trivia disabled, skipping'
+            )
             return
           }
           handleAnnouncement(row.id, row.script_text)
         }
       )
       .subscribe((status) => {
-        console.warn('[WinnerAnnouncement] Realtime subscription status:', status)
+        console.warn(
+          '[WinnerAnnouncement] Realtime subscription status:',
+          status
+        )
         isRealtimeHealthy.current = status === 'SUBSCRIBED'
         if (status === 'SUBSCRIBED') {
           stopPolling()

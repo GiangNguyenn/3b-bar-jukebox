@@ -24,14 +24,21 @@ export function useTriviaResetTimer(profileId: string | null): void {
 
     const start = (): (() => void) => {
       const triviaEnabled = getTriviaEnabled()
-      console.warn('[useTriviaResetTimer] start() called — triviaEnabled:', triviaEnabled, 'profileId:', profileId)
+      console.warn(
+        '[useTriviaResetTimer] start() called — triviaEnabled:',
+        triviaEnabled,
+        'profileId:',
+        profileId
+      )
       if (!triviaEnabled) return () => {}
 
       const interval = setInterval(() => {
         const secondsLeft = getSecondsUntilNextHour()
 
         if (secondsLeft <= 5) {
-          console.warn(`[useTriviaResetTimer] countdown: ${secondsLeft}s, isResetting: ${isResettingRef.current}`)
+          console.warn(
+            `[useTriviaResetTimer] countdown: ${secondsLeft}s, isResetting: ${isResettingRef.current}`
+          )
         }
 
         if (secondsLeft <= 1 && !isResettingRef.current) {
@@ -44,7 +51,11 @@ export function useTriviaResetTimer(profileId: string | null): void {
           })
             .then(async (res) => {
               const body = await res.json().catch(() => null)
-              console.warn('[useTriviaResetTimer] reset response:', res.status, JSON.stringify(body))
+              console.warn(
+                '[useTriviaResetTimer] reset response:',
+                res.status,
+                JSON.stringify(body)
+              )
               if (!res.ok) {
                 console.warn('[useTriviaResetTimer] reset failed:', res.status)
               }

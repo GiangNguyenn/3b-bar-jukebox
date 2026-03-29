@@ -336,8 +336,6 @@ export async function batchGetArtistProfilesWithCache(
               popularity: artist.popularity,
               follower_count: artist.followers?.total
             })
-
-
           }
         }
       }
