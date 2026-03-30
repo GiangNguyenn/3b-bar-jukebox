@@ -19,6 +19,9 @@ interface AnnouncementRow {
  *
  * Includes Realtime health monitoring with polling fallback and deduplication.
  * Must be used on the admin page — the only page with an active audio context.
+ *
+ * Tears down and re-creates the subscription when the trivia toggle changes,
+ * so no Realtime channel or polling runs while trivia is disabled.
  */
 export function useTriviaWinnerAnnouncement(profileId: string | null): void {
   const channelRef = useRef<RealtimeChannel | null>(null)
@@ -31,154 +34,169 @@ export function useTriviaWinnerAnnouncement(profileId: string | null): void {
       console.warn('[WinnerAnnouncement] no profileId, skipping')
       return
     }
-    console.warn('[WinnerAnnouncement] initializing for profileId:', profileId)
 
-    function handleAnnouncement(rowId: string, scriptText: string): void {
-      // Dedup key uses rowId + scriptText since the row ID never changes (upsert on profile_id)
-      const dedupKey = `${rowId}:${scriptText}`
-      console.warn(
-        '[WinnerAnnouncement] handleAnnouncement called — rowId:',
-        rowId,
-        'dedupKey:',
-        dedupKey.slice(0, 80)
-      )
-      if (processedIds.current.has(dedupKey)) {
+    const start = (): (() => void) => {
+      if (!getTriviaEnabled()) {
         console.warn(
-          '[WinnerAnnouncement] SKIPPED — already processed dedupKey:',
+          '[WinnerAnnouncement] trivia disabled, skipping subscription setup'
+        )
+        return () => {}
+      }
+
+      console.warn(
+        '[WinnerAnnouncement] initializing for profileId:',
+        profileId
+      )
+
+      function handleAnnouncement(rowId: string, scriptText: string): void {
+        // Dedup key uses rowId + scriptText since the row ID never changes (upsert on profile_id)
+        const dedupKey = `${rowId}:${scriptText}`
+        console.warn(
+          '[WinnerAnnouncement] handleAnnouncement called — rowId:',
+          rowId,
+          'dedupKey:',
           dedupKey.slice(0, 80)
         )
-        return
-      }
-      processedIds.current.add(dedupKey)
-      console.warn(
-        '[WinnerAnnouncement] marking row as processed in DB and calling djService.announceTriviaWinner'
-      )
-
-      // Mark as processed in DB to prevent re-delivery
-      void supabaseBrowser
-        .from('dj_announcements')
-        .update({ is_active: false })
-        .eq('id', rowId)
-
-      void djService.announceTriviaWinner(scriptText)
-    }
-
-    function startPolling(pid: string): void {
-      if (pollIntervalRef.current) {
-        console.warn(
-          '[WinnerAnnouncement] startPolling — already polling, skipping'
-        )
-        return
-      }
-      console.warn(
-        '[WinnerAnnouncement] startPolling — starting 10s poll for profileId:',
-        pid
-      )
-
-      pollIntervalRef.current = setInterval(async () => {
-        try {
-          const { data } = await supabaseBrowser
-            .from('dj_announcements')
-            .select('id, script_text')
-            .eq('profile_id', pid)
-            .eq('is_active', true)
-            .order('created_at', { ascending: true })
-
+        if (processedIds.current.has(dedupKey)) {
           console.warn(
-            '[WinnerAnnouncement] poll result — rows:',
-            data?.length ?? 0
+            '[WinnerAnnouncement] SKIPPED — already processed dedupKey:',
+            dedupKey.slice(0, 80)
           )
-          if (!data?.length) return
-          if (!getTriviaEnabled()) {
-            console.warn(
-              '[WinnerAnnouncement] poll — trivia disabled, skipping'
-            )
-            return
-          }
+          return
+        }
+        processedIds.current.add(dedupKey)
+        console.warn(
+          '[WinnerAnnouncement] marking row as processed in DB and calling djService.announceTriviaWinner'
+        )
 
-          for (const row of data) {
+        // Mark as processed in DB to prevent re-delivery
+        void supabaseBrowser
+          .from('dj_announcements')
+          .update({ is_active: false })
+          .eq('id', rowId)
+
+        void djService.announceTriviaWinner(scriptText)
+      }
+
+      function startPolling(pid: string): void {
+        if (pollIntervalRef.current) {
+          console.warn(
+            '[WinnerAnnouncement] startPolling — already polling, skipping'
+          )
+          return
+        }
+        console.warn(
+          '[WinnerAnnouncement] startPolling — starting 10s poll for profileId:',
+          pid
+        )
+
+        pollIntervalRef.current = setInterval(async () => {
+          try {
+            const { data } = await supabaseBrowser
+              .from('dj_announcements')
+              .select('id, script_text')
+              .eq('profile_id', pid)
+              .eq('is_active', true)
+              .order('created_at', { ascending: true })
+
+            console.warn(
+              '[WinnerAnnouncement] poll result — rows:',
+              data?.length ?? 0
+            )
+            if (!data?.length) return
+
+            for (const row of data) {
+              handleAnnouncement(row.id, row.script_text)
+            }
+          } catch (e) {
+            console.warn('[WinnerAnnouncement] poll error:', e)
+          }
+        }, 10_000)
+      }
+
+      function stopPolling(): void {
+        if (pollIntervalRef.current) {
+          console.warn('[WinnerAnnouncement] stopPolling — clearing interval')
+          clearInterval(pollIntervalRef.current)
+          pollIntervalRef.current = null
+        }
+      }
+
+      const channel = supabaseBrowser
+        .channel(`trivia_winner_announcement_${profileId}`)
+        .on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: 'dj_announcements',
+            filter: `profile_id=eq.${profileId}`
+          },
+          (payload) => {
+            console.warn(
+              '[WinnerAnnouncement] Realtime event received:',
+              JSON.stringify(payload)
+            )
+            const row = payload.new as AnnouncementRow | undefined
+            if (!row?.is_active || !row.script_text || !row.id) {
+              console.warn(
+                '[WinnerAnnouncement] Realtime — skipping (is_active:',
+                row?.is_active,
+                'script_text:',
+                !!row?.script_text,
+                'id:',
+                !!row?.id,
+                ')'
+              )
+              return
+            }
             handleAnnouncement(row.id, row.script_text)
           }
-        } catch (e) {
-          console.warn('[WinnerAnnouncement] poll error:', e)
-        }
-      }, 10_000)
-    }
-
-    function stopPolling(): void {
-      if (pollIntervalRef.current) {
-        console.warn('[WinnerAnnouncement] stopPolling — clearing interval')
-        clearInterval(pollIntervalRef.current)
-        pollIntervalRef.current = null
-      }
-    }
-
-    const channel = supabaseBrowser
-      .channel(`trivia_winner_announcement_${profileId}`)
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'dj_announcements',
-          filter: `profile_id=eq.${profileId}`
-        },
-        (payload) => {
-          console.warn(
-            '[WinnerAnnouncement] Realtime event received:',
-            JSON.stringify(payload)
-          )
-          const row = payload.new as AnnouncementRow | undefined
-          if (!row?.is_active || !row.script_text || !row.id) {
-            console.warn(
-              '[WinnerAnnouncement] Realtime — skipping (is_active:',
-              row?.is_active,
-              'script_text:',
-              !!row?.script_text,
-              'id:',
-              !!row?.id,
-              ')'
-            )
-            return
-          }
-          if (!getTriviaEnabled()) {
-            console.warn(
-              '[WinnerAnnouncement] Realtime — trivia disabled, skipping'
-            )
-            return
-          }
-          handleAnnouncement(row.id, row.script_text)
-        }
-      )
-      .subscribe((status) => {
-        console.warn(
-          '[WinnerAnnouncement] Realtime subscription status:',
-          status
         )
-        isRealtimeHealthy.current = status === 'SUBSCRIBED'
-        if (status === 'SUBSCRIBED') {
-          stopPolling()
-        } else {
+        .subscribe((status) => {
+          console.warn(
+            '[WinnerAnnouncement] Realtime subscription status:',
+            status
+          )
+          isRealtimeHealthy.current = status === 'SUBSCRIBED'
+          if (status === 'SUBSCRIBED') {
+            stopPolling()
+          } else {
+            startPolling(profileId)
+          }
+        })
+
+      channelRef.current = channel
+
+      // Timeout: if not SUBSCRIBED within 30s, start polling
+      const healthTimeout = setTimeout(() => {
+        if (!isRealtimeHealthy.current) {
           startPolling(profileId)
         }
-      })
+      }, 30_000)
 
-    channelRef.current = channel
-
-    // Timeout: if not SUBSCRIBED within 30s, start polling
-    const healthTimeout = setTimeout(() => {
-      if (!isRealtimeHealthy.current) {
-        startPolling(profileId)
+      return () => {
+        clearTimeout(healthTimeout)
+        stopPolling()
+        if (channelRef.current) {
+          supabaseBrowser.removeChannel(channelRef.current)
+          channelRef.current = null
+        }
+        isRealtimeHealthy.current = false
       }
-    }, 30_000)
+    }
+
+    let cleanup = start()
+
+    const handleToggle = (): void => {
+      cleanup()
+      cleanup = start()
+    }
+    window.addEventListener('trivia-enabled-changed', handleToggle)
 
     return () => {
-      clearTimeout(healthTimeout)
-      stopPolling()
-      if (channelRef.current) {
-        supabaseBrowser.removeChannel(channelRef.current)
-        channelRef.current = null
-      }
+      cleanup()
+      window.removeEventListener('trivia-enabled-changed', handleToggle)
     }
   }, [profileId])
 }
