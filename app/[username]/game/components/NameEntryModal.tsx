@@ -4,10 +4,12 @@ import React, { useState } from 'react'
 
 export interface NameEntryModalProps {
   onJoin: (name: string) => void
+  takenNames?: string[]
 }
 
 export function NameEntryModal({
-  onJoin
+  onJoin,
+  takenNames = []
 }: NameEntryModalProps): React.ReactElement {
   const [name, setName] = useState('')
   const [error, setError] = useState('')
@@ -23,6 +25,12 @@ export function NameEntryModal({
 
     if (trimmed.length > 20) {
       setError('Name must be 20 characters or less')
+      return
+    }
+
+    const lowerTrimmed = trimmed.toLowerCase()
+    if (takenNames.some((n) => n.toLowerCase() === lowerTrimmed)) {
+      setError('That name is already taken — choose another')
       return
     }
 

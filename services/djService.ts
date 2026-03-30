@@ -42,6 +42,9 @@ class DJService {
   private lastOnTrackStartedId: string | null = null
   private audioContext: AudioContext | null = null
   private announcementQueue: Array<() => Promise<void>> = []
+  // Tracks the true pre-duck volume so concurrent/queued duckAndPlay calls
+  // don't read an already-ducked value and restore to the wrong level.
+  private storedOriginalVolume: number | null = null
 
   private constructor() {}
 
@@ -168,6 +171,7 @@ class DJService {
         warn('audio playback error', e)
         if (waitForEnd) reject(e)
         if (restoreVolume !== null) {
+          this.storedOriginalVolume = null
           SpotifyApiService.getInstance()
             .setVolume(restoreVolume)
             .catch(() => {})
@@ -177,6 +181,7 @@ class DJService {
         warn('audio.play() rejected', e)
         if (waitForEnd) reject(e)
         if (restoreVolume !== null) {
+          this.storedOriginalVolume = null
           SpotifyApiService.getInstance()
             .setVolume(restoreVolume)
             .catch(() => {})
@@ -192,12 +197,22 @@ class DJService {
     scriptText: string | null,
     waitForEnd: boolean
   ): Promise<void> {
-    let originalVolume = 100
-    try {
-      const state = await SpotifyApiService.getInstance().getPlaybackState()
-      originalVolume = state?.device?.volume_percent ?? 100
-    } catch {
-      warn('could not read current volume, assuming 100%')
+    let originalVolume: number
+    if (this.storedOriginalVolume !== null) {
+      // Already ducked (e.g. a concurrent fire-and-forget announcement is playing,
+      // or a queued announcement starts before the previous ramp finishes).
+      // Reuse the real pre-duck volume rather than reading the currently-ducked value.
+      originalVolume = this.storedOriginalVolume
+      log(`duckAndPlay — already ducked, reusing stored original: ${originalVolume}%`)
+    } else {
+      originalVolume = 100
+      try {
+        const state = await SpotifyApiService.getInstance().getPlaybackState()
+        originalVolume = state?.device?.volume_percent ?? 100
+      } catch {
+        warn('could not read current volume, assuming 100%')
+      }
+      this.storedOriginalVolume = originalVolume
     }
 
     const duckedVolume = Math.round(originalVolume * 0.2)
@@ -265,6 +280,7 @@ class DJService {
             SpotifyApiService.getInstance()
               .setVolume(targetVolume)
               .catch(() => {})
+            this.storedOriginalVolume = null
             log(`volume ramp complete → ${targetVolume}%`)
           }
         }, STEP_MS)

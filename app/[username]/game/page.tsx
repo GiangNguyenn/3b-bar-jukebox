@@ -71,7 +71,14 @@ export default function GamePage(): React.ReactElement {
           </h1>
         </header>
 
-        {!gameState.hasJoined && <NameEntryModal onJoin={gameState.joinGame} />}
+        {!gameState.hasJoined && (
+          <NameEntryModal
+            onJoin={gameState.joinGame}
+            takenNames={leaderboardState.entries
+              .filter((e) => e.session_id !== gameState.sessionId)
+              .map((e) => e.player_name)}
+          />
+        )}
 
         <main className='flex flex-col gap-2'>
           <NowPlayingHeader
