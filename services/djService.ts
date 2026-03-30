@@ -203,7 +203,9 @@ class DJService {
       // or a queued announcement starts before the previous ramp finishes).
       // Reuse the real pre-duck volume rather than reading the currently-ducked value.
       originalVolume = this.storedOriginalVolume
-      log(`duckAndPlay — already ducked, reusing stored original: ${originalVolume}%`)
+      log(
+        `duckAndPlay — already ducked, reusing stored original: ${originalVolume}%`
+      )
     } else {
       originalVolume = 100
       try {
