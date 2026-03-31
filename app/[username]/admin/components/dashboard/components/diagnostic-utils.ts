@@ -242,30 +242,42 @@ function buildRootCauseAnalysis(
     }
   }
 
-  // Build causal chain: token failure → downstream cascade
+  // Get token timestamps before building the causal chain so we can check
+  // whether the token was successfully refreshed after the earliest token error.
+  const tokenTimestamps = tokenManager.getTokenTimestamps()
+
+  // Build causal chain: token failure → downstream cascade (only when token
+  // was NOT subsequently recovered, otherwise the downstream errors are unrelated)
   const causalChain: string[] = []
   if (earliestTokenError) {
     causalChain.push(
       `Token failure: ${earliestTokenError.message} at ${new Date(earliestTokenError.timestamp).toISOString()}`
     )
 
-    // Look for downstream errors that occurred after the token failure
-    const downstreamErrors = new Set<string>()
-    for (const event of events) {
-      if (
-        event.timestamp > earliestTokenError.timestamp &&
-        !TOKEN_KEYWORDS.test(event.message)
-      ) {
-        downstreamErrors.add(event.message)
+    const refreshTs = tokenTimestamps.lastSuccessfulRefresh
+    if (refreshTs && refreshTs > earliestTokenError.timestamp) {
+      // Token was refreshed after the failure — downstream errors are not caused
+      // by the token expiry. Annotate recovery so the reader isn't misled.
+      causalChain.push(
+        `Token recovered: Successfully refreshed at ${new Date(refreshTs).toISOString()}`
+      )
+    } else {
+      // Token was never refreshed (or refresh predates the failure) — downstream
+      // errors may genuinely be caused by the expired token.
+      const downstreamErrors = new Set<string>()
+      for (const event of events) {
+        if (
+          event.timestamp > earliestTokenError.timestamp &&
+          !TOKEN_KEYWORDS.test(event.message)
+        ) {
+          downstreamErrors.add(event.message)
+        }
       }
+      Array.from(downstreamErrors).forEach((msg) => {
+        causalChain.push(`Downstream cascade: ${msg}`)
+      })
     }
-    Array.from(downstreamErrors).forEach((msg) => {
-      causalChain.push(`Downstream cascade: ${msg}`)
-    })
   }
-
-  // Get token timestamps and endpoint failure details
-  const tokenTimestamps = tokenManager.getTokenTimestamps()
   const recoveryDiag = recoveryManager.getDiagnostics()
 
   return {

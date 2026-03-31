@@ -223,7 +223,24 @@ class PlayerLifecycleService {
             `Playback restriction on first attempt. Attempting to activate device ${deviceId}...`
           )
           // Attempt to activate the device (shouldPlay: true, aggressively wake up audio context)
-          await transferPlaybackToDevice(deviceId, 3, 1000, true, true)
+          const activated = await transferPlaybackToDevice(
+            deviceId,
+            3,
+            1000,
+            true,
+            true
+          )
+          if (!activated) {
+            this.log(
+              'WARN',
+              `Device activation failed for device ${deviceId}. Playback retry will likely fail.`
+            )
+          } else {
+            this.log(
+              'INFO',
+              `Device activation succeeded for device ${deviceId}.`
+            )
+          }
           // Continue to backoff and retry
         } else if (errorMessage.includes('Restriction violated')) {
           this.log('WARN', 'Restriction violated on retry, skipping track.')

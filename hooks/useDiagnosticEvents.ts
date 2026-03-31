@@ -16,6 +16,7 @@ export function useDiagnosticEvents(): DiagnosticEvent[] {
   const eventsRef = useRef<DiagnosticEvent[]>([])
   const lastStatusRef = useRef<string | null>(null)
   const lastPlaybackStateRef = useRef<string | null>(null)
+  const processedLogKeysRef = useRef(new Set<string>())
   const { logs } = useConsoleLogsContext()
   const { status, lastStatusChange, lastError, playbackState } =
     useSpotifyPlayerStore()
@@ -141,13 +142,13 @@ export function useDiagnosticEvents(): DiagnosticEvent[] {
       .slice(0, 5) // Only process most recent 5
 
     recentLogs.forEach((log) => {
-      const eventExists = eventsRef.current.some(
-        (e) =>
-          e.message === log.message &&
-          Math.abs(e.timestamp - new Date(log.timestamp).getTime()) < 1000
-      )
-
-      if (!eventExists) {
+      // Use a stable key (context + message + original log timestamp) to prevent
+      // re-adding the same log entry across re-renders. The previous approach compared
+      // event creation time vs log write time, which diverged after ~1s causing
+      // repeated event floods whenever any new log arrived.
+      const logKey = `${log.context ?? ''}:${log.message}:${log.timestamp}`
+      if (!processedLogKeysRef.current.has(logKey)) {
+        processedLogKeysRef.current.add(logKey)
         addEvent(
           'error',
           log.message,
