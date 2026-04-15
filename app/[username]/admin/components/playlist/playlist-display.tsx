@@ -4,17 +4,12 @@ import { useState, useEffect } from 'react'
 import { sendApiRequest } from '@/shared/api'
 import { useSpotifyPlayerStore } from '@/hooks/useSpotifyPlayer'
 import { getAutoPlayService } from '@/services/autoPlayService'
-import {
-  PlayIcon,
-  TrashIcon,
-  MusicalNoteIcon
-} from '@heroicons/react/24/outline'
+import { PlayIcon, TrashIcon } from '@heroicons/react/24/outline'
 import { ErrorMessage } from '@/components/ui/error-message'
 import { Loading } from '@/components/ui/loading'
 import { JukeboxQueueItem } from '@/shared/types/queue'
 import { useConsoleLogsContext } from '@/hooks/ConsoleLogsProvider'
 import { useDebouncedCallback } from 'use-debounce'
-import { PlaylistImportModal } from './playlist-import-modal'
 import { queueManager } from '@/services/queueManager'
 
 interface PlaybackState {
@@ -29,19 +24,16 @@ interface PlaylistDisplayProps {
   optimisticUpdate?: (
     updater: (currentQueue: JukeboxQueueItem[]) => JukeboxQueueItem[]
   ) => void
-  username?: string
 }
 
 export function PlaylistDisplay({
   queue,
   onQueueChanged,
-  optimisticUpdate,
-  username
+  optimisticUpdate
 }: PlaylistDisplayProps): JSX.Element {
   const [error, setError] = useState<string | null>(null)
   const [loadingTrackId, setLoadingTrackId] = useState<string | null>(null)
   const [deletingTrackId, setDeletingTrackId] = useState<string | null>(null)
-  const [isImportModalOpen, setIsImportModalOpen] = useState(false)
   const { deviceId } = useSpotifyPlayerStore()
   const { addLog } = useConsoleLogsContext()
   const [playbackState, setPlaybackState] = useState<PlaybackState | null>(null)
@@ -164,10 +156,6 @@ export function PlaylistDisplay({
     }
   }
 
-  const handleImportComplete = async (): Promise<void> => {
-    await onQueueChanged()
-  }
-
   if (error) {
     return (
       <ErrorMessage message={error ?? ''} onDismiss={() => setError(null)} />
@@ -186,23 +174,8 @@ export function PlaylistDisplay({
 
   return (
     <div className='space-y-4'>
-      <PlaylistImportModal
-        isOpen={isImportModalOpen}
-        onClose={() => setIsImportModalOpen(false)}
-        username={username ?? ''}
-        onImportComplete={handleImportComplete}
-      />
-
       <div className='flex items-center justify-between'>
         <h2 className='text-xl font-semibold'>Queue ({queue.length} tracks)</h2>
-        <button
-          onClick={() => setIsImportModalOpen(true)}
-          disabled={!username}
-          className='text-white flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold transition-colors hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:ring-offset-black disabled:cursor-not-allowed disabled:opacity-50'
-        >
-          <MusicalNoteIcon className='h-4 w-4' />
-          Import Tracks
-        </button>
       </div>
 
       <div className='overflow-hidden rounded-lg border border-gray-800'>

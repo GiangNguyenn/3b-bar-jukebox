@@ -614,7 +614,6 @@ export default function AdminPage(): JSX.Element {
                 await refreshQueue()
               }}
               optimisticUpdate={optimisticUpdate}
-              username={username}
             />
           </TabsContent>
 
