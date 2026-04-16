@@ -1,5 +1,3 @@
-export { default as WaveformVisualizer } from './WaveformVisualizer'
-export { default as ProgressRing } from './ProgressRing'
 export { default as TrackMetadata } from './TrackMetadata'
 export { default as ColorBackground } from './ColorBackground'
 export { default as GradientWaves } from './GradientWaves'
