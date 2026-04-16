@@ -396,8 +396,10 @@ export const sendApiRequest = async <T>({
 
         // Retry on transient Spotify server errors (502, 503, 504)
         // 501 Not Implemented is excluded — it won't succeed on retry.
-        const maxRetries = retryConfig.maxRetries ?? DEFAULT_RETRY_CONFIG.maxRetries
-        const baseDelay = retryConfig.baseDelay ?? DEFAULT_RETRY_CONFIG.baseDelay
+        const maxRetries =
+          retryConfig.maxRetries ?? DEFAULT_RETRY_CONFIG.maxRetries
+        const baseDelay =
+          retryConfig.baseDelay ?? DEFAULT_RETRY_CONFIG.baseDelay
         const maxDelay = retryConfig.maxDelay ?? DEFAULT_RETRY_CONFIG.maxDelay
         if (
           response.status >= 500 &&
