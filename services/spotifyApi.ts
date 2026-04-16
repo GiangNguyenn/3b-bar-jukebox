@@ -15,6 +15,7 @@ import { transferPlaybackToDevice } from '@/services/deviceManagement/deviceTran
 interface PlayerStore {
   getState: () => {
     deviceId: string | null
+    status: string
   }
 }
 
@@ -206,14 +207,15 @@ export class SpotifyApiService implements SpotifyApiClient {
         // Spotify context on the app's device, not for selecting the next
         // track from the jukebox queue. Track-to-track transitions are
         // handled by playerLifecycleService via SDK events.
+        const store = getPlayerStore()
+        if (!store) {
+          throw new Error(
+            'Player store is not available. This method can only be called from client-side code.'
+          )
+        }
+
         let deviceId = targetDeviceId
         if (!deviceId) {
-          const store = getPlayerStore()
-          if (!store) {
-            throw new Error(
-              'Player store is not available. This method can only be called from client-side code.'
-            )
-          }
           const appDeviceId = store.getState().deviceId
           deviceId = appDeviceId ?? undefined
           if (!deviceId) {
@@ -223,12 +225,19 @@ export class SpotifyApiService implements SpotifyApiClient {
           }
         }
 
-        // Ensure playback is routed to the app device before resuming.
-        const transferred = await transferPlaybackToDevice(deviceId)
-        if (!transferred) {
-          throw new Error(
-            `Failed to transfer playback to app device: ${deviceId}`
-          )
+        // Only transfer playback when the SDK device is not already the active
+        // Spotify context. When status is 'ready', the SDK confirmed the device
+        // is registered — the play endpoint accepts device_id directly and will
+        // route to it. Transferring first is a redundant round-trip that adds
+        // latency and consumes rate-limit quota for every play/resume.
+        const isDeviceReady = store.getState().status === 'ready'
+        if (!isDeviceReady) {
+          const transferred = await transferPlaybackToDevice(deviceId)
+          if (!transferred) {
+            throw new Error(
+              `Failed to transfer playback to app device: ${deviceId}`
+            )
+          }
         }
 
         // Resume the current Spotify context on the app device. We do not

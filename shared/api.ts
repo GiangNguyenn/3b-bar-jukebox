@@ -394,26 +394,28 @@ export const sendApiRequest = async <T>({
           }
         }
 
-        // Check if this is a premium-related error and redirect accordingly
-        if (typeof window !== 'undefined') {
-          const isPremiumError =
-            errorMessage.toLowerCase().includes('premium') ||
-            errorMessage.toLowerCase().includes('subscription') ||
-            errorMessage.toLowerCase().includes('upgrade') ||
-            errorMessage.toLowerCase().includes('account type') ||
-            errorMessage
-              .toLowerCase()
-              .includes('not available for your account')
-
-          if (
-            isPremiumError &&
-            !window.location.pathname.includes('premium-required')
-          ) {
-            window.location.href = '/premium-required'
-            throw new ApiError('Premium subscription required', {
-              status: response.status
-            })
-          }
+        // Retry on transient Spotify server errors (502, 503, 504)
+        // 501 Not Implemented is excluded — it won't succeed on retry.
+        const maxRetries = retryConfig.maxRetries ?? DEFAULT_RETRY_CONFIG.maxRetries
+        const baseDelay = retryConfig.baseDelay ?? DEFAULT_RETRY_CONFIG.baseDelay
+        const maxDelay = retryConfig.maxDelay ?? DEFAULT_RETRY_CONFIG.maxDelay
+        if (
+          response.status >= 500 &&
+          response.status !== 501 &&
+          retryCount < maxRetries
+        ) {
+          const backoff = Math.min(
+            baseDelay * Math.pow(2, retryCount),
+            maxDelay
+          )
+          const log = await getLogger()
+          log(
+            'WARN',
+            `Spotify ${response.status} error, retrying in ${backoff}ms (attempt ${retryCount + 1}/${maxRetries})`,
+            'API'
+          )
+          await new Promise((resolve) => setTimeout(resolve, backoff))
+          return makeRequest(retryCount + 1, extendQueueTimeout)
         }
 
         throw new ApiError(errorMessage, {

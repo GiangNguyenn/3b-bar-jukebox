@@ -21,7 +21,7 @@ export async function GET(request: Request): Promise<NextResponse> {
 
   if (!code) {
     return NextResponse.redirect(
-      `${getBaseUrl(request)}/auth/error?error=Spotify%20Premium%20account%20required.%20Authorization%20code%20not%20found.`
+      `${getBaseUrl(request)}/auth/error?error=${encodeURIComponent('Authorization failed or was cancelled. Please try again.')}`
     )
   }
 
@@ -34,7 +34,7 @@ export async function GET(request: Request): Promise<NextResponse> {
       typeof session.provider_token === 'string' ? session.provider_token : null
     if (!accessToken) {
       return NextResponse.redirect(
-        `${getBaseUrl(request)}/auth/error?error=Spotify%20Premium%20account%20required.%20Access%20token%20not%20found.`
+        `${getBaseUrl(request)}/auth/error?error=${encodeURIComponent('Failed to retrieve Spotify credentials. Please sign in again.')}`
       )
     }
 
@@ -48,7 +48,6 @@ export async function GET(request: Request): Promise<NextResponse> {
       display_name: userProfile.display_name,
       avatar_url: userProfile.images?.[0]?.url ?? null,
       is_premium: isPremium,
-      spotify_product_type: userProfile.product,
       spotify_access_token: accessToken,
       spotify_refresh_token:
         typeof session.provider_refresh_token === 'string'
