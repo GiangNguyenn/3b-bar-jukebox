@@ -362,7 +362,14 @@ class PlayerLifecycleService {
               'Device recovery failed. Player may need to be recreated.'
             )
           }
-        } catch (error) {}
+        } catch (error) {
+          if (this.playerRef) {
+            onStatusChange(
+              'recovery_needed',
+              'Device recovery error. Player may need to be recreated.'
+            )
+          }
+        }
       })()
     }, RECOVERY_GRACE_PERIOD_MS)
 
@@ -758,12 +765,41 @@ class PlayerLifecycleService {
       if (this.consecutiveNullStates >= NULL_STATE_THRESHOLD) {
         this.consecutiveNullStates = 0
 
-        void this.handleAuthenticationError(
-          'Device persistently inactive',
-          onStatusChange,
-          onDeviceIdChange,
-          onPlaybackStateChange
-        ).catch(() => {})
+        // Try a lightweight device transfer first — null states are commonly caused
+        // by the device becoming inactive (e.g. user opens Spotify elsewhere), not
+        // by an auth failure. Jumping straight to handleAuthenticationError wastes
+        // retry budget and destroys/recreates the player unnecessarily.
+        if (this.deviceId) {
+          void (async () => {
+            try {
+              const transferred = await transferPlaybackToDevice(this.deviceId!)
+              if (transferred) {
+                onStatusChange('ready', undefined)
+              } else {
+                void this.handleAuthenticationError(
+                  'Device persistently inactive',
+                  onStatusChange,
+                  onDeviceIdChange,
+                  onPlaybackStateChange
+                ).catch(() => {})
+              }
+            } catch {
+              void this.handleAuthenticationError(
+                'Device persistently inactive',
+                onStatusChange,
+                onDeviceIdChange,
+                onPlaybackStateChange
+              ).catch(() => {})
+            }
+          })()
+        } else {
+          void this.handleAuthenticationError(
+            'Device persistently inactive',
+            onStatusChange,
+            onDeviceIdChange,
+            onPlaybackStateChange
+          ).catch(() => {})
+        }
       }
       return
     }

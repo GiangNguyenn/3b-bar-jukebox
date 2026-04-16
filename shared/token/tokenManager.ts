@@ -500,7 +500,10 @@ class TokenManager {
     // If token expires within the refresh threshold, refresh it
     if (timeUntilExpiry <= refreshThreshold) {
       try {
-        await this.getToken() // This will refresh the token
+        // Clear cache first so getToken() performs an actual network refresh
+        // rather than returning the still-technically-valid cached token
+        this.clearCache()
+        await this.getToken()
         return true
       } catch (error) {
         if (addLog) {
