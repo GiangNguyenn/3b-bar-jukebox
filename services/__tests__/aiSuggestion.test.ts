@@ -1,4 +1,4 @@
-// Feature: ai-song-suggestions, Property 1: Venice AI response parsing yields valid recommendations
+// Feature: ai-song-suggestions, Property 1: AI response parsing yields valid recommendations
 // Feature: ai-song-suggestions, Property 2: Spotify search query construction includes title and artist
 // Feature: ai-song-suggestions, Property 3: Graceful degradation on partial AI responses
 // Feature: ai-song-suggestions, Property 11: Post-resolution filtering excludes recently played tracks
@@ -10,7 +10,7 @@ import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
 import fc from 'fast-check'
 import {
-  parseVeniceResponse,
+  parseAiResponse,
   buildSpotifySearchQuery,
   buildUserMessage
 } from '../aiSuggestion'
@@ -34,7 +34,7 @@ const validRecArb = fc.record({
 // -------------------------------------------------------------------
 // Property 1: Venice AI response parsing yields valid recommendations
 // -------------------------------------------------------------------
-describe('Property 1: Venice AI response parsing yields valid recommendations', () => {
+describe('Property 1: AI response parsing yields valid recommendations', () => {
   // **Validates: Requirements 1.2**
 
   it('every parsed entry has a non-empty title and non-empty artist', () => {
@@ -43,7 +43,7 @@ describe('Property 1: Venice AI response parsing yields valid recommendations', 
         fc.array(validRecArb, { minLength: 1, maxLength: 15 }),
         (recs) => {
           const json = JSON.stringify(recs)
-          const result = parseVeniceResponse(json)
+          const result = parseAiResponse(json)
 
           for (const r of result) {
             assert.ok(r.title.length > 0, 'title must be non-empty')
@@ -57,7 +57,7 @@ describe('Property 1: Venice AI response parsing yields valid recommendations', 
 
   it('parses correctly when JSON array is wrapped in extra text', () => {
     // Prefix/suffix must not contain [ or ] to avoid interfering with the
-    // greedy regex that parseVeniceResponse uses to extract the JSON array.
+    // greedy regex that parseAiResponse uses to extract the JSON array.
     const safeTextArb = fc
       .string({ minLength: 0, maxLength: 50 })
       .map((s) => s.replace(/[\[\]]/g, ''))
@@ -70,7 +70,7 @@ describe('Property 1: Venice AI response parsing yields valid recommendations', 
         (recs, prefix, suffix) => {
           const json = JSON.stringify(recs)
           const wrapped = `${prefix}${json}${suffix}`
-          const result = parseVeniceResponse(wrapped)
+          const result = parseAiResponse(wrapped)
 
           assert.equal(result.length, recs.length)
           for (const r of result) {
@@ -131,7 +131,7 @@ describe('Property 3: Graceful degradation on partial AI responses', () => {
           ),
         ([n, recs]) => {
           const json = JSON.stringify(recs)
-          const result = parseVeniceResponse(json)
+          const result = parseAiResponse(json)
           assert.equal(result.length, n)
         }
       ),

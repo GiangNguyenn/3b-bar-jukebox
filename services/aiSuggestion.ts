@@ -1,3 +1,4 @@
+import Anthropic from '@anthropic-ai/sdk'
 import { createModuleLogger } from '@/shared/utils/logger'
 import { getAppAccessToken } from '@/services/spotify/auth'
 import { supabase } from '@/lib/supabase'
@@ -10,13 +11,21 @@ import { SUGGESTION_BATCH_SIZE } from '@/shared/constants/aiSuggestion'
 
 const logger = createModuleLogger('AISuggestion')
 
-const VENICE_API_URL = 'https://api.venice.ai/api/v1/chat/completions'
-const VENICE_MODEL = 'llama-3.3-70b'
-const FETCH_TIMEOUT_MS = 25000
+const CLAUDE_MODEL = 'claude-sonnet-4-6'
 
-const SYSTEM_MESSAGE = `You are a music recommendation engine. Return exactly ${SUGGESTION_BATCH_SIZE} song suggestions as a JSON array.
-Each entry must have "title" and "artist" fields. Return ONLY the JSON array, no other text.
-Do not include songs from the recently played list provided by the user.`
+const SYSTEM_MESSAGE = `You are an expert music curator for a bar and venue jukebox system.
+Your job is to suggest exactly ${SUGGESTION_BATCH_SIZE} songs that match the requested vibe.
+
+Rules:
+- Return ONLY a valid JSON array — no explanation, no markdown, no other text
+- Each entry must have exactly two fields: "title" and "artist"
+- Maximum 1 song per artist — every suggestion must be from a different artist
+- Mix well-known hits with deeper cuts; avoid the most overplayed, obvious choices for the genre
+- Include songs from different decades and subgenres within the vibe unless the prompt specifies otherwise
+- Do NOT suggest songs from the recently played or queued list provided by the user
+- Choose songs that are widely available on Spotify
+
+Format: [{"title": "Song Name", "artist": "Artist Name"}, ...]`
 
 export function buildUserMessage(
   prompt: string,
@@ -43,10 +52,10 @@ export function buildUserMessage(
   return message
 }
 
-export function parseVeniceResponse(raw: string): AiSongRecommendation[] {
+export function parseAiResponse(raw: string): AiSongRecommendation[] {
   const jsonMatch = raw.match(/\[[\s\S]*\]/)
   if (!jsonMatch) {
-    logger('WARN', 'No JSON array found in Venice AI response')
+    logger('WARN', 'No JSON array found in Claude response')
     return []
   }
 
@@ -54,12 +63,12 @@ export function parseVeniceResponse(raw: string): AiSongRecommendation[] {
   try {
     parsed = JSON.parse(jsonMatch[0])
   } catch {
-    logger('WARN', 'Failed to parse JSON from Venice AI response')
+    logger('WARN', 'Failed to parse JSON from Claude response')
     return []
   }
 
   if (!Array.isArray(parsed)) {
-    logger('WARN', 'Parsed Venice AI response is not an array')
+    logger('WARN', 'Parsed Claude response is not an array')
     return []
   }
 
@@ -105,32 +114,42 @@ interface SpotifySearchResponse {
   }
 }
 
+async function spotifySearch(
+  query: string,
+  token: string
+): Promise<string | null> {
+  const url = `https://api.spotify.com/v1/search?q=${encodeURIComponent(query)}&type=track&limit=1&market=VN`
+  const response = await fetch(url, {
+    headers: { Authorization: `Bearer ${token}` },
+    signal: AbortSignal.timeout(10000)
+  })
+  if (!response.ok) return null
+  const data = (await response.json()) as SpotifySearchResponse
+  return data.tracks?.items?.[0]?.id ?? null
+}
+
 export async function resolveToSpotifyTrack(
   title: string,
   artist: string
 ): Promise<string | null> {
-  const query = buildSpotifySearchQuery(title, artist)
   try {
     const token = await getAppAccessToken()
-    const url = `https://api.spotify.com/v1/search?q=${encodeURIComponent(query)}&type=track&limit=1&market=VN`
-    const response = await fetch(url, {
-      headers: { Authorization: `Bearer ${token}` },
-      signal: AbortSignal.timeout(10000)
-    })
-    if (!response.ok) {
-      logger(
-        'WARN',
-        `Spotify search failed for "${title}" by ${artist}: ${response.status}`
-      )
-      return null
+
+    // Try structured query first; fall back to plain text for non-Latin scripts
+    const structuredId = await spotifySearch(
+      buildSpotifySearchQuery(title, artist),
+      token
+    )
+    if (structuredId) return structuredId
+
+    const plainId = await spotifySearch(`${title} ${artist}`, token)
+    if (plainId) {
+      logger('INFO', `Resolved "${title}" by ${artist} via plain-text fallback`)
+      return plainId
     }
-    const data = (await response.json()) as SpotifySearchResponse
-    const firstTrack = data.tracks?.items?.[0]
-    if (!firstTrack) {
-      logger('WARN', `No Spotify result for "${title}" by ${artist}`)
-      return null
-    }
-    return firstTrack.id
+
+    logger('WARN', `No Spotify result for "${title}" by ${artist}`)
+    return null
   } catch (error) {
     logger(
       'WARN',
@@ -148,9 +167,8 @@ export async function getAiSuggestions(
   recentlyPlayed: RecentlyPlayedEntry[],
   queuedTracks: Array<{ title: string; artist: string }> = []
 ): Promise<AiSuggestionResult> {
-  const apiKey = process.env.VENICE_AI_API_KEY
-  if (!apiKey) {
-    logger('ERROR', 'Venice AI API key is not configured')
+  if (!process.env.ANTHROPIC_API_KEY) {
+    logger('ERROR', 'Anthropic API key is not configured')
     return { tracks: [], failedResolutions: [] }
   }
 
@@ -164,72 +182,50 @@ export async function getAiSuggestions(
   const recentlyPlayedIds = new Set(recentlyPlayed.map((e) => e.spotifyTrackId))
   const excludedSet = new Set(excludedTrackIds)
 
-  let veniceResponse: Response
+  const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
+
+  let content: string
   try {
-    veniceResponse = await fetch(VENICE_API_URL, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${apiKey}`
-      },
-      signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
-      body: JSON.stringify({
-        model: VENICE_MODEL,
-        messages: [
-          { role: 'system', content: SYSTEM_MESSAGE },
-          { role: 'user', content: userMessage }
-        ],
-        max_tokens: 1000
-      })
+    const message = await anthropic.messages.create({
+      model: CLAUDE_MODEL,
+      max_tokens: 1024,
+      temperature: 1.0,
+      system: SYSTEM_MESSAGE,
+      messages: [{ role: 'user', content: userMessage }]
     })
+
+    const block = message.content[0]
+    if (block.type !== 'text') {
+      logger('WARN', 'Claude returned non-text content block')
+      return { tracks: [], failedResolutions: [] }
+    }
+    content = block.text
   } catch (error) {
-    const isTimeout =
-      error instanceof DOMException && error.name === 'TimeoutError'
     logger(
       'ERROR',
-      isTimeout
-        ? 'Venice AI request timed out after 25 seconds'
-        : 'Failed to contact Venice AI',
+      'Failed to contact Claude API',
       undefined,
       error instanceof Error ? error : undefined
     )
     return { tracks: [], failedResolutions: [] }
   }
 
-  if (!veniceResponse.ok) {
-    const errorBody = await veniceResponse.text().catch(() => 'unknown')
-    logger(
-      'ERROR',
-      `Venice AI returned status ${veniceResponse.status}: ${errorBody.slice(0, 200)}`
-    )
-    return { tracks: [], failedResolutions: [] }
-  }
-
-  let data: { choices?: Array<{ message?: { content?: string } }> }
-  try {
-    data = (await veniceResponse.json()) as typeof data
-  } catch {
-    logger('ERROR', 'Failed to parse Venice AI JSON response')
-    return { tracks: [], failedResolutions: [] }
-  }
-
-  const content = data.choices?.[0]?.message?.content
   if (!content) {
-    logger('WARN', 'Venice AI returned empty content')
+    logger('WARN', 'Claude returned empty content')
     return { tracks: [], failedResolutions: [] }
   }
 
-  const recommendations = parseVeniceResponse(content)
+  const recommendations = parseAiResponse(content)
 
   if (recommendations.length === 0) {
-    logger('WARN', 'Venice AI returned no valid recommendations')
+    logger('WARN', 'Claude returned no valid recommendations')
     return { tracks: [], failedResolutions: [] }
   }
 
   if (recommendations.length < SUGGESTION_BATCH_SIZE) {
     logger(
       'INFO',
-      `Venice AI returned ${recommendations.length}/${SUGGESTION_BATCH_SIZE} recommendations, proceeding with partial batch`
+      `Claude returned ${recommendations.length}/${SUGGESTION_BATCH_SIZE} recommendations, proceeding with partial batch`
     )
   }
 
@@ -274,7 +270,7 @@ export async function getAiSuggestions(
   return { tracks, failedResolutions }
 }
 
-const RECENTLY_PLAYED_LIMIT = 100
+const RECENTLY_PLAYED_LIMIT = 500
 
 async function resolveProfileId(usernameOrId: string): Promise<string> {
   // If it looks like a UUID, use it directly

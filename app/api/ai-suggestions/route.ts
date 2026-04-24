@@ -13,13 +13,12 @@ const logger = createModuleLogger('AISuggestionsAPI')
 export const maxDuration = 30
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
-  const apiKey = process.env.VENICE_AI_API_KEY
-  if (!apiKey) {
+  if (!process.env.ANTHROPIC_API_KEY) {
     return NextResponse.json(
       {
         success: false,
         tracks: [],
-        error: 'Venice AI API key is not configured'
+        error: 'Anthropic API key is not configured'
       },
       { status: 500 }
     )
