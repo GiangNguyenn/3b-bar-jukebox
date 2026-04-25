@@ -38,6 +38,7 @@ class DJService {
   private prefetchState: PrefetchState | null = null
   private recentScripts: string[] = []
   private isAnnouncementInProgress: boolean = false
+  private isAudioPlaying: boolean = false
   private lastGeneratedScript: string | null = null
   private lastOnTrackStartedId: string | null = null
   private audioContext: AudioContext | null = null
@@ -103,6 +104,7 @@ class DJService {
       log(
         'invalidatePrefetch — discarding stale prefetch due to language change'
       )
+      inFlightFetches.delete(this.prefetchState.trackId)
       this.prefetchState = null
     }
   }
@@ -139,6 +141,7 @@ class DJService {
 
       audio.onended = () => {
         URL.revokeObjectURL(url)
+        this.isAudioPlaying = false
         // Fire-and-forget: clear announcement subtitle on display
         const profileId = localStorage.getItem('profileId')
         log(`announcement clear (onended) — profileId=${profileId}`)
@@ -156,9 +159,12 @@ class DJService {
           log(`audio ended — ramping volume back to ${restoreVolume}%`)
           this.rampVolume(restoreVolume, 2000)
         }
+        // For fire-and-forget, drain the queue now that audio has finished.
+        if (!waitForEnd) this.drainQueue()
       }
       audio.onerror = (e) => {
         URL.revokeObjectURL(url)
+        this.isAudioPlaying = false
         // Fire-and-forget: clear announcement subtitle on display
         const profileId = localStorage.getItem('profileId')
         if (profileId) {
@@ -176,9 +182,11 @@ class DJService {
             .setVolume(restoreVolume)
             .catch(() => {})
         }
+        if (!waitForEnd) this.drainQueue()
       }
       audio.play().catch((e) => {
         warn('audio.play() rejected', e)
+        this.isAudioPlaying = false
         if (waitForEnd) reject(e)
         if (restoreVolume !== null) {
           this.storedOriginalVolume = null
@@ -186,8 +194,10 @@ class DJService {
             .setVolume(restoreVolume)
             .catch(() => {})
         }
+        if (!waitForEnd) this.drainQueue()
       })
 
+      this.isAudioPlaying = true
       if (!waitForEnd) resolve()
     })
   }
@@ -249,6 +259,9 @@ class DJService {
   }
 
   private drainQueue(): void {
+    // If fire-and-forget audio is still physically playing, keep the lock
+    // held and let audio.onended call drainQueue() when it finishes.
+    if (this.isAudioPlaying) return
     this.isAnnouncementInProgress = false
     const next = this.announcementQueue.shift()
     if (next) {
