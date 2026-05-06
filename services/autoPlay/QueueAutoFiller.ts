@@ -148,14 +148,18 @@ export class QueueAutoFiller {
   }
 
   private async fill(): Promise<void> {
-    if (!this.username || !this.activePrompt) {
+    if (!this.username) {
       if (this.addLog) {
-        this.addLog(
-          'WARN',
-          `[SOURCE:NONE] Auto-fill skipped: username=${!!this.username}, activePrompt="${this.activePrompt?.slice(0, 50) || ''}"`,
-          'QueueAutoFiller'
-        )
+        this.addLog('WARN', '[SOURCE:NONE] Auto-fill skipped: no username', 'QueueAutoFiller')
       }
+      return
+    }
+
+    if (!this.activePrompt) {
+      if (this.addLog) {
+        this.addLog('WARN', '[SOURCE:NONE] No active prompt — falling back to random track', 'QueueAutoFiller')
+      }
+      await this.fallback()
       return
     }
 
@@ -275,6 +279,17 @@ export class QueueAutoFiller {
           `[SOURCE:AI] AI suggestions network error: ${error instanceof Error ? error.message : String(error)}. Falling back to random track.`,
           'QueueAutoFiller',
           error instanceof Error ? error : undefined
+        )
+      }
+      await this.fallback()
+    }
+
+    if (tracksAdded === 0) {
+      if (this.addLog) {
+        this.addLog(
+          'WARN',
+          '[SOURCE:AI] No tracks were added from AI suggestions — falling back to random track',
+          'QueueAutoFiller'
         )
       }
       await this.fallback()
