@@ -40,7 +40,7 @@ export interface PlayerStatusState {
 // State transition rules
 const ALLOWED_TRANSITIONS: Record<PlayerStatus, PlayerStatus[]> = {
   initializing: ['ready', 'error', 'verifying', 'disconnected'],
-  ready: ['reconnecting', 'error', 'disconnected', 'initializing'],
+  ready: ['reconnecting', 'error', 'disconnected', 'initializing', 'verifying'],
   reconnecting: ['ready', 'error', 'initializing'],
   error: ['initializing', 'ready', 'disconnected'],
   disconnected: ['initializing', 'ready'],

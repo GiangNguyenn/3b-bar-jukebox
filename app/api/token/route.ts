@@ -247,9 +247,11 @@ export async function GET(): Promise<
     // Check if token needs refresh
     const tokenExpiresAt = typedProfile.spotify_token_expires_at
     const now = Math.floor(Date.now() / 1000)
+    // Refresh 5 minutes early so the SDK's dealer WebSocket never receives a 401
+    const PROACTIVE_REFRESH_THRESHOLD = 300
 
-    if (tokenExpiresAt && tokenExpiresAt <= now) {
-      // Token is expired, refresh it
+    if (tokenExpiresAt && tokenExpiresAt <= now + PROACTIVE_REFRESH_THRESHOLD) {
+      // Token is expired or expiring soon — proactively refresh it
       if (!typedProfile.spotify_refresh_token) {
         logger('ERROR', 'No refresh token available')
         return NextResponse.json(

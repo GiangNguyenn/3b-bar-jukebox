@@ -369,6 +369,12 @@ export class SpotifyPlayer {
             return
           }
 
+          // SDK fires 'ready' again on token refresh / reconnect. If we're
+          // already ready on the same device there's nothing to re-initialize.
+          if (this.status === 'ready' && this.deviceId === device_id) {
+            return
+          }
+
           this.clearTimeout('notReady')
           this.status = 'verifying'
           onStatusChange('verifying')
