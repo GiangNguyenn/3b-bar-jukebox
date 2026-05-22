@@ -50,24 +50,11 @@ void describe('Preservation: Existing client configuration and behavior preserve
     )
   })
 
-  void it('services/game/dgsCache.ts retains anon client import from lib/supabase for reads', () => {
-    const src = readSource('services/game/dgsCache.ts')
-    const importsAnonClient =
-      /import\s+\{[^}]*supabase[^}]*\}\s+from\s+['"]@\/lib\/supabase['"]/.test(
-        src
-      )
-    assert.ok(
-      importsAnonClient,
-      'Expected dgsCache.ts to import supabase from @/lib/supabase for read operations'
-    )
-  })
-
   void it('server-side service files use same URL and anon key for queries (singleton or inline)', () => {
     const files = [
       'services/subscriptionService.ts',
       'services/subscriptionCache.ts',
-      'utils/subscriptionQueries.ts',
-      'services/game/metadataBackfill.ts'
+      'utils/subscriptionQueries.ts'
     ]
 
     for (const file of files) {

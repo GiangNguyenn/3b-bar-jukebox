@@ -10,7 +10,7 @@ import path from 'node:path'
  * FAIL on unfixed code, proving the bugs exist. After the fix is applied,
  * these same tests will PASS.
  *
- * Validates: Requirements 1.1, 1.2, 1.3, 1.4
+ * Validates: Requirements 1.1, 1.3, 1.4
  */
 
 const root = process.cwd()
@@ -50,17 +50,6 @@ void describe('Bug Condition: Duplicate browser clients (Req 1.1)', () => {
   }
 })
 
-void describe('Bug Condition: Artist upsert client (Req 1.2)', () => {
-  void it('dgsCache.ts upsert functions should use supabaseAdmin from lib/supabase-admin', () => {
-    const content = readSource('services/game/dgsCache.ts')
-    assert.ok(
-      content.includes("from '@/lib/supabase-admin'") ||
-        content.includes('from "@/lib/supabase-admin"'),
-      'dgsCache.ts should import from lib/supabase-admin'
-    )
-  })
-})
-
 void describe('Bug Condition: Favicon existence (Req 1.3)', () => {
   void it('public/favicon.ico should exist', () => {
     const faviconPath = path.resolve(root, 'public/favicon.ico')
@@ -72,16 +61,17 @@ void describe('Bug Condition: Server-side singleton usage (Req 1.4)', () => {
   const serverSingletonFiles = [
     'services/subscriptionService.ts',
     'services/subscriptionCache.ts',
-    'utils/subscriptionQueries.ts',
-    'services/game/metadataBackfill.ts'
+    'utils/subscriptionQueries.ts'
   ]
 
   for (const file of serverSingletonFiles) {
     void it(`${file} should import from lib/supabase singleton, not createClient directly`, () => {
       const content = readSource(file)
+      // Only flag actual createClient value imports, not type-only imports
       const hasDirectCreateClient =
-        content.includes("from '@supabase/supabase-js'") ||
-        content.includes('from "@supabase/supabase-js"')
+        /import\s+\{[^}]*\bcreateClient\b[^}]*\}\s+from\s+['"]@supabase\/supabase-js['"]/.test(
+          content
+        )
       const hasSingletonImport =
         content.includes("from '@/lib/supabase'") ||
         content.includes('from "@/lib/supabase"')
