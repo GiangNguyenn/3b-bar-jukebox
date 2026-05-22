@@ -70,6 +70,8 @@ export function useNowPlayingRealtime({
   const intervalRef = useRef<NodeJS.Timeout | null>(null)
   const burstIntervalRef = useRef<NodeJS.Timeout | null>(null)
   const burstTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+  const reconnectTimerRef = useRef<NodeJS.Timeout | null>(null)
+  const reconnectAttemptsRef = useRef(0)
 
   const fetchFromTable = useCallback(async () => {
     if (!profileId) return
@@ -106,8 +108,18 @@ export function useNowPlayingRealtime({
       return
     }
 
-    // Extracted so it can be called on initial mount AND on tab focus recovery
+    // Set to true by cleanup; prevents stale async callbacks from scheduling
+    // reconnects after this effect has torn down (unmount or dependency change).
+    let cancelled = false
+
+    // Extracted so it can be called on initial mount, tab focus recovery, and error reconnects
     const subscribe = () => {
+      // Clear any pending reconnect before creating a new channel
+      if (reconnectTimerRef.current) {
+        clearTimeout(reconnectTimerRef.current)
+        reconnectTimerRef.current = null
+      }
+
       // Tear down any existing channel before creating a new one
       if (channelRef.current) {
         supabaseBrowser.removeChannel(channelRef.current)
@@ -132,7 +144,19 @@ export function useNowPlayingRealtime({
           }
         )
         .subscribe((status) => {
+          if (cancelled) return
           console.warn(`[useNowPlayingRealtime] subscription status: ${status}`)
+          if (status === 'SUBSCRIBED') {
+            reconnectAttemptsRef.current = 0
+          } else if (status === 'CHANNEL_ERROR') {
+            // Exponential backoff: 1s, 2s, 4s, 8s … capped at 30s
+            const delay = Math.min(1000 * 2 ** reconnectAttemptsRef.current, 30000)
+            reconnectAttemptsRef.current += 1
+            console.warn(
+              `[useNowPlayingRealtime] CHANNEL_ERROR — reconnecting in ${delay}ms (attempt ${reconnectAttemptsRef.current})`
+            )
+            reconnectTimerRef.current = setTimeout(subscribe, delay)
+          }
         })
 
       channelRef.current = channel
@@ -152,6 +176,7 @@ export function useNowPlayingRealtime({
     // so future song changes are detected live again, not just the current one.
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible') {
+        reconnectAttemptsRef.current = 0
         void fetchFromTable()
         subscribe()
 
@@ -196,6 +221,11 @@ export function useNowPlayingRealtime({
     document.addEventListener('visibilitychange', handleVisibilityChange)
 
     return () => {
+      cancelled = true
+      if (reconnectTimerRef.current) {
+        clearTimeout(reconnectTimerRef.current)
+        reconnectTimerRef.current = null
+      }
       if (channelRef.current) {
         supabaseBrowser.removeChannel(channelRef.current)
         channelRef.current = null

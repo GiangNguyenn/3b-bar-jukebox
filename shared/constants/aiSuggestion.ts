@@ -11,7 +11,7 @@ export const PRESET_PROMPTS: PresetPrompt[] = [
     label: 'Drinking Anthems',
     emoji: '🍺',
     prompt:
-      'Classic drinking songs, pub anthems, and bar singalongs. Songs about beer, whiskey, pubs, bars, and drinking culture from rock, folk, and pop. Do not include country songs.'
+      'Classic drinking songs, pub anthems, and bar singalongs. Songs about beer, whiskey, pubs, bars, and drinking culture from rock, folk, and pop.'
   },
   {
     id: 'party',
@@ -60,14 +60,14 @@ export const PRESET_PROMPTS: PresetPrompt[] = [
     label: 'Electronic',
     emoji: '🎛️',
     prompt:
-      'Electronic and dance music. House, techno, ambient, and synth-driven tracks.'
+      'Electronic and dance music. House, techno, and synth-driven tracks.'
   },
   {
     id: 'acoustic',
     label: 'Acoustic',
     emoji: '🪕',
     prompt:
-      'Acoustic and unplugged music. Singer-songwriter, folk, country, and acoustic covers.'
+      'Acoustic and unplugged music. Singer-songwriter, folk, and acoustic covers.'
   },
   {
     id: 'vpop',
@@ -89,6 +89,34 @@ export const PRESET_PROMPTS: PresetPrompt[] = [
     emoji: '🤘',
     prompt:
       'Punk and metal music. Hardcore punk, pop punk, thrash metal, metalcore, and heavy metal anthems.'
+  },
+  {
+    id: 'dream-femme',
+    label: 'Dream Femme',
+    emoji: '🌙',
+    prompt:
+      'Dreamy, melancholic female-fronted indie and pop. Cinematic and atmospheric songs with lush production, haunting vocals, and nostalgic moods. Dream pop, baroque pop, and ethereal indie.'
+  },
+  {
+    id: 'riot-grrrl',
+    label: 'Riot Grrrl',
+    emoji: '✊',
+    prompt:
+      'Riot grrrl and feminist punk. Raw, energetic female-fronted punk and alternative rock with fierce, empowering attitude. Distorted guitars, powerful vocals, and unapologetic energy.'
+  },
+  {
+    id: 'soul-funk',
+    label: 'Soul & Funk',
+    emoji: '🕺',
+    prompt:
+      'Soulful and funky grooves. Motown classics, classic soul, funk, and neo-soul. Warm basslines, horns, and smooth vocals made for moving.'
+  },
+  {
+    id: 'aussie',
+    label: 'Aussie',
+    emoji: '🦘',
+    prompt:
+      'Australian music across genres. Classic Aussie pub rock, hard rock, indie, and hip hop. Spanning legendary bands and iconic new wave to modern indie and contemporary Australian artists.'
   }
 ]
 

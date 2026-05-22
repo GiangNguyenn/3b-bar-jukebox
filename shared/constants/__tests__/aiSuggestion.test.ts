@@ -292,8 +292,8 @@ describe('Drinking Anthems preset entry', () => {
     )
   })
 
-  it('PRESET_PROMPTS contains 12 presets', () => {
-    assert.equal(PRESET_PROMPTS.length, 12)
+  it('PRESET_PROMPTS contains 16 presets', () => {
+    assert.equal(PRESET_PROMPTS.length, 16)
   })
 
   it('default selectedPresetId equals "drinking-anthems" when no localStorage state exists', () => {
@@ -361,14 +361,14 @@ describe('Property 1: Original presets preserved', () => {
       label: 'Electronic',
       emoji: '🎛️',
       prompt:
-        'Electronic and dance music. House, techno, ambient, and synth-driven tracks.'
+        'Electronic and dance music. House, techno, and synth-driven tracks.'
     },
     {
       id: 'acoustic',
       label: 'Acoustic',
       emoji: '🪕',
       prompt:
-        'Acoustic and unplugged music. Singer-songwriter, folk, country, and acoustic covers.'
+        'Acoustic and unplugged music. Singer-songwriter, folk, and acoustic covers.'
     },
     {
       id: 'vpop',
