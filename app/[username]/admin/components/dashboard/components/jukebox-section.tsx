@@ -8,7 +8,7 @@ import { usePlaybackControls } from '../../../hooks/usePlaybackControls'
 import { useSpotifyPlayerStore } from '@/hooks/useSpotifyPlayer'
 import { sendApiRequest } from '@/shared/api'
 import { useConsoleLogsContext } from '@/hooks/ConsoleLogsProvider'
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef } from 'react'
 import { getAutoPlayService } from '@/services/autoPlayService'
 
 interface JukeboxSectionProps {
