@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useState } from 'react'
+import { useParams } from 'next/navigation'
 import { useSpotifyPlayerStore } from '@/hooks/useSpotifyPlayer'
 import { useConsoleLogsContext } from '@/hooks/ConsoleLogsProvider'
 import { SpotifyApiService } from '@/services/spotifyApi'
@@ -19,6 +20,8 @@ export function usePlaybackControls(): {
 } {
   const [isLoading, setIsLoading] = useState(false)
   const [isSkipLoading, setIsSkipLoading] = useState(false)
+  const params = useParams()
+  const username = params?.username as string | undefined
   const { deviceId, playbackState, setPlaybackState, isTransitionInProgress } =
     useSpotifyPlayerStore()
   const { addLog } = useConsoleLogsContext()
@@ -178,8 +181,9 @@ export function usePlaybackControls(): {
 
       try {
         currentPlaybackState = await sendApiRequest<SpotifyPlaybackState>({
-          path: 'me/player',
-          method: 'GET'
+          path: `playback${username ? `?username=${encodeURIComponent(username)}` : ''}`,
+          method: 'GET',
+          isLocalApi: true
         })
       } catch (apiError) {
         addLog(
@@ -271,7 +275,7 @@ export function usePlaybackControls(): {
     } finally {
       setIsSkipLoading(false)
     }
-  }, [deviceId, playbackState, addLog])
+  }, [deviceId, playbackState, addLog, username])
 
   return {
     isLoading,
