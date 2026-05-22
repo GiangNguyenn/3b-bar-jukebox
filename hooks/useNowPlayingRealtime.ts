@@ -150,7 +150,10 @@ export function useNowPlayingRealtime({
             reconnectAttemptsRef.current = 0
           } else if (status === 'CHANNEL_ERROR') {
             // Exponential backoff: 1s, 2s, 4s, 8s … capped at 30s
-            const delay = Math.min(1000 * 2 ** reconnectAttemptsRef.current, 30000)
+            const delay = Math.min(
+              1000 * 2 ** reconnectAttemptsRef.current,
+              30000
+            )
             reconnectAttemptsRef.current += 1
             console.warn(
               `[useNowPlayingRealtime] CHANNEL_ERROR — reconnecting in ${delay}ms (attempt ${reconnectAttemptsRef.current})`
