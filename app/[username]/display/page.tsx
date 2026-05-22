@@ -5,14 +5,12 @@ import { useRef, useEffect } from 'react'
 import type { ReactElement } from 'react'
 import { useNowPlayingRealtime } from '@/hooks/useNowPlayingRealtime'
 import { useAlbumColors } from '@/hooks/useAlbumColors'
-import { useDjSubtitles } from '@/hooks/useDjSubtitles'
 import { useProfileId } from '@/hooks/useProfileId'
 
 import VisualizationContainer from '@/components/Display/VisualizationContainer'
 import TrackMetadata from '@/components/Display/TrackMetadata'
 import ColorBackground from '@/components/Display/ColorBackground'
 import QRCodeComponent from '@/components/Display/QRCode'
-import { SubtitleOverlay } from '@/components/Display/SubtitleOverlay'
 import { Loading } from '@/components/ui'
 import { ErrorMessage } from '@/components/ui'
 
@@ -21,9 +19,6 @@ export default function DisplayPage(): ReactElement {
   const username = typeof params?.username === 'string' ? params.username : ''
   const hasInitialLoadRef = useRef(false)
   const { profileId, isLoading: isProfileLoading } = useProfileId(username)
-
-  // DJ subtitle realtime subscription
-  const { subtitleText, isVisible } = useDjSubtitles({ profileId })
 
   // Now-playing via Supabase Realtime (with 30s fallback polling)
   const {
@@ -86,7 +81,6 @@ export default function DisplayPage(): ReactElement {
       <>
         <Loading fullScreen message='Loading display...' />
         {username && <QRCodeComponent username={username} />}
-        <SubtitleOverlay text={subtitleText} isVisible={isVisible} />
       </>
     )
   }
@@ -101,7 +95,6 @@ export default function DisplayPage(): ReactElement {
           </div>
         </div>
         {username && <QRCodeComponent username={username} />}
-        <SubtitleOverlay text={subtitleText} isVisible={isVisible} />
       </>
     )
   }
@@ -133,7 +126,6 @@ export default function DisplayPage(): ReactElement {
           </div>
         </div>
         {username && <QRCodeComponent username={username} />}
-        <SubtitleOverlay text={subtitleText} isVisible={isVisible} />
       </>
     )
   }
@@ -170,7 +162,6 @@ export default function DisplayPage(): ReactElement {
         </div>
       </div>
       {username && <QRCodeComponent username={username} />}
-      <SubtitleOverlay text={subtitleText} isVisible={isVisible} />
     </>
   )
 }

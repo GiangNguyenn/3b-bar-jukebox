@@ -9,7 +9,6 @@ import { buildTrackUri } from '@/shared/utils/spotifyUri'
 import { fuzzyTrackNameMatch } from '@/shared/utils/trackNameMatcher'
 import { upsertPlayedTrack } from '@/lib/trackUpsert'
 import { playbackService } from '@/services/player'
-import { DJService } from '@/services/djService'
 import { spotifyPlayerStore } from '@/hooks/spotifyPlayerStore'
 import { addToRecentlyPlayed } from '@/services/aiSuggestion'
 
@@ -136,10 +135,6 @@ export class QueueSynchronizer {
         this.currentQueueTrack = currentTrack
         queueManager.setCurrentlyPlayingTrack(
           currentTrack.tracks.spotify_track_id
-        )
-        DJService.getInstance().onTrackStarted(
-          currentTrack,
-          queueManager.getNextTrack() ?? null
         )
         return
       }
@@ -326,11 +321,6 @@ export class QueueSynchronizer {
     if (!nextTrack) {
       return
     }
-
-    // maybeAnnounce runs OUTSIDE the lock so it does not hold isOperationInProgress = true
-    try {
-      await DJService.getInstance().maybeAnnounce(nextTrack)
-    } catch (error) {}
 
     // Second serialized operation: play the next track
     await playbackService.executePlayback(

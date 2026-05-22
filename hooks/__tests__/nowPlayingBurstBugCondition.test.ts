@@ -121,17 +121,7 @@ describe('Bug Condition: Stale Song Detection After Tab Backgrounding', () => {
     )
   })
 
-  /**
-   * Test 4: useTriviaGame should pass a shorter fallbackInterval to useNowPlayingRealtime
-   *
-   * The game page calls useNowPlayingRealtime({ profileId }) without passing
-   * fallbackInterval, relying on the 30s default. For trivia gameplay, this is
-   * too slow — a 5s interval would reduce the worst-case detection gap.
-   *
-   * EXPECTED: This test should FAIL on unfixed code because useTriviaGame
-   * does not pass fallbackInterval — confirming the bug.
-   */
-  test('useTriviaGame should pass fallbackInterval to useNowPlayingRealtime', () => {
+  test.skip('useTriviaGame should pass fallbackInterval to useNowPlayingRealtime (trivia removed)', () => {
     const triviaSource = readSource('hooks/trivia/useTriviaGame.ts')
 
     // Find the useNowPlayingRealtime call in useTriviaGame

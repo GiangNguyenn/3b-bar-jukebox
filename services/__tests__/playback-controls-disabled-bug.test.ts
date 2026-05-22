@@ -29,7 +29,6 @@ import type { JukeboxQueueItem } from '@/shared/types/queue'
 import type { PlayerSDKState } from '../playerLifecycle/types'
 import type { SpotifyPlaybackState } from '@/shared/types/spotify'
 import { queueManager } from '@/services/queueManager'
-import { DJService } from '@/services/djService'
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -323,61 +322,4 @@ describe('Bug Condition: Playback Controls Disabled During Track Transition', ()
     )
   })
 
-  /**
-   * Property 1d — skip button disabled is false during DJ Mode announcement (slow maybeAnnounce)
-   *
-   * The fix: maybeAnnounce runs OUTSIDE the serialized executePlayback lock.
-   * During the announcement, isOperationInProgress() is false.
-   * isTransitionInProgress = true (set by handleTrackFinished) keeps controls enabled.
-   *
-   * Validates: Requirements 2.1, 2.4, 2.5
-   */
-  test('skip button disabled is false during DJ Mode announcement (slow maybeAnnounce)', async () => {
-    // Set up stale ended-track state
-    spotifyPlayerStore.getState().setPlaybackState(makeStaleEndedState())
-    // The fix: handleTrackFinished sets isTransitionInProgress = true at the start
-    spotifyPlayerStore.getState().setIsTransitionInProgress(true)
-
-    // Mock DJService.getInstance().maybeAnnounce to simulate a slow announcement
-    const djInstance = DJService.getInstance()
-    const originalMaybeAnnounce = djInstance.maybeAnnounce.bind(djInstance)
-    let skipButtonDisabledMidAnnouncement: boolean | null = null
-
-    djInstance.maybeAnnounce = async (
-      _track: JukeboxQueueItem
-    ): Promise<void> => {
-      // Simulate a 50ms "announcement" — sample the skip button disabled state mid-announcement
-      await new Promise((r) => setTimeout(r, 25))
-
-      // Sample skip button disabled state while announcement is in progress.
-      // The fix: maybeAnnounce runs OUTSIDE the lock, so isOperationInProgress() is false here.
-      // isTransitionInProgress = true keeps controls enabled.
-      const isActuallyPlaying = getIsActuallyPlaying()
-      const isReady = true
-      const isSkipLoading = false
-      skipButtonDisabledMidAnnouncement =
-        !isReady || !isActuallyPlaying || isSkipLoading
-
-      await new Promise((r) => setTimeout(r, 25))
-    }
-
-    // Set up queue with a next track
-    const nextItem = makeQueueItem()
-    queueManager.updateQueue([nextItem])
-
-    // The fix: maybeAnnounce runs OUTSIDE the lock (between two executePlayback calls).
-    // Simulate this by calling maybeAnnounce directly (not inside executePlayback).
-    await djInstance.maybeAnnounce(nextItem)
-
-    // Restore original maybeAnnounce
-    djInstance.maybeAnnounce = originalMaybeAnnounce
-
-    // EXPECTED BEHAVIOR (FIXED): skip button is NOT disabled during DJ announcement
-    assert.equal(
-      skipButtonDisabledMidAnnouncement,
-      false,
-      'skip button should NOT be disabled during DJ announcement — ' +
-        'maybeAnnounce runs outside the lock, isTransitionInProgress=true keeps controls enabled'
-    )
-  })
 })

@@ -10,13 +10,6 @@ import { sendApiRequest } from '@/shared/api'
 import { useConsoleLogsContext } from '@/hooks/ConsoleLogsProvider'
 import { useState, useRef, useEffect } from 'react'
 import { getAutoPlayService } from '@/services/autoPlayService'
-import { DJModeToggle } from './dj-mode-toggle'
-import { DJFrequencySelect } from './dj-frequency-select'
-import { DJLanguageSelect } from './dj-language-select'
-import { DJVoiceSelect } from './dj-voice-select'
-import { DJPersonalitySelect } from './dj-personality-select'
-import { DuckOverlayToggle } from './duck-overlay-toggle'
-import { TriviaGameToggle } from './trivia-game-toggle'
 
 interface JukeboxSectionProps {
   className?: string
@@ -25,24 +18,12 @@ interface JukeboxSectionProps {
 export function JukeboxSection({
   className = ''
 }: JukeboxSectionProps): JSX.Element {
-  const { deviceId, isReady, isTransitionInProgress } = useSpotifyPlayerStore()
+  const { deviceId, isReady } = useSpotifyPlayerStore()
   const { addLog } = useConsoleLogsContext()
   const [volume, setVolume] = useState(50)
   const [isSeeking, setIsSeeking] = useState(false)
   const [isDragging, setIsDragging] = useState(false)
-  const [isDjModeEnabled, setIsDjModeEnabled] = useState(false)
   const progressBarRef = useRef<HTMLDivElement>(null)
-
-  useEffect(() => {
-    setIsDjModeEnabled(localStorage.getItem('djMode') === 'true')
-    const handleDjModeChanged = (): void => {
-      setIsDjModeEnabled(localStorage.getItem('djMode') === 'true')
-    }
-    window.addEventListener('djmode-changed', handleDjModeChanged)
-    return () => {
-      window.removeEventListener('djmode-changed', handleDjModeChanged)
-    }
-  }, [])
 
   const { profileId, isLoading: isProfileLoading } = useProfileId()
 
@@ -157,14 +138,6 @@ export function JukeboxSection({
         <div>
           <h3 className='text-white text-lg font-semibold'>Jukebox Controls</h3>
         </div>
-
-        {/* DJ Speaking Indicator */}
-        {isTransitionInProgress && isDjModeEnabled && (
-          <div className='flex items-center gap-2 rounded-md bg-purple-900/50 px-3 py-2 text-sm text-purple-300'>
-            <span className='animate-pulse'>🎙️</span>
-            <span>DJ is speaking...</span>
-          </div>
-        )}
 
         {/* Currently Playing Track */}
         {currentlyPlaying?.item && (
@@ -322,22 +295,6 @@ export function JukeboxSection({
           </div>
         </div>
 
-        {/* DJ Mode */}
-        <DJModeToggle />
-        {isDjModeEnabled && (
-          <>
-            <DJFrequencySelect />
-            <DJLanguageSelect />
-            <DJVoiceSelect />
-            <DJPersonalitySelect />
-            <DuckOverlayToggle />
-          </>
-        )}
-
-        {/* Trivia Game */}
-        <div className='mt-1 border-t border-gray-700 pt-2'>
-          <TriviaGameToggle />
-        </div>
       </div>
     </div>
   )

@@ -150,14 +150,22 @@ export class QueueAutoFiller {
   private async fill(): Promise<void> {
     if (!this.username) {
       if (this.addLog) {
-        this.addLog('WARN', '[SOURCE:NONE] Auto-fill skipped: no username', 'QueueAutoFiller')
+        this.addLog(
+          'WARN',
+          '[SOURCE:NONE] Auto-fill skipped: no username',
+          'QueueAutoFiller'
+        )
       }
       return
     }
 
     if (!this.activePrompt) {
       if (this.addLog) {
-        this.addLog('WARN', '[SOURCE:NONE] No active prompt — falling back to random track', 'QueueAutoFiller')
+        this.addLog(
+          'WARN',
+          '[SOURCE:NONE] No active prompt — falling back to random track',
+          'QueueAutoFiller'
+        )
       }
       await this.fallback()
       return

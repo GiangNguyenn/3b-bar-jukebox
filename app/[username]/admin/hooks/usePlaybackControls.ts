@@ -7,7 +7,6 @@ import { SpotifyApiService } from '@/services/spotifyApi'
 import { type SpotifyPlaybackState } from '@/shared/types/spotify'
 import { queueManager } from '@/services/queueManager'
 import { playerLifecycleService } from '@/services/playerLifecycle'
-import { djService } from '@/services/djService'
 import { sendApiRequest } from '@/shared/api'
 
 export function usePlaybackControls(): {
@@ -144,19 +143,8 @@ export function usePlaybackControls(): {
           throw new Error('Failed to resume playback')
         }
 
-        // Prefetch DJ audio for the next track so it's ready when this one ends.
-        // The resume path bypasses playNextTrackImpl (which normally calls
-        // onTrackStarted), so we trigger the prefetch explicitly here.
-        // We must set currentlyPlayingTrack first so getNextTrack() excludes it.
         if (currentTrackId) {
           queueManager.setCurrentlyPlayingTrack(currentTrackId)
-          const currentQueueItem = queue.find(
-            (item) => item.tracks.spotify_track_id === currentTrackId
-          )
-          if (currentQueueItem) {
-            const nextTrack = queueManager.getNextTrack()
-            djService.onTrackStarted(currentQueueItem, nextTrack ?? null)
-          }
         }
       }
 

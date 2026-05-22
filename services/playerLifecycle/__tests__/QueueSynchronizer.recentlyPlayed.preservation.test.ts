@@ -24,9 +24,6 @@ const { playbackService } =
   require('@/services/player') as typeof import('@/services/player')
 const { queueManager } =
   require('@/services/queueManager') as typeof import('@/services/queueManager')
-const { DJService } =
-  require('@/services/djService') as typeof import('@/services/djService')
-
 // ─── localStorage mock (not available in Node.js test environment) ───────────
 const localStorageStore: Record<string, string> = {}
 const localStorageMock = {
@@ -189,14 +186,12 @@ function randomProfileId(seed: number): string {
 
 beforeEach(async () => {
   await playbackService.waitForCompletion()
-  localStorage.setItem('djMode', 'false')
   queueManager.updateQueue([])
   queueManager.setCurrentlyPlayingTrack(null)
 })
 
 afterEach(async () => {
   await playbackService.waitForCompletion()
-  localStorage.setItem('djMode', 'false')
   mock.restoreAll()
 })
 
@@ -248,9 +243,6 @@ describe('Preservation: Track Transition Behavior Unchanged', () => {
           synchronizer,
           'markFinishedTrackAsPlayed'
         )
-        const djInstance = DJService.getInstance()
-        mock.method(djInstance, 'maybeAnnounce', async () => {})
-
         await synchronizer.handleTrackFinished(finishedState)
         await playbackService.waitForCompletion()
 
@@ -324,9 +316,6 @@ describe('Preservation: Track Transition Behavior Unchanged', () => {
         synchronizer.setLastKnownState(lastKnownState)
         synchronizer.setCurrentQueueTrack(currentItem)
 
-        const djInstance = DJService.getInstance()
-        mock.method(djInstance, 'maybeAnnounce', async () => {})
-
         await synchronizer.handleTrackFinished(finishedState)
         await playbackService.waitForCompletion()
 
@@ -391,9 +380,6 @@ describe('Preservation: Track Transition Behavior Unchanged', () => {
           synchronizer,
           'markFinishedTrackAsPlayed'
         )
-        const djInstance = DJService.getInstance()
-        mock.method(djInstance, 'maybeAnnounce', async () => {})
-
         const playedBefore = controller.getPlayedTracks().length
 
         await synchronizer.handleTrackFinished(finishedState)
@@ -416,69 +402,4 @@ describe('Preservation: Track Transition Behavior Unchanged', () => {
     })
   })
 
-  /**
-   * Test case 4: DJ announce
-   *
-   * **Validates: Requirements 3.2**
-   *
-   * Observation on UNFIXED code: DJService.maybeAnnounce() is called with
-   * the next track after findNextValidTrack resolves and before playNextTrackImpl.
-   *
-   * Property: For any track finish with a next track available,
-   * maybeAnnounce is called with the next track item.
-   */
-  describe('DJ Announce — maybeAnnounce called with next track', () => {
-    it('should call DJService.maybeAnnounce with the next track for varied inputs', async () => {
-      for (let seed = 1; seed <= 15; seed++) {
-        const controller = makeRecordingController()
-        const synchronizer = new QueueSynchronizer(controller)
-
-        const currentId = randomTrackId(seed)
-        const currentName = randomTrackName(seed)
-        const nextId = randomTrackId(seed + 500)
-        const nextName = randomTrackName(seed + 500)
-        const profileId = randomProfileId(seed)
-
-        const currentItem = makeQueueItem(currentId, currentName, profileId)
-        const nextItem = makeQueueItem(nextId, nextName, profileId)
-        queueManager.updateQueue([currentItem, nextItem])
-        queueManager.setCurrentlyPlayingTrack(currentId)
-
-        const { lastKnownState, finishedState } = makeFinishedState(
-          currentId,
-          currentName,
-          randomArtistName(seed)
-        )
-
-        synchronizer.setLastKnownState(lastKnownState)
-        synchronizer.setCurrentQueueTrack(currentItem)
-
-        const djInstance = DJService.getInstance()
-        const announceSpy = mock.method(
-          djInstance,
-          'maybeAnnounce',
-          async () => {}
-        )
-
-        await synchronizer.handleTrackFinished(finishedState)
-        await playbackService.waitForCompletion()
-
-        assert.equal(
-          announceSpy.mock.callCount(),
-          1,
-          `maybeAnnounce should be called once (seed=${seed})`
-        )
-
-        const announceArg = announceSpy.mock.calls[0]
-          .arguments[0] as JukeboxQueueItem
-        assert.equal(
-          announceArg.tracks.spotify_track_id,
-          nextId,
-          `maybeAnnounce should receive the next track (seed=${seed})`
-        )
-
-        mock.restoreAll()
-      }
-    })
-  })
 })

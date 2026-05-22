@@ -39,9 +39,6 @@ import { QRCodeComponent } from '@/components/ui'
 import { useAdminTokenManagement } from '@/hooks/useAdminTokenManagement'
 import { usePlaybackEnforcer } from '@/hooks/usePlaybackEnforcer'
 import { usePublishNowPlaying } from '@/hooks/usePublishNowPlaying'
-import { useTriviaWinnerAnnouncement } from '@/hooks/useTriviaWinnerAnnouncement'
-import { useTriviaResetTimer } from '@/hooks/useTriviaResetTimer'
-import { useTriviaQuestionPrefetch } from '@/hooks/useTriviaQuestionPrefetch'
 
 // Recovery removed
 
@@ -131,7 +128,6 @@ export default function AdminPage(): JSX.Element {
   // Get premium status
   const { profile } = useGetProfile()
 
-  // Persist profileId to localStorage for DJService announcement integration
   useEffect(() => {
     if (profile?.id) {
       localStorage.setItem('profileId', profile.id)
@@ -375,13 +371,6 @@ export default function AdminPage(): JSX.Element {
 
   // Publish now-playing state to Supabase for realtime display updates
   usePublishNowPlaying(profile?.id ?? null)
-
-  // Listen for trivia winner announcements and play them via the DJ
-  useTriviaWinnerAnnouncement(profile?.id ?? null)
-
-  // Trivia game management — runs here so it is always active while the venue is open
-  useTriviaResetTimer(profile?.id ?? null)
-  useTriviaQuestionPrefetch(profile?.id ?? null)
 
   // Only show loading if we have no queue data at all
   if (queueLoading && (!queue || queue.length === 0) && !playlistError) {

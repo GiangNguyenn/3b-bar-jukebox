@@ -63,9 +63,6 @@ const { playbackService } =
   require('@/services/player') as typeof import('@/services/player')
 const { queueManager } =
   require('@/services/queueManager') as typeof import('@/services/queueManager')
-const { DJService } =
-  require('@/services/djService') as typeof import('@/services/djService')
-
 // ─── localStorage mock (not available in Node.js test environment) ───────────
 const localStorageStore: Record<string, string> = {}
 const localStorageMock = {
@@ -166,7 +163,6 @@ function makeRecordingController() {
 
 beforeEach(async () => {
   await playbackService.waitForCompletion()
-  localStorage.setItem('djMode', 'false')
   queueManager.updateQueue([])
   queueManager.setCurrentlyPlayingTrack(null)
   addToRecentlyPlayedCalls = []
@@ -174,7 +170,6 @@ beforeEach(async () => {
 
 afterEach(async () => {
   await playbackService.waitForCompletion()
-  localStorage.setItem('djMode', 'false')
   mock.restoreAll()
 })
 
@@ -211,9 +206,6 @@ describe('Bug Condition: Track Finish Does Not Record Recently Played', () => {
 
     synchronizer.setLastKnownState(lastKnownState)
     synchronizer.setCurrentQueueTrack(queueItem)
-
-    const djInstance = DJService.getInstance()
-    mock.method(djInstance, 'maybeAnnounce', async () => {})
 
     await synchronizer.handleTrackFinished(finishedState)
     await playbackService.waitForCompletion()
@@ -262,9 +254,6 @@ describe('Bug Condition: Track Finish Does Not Record Recently Played', () => {
 
     synchronizer.setLastKnownState(lastKnownState)
     synchronizer.setCurrentQueueTrack(queueItem)
-
-    const djInstance = DJService.getInstance()
-    mock.method(djInstance, 'maybeAnnounce', async () => {})
 
     await synchronizer.handleTrackFinished(finishedState)
     await playbackService.waitForCompletion()
@@ -330,9 +319,6 @@ describe('Bug Condition: Track Finish Does Not Record Recently Played', () => {
 
     synchronizer.setLastKnownState(lastKnownState)
 
-    const djInstance = DJService.getInstance()
-    mock.method(djInstance, 'maybeAnnounce', async () => {})
-
     await synchronizer.handleTrackFinished(finishedState)
     await playbackService.waitForCompletion()
 
@@ -371,9 +357,6 @@ describe('Bug Condition: Track Finish Does Not Record Recently Played', () => {
 
     synchronizer.setLastKnownState(lastKnownState)
     synchronizer.setCurrentQueueTrack(queueItem)
-
-    const djInstance = DJService.getInstance()
-    mock.method(djInstance, 'maybeAnnounce', async () => {})
 
     await synchronizer.handleTrackFinished(finishedState)
     await playbackService.waitForCompletion()

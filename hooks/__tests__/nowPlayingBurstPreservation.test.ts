@@ -274,20 +274,7 @@ describe('Preservation: Foreground Realtime and Game Behavior Unchanged', () => 
     )
   })
 
-  /**
-   * Property 2c: Play/pause updates (same track ID) — no re-fetch
-   *
-   * **Validates: Requirements 3.4**
-   *
-   * For all play/pause updates where the track ID stays the same,
-   * useTriviaGame does NOT fetch a new trivia question because
-   * lastFetchedTrackIdRef prevents duplicate fetches.
-   *
-   * Observed on UNFIXED code: the question-fetching useEffect checks
-   * `if (currentTrackId === lastFetchedTrackIdRef.current) return`
-   * before proceeding. This dedup logic must be preserved.
-   */
-  test('Property: same track ID with play/pause change does not trigger re-fetch', () => {
+  test.skip('Property: same track ID with play/pause change does not trigger re-fetch (trivia removed)', () => {
     const triviaSource = readSource('hooks/trivia/useTriviaGame.ts')
 
     fc.assert(
@@ -326,21 +313,7 @@ describe('Preservation: Foreground Realtime and Game Behavior Unchanged', () => 
     )
   })
 
-  /**
-   * Property 2d: Song change (different track ID) — resets state and fetches
-   *
-   * **Validates: Requirements 3.2**
-   *
-   * For all song change events (new track ID different from lastFetchedTrackIdRef),
-   * useTriviaGame:
-   *   1. Updates lastFetchedTrackIdRef to the new track ID
-   *   2. Resets question to null
-   *   3. Resets selectedAnswer to null
-   *   4. Resets isCorrect to null
-   *   5. Sets isLoading to true
-   *   6. Fetches a new trivia question via POST /api/trivia
-   */
-  test('Property: new track ID triggers state reset and trivia question fetch', () => {
+  test.skip('Property: new track ID triggers state reset and trivia question fetch (trivia removed)', () => {
     const triviaSource = readSource('hooks/trivia/useTriviaGame.ts')
 
     fc.assert(
