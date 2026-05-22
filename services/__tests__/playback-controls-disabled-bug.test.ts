@@ -321,5 +321,4 @@ describe('Bug Condition: Playback Controls Disabled During Track Transition', ()
         'only the queue-enforcement branch is blocked, not state updates'
     )
   })
-
 })

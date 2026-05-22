@@ -294,7 +294,6 @@ export function JukeboxSection({
             </div>
           </div>
         </div>
-
       </div>
     </div>
   )

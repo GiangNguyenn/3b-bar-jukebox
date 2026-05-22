@@ -401,5 +401,4 @@ describe('Preservation: Track Transition Behavior Unchanged', () => {
       }
     })
   })
-
 })

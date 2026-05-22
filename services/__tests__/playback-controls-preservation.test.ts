@@ -185,8 +185,6 @@ describe('Preservation: Auto-Play, DJ Sequencing, and Race Condition Prevention'
     }
   })
 
-
-
   /**
    * P2c — Race condition prevention: serialized queue prevents concurrent execution
    *
