@@ -139,6 +139,14 @@ export default function RemotePage(): JSX.Element {
     [save]
   )
 
+  // Clear pending timers on unmount to prevent state updates on dead component
+  useEffect(() => {
+    return () => {
+      if (volumeDebounceRef.current) clearTimeout(volumeDebounceRef.current)
+      if (textareaDebounceRef.current) clearTimeout(textareaDebounceRef.current)
+    }
+  }, [])
+
   // Now playing realtime subscription
   const { data: nowPlaying } = useNowPlayingRealtime({ profileId })
 
@@ -147,7 +155,10 @@ export default function RemotePage(): JSX.Element {
   const artistName = nowPlaying?.item?.artists?.[0]?.name ?? null
 
   const sendPlaybackAction = useCallback(
-    async (action: 'play' | 'pause' | 'skip' | 'volume', extra?: { volumePercent?: number }): Promise<void> => {
+    async (
+      action: 'play' | 'pause' | 'skip' | 'volume',
+      extra?: { volumePercent?: number }
+    ): Promise<void> => {
       if (!username) return
       setPlaybackError(null)
       setIsPlaybackLoading(true)
@@ -212,10 +223,10 @@ export default function RemotePage(): JSX.Element {
         <div className='mb-3'>
           {trackName ? (
             <>
-              <p className='text-sm font-semibold text-foreground truncate'>
+              <p className='truncate text-sm font-semibold text-foreground'>
                 {trackName}
               </p>
-              <p className='text-xs text-muted-foreground truncate'>
+              <p className='truncate text-xs text-muted-foreground'>
                 {artistName}
               </p>
             </>
@@ -230,11 +241,13 @@ export default function RemotePage(): JSX.Element {
           </p>
         )}
 
-        <div className='flex gap-3 mb-4'>
+        <div className='mb-4 flex gap-3'>
           <button
             type='button'
             disabled={isPlaybackLoading}
-            onClick={() => void sendPlaybackAction(isPlaying ? 'pause' : 'play')}
+            onClick={() =>
+              void sendPlaybackAction(isPlaying ? 'pause' : 'play')
+            }
             className='flex-1 rounded-md border border-border bg-background px-4 py-2 text-sm font-medium text-foreground hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50'
           >
             {isPlaying ? 'Pause' : 'Play'}
@@ -250,7 +263,7 @@ export default function RemotePage(): JSX.Element {
         </div>
 
         <div className='flex items-center gap-3'>
-          <span className='text-xs text-muted-foreground w-4'>
+          <span className='w-4 text-xs text-muted-foreground'>
             <VolumeIcon />
           </span>
           <input
@@ -259,9 +272,9 @@ export default function RemotePage(): JSX.Element {
             max={100}
             value={volume}
             onChange={handleVolumeChange}
-            className='flex-1 accent-primary'
+            className='accent-primary flex-1'
           />
-          <span className='text-xs text-muted-foreground w-6 text-right'>
+          <span className='w-6 text-right text-xs text-muted-foreground'>
             {volume}
           </span>
         </div>
