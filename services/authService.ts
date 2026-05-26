@@ -1,6 +1,6 @@
 import { createServerClient } from '@supabase/ssr'
 import { type Session, type SupabaseClient } from '@supabase/supabase-js'
-import { cookies } from 'next/headers'
+import { cookies, type UnsafeUnwrappedCookies } from 'next/headers';
 import { type Database } from '@/types/supabase'
 import { type SpotifyUserProfile } from '@/shared/types/spotify'
 import { createModuleLogger } from '@/shared/utils/logger'
@@ -11,7 +11,7 @@ export class AuthService {
   private supabase: SupabaseClient<Database>
 
   constructor() {
-    const cookieStore = cookies()
+    const cookieStore = cookies() as unknown as UnsafeUnwrappedCookies
     this.supabase = createServerClient<Database>(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,

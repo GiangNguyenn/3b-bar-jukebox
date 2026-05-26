@@ -49,10 +49,8 @@ function chunkArray<T>(array: T[], size: number): T[][] {
   return chunks
 }
 
-export async function POST(
-  request: Request,
-  { params }: { params: { username: string } }
-): Promise<NextResponse<ImportSummary>> {
+export async function POST(request: Request, props: { params: Promise<{ username: string }> }): Promise<NextResponse<ImportSummary>> {
+  const params = await props.params;
   try {
     const username = params.username
 

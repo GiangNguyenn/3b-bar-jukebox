@@ -42,7 +42,7 @@ export async function GET(): Promise<
   NextResponse<SpotifyPlaybackState | null | ErrorResponse>
 > {
   try {
-    const cookieStore = cookies()
+    const cookieStore = await cookies()
 
     const supabase = createServerClient<Database>(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,

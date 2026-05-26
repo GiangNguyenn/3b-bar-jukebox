@@ -38,10 +38,8 @@ interface PlaylistListItem {
   ownerName: string
 }
 
-export async function GET(
-  request: Request,
-  { params }: { params: { username: string } }
-): Promise<NextResponse> {
+export async function GET(request: Request, props: { params: Promise<{ username: string }> }): Promise<NextResponse> {
+  const params = await props.params;
   try {
     const username = params.username
 

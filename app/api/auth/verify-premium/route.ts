@@ -26,7 +26,7 @@ export async function GET(): Promise<
   // We are now treating all users as premium, so we always return true.
   // We still check for authentication to ensure the user is logged in.
 
-  const cookieStore = cookies()
+  const cookieStore = await cookies()
 
   const supabase = createServerClient<Database>(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,

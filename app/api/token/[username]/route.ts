@@ -21,12 +21,10 @@ interface TokenResponse {
 
 export const dynamic = 'force-dynamic'
 
-export async function GET(
-  request: Request,
-  { params }: { params: { username: string } }
-): Promise<NextResponse<TokenResponse | ErrorResponse>> {
+export async function GET(request: Request, props: { params: Promise<{ username: string }> }): Promise<NextResponse<TokenResponse | ErrorResponse>> {
+  const params = await props.params;
   try {
-    const cookieStore = cookies()
+    const cookieStore = await cookies()
 
     const supabase = createServerClient<Database>(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,

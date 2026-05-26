@@ -8,7 +8,7 @@ const logger = createModuleLogger('API Suggested Tracks Delete')
 
 export async function DELETE(request: Request): Promise<NextResponse> {
   try {
-    const cookieStore = cookies()
+    const cookieStore = await cookies()
 
     const supabase = createServerClient<Database>(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,

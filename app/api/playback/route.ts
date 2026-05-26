@@ -172,7 +172,7 @@ export async function GET(request: Request): Promise<NextResponse> {
       )
     }
 
-    const cookieStore = cookies()
+    const cookieStore = await cookies()
     const supabase = createServerClient<Database>(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
@@ -358,7 +358,7 @@ export async function POST(request: Request): Promise<NextResponse> {
       }
 
       // Verify the caller is authenticated as the target profile owner
-      const cookieStore = cookies()
+      const cookieStore = await cookies()
       const supabase = createServerClient<Database>(
         process.env.NEXT_PUBLIC_SUPABASE_URL!,
         process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,

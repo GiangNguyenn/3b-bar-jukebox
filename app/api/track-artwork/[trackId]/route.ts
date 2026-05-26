@@ -34,10 +34,8 @@ if (!SPOTIFY_CLIENT_ID || !SPOTIFY_CLIENT_SECRET) {
   )
 }
 
-export async function GET(
-  request: Request,
-  { params }: { params: { trackId: string } }
-): Promise<NextResponse<{ artworkUrl: string | null } | ErrorResponse>> {
+export async function GET(request: Request, props: { params: Promise<{ trackId: string }> }): Promise<NextResponse<{ artworkUrl: string | null } | ErrorResponse>> {
+  const params = await props.params;
   try {
     const { trackId } = params
 
@@ -58,7 +56,7 @@ export async function GET(
       return errorResponse
     }
 
-    const cookieStore = cookies()
+    const cookieStore = await cookies()
 
     const supabase = createServerClient<Database>(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,

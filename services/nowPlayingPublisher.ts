@@ -56,9 +56,10 @@ export async function publishNowPlaying(
         updated_at: new Date().toISOString()
       }
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const { error } = await supabaseBrowser
     .from('now_playing')
-    .upsert(row, { onConflict: 'profile_id' })
+    .upsert(row as any, { onConflict: 'profile_id' })
 
   if (error) {
     logger('ERROR', `Failed to publish now_playing: ${error.message}`)

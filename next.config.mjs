@@ -14,10 +14,7 @@ const nextConfig = {
       }
     ]
   },
-  // Increase API route timeout for complex game operations
-  experimental: {
-    serverComponentsExternalPackages: []
-  },
+  serverExternalPackages: [],
   webpack: (config) => {
     config.ignoreWarnings = [{ module: /node_modules\/@supabase\/realtime-js/ }]
     return config

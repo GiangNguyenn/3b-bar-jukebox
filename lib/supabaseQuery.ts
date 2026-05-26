@@ -46,7 +46,7 @@ export async function insertWithRetry<T = unknown>(
   return withRetry(
     async () => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      return await client.from(table as any).insert(values)
+      return await client.from(table as any).insert(values as any)
     },
     retryConfig,
     queryName ?? `INSERT into ${table}`
@@ -95,7 +95,7 @@ export async function upsertWithRetry<T = unknown>(
         ? { onConflict: options.onConflict }
         : undefined
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      return await client.from(table as any).upsert(values, upsertOptions)
+      return await client.from(table as any).upsert(values as any, upsertOptions)
     },
     retryConfig,
     queryName ?? `UPSERT into ${table}`

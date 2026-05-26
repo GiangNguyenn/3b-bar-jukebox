@@ -56,8 +56,8 @@ export async function updateTokenInDatabase(
     'profiles',
     async (builder) => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      return await builder
-        .update(updateData as any)
+      return await (builder as any)
+        .update(updateData)
         .eq('id', profileId)
         .eq('spotify_refresh_token', tokenData.currentRefreshToken) // OCC Check
         .select() // Return updated rows to check if update actually happened
