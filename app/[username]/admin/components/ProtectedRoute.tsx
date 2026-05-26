@@ -41,24 +41,32 @@ export function ProtectedRoute({
 
         // Check verification if username is present in URL
         if (username && user) {
-          const { data: profile } = await supabase
+          const { data: profile, error: profileError } = await supabase
             .from('profiles')
             .select('id, display_name')
             .eq('id', user.id)
             .single()
 
-          // If no profile found, or display_name mismatch (and not using UUID), redirect
-          // We allow matching either display_name (case-insensitive) or ID
-          const isMatch =
-            profile &&
-            (profile.display_name?.toLowerCase() === username.toLowerCase() ||
-              profile.id === username)
-
-          if (!isMatch) {
-            // Logged in but trying to access someone else's admin page
-            redirectTo('/')
+          if (profileError && profileError.code !== 'PGRST116') {
+            // Query failed for auth/network reasons — session likely stale
+            redirectTo('/auth/signin')
             return
           }
+
+          if (profile) {
+            const isMatch =
+              profile.display_name?.toLowerCase() === username.toLowerCase() ||
+              profile.id === username
+
+            if (!isMatch) {
+              // Wrong username in URL — redirect to their actual admin page
+              const correctUsername = profile.display_name ?? profile.id
+              redirectTo(`/${encodeURIComponent(correctUsername)}/admin`)
+              return
+            }
+          }
+          // If profile is null (PGRST116 / no row yet), fall through and let
+          // the token check below handle auth validation
         }
 
         const tokenResponse = await fetch('/api/token', {
@@ -103,7 +111,7 @@ export function ProtectedRoute({
 
         setIsLoading(false)
       } catch {
-        redirectTo('/')
+        redirectTo('/auth/signin')
       }
     }
 
