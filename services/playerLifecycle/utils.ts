@@ -3,6 +3,12 @@ import { JukeboxQueueItem } from '@/shared/types/queue'
 import { queueManager } from '@/services/queueManager'
 import { PLAYER_LIFECYCLE_CONFIG } from '../playerLifecycleConfig'
 
+import type {} from 'scheduler-polyfill'
+
+if (typeof window !== 'undefined') {
+  require('scheduler-polyfill')
+}
+
 /**
  * Waits for the Spotify Web Playback SDK to be ready
  */
@@ -41,27 +47,69 @@ export function waitForSpotifySDK(): Promise<void> {
 }
 
 /**
- * Manages multiple timeouts with named identifiers
+ * Manages multiple timeouts with named identifiers, utilizing the Prioritized Task Scheduling API where possible.
  */
 export class TimeoutManager {
-  private timeouts: Map<string, NodeJS.Timeout> = new Map()
+  private controllers: Map<string, AbortController> = new Map()
 
   /**
-   * Set a timeout with a named identifier, clearing any existing timeout with the same name
+   * Set a task with a named identifier, clearing any existing task with the same name
+   * @param key Identifier for the task
+   * @param callback Function to execute
+   * @param delayMs Delay in milliseconds
+   * @param priority Task priority ('user-blocking', 'user-visible', 'background')
    */
-  set(key: string, timeout: NodeJS.Timeout): void {
+  setTask(
+    key: string,
+    callback: () => void,
+    delayMs: number,
+    priority: 'user-blocking' | 'user-visible' | 'background' = 'background'
+  ): void {
     this.clear(key)
-    this.timeouts.set(key, timeout)
+    const controller = new AbortController()
+    this.controllers.set(key, controller)
+
+    if (typeof scheduler !== 'undefined' && scheduler.postTask) {
+      scheduler.postTask(callback, {
+        priority,
+        delay: delayMs,
+        signal: controller.signal
+      })
+        .then(() => {
+          this.controllers.delete(key)
+        })
+        .catch((err: unknown) => {
+          this.controllers.delete(key)
+          if (err instanceof Error && err.name !== 'AbortError') {
+            throw err
+          }
+        })
+    } else {
+      // Fallback
+      const timeoutId = setTimeout(() => {
+        if (!controller.signal.aborted) {
+          try {
+            callback()
+          } finally {
+            this.controllers.delete(key)
+          }
+        }
+      }, delayMs)
+
+      controller.signal.addEventListener('abort', () => {
+        clearTimeout(timeoutId)
+      })
+    }
   }
 
   /**
    * Clear a specific timeout by key
    */
   clear(key: string): void {
-    const existing = this.timeouts.get(key)
+    const existing = this.controllers.get(key)
     if (existing) {
-      clearTimeout(existing)
-      this.timeouts.delete(key)
+      existing.abort()
+      this.controllers.delete(key)
     }
   }
 
@@ -69,25 +117,24 @@ export class TimeoutManager {
    * Clear all timeouts
    */
   clearAll(): void {
-    // Use Array.from to avoid iterator issues with downlevelIteration
-    Array.from(this.timeouts.values()).forEach((timeout) => {
-      clearTimeout(timeout)
+    Array.from(this.controllers.values()).forEach((controller) => {
+      controller.abort()
     })
-    this.timeouts.clear()
+    this.controllers.clear()
   }
 
   /**
    * Check if a timeout exists for the given key
    */
   has(key: string): boolean {
-    return this.timeouts.has(key)
+    return this.controllers.has(key)
   }
 
   /**
    * Get list of all active timeout keys
    */
   getActiveKeys(): string[] {
-    return Array.from(this.timeouts.keys())
+    return Array.from(this.controllers.keys())
   }
 }
 

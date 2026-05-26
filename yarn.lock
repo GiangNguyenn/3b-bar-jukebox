@@ -3684,6 +3684,11 @@ safe-regex-test@^1.0.3, safe-regex-test@^1.1.0:
     es-errors "^1.3.0"
     is-regex "^1.2.1"
 
+scheduler-polyfill@^1.3.0:
+  version "1.3.0"
+  resolved "https://registry.npmjs.org/scheduler-polyfill/-/scheduler-polyfill-1.3.0.tgz"
+  integrity sha512-bIjhi/KJqo08wrq+K2rlB6HNPh871KgREPpVti4zv0mSY1dCi3qr0rRCw+SGHc8/gtKceev29sN//lf6KiYa/g==
+
 scheduler@^0.23.2:
   version "0.23.2"
   resolved "https://registry.npmjs.org/scheduler/-/scheduler-0.23.2.tgz"

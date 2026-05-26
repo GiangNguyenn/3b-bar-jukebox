@@ -1,4 +1,5 @@
 import { sendApiRequest } from '@/shared/api'
+import type {} from 'scheduler-polyfill'
 import {
   validateDevice,
   transferPlaybackToDevice,
@@ -337,43 +338,46 @@ class PlayerLifecycleService {
     const RECOVERY_GRACE_PERIOD_MS =
       PLAYER_LIFECYCLE_CONFIG.PLAYBACK_RETRY.recoveryGracePeriodMs
 
-    const timeout = setTimeout(() => {
-      void (async () => {
-        try {
-          // Guard: Check if player was destroyed while we were waiting
-          if (!this.playerRef) {
-            return
-          }
+    this.timeoutManager.setTask(
+      timeoutKey,
+      () => {
+        void (async () => {
+          try {
+            // Guard: Check if player was destroyed while we were waiting
+            if (!this.playerRef) {
+              return
+            }
 
-          // Try to transfer playback back to this device
-          const transferred = await transferPlaybackToDevice(deviceId)
+            // Try to transfer playback back to this device
+            const transferred = await transferPlaybackToDevice(deviceId)
 
-          // Re-check player existence after async operation
-          if (!this.playerRef) {
-            return
-          }
+            // Re-check player existence after async operation
+            if (!this.playerRef) {
+              return
+            }
 
-          if (transferred) {
-            onStatusChange('ready', undefined)
-          } else {
-            // Only trigger full recovery if background transfer fails
-            onStatusChange(
-              'recovery_needed',
-              'Device recovery failed. Player may need to be recreated.'
-            )
+            if (transferred) {
+              onStatusChange('ready', undefined)
+            } else {
+              // Only trigger full recovery if background transfer fails
+              onStatusChange(
+                'recovery_needed',
+                'Device recovery failed. Player may need to be recreated.'
+              )
+            }
+          } catch (error) {
+            if (this.playerRef) {
+              onStatusChange(
+                'recovery_needed',
+                'Device recovery error. Player may need to be recreated.'
+              )
+            }
           }
-        } catch (error) {
-          if (this.playerRef) {
-            onStatusChange(
-              'recovery_needed',
-              'Device recovery error. Player may need to be recreated.'
-            )
-          }
-        }
-      })()
-    }, RECOVERY_GRACE_PERIOD_MS)
-
-    this.timeoutManager.set(timeoutKey, timeout)
+        })()
+      },
+      RECOVERY_GRACE_PERIOD_MS,
+      'background'
+    )
   }
 
   private async markFinishedTrackAsPlayed(
@@ -481,12 +485,20 @@ class PlayerLifecycleService {
 
     try {
       // Process current state
-      await this.handlePlayerStateChanged(state, onPlaybackStateChange)
+      if (typeof scheduler !== 'undefined' && scheduler.postTask) {
+        await scheduler.postTask(() => this.handlePlayerStateChanged(state, onPlaybackStateChange), { priority: 'user-blocking' })
+      } else {
+        await this.handlePlayerStateChanged(state, onPlaybackStateChange)
+      }
 
       // Process all pending states that arrived while we were working
       while (this.pendingStates.length > 0) {
         const nextState = this.pendingStates.shift()!
-        await this.handlePlayerStateChanged(nextState, onPlaybackStateChange)
+        if (typeof scheduler !== 'undefined' && scheduler.postTask) {
+          await scheduler.postTask(() => this.handlePlayerStateChanged(nextState, onPlaybackStateChange), { priority: 'user-blocking' })
+        } else {
+          await this.handlePlayerStateChanged(nextState, onPlaybackStateChange)
+        }
       }
     } finally {
       this.stateChangeInProgress = false
@@ -568,15 +580,19 @@ class PlayerLifecycleService {
           'error',
           `Authentication error (attempt ${recoveryManager.getRetryCount()}/${PLAYER_LIFECYCLE_CONFIG.MAX_AUTH_RETRY_ATTEMPTS}). Retrying...`
         )
-        const timeout = setTimeout(() => {
-          void this.handleAuthenticationError(
-            message,
-            onStatusChange,
-            onDeviceIdChange,
-            onPlaybackStateChange
-          )
-        }, 5000)
-        this.timeoutManager.set('authRetry', timeout)
+        this.timeoutManager.setTask(
+          'authRetry',
+          () => {
+            void this.handleAuthenticationError(
+              message,
+              onStatusChange,
+              onDeviceIdChange,
+              onPlaybackStateChange
+            )
+          },
+          5000,
+          'background'
+        )
       }
     }
   }
@@ -945,18 +961,25 @@ class PlayerLifecycleService {
         this.deviceErrorResolver = rejectWrapper
 
         // Set strict initialization timeout
-        const initTimeout = setTimeout(async () => {
-          if (this.deviceErrorResolver === rejectWrapper) {
-            const token = await tokenManager.getToken().catch(() => null)
-            // Ensure proper cleanup of the pending promise state
-            if (this.pendingPromiseCleanup) {
-              this.pendingPromiseCleanup()
-              this.pendingPromiseCleanup = null
-            }
-            rejectWrapper(new Error('Player initialization timed out'))
-          }
-        }, PLAYER_LIFECYCLE_CONFIG.INITIALIZATION_TIMEOUT_MS)
-        this.timeoutManager.set('initialization', initTimeout)
+        // Set strict initialization timeout
+        this.timeoutManager.setTask(
+          'initialization',
+          () => {
+            void (async () => {
+              if (this.deviceErrorResolver === rejectWrapper) {
+                const token = await tokenManager.getToken().catch(() => null)
+                // Ensure proper cleanup of the pending promise state
+                if (this.pendingPromiseCleanup) {
+                  this.pendingPromiseCleanup()
+                  this.pendingPromiseCleanup = null
+                }
+                rejectWrapper(new Error('Player initialization timed out'))
+              }
+            })()
+          },
+          PLAYER_LIFECYCLE_CONFIG.INITIALIZATION_TIMEOUT_MS,
+          'user-blocking' // Initialization failure directly affects UX
+        )
 
         // Store cleanup function to prevent memory leaks
         this.pendingPromiseCleanup = () => {
