@@ -74,7 +74,9 @@ export function useAiSuggestions(): UseAiSuggestionsReturn {
 
       const { data } = await supabaseBrowser
         .from('profiles')
-        .select('ai_prompt_preset_id, ai_custom_prompt, ai_autofill_target_size')
+        .select(
+          'ai_prompt_preset_id, ai_custom_prompt, ai_autofill_target_size'
+        )
         .eq('id', user.id)
         .single()
 

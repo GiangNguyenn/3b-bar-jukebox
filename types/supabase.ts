@@ -453,6 +453,7 @@ export type Database = {
           is_premium: boolean | null
           premium_verified_at: string | null
           spotify_access_token: string | null
+          spotify_device_id: string | null
           spotify_product_type: string | null
           spotify_provider_id: string | null
           spotify_refresh_token: string | null
@@ -472,6 +473,7 @@ export type Database = {
           is_premium?: boolean | null
           premium_verified_at?: string | null
           spotify_access_token?: string | null
+          spotify_device_id?: string | null
           spotify_product_type?: string | null
           spotify_provider_id?: string | null
           spotify_refresh_token?: string | null
@@ -491,6 +493,7 @@ export type Database = {
           is_premium?: boolean | null
           premium_verified_at?: string | null
           spotify_access_token?: string | null
+          spotify_device_id?: string | null
           spotify_product_type?: string | null
           spotify_provider_id?: string | null
           spotify_refresh_token?: string | null

@@ -8,6 +8,7 @@ import {
 } from '@/services/deviceManagement'
 import { createModuleLogger } from '@/shared/utils/logger'
 import type { Database } from '@/types/supabase'
+import { supabaseAdmin } from '@/lib/supabase-admin'
 
 import { refreshTokenWithRetry } from '@/recovery/tokenRecovery'
 import { updateTokenInDatabase } from '@/recovery/tokenDatabaseUpdate'
@@ -16,10 +17,12 @@ import { updateTokenInDatabase } from '@/recovery/tokenDatabaseUpdate'
 const logger = createModuleLogger('PlaybackAPI')
 
 interface PlaybackRequest {
-  action: 'play' | 'pause'
+  action: 'play' | 'pause' | 'skip' | 'volume'
   contextUri?: string
   deviceId?: string
   position_ms?: number
+  volumePercent?: number
+  username?: string
 }
 
 interface UserProfile {
@@ -27,6 +30,7 @@ interface UserProfile {
   spotify_access_token: string | null
   spotify_refresh_token: string | null
   spotify_token_expires_at: number | null
+  spotify_device_id: string | null
 }
 
 const SPOTIFY_CLIENT_ID = process.env.SPOTIFY_CLIENT_ID
@@ -81,6 +85,97 @@ async function updateTokenWithRetry(
   }
 
   return { success: false, error: new Error('Max retries exceeded') }
+}
+
+async function getProfileByUsername(
+  username: string
+): Promise<{ profile: UserProfile | null; error: string | null }> {
+  if (!SPOTIFY_CLIENT_ID || !SPOTIFY_CLIENT_SECRET) {
+    return { profile: null, error: 'Missing Spotify credentials' }
+  }
+
+  const cookieStore = cookies()
+  const supabase = createServerClient<Database>(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        getAll() {
+          return cookieStore.getAll()
+        },
+        setAll(cookiesToSet) {
+          try {
+            cookiesToSet.forEach(({ name, value, options }) =>
+              cookieStore.set(name, value, options)
+            )
+          } catch {
+            // Expected: called from Server Component — safely ignored.
+          }
+        }
+      }
+    }
+  )
+
+  const { data, error } = await supabase
+    .from('profiles')
+    .select(
+      'id, spotify_access_token, spotify_refresh_token, spotify_token_expires_at, spotify_device_id'
+    )
+    .ilike('display_name', username)
+    .single()
+
+  if (error || !data) {
+    return { profile: null, error: `Profile not found for user: ${username}` }
+  }
+
+  return { profile: data as UserProfile, error: null }
+}
+
+async function getValidAccessToken(
+  profile: UserProfile,
+  username: string,
+  supabase: ReturnType<typeof createServerClient<Database>>
+): Promise<{ accessToken: string | null; error: string | null }> {
+  let accessToken = profile.spotify_access_token
+  const tokenExpiresAt = profile.spotify_token_expires_at
+  const now = Math.floor(Date.now() / 1000)
+
+  if (tokenExpiresAt && tokenExpiresAt <= now) {
+    if (!profile.spotify_refresh_token) {
+      return { accessToken: null, error: 'No refresh token available' }
+    }
+
+    const refreshResult = await refreshTokenWithRetry(
+      profile.spotify_refresh_token,
+      SPOTIFY_CLIENT_ID!,
+      SPOTIFY_CLIENT_SECRET!
+    )
+
+    if (!refreshResult.success || !refreshResult.accessToken) {
+      return { accessToken: null, error: 'Failed to refresh token' }
+    }
+
+    accessToken = refreshResult.accessToken
+
+    await updateTokenWithRetry(
+      supabase,
+      profile.id,
+      {
+        accessToken: refreshResult.accessToken,
+        refreshToken:
+          refreshResult.refreshToken ?? profile.spotify_refresh_token,
+        expiresIn: refreshResult.expiresIn ?? 3600,
+        currentRefreshToken: profile.spotify_refresh_token
+      },
+      username
+    )
+  }
+
+  if (!accessToken) {
+    return { accessToken: null, error: 'No access token available' }
+  }
+
+  return { accessToken, error: null }
 }
 
 export async function GET(request: Request): Promise<NextResponse> {
@@ -265,9 +360,208 @@ export async function GET(request: Request): Promise<NextResponse> {
 
 export async function POST(request: Request): Promise<NextResponse> {
   try {
-    const { action, contextUri, deviceId, position_ms } =
-      (await request.json()) as PlaybackRequest
+    const body = (await request.json()) as PlaybackRequest
+    const { action, contextUri, position_ms, volumePercent, username, deviceId } = body
 
+    // --- Remote actions (skip, volume, and remote play/pause): look up token + device from Supabase ---
+    if (action === 'skip' || action === 'volume' || (username && !deviceId && (action === 'play' || action === 'pause'))) {
+      if (!username) {
+        return NextResponse.json(
+          { error: 'username is required for skip and volume actions' },
+          { status: 400 }
+        )
+      }
+
+      const cookieStore = cookies()
+      const supabase = createServerClient<Database>(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+        {
+          cookies: {
+            getAll() {
+              return cookieStore.getAll()
+            },
+            setAll(cookiesToSet) {
+              try {
+                cookiesToSet.forEach(({ name, value, options }) =>
+                  cookieStore.set(name, value, options)
+                )
+              } catch {
+                // Expected: called from Server Component — safely ignored.
+              }
+            }
+          }
+        }
+      )
+
+      const { profile, error: profileError } =
+        await getProfileByUsername(username)
+      if (!profile || profileError) {
+        return NextResponse.json(
+          { error: profileError ?? 'Profile not found' },
+          { status: 404 }
+        )
+      }
+
+      const { accessToken, error: tokenError } = await getValidAccessToken(
+        profile,
+        username,
+        supabase
+      )
+      if (!accessToken || tokenError) {
+        return NextResponse.json(
+          { error: tokenError ?? 'No access token' },
+          { status: 503 }
+        )
+      }
+
+      const resolvedDeviceId = deviceId ?? profile.spotify_device_id
+      if (!resolvedDeviceId) {
+        return NextResponse.json(
+          { error: 'player_unavailable' },
+          { status: 503 }
+        )
+      }
+
+      if (action === 'play' || action === 'pause') {
+        const playPath =
+          action === 'play'
+            ? `https://api.spotify.com/v1/me/player/play?device_id=${resolvedDeviceId}`
+            : `https://api.spotify.com/v1/me/player/pause?device_id=${resolvedDeviceId}`
+        const remoteRes = await fetch(playPath, {
+          method: 'PUT',
+          headers: { Authorization: `Bearer ${accessToken}` }
+        })
+        if (!remoteRes.ok && remoteRes.status !== 204) {
+          if (remoteRes.status === 404) {
+            return NextResponse.json(
+              { error: 'player_unavailable' },
+              { status: 503 }
+            )
+          }
+          return NextResponse.json(
+            { error: 'Spotify playback API error' },
+            { status: remoteRes.status }
+          )
+        }
+        return NextResponse.json({ success: true })
+      }
+
+      if (action === 'volume') {
+        if (volumePercent === undefined) {
+          return NextResponse.json(
+            { error: 'volumePercent is required for volume action' },
+            { status: 400 }
+          )
+        }
+        const clampedVolume = Math.max(0, Math.min(100, Math.round(volumePercent)))
+        const volumeRes = await fetch(
+          `https://api.spotify.com/v1/me/player/volume?volume_percent=${clampedVolume}&device_id=${resolvedDeviceId}`,
+          {
+            method: 'PUT',
+            headers: { Authorization: `Bearer ${accessToken}` }
+          }
+        )
+        if (!volumeRes.ok && volumeRes.status !== 204) {
+          if (volumeRes.status === 404) {
+            return NextResponse.json(
+              { error: 'player_unavailable' },
+              { status: 503 }
+            )
+          }
+          return NextResponse.json(
+            { error: 'Spotify volume API error' },
+            { status: volumeRes.status }
+          )
+        }
+        return NextResponse.json({ success: true })
+      }
+
+      // action === 'skip'
+      // 1. Get the currently playing track ID from now_playing
+      const { data: nowPlaying } = await supabaseAdmin
+        .from('now_playing')
+        .select('spotify_track_id')
+        .eq('profile_id', profile.id)
+        .single()
+
+      const currentSpotifyTrackId = nowPlaying?.spotify_track_id ?? null
+
+      // 2. Find and delete the current queue item (matched via tracks table)
+      if (currentSpotifyTrackId) {
+        const { data: currentQueueItems } = await supabaseAdmin
+          .from('jukebox_queue')
+          .select('id, tracks!inner(spotify_track_id)')
+          .eq('profile_id', profile.id)
+          .eq('tracks.spotify_track_id', currentSpotifyTrackId)
+          .limit(1)
+
+        if (currentQueueItems && currentQueueItems.length > 0) {
+          await supabaseAdmin
+            .from('jukebox_queue')
+            .delete()
+            .eq('id', currentQueueItems[0].id)
+        }
+      }
+
+      // 3. Get the next track from the queue
+      const { data: nextItems } = await supabaseAdmin
+        .from('jukebox_queue')
+        .select('id, tracks!inner(spotify_track_id)')
+        .eq('profile_id', profile.id)
+        .order('votes', { ascending: false })
+        .order('queued_at', { ascending: true })
+        .limit(1)
+
+      const nextSpotifyTrackId =
+        nextItems && nextItems.length > 0
+          ? (nextItems[0].tracks as { spotify_track_id: string })
+              .spotify_track_id
+          : null
+
+      if (nextSpotifyTrackId) {
+        // 4a. Play the next track
+        const playRes = await fetch(
+          'https://api.spotify.com/v1/me/player/play',
+          {
+            method: 'PUT',
+            headers: {
+              Authorization: `Bearer ${accessToken}`,
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+              uris: [`spotify:track:${nextSpotifyTrackId}`],
+              device_id: resolvedDeviceId
+            })
+          }
+        )
+        if (!playRes.ok && playRes.status !== 204) {
+          if (playRes.status === 404) {
+            return NextResponse.json(
+              { error: 'player_unavailable' },
+              { status: 503 }
+            )
+          }
+          return NextResponse.json(
+            { error: 'Spotify play API error' },
+            { status: playRes.status }
+          )
+        }
+      } else {
+        // 4b. Queue is empty — pause
+        await fetch(
+          `https://api.spotify.com/v1/me/player/pause?device_id=${resolvedDeviceId}`,
+          {
+            method: 'PUT',
+            headers: { Authorization: `Bearer ${accessToken}` }
+          }
+        )
+      }
+
+      return NextResponse.json({ success: true })
+    }
+
+    // --- Play / Pause actions: require deviceId in body (existing behaviour) ---
     if (!deviceId) {
       return NextResponse.json(
         { error: 'Device ID is required' },
@@ -315,8 +609,6 @@ export async function POST(request: Request): Promise<NextResponse> {
         }
       })
     }
-
-    // Recovery verification removed; no additional state fetch needed
 
     return NextResponse.json({ success: true })
   } catch (error) {

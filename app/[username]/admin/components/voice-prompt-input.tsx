@@ -149,14 +149,14 @@ export function VoicePromptInput({
         className={[
           'flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-colors',
           isListening
-            ? 'bg-red-600 text-white hover:bg-red-700'
+            ? 'text-white bg-red-600 hover:bg-red-700'
             : 'border border-border bg-background text-foreground hover:bg-muted',
           disabled ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'
         ].join(' ')}
       >
         {isListening ? (
           <>
-            <span className='inline-block h-2 w-2 animate-pulse rounded-full bg-white' />
+            <span className='bg-white inline-block h-2 w-2 animate-pulse rounded-full' />
             Stop recording
           </>
         ) : (

@@ -29,6 +29,7 @@ import {
 import type { AiSuggestionsState } from '@/shared/types/aiSuggestions'
 
 import { useGetProfile } from '@/hooks/useGetProfile'
+import { supabaseBrowser } from '@/lib/supabase-browser'
 import { startFreshAuthentication } from '@/shared/utils/authCleanup'
 import { ArrowRightOnRectangleIcon } from '@heroicons/react/24/outline'
 import { Copy, Check, QrCode } from 'lucide-react'
@@ -133,6 +134,14 @@ export default function AdminPage(): JSX.Element {
       localStorage.setItem('profileId', profile.id)
     }
   }, [profile?.id])
+
+  useEffect(() => {
+    if (!deviceId || !profile?.id) return
+    void supabaseBrowser
+      .from('profiles')
+      .update({ spotify_device_id: deviceId })
+      .eq('id', profile.id)
+  }, [deviceId, profile?.id])
 
   // Extract token health from healthStatus to avoid duplicate API calls
   const tokenHealth = {
