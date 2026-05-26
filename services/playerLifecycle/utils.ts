@@ -70,11 +70,12 @@ export class TimeoutManager {
     this.controllers.set(key, controller)
 
     if (typeof scheduler !== 'undefined' && scheduler.postTask) {
-      scheduler.postTask(callback, {
-        priority,
-        delay: delayMs,
-        signal: controller.signal
-      })
+      scheduler
+        .postTask(callback, {
+          priority,
+          delay: delayMs,
+          signal: controller.signal
+        })
         .then(() => {
           this.controllers.delete(key)
         })

@@ -486,7 +486,10 @@ class PlayerLifecycleService {
     try {
       // Process current state
       if (typeof scheduler !== 'undefined' && scheduler.postTask) {
-        await scheduler.postTask(() => this.handlePlayerStateChanged(state, onPlaybackStateChange), { priority: 'user-blocking' })
+        await scheduler.postTask(
+          () => this.handlePlayerStateChanged(state, onPlaybackStateChange),
+          { priority: 'user-blocking' }
+        )
       } else {
         await this.handlePlayerStateChanged(state, onPlaybackStateChange)
       }
@@ -495,7 +498,11 @@ class PlayerLifecycleService {
       while (this.pendingStates.length > 0) {
         const nextState = this.pendingStates.shift()!
         if (typeof scheduler !== 'undefined' && scheduler.postTask) {
-          await scheduler.postTask(() => this.handlePlayerStateChanged(nextState, onPlaybackStateChange), { priority: 'user-blocking' })
+          await scheduler.postTask(
+            () =>
+              this.handlePlayerStateChanged(nextState, onPlaybackStateChange),
+            { priority: 'user-blocking' }
+          )
         } else {
           await this.handlePlayerStateChanged(nextState, onPlaybackStateChange)
         }
