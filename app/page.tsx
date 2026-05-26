@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabaseBrowser } from '@/lib/supabase-browser'
 import { usePremiumStatus } from '@/hooks/usePremiumStatus'
+import { useGetProfile } from '@/hooks/useGetProfile'
 import type { User } from '@supabase/supabase-js'
 import { Loading } from '@/components/ui/loading'
 import {
@@ -26,6 +27,7 @@ export default function Home(): JSX.Element {
     error: premiumError,
     needsReauth
   } = usePremiumStatus()
+  const { profile: adminProfile } = useGetProfile()
 
   const supabase = supabaseBrowser
 
@@ -360,7 +362,7 @@ export default function Home(): JSX.Element {
         </h1>
         <p className='mb-8 text-gray-400'>You are signed in successfully.</p>
         <a
-          href={`/${user.user_metadata?.full_name ?? user.email?.split('@')[0] ?? 'user'}/admin`}
+          href={`/${adminProfile?.display_name ?? user.user_metadata?.full_name ?? user.email?.split('@')[0] ?? 'user'}/admin`}
           className='text-white rounded bg-blue-500 px-4 py-2 font-bold hover:bg-blue-600'
         >
           Go to Admin

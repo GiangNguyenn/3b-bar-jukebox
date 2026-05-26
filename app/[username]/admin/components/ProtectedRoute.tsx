@@ -90,13 +90,14 @@ export function ProtectedRoute({
 
           if (
             errorData.code === 'NO_SPOTIFY_TOKEN' ||
-            errorData.code === 'INVALID_SPOTIFY_TOKEN'
+            errorData.code === 'INVALID_SPOTIFY_TOKEN' ||
+            errorData.code === 'NOT_AUTHENTICATED'
           ) {
             redirectTo('/auth/signin')
             return
           }
 
-          redirectTo('/')
+          redirectTo('/auth/signin')
           return
         }
 
