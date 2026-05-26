@@ -2,6 +2,7 @@
 
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { MAX_CUSTOM_PROMPT_LENGTH } from '@/shared/constants/aiSuggestion'
+import { VoicePromptInput } from '../../voice-prompt-input'
 
 interface CustomPromptInputProps {
   customPrompt: string
@@ -36,9 +37,16 @@ export function CustomPromptInput({
           rows={3}
           className='focus:border-primary focus:ring-primary w-full resize-none rounded-md border border-border bg-background p-3 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-1'
         />
-        <p className='text-right text-xs text-muted-foreground'>
-          {customPrompt.length}/{MAX_CUSTOM_PROMPT_LENGTH}
-        </p>
+        <div className='flex items-center justify-between'>
+          <VoicePromptInput
+            onTranscript={onCustomPromptChange}
+            mode='replace'
+            currentValue={customPrompt}
+          />
+          <p className='text-xs text-muted-foreground'>
+            {customPrompt.length}/{MAX_CUSTOM_PROMPT_LENGTH}
+          </p>
+        </div>
       </CardContent>
     </Card>
   )

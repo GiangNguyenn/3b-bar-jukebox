@@ -443,6 +443,9 @@ export type Database = {
       }
       profiles: {
         Row: {
+          ai_autofill_target_size: number | null
+          ai_custom_prompt: string | null
+          ai_prompt_preset_id: string | null
           avatar_url: string | null
           created_at: string
           display_name: string
@@ -459,6 +462,9 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          ai_autofill_target_size?: number | null
+          ai_custom_prompt?: string | null
+          ai_prompt_preset_id?: string | null
           avatar_url?: string | null
           created_at?: string
           display_name: string
@@ -475,6 +481,9 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          ai_autofill_target_size?: number | null
+          ai_custom_prompt?: string | null
+          ai_prompt_preset_id?: string | null
           avatar_url?: string | null
           created_at?: string
           display_name?: string
