@@ -1,8 +1,11 @@
 import { supabase } from '@/lib/supabase'
 import { NextRequest, NextResponse } from 'next/server'
 
-export async function DELETE(request: NextRequest, props: { params: Promise<{ queueId: string }> }): Promise<NextResponse> {
-  const params = await props.params;
+export async function DELETE(
+  request: NextRequest,
+  props: { params: Promise<{ queueId: string }> }
+): Promise<NextResponse> {
+  const params = await props.params
   const { queueId } = params
 
   const { error } = await supabase

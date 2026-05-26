@@ -34,8 +34,11 @@ if (!SPOTIFY_CLIENT_ID || !SPOTIFY_CLIENT_SECRET) {
   )
 }
 
-export async function GET(request: Request, props: { params: Promise<{ trackId: string }> }): Promise<NextResponse<{ artworkUrl: string | null } | ErrorResponse>> {
-  const params = await props.params;
+export async function GET(
+  request: Request,
+  props: { params: Promise<{ trackId: string }> }
+): Promise<NextResponse<{ artworkUrl: string | null } | ErrorResponse>> {
+  const params = await props.params
   try {
     const { trackId } = params
 

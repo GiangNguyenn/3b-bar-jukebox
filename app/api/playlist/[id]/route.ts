@@ -11,8 +11,11 @@ const logger = createModuleLogger('API Playlist')
 // Add caching for GET requests - 15 seconds matches our polling interval
 export const revalidate = 15
 
-export async function GET(request: Request, props: { params: Promise<{ id: string }> }): Promise<NextResponse> {
-  const params = await props.params;
+export async function GET(
+  request: Request,
+  props: { params: Promise<{ id: string }> }
+): Promise<NextResponse> {
+  const params = await props.params
   try {
     const username = params.id
 
@@ -130,8 +133,11 @@ type AddTrackResponseBody =
   | { error: string; details?: string }
   | { error: z.ZodIssue[] }
 
-export async function POST(request: Request, props: { params: Promise<{ id: string }> }): Promise<NextResponse<AddTrackResponseBody>> {
-  const params = await props.params;
+export async function POST(
+  request: Request,
+  props: { params: Promise<{ id: string }> }
+): Promise<NextResponse<AddTrackResponseBody>> {
+  const params = await props.params
   try {
     const username = params.id
     const profileResult = await queryWithRetry<{

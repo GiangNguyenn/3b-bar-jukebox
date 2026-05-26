@@ -6,8 +6,11 @@ import { createModuleLogger } from '@/shared/utils/logger'
 
 const logger = createModuleLogger('SubscriptionCancel')
 
-export async function POST(request: NextRequest, props: { params: Promise<{ id: string }> }): Promise<NextResponse> {
-  const params = await props.params;
+export async function POST(
+  request: NextRequest,
+  props: { params: Promise<{ id: string }> }
+): Promise<NextResponse> {
+  const params = await props.params
   try {
     const cookieStore = await cookies()
     const supabase = createServerClient(

@@ -21,8 +21,11 @@ interface TokenResponse {
 
 export const dynamic = 'force-dynamic'
 
-export async function GET(request: Request, props: { params: Promise<{ username: string }> }): Promise<NextResponse<TokenResponse | ErrorResponse>> {
-  const params = await props.params;
+export async function GET(
+  request: Request,
+  props: { params: Promise<{ username: string }> }
+): Promise<NextResponse<TokenResponse | ErrorResponse>> {
+  const params = await props.params
   try {
     const cookieStore = await cookies()
 

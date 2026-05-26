@@ -95,7 +95,9 @@ export async function upsertWithRetry<T = unknown>(
         ? { onConflict: options.onConflict }
         : undefined
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      return await client.from(table as any).upsert(values as any, upsertOptions)
+      return await client
+        .from(table as any)
+        .upsert(values as any, upsertOptions)
     },
     retryConfig,
     queryName ?? `UPSERT into ${table}`
