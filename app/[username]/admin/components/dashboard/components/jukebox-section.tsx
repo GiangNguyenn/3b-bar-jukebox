@@ -8,8 +8,12 @@ import { usePlaybackControls } from '../../../hooks/usePlaybackControls'
 import { useSpotifyPlayerStore } from '@/hooks/useSpotifyPlayer'
 import { sendApiRequest } from '@/shared/api'
 import { useConsoleLogsContext } from '@/hooks/ConsoleLogsProvider'
-import { useState, useRef } from 'react'
+import { useCallback, useState, useRef } from 'react'
 import { getAutoPlayService } from '@/services/autoPlayService'
+import {
+  useRemoteCommandListener,
+  type RemoteCommand
+} from '@/hooks/useRemoteCommandListener'
 
 interface JukeboxSectionProps {
   className?: string
@@ -39,6 +43,30 @@ export function JukeboxSection({
 
   const { handlePlayPause, handleSkip, isActuallyPlaying, isSkipLoading } =
     usePlaybackControls()
+
+  const handleRemoteCommand = useCallback(
+    (cmd: RemoteCommand) => {
+      if (cmd.action === 'play' && !isActuallyPlaying) {
+        void handlePlayPause()
+      } else if (cmd.action === 'pause' && isActuallyPlaying) {
+        void handlePlayPause()
+      } else if (cmd.action === 'skip') {
+        void handleSkip()
+      } else if (cmd.action === 'volume') {
+        const clamped = Math.max(0, Math.min(100, Math.round(cmd.volumePercent)))
+        setVolume(clamped)
+        void sendApiRequest({
+          path: `me/player/volume?volume_percent=${clamped}&device_id=${deviceId}`,
+          method: 'PUT'
+        }).catch(() => {
+          // volume errors are non-critical
+        })
+      }
+    },
+    [isActuallyPlaying, handlePlayPause, handleSkip, deviceId]
+  )
+
+  useRemoteCommandListener({ profileId, onCommand: handleRemoteCommand })
 
   const formatTime = (ms: number): string => {
     const seconds = Math.floor(ms / 1000)

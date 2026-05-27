@@ -1,7 +1,6 @@
 'use client'
 
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { useParams } from 'next/navigation'
 import { supabaseBrowser } from '@/lib/supabase-browser'
 import { VoicePromptInput } from '../components/voice-prompt-input'
 import {
@@ -10,6 +9,7 @@ import {
   truncatePrompt
 } from '@/shared/constants/aiSuggestion'
 import { useNowPlayingRealtime } from '@/hooks/useNowPlayingRealtime'
+import type { RemoteCommand } from '@/hooks/useRemoteCommandListener'
 
 interface PromptState {
   presetId: string | null
@@ -17,9 +17,6 @@ interface PromptState {
 }
 
 export default function RemotePage(): JSX.Element {
-  const params = useParams()
-  const username = params?.username as string | undefined
-
   const [profileId, setProfileId] = useState<string | null>(null)
   const [prompt, setPrompt] = useState<PromptState>({
     presetId: null,
@@ -28,9 +25,10 @@ export default function RemotePage(): JSX.Element {
   const [isSaving, setIsSaving] = useState(false)
   const [savedAt, setSavedAt] = useState<Date | null>(null)
   const [loadError, setLoadError] = useState<string | null>(null)
-  const [playbackError, setPlaybackError] = useState<string | null>(null)
-  const [isPlaybackLoading, setIsPlaybackLoading] = useState(false)
   const [volume, setVolume] = useState(50)
+  const broadcastChannelRef = useRef<ReturnType<
+    typeof supabaseBrowser.channel
+  > | null>(null)
   // Holds a save that arrived before profileId was ready
   const pendingRef = useRef<PromptState | null>(null)
   const textareaDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -97,6 +95,18 @@ export default function RemotePage(): JSX.Element {
     void save(pending)
   }, [profileId, save])
 
+  // Open a broadcast channel to send commands to the admin page (laptop)
+  useEffect(() => {
+    if (!profileId) return
+    const ch = supabaseBrowser.channel(`remote_commands_${profileId}`)
+    ch.subscribe()
+    broadcastChannelRef.current = ch
+    return () => {
+      void supabaseBrowser.removeChannel(ch)
+      broadcastChannelRef.current = null
+    }
+  }, [profileId])
+
   const handleCustomPromptChange = useCallback(
     (value: string) => {
       const next: PromptState = {
@@ -155,34 +165,19 @@ export default function RemotePage(): JSX.Element {
   const artistName = nowPlaying?.item?.artists?.[0]?.name ?? null
 
   const sendPlaybackAction = useCallback(
-    async (
-      action: 'play' | 'pause' | 'skip' | 'volume',
+    (
+      action: RemoteCommand['action'],
       extra?: { volumePercent?: number }
-    ): Promise<void> => {
-      if (!username) return
-      setPlaybackError(null)
-      setIsPlaybackLoading(true)
-      try {
-        const res = await fetch('/api/playback', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ action, username, ...extra })
-        })
-        if (!res.ok) {
-          const body = (await res.json()) as { error?: string }
-          if (body.error === 'player_unavailable') {
-            setPlaybackError('Player is recovering, try again in a moment.')
-          } else {
-            setPlaybackError('Playback command failed.')
-          }
-        }
-      } catch {
-        setPlaybackError('Network error. Check your connection.')
-      } finally {
-        setIsPlaybackLoading(false)
-      }
+    ): void => {
+      const ch = broadcastChannelRef.current
+      if (!ch) return
+      void ch.send({
+        type: 'broadcast',
+        event: 'command',
+        payload: { action, ...extra } as RemoteCommand
+      })
     },
-    [username]
+    []
   )
 
   const handleVolumeChange = useCallback(
@@ -191,7 +186,7 @@ export default function RemotePage(): JSX.Element {
       setVolume(value)
       if (volumeDebounceRef.current) clearTimeout(volumeDebounceRef.current)
       volumeDebounceRef.current = setTimeout(() => {
-        void sendPlaybackAction('volume', { volumePercent: value })
+        sendPlaybackAction('volume', { volumePercent: value })
       }, 300)
     },
     [sendPlaybackAction]
@@ -235,27 +230,18 @@ export default function RemotePage(): JSX.Element {
           )}
         </div>
 
-        {playbackError && (
-          <p className='mb-3 rounded-md bg-red-950 px-3 py-2 text-xs text-red-400'>
-            {playbackError}
-          </p>
-        )}
-
         <div className='mb-4 flex gap-3'>
           <button
             type='button'
-            disabled={isPlaybackLoading}
-            onClick={() =>
-              void sendPlaybackAction(isPlaying ? 'pause' : 'play')
-            }
+            onClick={() => sendPlaybackAction(isPlaying ? 'pause' : 'play')}
             className='flex-1 rounded-md border border-border bg-background px-4 py-2 text-sm font-medium text-foreground hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50'
           >
             {isPlaying ? 'Pause' : 'Play'}
           </button>
           <button
             type='button'
-            disabled={isPlaybackLoading || !trackName}
-            onClick={() => void sendPlaybackAction('skip')}
+            disabled={!trackName}
+            onClick={() => sendPlaybackAction('skip')}
             className='flex-1 rounded-md border border-border bg-background px-4 py-2 text-sm font-medium text-foreground hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50'
           >
             Skip
