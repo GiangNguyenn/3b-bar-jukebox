@@ -53,7 +53,10 @@ export function JukeboxSection({
       } else if (cmd.action === 'skip') {
         void handleSkip()
       } else if (cmd.action === 'volume') {
-        const clamped = Math.max(0, Math.min(100, Math.round(cmd.volumePercent)))
+        const clamped = Math.max(
+          0,
+          Math.min(100, Math.round(cmd.volumePercent))
+        )
         setVolume(clamped)
         void sendApiRequest({
           path: `me/player/volume?volume_percent=${clamped}&device_id=${deviceId}`,
