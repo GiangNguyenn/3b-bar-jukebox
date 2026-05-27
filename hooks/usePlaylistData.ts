@@ -185,13 +185,13 @@ export function usePlaylistData(username?: string) {
       clearInterval(pollingIntervalRef.current)
     }
 
-    // Poll every 30 seconds as fallback - reduces API calls significantly
-    const POLL_INTERVAL = 30000
+    // Poll every 10 seconds as fallback
+    const POLL_INTERVAL = 10000
 
     pollingIntervalRef.current = setInterval(async () => {
-      // Only poll if real-time is not connected or if it's been more than 30 seconds since last update
+      // Only poll if real-time is not connected or if it's been more than 10 seconds since last update
       const timeSinceLastPoll = Date.now() - lastPollTimeRef.current
-      const shouldPoll = !isRealtimeConnected || timeSinceLastPoll > 30000
+      const shouldPoll = !isRealtimeConnected || timeSinceLastPoll > 10000
 
       if (shouldPoll) {
         await fetchQueue(true)
@@ -231,13 +231,11 @@ export function usePlaylistData(username?: string) {
                 clearTimeout(realtimeFetchTimeoutRef.current)
               }
 
-              // Add a small delay before fetching to ensure the database transaction
-              // is fully committed and visible. This prevents race conditions where
-              // the fetch happens before the new track appears in query results.
+              // Short delay to allow transaction commit before fetching
               realtimeFetchTimeoutRef.current = setTimeout(() => {
                 void fetchQueue(true, true) // Bypass cache on realtime update
                 realtimeFetchTimeoutRef.current = null
-              }, 500) // 500ms delay to allow transaction commit
+              }, 150)
             }
           )
           .subscribe((status) => {
@@ -312,8 +310,17 @@ export function usePlaylistData(username?: string) {
 
     void initialize()
 
+    // Refresh on browser tab focus
+    const handleVisibilityChange = (): void => {
+      if (document.visibilityState === 'visible') {
+        void fetchQueue(true, true)
+      }
+    }
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+
     // Cleanup on unmount or username change
     return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
       if (subscriptionRef.current) {
         void supabase.removeChannel(subscriptionRef.current)
         subscriptionRef.current = null

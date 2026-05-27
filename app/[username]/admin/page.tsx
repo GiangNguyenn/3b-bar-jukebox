@@ -298,6 +298,13 @@ export default function AdminPage(): JSX.Element {
     void initializePlayer()
   }, [playerStatus, addLog, createPlayer])
 
+  // Refresh queue when switching to playlist tab
+  useEffect(() => {
+    if (activeTab === 'playlist') {
+      void refreshQueue()
+    }
+  }, [activeTab]) // eslint-disable-line react-hooks/exhaustive-deps
+
   // Add missing functions
   const handleTabChange = useCallback((value: string): void => {
     setActiveTab(value as 'dashboard' | 'playlist' | 'settings' | 'analytics')
