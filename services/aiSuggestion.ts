@@ -114,10 +114,16 @@ interface SpotifySearchResponse {
   }
 }
 
+interface SpotifySearchResult {
+  id: string
+  name: string
+  artists: string[]
+}
+
 async function spotifySearch(
   query: string,
   token: string
-): Promise<string | null> {
+): Promise<SpotifySearchResult | null> {
   const url = `https://api.spotify.com/v1/search?q=${encodeURIComponent(query)}&type=track&limit=1&market=VN`
   const response = await fetch(url, {
     headers: { Authorization: `Bearer ${token}` },
@@ -125,7 +131,67 @@ async function spotifySearch(
   })
   if (!response.ok) return null
   const data = (await response.json()) as SpotifySearchResponse
-  return data.tracks?.items?.[0]?.id ?? null
+  const item = data.tracks?.items?.[0]
+  if (!item) return null
+  return {
+    id: item.id,
+    name: item.name,
+    artists: item.artists.map((a) => a.name)
+  }
+}
+
+/**
+ * Returns true when the Spotify search result is a plausible match for what
+ * the AI requested.
+ *
+ * Title check: at least one significant word (≥4 chars) must appear in both
+ * the requested and returned title. The ≥4 threshold filters out stop-words
+ * like "the", "and", "for" that cause false-positive overlaps.
+ *
+ * Artist check: exact normalized match, or one name fully contains the other.
+ * Both the needle and haystack must be ≥4 chars to prevent short prefixes
+ * like "the" (from "The Chats") matching any "The X" artist, and the guard
+ * on reqArtist.length prevents artists whose names normalize to "" (e.g.
+ * "!!!") from bypassing the check via `"any string".includes("") === true`.
+ *
+ * When both signals are available, BOTH must agree — this prevents a
+ * common-word title overlap ("story") from accepting a completely wrong
+ * artist, or vice-versa.
+ */
+function isAcceptableSearchResult(
+  requestedTitle: string,
+  requestedArtist: string,
+  result: SpotifySearchResult
+): boolean {
+  const normalize = (s: string) => s.toLowerCase().replace(/[^a-z0-9\s]/g, '').trim()
+
+  // Title: significant words (≥4 chars) shared between request and result
+  const titleWords = new Set(
+    normalize(requestedTitle).split(/\s+/).filter((w) => w.length >= 4)
+  )
+  const resultTitleWords = normalize(result.name)
+    .split(/\s+/)
+    .filter((w) => w.length >= 4)
+  const titleOverlap = titleWords.size > 0 && resultTitleWords.some((w) => titleWords.has(w))
+
+  // Artist: exact match or one fully contains the other, with ≥4-char guards
+  const reqArtist = normalize(requestedArtist)
+  const artistMatch =
+    reqArtist.length >= 4 &&
+    result.artists.some((a) => {
+      const n = normalize(a)
+      return (
+        n === reqArtist ||
+        (n.length >= 4 && n.includes(reqArtist)) ||
+        (n.length >= 4 && reqArtist.includes(n))
+      )
+    })
+
+  // Use whichever signals are available; require both when both are checkable
+  if (titleWords.size === 0 && reqArtist.length < 4) return true // can't validate
+  if (titleWords.size === 0) return artistMatch
+  if (reqArtist.length < 4) return titleOverlap
+  return titleOverlap && artistMatch
 }
 
 export async function resolveToSpotifyTrack(
@@ -136,19 +202,33 @@ export async function resolveToSpotifyTrack(
     const token = await getAppAccessToken()
 
     // Try structured query first; fall back to plain text for non-Latin scripts
-    const structuredId = await spotifySearch(
+    const structured = await spotifySearch(
       buildSpotifySearchQuery(title, artist),
       token
     )
-    if (structuredId) return structuredId
-
-    const plainId = await spotifySearch(`${title} ${artist}`, token)
-    if (plainId) {
-      logger('INFO', `Resolved "${title}" by ${artist} via plain-text fallback`)
-      return plainId
+    if (structured) {
+      if (isAcceptableSearchResult(title, artist, structured)) {
+        return structured.id
+      }
+      logger(
+        'WARN',
+        `Rejected Spotify match for "${title}" by ${artist}: got "${structured.name}" by ${structured.artists.join(', ')}`
+      )
     }
 
-    logger('WARN', `No Spotify result for "${title}" by ${artist}`)
+    const plain = await spotifySearch(`${title} ${artist}`, token)
+    if (plain) {
+      if (isAcceptableSearchResult(title, artist, plain)) {
+        logger('INFO', `Resolved "${title}" by ${artist} via plain-text fallback`)
+        return plain.id
+      }
+      logger(
+        'WARN',
+        `Rejected plain-text match for "${title}" by ${artist}: got "${plain.name}" by ${plain.artists.join(', ')}`
+      )
+    }
+
+    logger('WARN', `No acceptable Spotify result for "${title}" by ${artist}`)
     return null
   } catch (error) {
     logger(

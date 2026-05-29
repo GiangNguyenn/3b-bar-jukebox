@@ -8,6 +8,7 @@ import { PlaybackPoller } from './autoPlay/PlaybackPoller'
 import { hasTrackFinished } from './autoPlay/TrackFinishDetector'
 import { QueueAutoFiller } from './autoPlay/QueueAutoFiller'
 import { TrackPlayer } from './autoPlay/TrackPlayer'
+import { transferPlaybackToDevice } from '@/services/deviceManagement/deviceTransfer'
 
 interface AutoPlayServiceConfig {
   checkInterval?: number
@@ -29,6 +30,7 @@ export class AutoPlayService {
   private lastTrackId: string | null = null
   private lastNullStateAttemptTrackId: string | null = null
   private isAutoPlayDisabled = false
+  private lastSdkReactivationTime = 0
   private isInitialized = false
   private lastQueueCheckTime = 0
   private readonly QUEUE_CHECK_INTERVAL: number
@@ -244,6 +246,30 @@ export class AutoPlayService {
         try {
           await playerLifecycleService.resumePlayback()
         } catch {}
+      }
+    }
+
+    // SDK silence watchdog: if the Spotify API says we're playing but the
+    // Web Playback SDK hasn't fired a state-change event in >30 s, the browser
+    // has likely suspended the audio context (e.g. tab backgrounded on macOS
+    // Chrome).  Transferring playback back to our device wakes up the SDK.
+    if (
+      currentState.is_playing &&
+      !playerLifecycleService.getIsManualPause() &&
+      this.isInitialized &&
+      this.deviceId
+    ) {
+      const lastSDKUpdate = playerLifecycleService.getLastSDKStateUpdateTime()
+      const sdkSilentMs = lastSDKUpdate > 0 ? Date.now() - lastSDKUpdate : 0
+      const reactivationCooldown = 30000
+      if (
+        sdkSilentMs > 30000 &&
+        Date.now() - this.lastSdkReactivationTime > reactivationCooldown
+      ) {
+        this.lastSdkReactivationTime = Date.now()
+        void transferPlaybackToDevice(this.deviceId, 1, 500, true, true).catch(
+          () => {}
+        )
       }
     }
   }

@@ -49,7 +49,13 @@ export class QueueSynchronizer {
 
   setLastKnownState(state: PlayerSDKState | null) {
     this.lastKnownState = state
-    this.lastStateUpdateTime = Date.now()
+    // Reset to 0 on destroy so the SDK-silence watchdog (which guards on
+    // lastSDKUpdate > 0) doesn't fire prematurely against a brand-new player.
+    this.lastStateUpdateTime = state !== null ? Date.now() : 0
+  }
+
+  getLastStateUpdateTime(): number {
+    return this.lastStateUpdateTime
   }
 
   getDuplicateDetector(): TrackDuplicateDetector {

@@ -1048,6 +1048,10 @@ class PlayerLifecycleService {
     return this.playerRef
   }
 
+  getLastSDKStateUpdateTime(): number {
+    return this.queueSynchronizer.getLastStateUpdateTime()
+  }
+
   /**
    * Public helper to play the next track from the current jukebox queue.
    * This is used by user-initiated actions (e.g. admin skip) so that
