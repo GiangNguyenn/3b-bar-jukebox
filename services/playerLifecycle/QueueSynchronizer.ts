@@ -153,7 +153,14 @@ export class QueueSynchronizer {
         this.getLogger()
       )
 
-      currentTrack = queueManager.getNextTrack() ?? null
+      // If markAsPlayed failed and rolled the track back to front of queue,
+      // getNextTrack() would return the same track again and the seenTrackIds
+      // guard would exit the loop without trying any other tracks. Instead,
+      // find the first queue item we haven't attempted yet.
+      const allTracks = queueManager.getQueue()
+      currentTrack =
+        allTracks.find((t) => !seenTrackIds.has(t.tracks.spotify_track_id)) ??
+        null
     }
 
     if (attempts >= MAX_ATTEMPTS) {
