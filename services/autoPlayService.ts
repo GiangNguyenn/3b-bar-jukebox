@@ -267,6 +267,21 @@ export class AutoPlayService {
         Date.now() - this.lastSdkReactivationTime > reactivationCooldown
       ) {
         this.lastSdkReactivationTime = Date.now()
+
+        // The SDK doesn't fire events during steady-state play — silence alone
+        // doesn't mean audio stopped. Query the SDK directly: if it reports
+        // paused=false the device is healthy and we must not disturb it
+        // (transferring with play:true causes an audible stutter every 30 s).
+        // Only transfer when the SDK confirms it is genuinely paused or gone.
+        const sdkState = await playerLifecycleService
+          .getPlayer()
+          ?.getCurrentState()
+          .catch(() => undefined)
+
+        if (sdkState !== null && sdkState !== undefined && !sdkState.paused) {
+          return
+        }
+
         void transferPlaybackToDevice(this.deviceId, 1, 500, true, true).catch(
           () => {}
         )
