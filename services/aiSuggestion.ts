@@ -270,7 +270,7 @@ export async function getAiSuggestions(
   return { tracks, failedResolutions }
 }
 
-const RECENTLY_PLAYED_LIMIT = 500
+const RECENTLY_PLAYED_LIMIT = 100
 
 async function resolveProfileId(usernameOrId: string): Promise<string> {
   // If it looks like a UUID, use it directly
