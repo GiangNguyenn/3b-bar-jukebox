@@ -163,16 +163,23 @@ function isAcceptableSearchResult(
   requestedArtist: string,
   result: SpotifySearchResult
 ): boolean {
-  const normalize = (s: string) => s.toLowerCase().replace(/[^a-z0-9\s]/g, '').trim()
+  const normalize = (s: string) =>
+    s
+      .toLowerCase()
+      .replace(/[^a-z0-9\s]/g, '')
+      .trim()
 
   // Title: significant words (≥4 chars) shared between request and result
   const titleWords = new Set(
-    normalize(requestedTitle).split(/\s+/).filter((w) => w.length >= 4)
+    normalize(requestedTitle)
+      .split(/\s+/)
+      .filter((w) => w.length >= 4)
   )
   const resultTitleWords = normalize(result.name)
     .split(/\s+/)
     .filter((w) => w.length >= 4)
-  const titleOverlap = titleWords.size > 0 && resultTitleWords.some((w) => titleWords.has(w))
+  const titleOverlap =
+    titleWords.size > 0 && resultTitleWords.some((w) => titleWords.has(w))
 
   // Artist: exact match or one fully contains the other, with ≥4-char guards
   const reqArtist = normalize(requestedArtist)
@@ -219,7 +226,10 @@ export async function resolveToSpotifyTrack(
     const plain = await spotifySearch(`${title} ${artist}`, token)
     if (plain) {
       if (isAcceptableSearchResult(title, artist, plain)) {
-        logger('INFO', `Resolved "${title}" by ${artist} via plain-text fallback`)
+        logger(
+          'INFO',
+          `Resolved "${title}" by ${artist} via plain-text fallback`
+        )
         return plain.id
       }
       logger(
