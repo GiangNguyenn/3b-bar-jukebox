@@ -53,13 +53,19 @@ export function useAiSuggestions(): UseAiSuggestionsReturn {
   const [state, setState] = useState<AiSuggestionsState>(loadFromLocalStorage)
   const [profileId, setProfileId] = useState<string | null>(null)
   const stateRef = useRef(state)
+  const profileIdRef = useRef<string | null>(null)
   const lastSavedStateRef = useRef<string>('')
+  const hasPendingWriteRef = useRef(false)
   // Records the exact values last written to Supabase so we can skip our own Realtime echo
   const lastWrittenRef = useRef<AiSuggestionsState | null>(null)
 
   useEffect(() => {
     stateRef.current = state
   }, [state])
+
+  useEffect(() => {
+    profileIdRef.current = profileId
+  }, [profileId])
 
   // Load profile ID and hydrate state from Supabase
   useEffect(() => {
@@ -152,8 +158,10 @@ export function useAiSuggestions(): UseAiSuggestionsReturn {
     if (!profileId) return () => {}
 
     lastSavedStateRef.current = currentState
+    hasPendingWriteRef.current = true
 
     const timeoutId = setTimeout(() => {
+      hasPendingWriteRef.current = false
       // Record what we're writing so the Realtime handler can recognise our own echo
       lastWrittenRef.current = {
         selectedPresetId: state.selectedPresetId,
@@ -174,6 +182,23 @@ export function useAiSuggestions(): UseAiSuggestionsReturn {
       clearTimeout(timeoutId)
     }
   }, [state, profileId])
+
+  // Flush any pending Supabase write immediately when the component unmounts
+  // (tab switch cancels the debounce timeout before it fires)
+  useEffect(() => {
+    return () => {
+      if (!hasPendingWriteRef.current || !profileIdRef.current) return
+      const st = stateRef.current
+      void supabaseBrowser
+        .from('profiles')
+        .update({
+          ai_prompt_preset_id: st.selectedPresetId,
+          ai_custom_prompt: st.customPrompt,
+          ai_autofill_target_size: st.autoFillTargetSize
+        })
+        .eq('id', profileIdRef.current)
+    }
+  }, [])
 
   const activePrompt = deriveActivePrompt(
     state.selectedPresetId,
