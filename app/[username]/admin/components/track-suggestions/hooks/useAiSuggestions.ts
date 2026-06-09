@@ -121,6 +121,10 @@ export function useAiSuggestions(): UseAiSuggestionsReturn {
           filter: `id=eq.${profileId}`
         },
         (payload) => {
+          // Any profile row update (e.g. device ID, now-playing) triggers this.
+          // If we have uncommitted local changes, ignore the event — our state is ahead.
+          if (hasPendingWriteRef.current) return
+
           const row = payload.new as {
             ai_prompt_preset_id: string | null
             ai_custom_prompt: string | null

@@ -606,7 +606,7 @@ export default function AdminPage(): JSX.Element {
             />
           </TabsContent>
 
-          <TabsContent value='settings'>
+          <TabsContent value='settings' forceMount className='data-[state=inactive]:hidden'>
             <TrackSuggestionsTab
               onStateChange={handleTrackSuggestionsStateChange}
             />
