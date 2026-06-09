@@ -148,9 +148,10 @@ export function useAiSuggestions(): UseAiSuggestionsReturn {
 
     // Always write localStorage immediately (offline resilience)
     localStorage.setItem(AI_SUGGESTIONS_STORAGE_KEY, currentState)
-    lastSavedStateRef.current = currentState
 
     if (!profileId) return () => {}
+
+    lastSavedStateRef.current = currentState
 
     const timeoutId = setTimeout(() => {
       // Record what we're writing so the Realtime handler can recognise our own echo
