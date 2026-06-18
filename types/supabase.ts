@@ -802,15 +802,6 @@ export type Database = {
       }
     }
     Functions: {
-      trivia_determine_winner_and_reset: {
-        Args: {
-          p_profile_id: string
-        }
-        Returns: {
-          winner_name: string
-          winner_score: number
-        }[]
-      }
       check_premium_access: {
         Args: { user_profile_id: string }
         Returns: boolean

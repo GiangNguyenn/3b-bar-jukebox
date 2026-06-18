@@ -13,8 +13,7 @@ import {
   FaChartLine,
   FaPalette,
   FaPlay,
-  FaHeadphones,
-  FaTrophy
+  FaHeadphones
 } from 'react-icons/fa'
 
 export default function Home(): JSX.Element {
@@ -217,22 +216,6 @@ export default function Home(): JSX.Element {
                   We built this jukebox because we were tired of arguing over
                   what to play while drinking beer together. Now you can easily
                   share your favorite music with friends when hanging out.
-                </p>
-              </div>
-
-              {/* Feature 7 */}
-              <div className='rounded-lg border border-gray-700 bg-gray-800/50 p-8 transition-all duration-200 hover:border-green-500'>
-                <div className='mb-4 text-green-400'>
-                  <FaTrophy className='text-4xl' />
-                </div>
-                <h4 className='text-white mb-4 text-xl font-bold'>
-                  Competitive Music Game
-                </h4>
-                <p className='text-gray-300'>
-                  Challenge your friends in our innovative music discovery game.
-                  Compete to get your favorite artists to play using strategic
-                  song selections and intelligent recommendations. The ultimate
-                  test of music knowledge and taste.
                 </p>
               </div>
             </div>

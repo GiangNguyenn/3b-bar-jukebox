@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from 'next/server'
 import { sendApiRequest } from '@/shared/api'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 import { createModuleLogger } from '@/shared/utils/logger'
-import { upsertArtistProfile } from '@/services/game/artistCache'
 
 const logger = createModuleLogger('TrackUpsert')
 
@@ -133,20 +132,6 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         { error: 'Failed to upsert track' },
         { status: 500 }
       )
-    }
-
-    // Ensure artist profile is cached/upserted if we fetched artist data
-    if (trackData.artists && trackData.artists.length > 0) {
-      const primaryArtist = trackData.artists[0]
-      if (primaryArtist?.id) {
-        void upsertArtistProfile({
-          spotify_artist_id: primaryArtist.id,
-          name: primaryArtist.name,
-          genres: genre ? [genre] : [],
-          popularity: undefined,
-          follower_count: undefined
-        })
-      }
     }
 
     return NextResponse.json({ success: true })
