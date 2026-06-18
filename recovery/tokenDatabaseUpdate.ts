@@ -119,3 +119,22 @@ export async function updateTokenInDatabase(
   )
   return { success: true }
 }
+
+export async function clearInvalidToken(
+  supabase: SupabaseClient<Database>,
+  profileId: string
+): Promise<void> {
+  const { error } = await supabase
+    .from('profiles')
+    .update({ spotify_refresh_token: null, spotify_access_token: null })
+    .eq('id', profileId)
+
+  if (error) {
+    logger(
+      'ERROR',
+      `Failed to clear invalid token for profile ${profileId}: ${JSON.stringify(error)}`
+    )
+  } else {
+    logger('INFO', `Cleared invalid token for profile ${profileId}`)
+  }
+}

@@ -2,7 +2,10 @@ import { SupabaseClient } from '@supabase/supabase-js'
 import { Database } from '@/types/supabase'
 import { createModuleLogger } from '@/shared/utils/logger'
 import { refreshTokenWithRetry } from '@/recovery/tokenRecovery'
-import { updateTokenInDatabase } from '@/recovery/tokenDatabaseUpdate'
+import {
+  updateTokenInDatabase,
+  clearInvalidToken
+} from '@/recovery/tokenDatabaseUpdate'
 
 const logger = createModuleLogger('TokenService')
 
@@ -122,7 +125,9 @@ export class TokenService {
       if (refreshResult.error?.isRecoverable) {
         throw new Error(`Token refresh failed: ${refreshResult.error?.message}`)
       }
-      // If invalid grant, we can't do anything automated
+      if (refreshResult.error?.code === 'INVALID_REFRESH_TOKEN') {
+        await clearInvalidToken(this.supabase, userId)
+      }
       throw new Error(
         `Critical Token Error: ${refreshResult.error?.message || 'Unknown invalid grant'}`
       )

@@ -7,7 +7,10 @@ import {
   refreshTokenWithRetry,
   isNetworkErrorRecoverable
 } from '@/recovery/tokenRecovery'
-import { updateTokenInDatabase } from '@/recovery/tokenDatabaseUpdate'
+import {
+  updateTokenInDatabase,
+  clearInvalidToken
+} from '@/recovery/tokenDatabaseUpdate'
 
 const logger = createModuleLogger('API Token')
 
@@ -292,6 +295,10 @@ export async function GET(): Promise<
           refreshResult.error?.message ?? 'Failed to refresh token'
 
         logger('ERROR', `Token refresh failed: ${errorCode} - ${errorMessage}`)
+
+        if (errorCode === 'INVALID_REFRESH_TOKEN') {
+          await clearInvalidToken(supabase, String(userProfile.id))
+        }
 
         return NextResponse.json(
           {

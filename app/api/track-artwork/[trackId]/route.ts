@@ -4,7 +4,10 @@ import { cookies } from 'next/headers'
 import type { Database } from '@/types/supabase'
 import { createModuleLogger } from '@/shared/utils/logger'
 import { refreshTokenWithRetry } from '@/recovery/tokenRecovery'
-import { updateTokenInDatabase } from '@/recovery/tokenDatabaseUpdate'
+import {
+  updateTokenInDatabase,
+  clearInvalidToken
+} from '@/recovery/tokenDatabaseUpdate'
 
 const logger = createModuleLogger('API Track Artwork')
 
@@ -172,6 +175,10 @@ export async function GET(
           'ERROR',
           `Track artwork API: Token refresh failed: ${errorCode} - ${errorMessage}`
         )
+
+        if (errorCode === 'INVALID_REFRESH_TOKEN') {
+          await clearInvalidToken(supabase, String(userProfile.id))
+        }
 
         const errorResponse = NextResponse.json(
           {

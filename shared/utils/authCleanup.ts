@@ -73,6 +73,22 @@ export async function clearAuthenticationState(): Promise<void> {
 }
 
 /**
+ * Signs out and redirects to sign-in without deleting the profile row.
+ * Use this for token expiry / session expiry — the profile data should be preserved
+ * so it's available when the user re-authenticates.
+ */
+export async function signOutAndRedirect(): Promise<void> {
+  try {
+    await supabaseBrowser.auth.signOut()
+  } catch (error) {
+    console.error('Error signing out:', error)
+  }
+  if (typeof window !== 'undefined') {
+    window.location.href = '/auth/signin'
+  }
+}
+
+/**
  * Forces a complete fresh authentication flow by clearing all state and redirecting
  */
 export async function startFreshAuthentication(): Promise<void> {

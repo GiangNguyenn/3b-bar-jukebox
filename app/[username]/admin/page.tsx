@@ -30,7 +30,10 @@ import type { AiSuggestionsState } from '@/shared/types/aiSuggestions'
 
 import { useGetProfile } from '@/hooks/useGetProfile'
 import { supabaseBrowser } from '@/lib/supabase-browser'
-import { startFreshAuthentication } from '@/shared/utils/authCleanup'
+import {
+  startFreshAuthentication,
+  signOutAndRedirect
+} from '@/shared/utils/authCleanup'
 import { ArrowRightOnRectangleIcon } from '@heroicons/react/24/outline'
 import { Copy, Check, QrCode } from 'lucide-react'
 import { QRCodeComponent } from '@/components/ui'
@@ -323,6 +326,7 @@ export default function AdminPage(): JSX.Element {
 
   // Add graceful token error handling
   const handleTokenError = useCallback(async (): Promise<void> => {
+    let isRedirecting = false
     try {
       setIsLoading(true)
 
@@ -344,13 +348,6 @@ export default function AdminPage(): JSX.Element {
       const errorMessage =
         error instanceof Error ? error.message : String(error)
 
-      // Determine if this is a recoverable error
-      const needsUserAction =
-        errorMessage.includes('INVALID_REFRESH_TOKEN') ||
-        errorMessage.includes('INVALID_CLIENT_CREDENTIALS') ||
-        errorMessage.includes('NO_REFRESH_TOKEN') ||
-        errorMessage.includes('NOT_AUTHENTICATED')
-
       addLog(
         'ERROR',
         `Automatic token refresh failed: ${errorMessage}`,
@@ -358,16 +355,32 @@ export default function AdminPage(): JSX.Element {
         error instanceof Error ? error : undefined
       )
 
-      if (needsUserAction) {
-        setError('Please reconnect your Spotify account to continue playback.')
+      // Expired/invalid token or session: sign out and redirect without
+      // deleting the profile row so the user can re-authenticate cleanly.
+      const needsReauth =
+        errorMessage.includes('INVALID_REFRESH_TOKEN') ||
+        errorMessage.includes('NOT_AUTHENTICATED')
+
+      // Server misconfiguration or missing DB token: show an error and stay
+      // on the page — redirecting would incorrectly wipe the user's profile.
+      const isServerError =
+        errorMessage.includes('INVALID_CLIENT_CREDENTIALS') ||
+        errorMessage.includes('NO_REFRESH_TOKEN')
+
+      if (needsReauth) {
+        isRedirecting = true
+        await signOutAndRedirect()
+      } else if (isServerError) {
+        setError('Server configuration error. Please contact support.')
       } else {
-        // For recoverable errors, show a more helpful message
         setError(
           'Temporary issue refreshing token. The system will retry automatically.'
         )
       }
     } finally {
-      setIsLoading(false)
+      if (!isRedirecting) {
+        setIsLoading(false)
+      }
     }
   }, [addLog, createPlayer])
 
@@ -485,17 +498,9 @@ export default function AdminPage(): JSX.Element {
             <div className='mb-6 space-y-3 rounded-lg border border-gray-800 bg-gray-900/50 p-4'>
               <h3 className='text-white text-lg font-semibold'>Launch Views</h3>
               <p className='text-sm text-gray-400'>
-                Quickly open the game, display, or jukebox in new tabs.
+                Quickly open the display or jukebox in new tabs.
               </p>
               <div className='flex flex-col gap-3 sm:flex-row'>
-                <button
-                  type='button'
-                  onClick={() => openAdminPath('game')}
-                  disabled={!username}
-                  className='text-white w-full rounded-lg bg-green-600 px-4 py-3 text-sm font-semibold transition-colors hover:bg-green-700 disabled:cursor-not-allowed disabled:opacity-50'
-                >
-                  Open Game
-                </button>
                 <button
                   type='button'
                   onClick={() => openAdminPath('display')}
@@ -606,7 +611,11 @@ export default function AdminPage(): JSX.Element {
             />
           </TabsContent>
 
-          <TabsContent value='settings' forceMount className='data-[state=inactive]:hidden'>
+          <TabsContent
+            value='settings'
+            forceMount
+            className='data-[state=inactive]:hidden'
+          >
             <TrackSuggestionsTab
               onStateChange={handleTrackSuggestionsStateChange}
             />

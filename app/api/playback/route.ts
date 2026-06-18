@@ -11,7 +11,10 @@ import type { Database } from '@/types/supabase'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 
 import { refreshTokenWithRetry } from '@/recovery/tokenRecovery'
-import { updateTokenInDatabase } from '@/recovery/tokenDatabaseUpdate'
+import {
+  updateTokenInDatabase,
+  clearInvalidToken
+} from '@/recovery/tokenDatabaseUpdate'
 
 // Set up logger for this module
 const logger = createModuleLogger('PlaybackAPI')
@@ -128,6 +131,9 @@ async function getValidAccessToken(
     )
 
     if (!refreshResult.success || !refreshResult.accessToken) {
+      if (refreshResult.error?.code === 'INVALID_REFRESH_TOKEN') {
+        await clearInvalidToken(supabaseAdmin, profile.id)
+      }
       return { accessToken: null, error: 'Failed to refresh token' }
     }
 
@@ -245,6 +251,9 @@ export async function GET(request: Request): Promise<NextResponse> {
           'ERROR',
           `Token refresh failed for user ${username}: ${refreshResult.error instanceof Error ? refreshResult.error.message : 'Unknown error'}`
         )
+        if (refreshResult.error?.code === 'INVALID_REFRESH_TOKEN') {
+          await clearInvalidToken(supabaseAdmin, String(typedProfile.id))
+        }
         return NextResponse.json(
           { error: 'Failed to refresh token' },
           { status: 503 }

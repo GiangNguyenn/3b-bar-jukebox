@@ -5,7 +5,10 @@ import type { Database } from '@/types/supabase'
 import { SpotifyPlaybackState } from '@/shared/types/spotify'
 import { createModuleLogger } from '@/shared/utils/logger'
 import { refreshTokenWithRetry } from '@/recovery/tokenRecovery'
-import { updateTokenInDatabase } from '@/recovery/tokenDatabaseUpdate'
+import {
+  updateTokenInDatabase,
+  clearInvalidToken
+} from '@/recovery/tokenDatabaseUpdate'
 
 // Set up logger for this module
 const logger = createModuleLogger('NowPlaying')
@@ -153,6 +156,10 @@ export async function GET(): Promise<
           refreshResult.error?.message ?? 'Failed to refresh token'
 
         logger('ERROR', `Token refresh failed: ${errorCode} - ${errorMessage}`)
+
+        if (errorCode === 'INVALID_REFRESH_TOKEN') {
+          await clearInvalidToken(supabase, String(typedProfile.id))
+        }
 
         const errorResponse = NextResponse.json(
           {

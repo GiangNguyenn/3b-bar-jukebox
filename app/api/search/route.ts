@@ -5,7 +5,10 @@ import type { Database } from '@/types/supabase'
 import { createModuleLogger } from '@/shared/utils/logger'
 import { queryWithRetry } from '@/lib/supabaseQuery'
 import { refreshTokenWithRetry } from '@/recovery/tokenRecovery'
-import { updateTokenInDatabase } from '@/recovery/tokenDatabaseUpdate'
+import {
+  updateTokenInDatabase,
+  clearInvalidToken
+} from '@/recovery/tokenDatabaseUpdate'
 
 // Set up logger for this module
 const logger = createModuleLogger('Search')
@@ -248,6 +251,10 @@ export async function GET(
           refreshResult.error?.message ?? 'Failed to refresh token'
 
         logger('ERROR', `Token refresh failed: ${errorCode} - ${errorMessage}`)
+
+        if (errorCode === 'INVALID_REFRESH_TOKEN') {
+          await clearInvalidToken(supabase, userProfile.id)
+        }
 
         return NextResponse.json(
           {
