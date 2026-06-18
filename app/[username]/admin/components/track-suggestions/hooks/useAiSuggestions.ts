@@ -58,6 +58,8 @@ export function useAiSuggestions(): UseAiSuggestionsReturn {
   const hasPendingWriteRef = useRef(false)
   // Records the exact values last written to Supabase so we can skip our own Realtime echo
   const lastWrittenRef = useRef<AiSuggestionsState | null>(null)
+  // Prevents initial Supabase hydration from overwriting edits made before the fetch completes
+  const hasUserEditedRef = useRef(false)
 
   useEffect(() => {
     stateRef.current = state
@@ -94,7 +96,8 @@ export function useAiSuggestions(): UseAiSuggestionsReturn {
         data.ai_custom_prompt !== null ||
         data.ai_autofill_target_size !== null
 
-      if (hasSupabaseData) {
+      // Skip hydration if the user has already made edits while the fetch was in flight
+      if (hasSupabaseData && !hasUserEditedRef.current) {
         setState(stateFromProfile(data))
       }
     }
@@ -121,8 +124,7 @@ export function useAiSuggestions(): UseAiSuggestionsReturn {
           filter: `id=eq.${profileId}`
         },
         (payload) => {
-          // Any profile row update (e.g. device ID, now-playing) triggers this.
-          // If we have uncommitted local changes, ignore the event — our state is ahead.
+          // If we have uncommitted local changes, our state is ahead of Supabase
           if (hasPendingWriteRef.current) return
 
           const row = payload.new as {
@@ -130,8 +132,9 @@ export function useAiSuggestions(): UseAiSuggestionsReturn {
             ai_custom_prompt: string | null
             ai_autofill_target_size: number | null
           }
+
+          // Skip our own echo
           const last = lastWrittenRef.current
-          // Skip only if this payload exactly matches what we just wrote — our own echo
           if (
             last !== null &&
             row.ai_prompt_preset_id === last.selectedPresetId &&
@@ -141,6 +144,19 @@ export function useAiSuggestions(): UseAiSuggestionsReturn {
             lastWrittenRef.current = null
             return
           }
+
+          // Skip if AI prompt fields haven't changed from current state — this happens when
+          // a non-AI field (now-playing, device ID) triggers a profile row update and the
+          // Realtime payload carries stale AI values that would overwrite pending edits
+          const current = stateRef.current
+          if (
+            row.ai_prompt_preset_id === current.selectedPresetId &&
+            row.ai_custom_prompt === current.customPrompt &&
+            row.ai_autofill_target_size === current.autoFillTargetSize
+          ) {
+            return
+          }
+
           setState(stateFromProfile(row))
         }
       )
@@ -210,6 +226,7 @@ export function useAiSuggestions(): UseAiSuggestionsReturn {
   )
 
   const selectPreset = useCallback((presetId: string): void => {
+    hasUserEditedRef.current = true
     const preset = PRESET_PROMPTS.find((p) => p.id === presetId)
     setState((prev) => ({
       ...prev,
@@ -219,6 +236,7 @@ export function useAiSuggestions(): UseAiSuggestionsReturn {
   }, [])
 
   const setCustomPrompt = useCallback((prompt: string): void => {
+    hasUserEditedRef.current = true
     setState((prev) => ({
       ...prev,
       customPrompt: truncatePrompt(prompt)
@@ -226,6 +244,7 @@ export function useAiSuggestions(): UseAiSuggestionsReturn {
   }, [])
 
   const setAutoFillTargetSize = useCallback((size: number): void => {
+    hasUserEditedRef.current = true
     setState((prev) => ({ ...prev, autoFillTargetSize: size }))
   }, [])
 
