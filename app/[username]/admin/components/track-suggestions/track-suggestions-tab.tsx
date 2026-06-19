@@ -78,16 +78,21 @@ export function TrackSuggestionsTab({
       const data = (await response.json()) as {
         success: boolean
         tracks?: Array<{ id: string; title: string; artist: string }>
-        failedResolutions?: Array<{ title: string; artist: string; reason: string }>
+        failedResolutions?: Array<{
+          title: string
+          artist: string
+          reason: string
+        }>
         error?: string
       }
 
       if (data.success && data.tracks && data.tracks.length > 0) {
         setSuggestedTracks(data.tracks)
         const failedCount = data.failedResolutions?.length ?? 0
-        const toastMsg = failedCount > 0
-          ? `Found ${data.tracks.length} tracks (${failedCount} Spotify lookups failed)`
-          : `Found ${data.tracks.length} tracks`
+        const toastMsg =
+          failedCount > 0
+            ? `Found ${data.tracks.length} tracks (${failedCount} Spotify lookups failed)`
+            : `Found ${data.tracks.length} tracks`
         showToast(toastMsg, failedCount > 0 ? 'info' : 'success')
         addLog(
           'INFO',

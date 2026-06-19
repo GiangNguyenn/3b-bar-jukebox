@@ -218,7 +218,6 @@ export async function resolveToSpotifyTrack(
   token: string
 ): Promise<string | null> {
   try {
-
     // Try structured query first; fall back to plain text for non-Latin scripts
     const structured = await spotifySearch(
       buildSpotifySearchQuery(title, artist),
@@ -342,7 +341,11 @@ export async function getAiSuggestions(
 
   const resolutionResults = await Promise.allSettled(
     recommendations.map(async (rec) => {
-      const spotifyTrackId = await resolveToSpotifyTrack(rec.title, rec.artist, spotifyToken)
+      const spotifyTrackId = await resolveToSpotifyTrack(
+        rec.title,
+        rec.artist,
+        spotifyToken
+      )
       return { rec, spotifyTrackId }
     })
   )

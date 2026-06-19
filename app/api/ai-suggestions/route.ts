@@ -93,7 +93,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   const tokenService = new TokenService(supabase)
   let spotifyToken: string
   try {
-    const tokenResult = await tokenService.getValidTokenByUsername(ADMIN_USERNAME)
+    const tokenResult =
+      await tokenService.getValidTokenByUsername(ADMIN_USERNAME)
     spotifyToken = tokenResult.accessToken
   } catch (error) {
     logger(
@@ -106,7 +107,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       {
         success: false,
         tracks: [],
-        error: 'Spotify authentication unavailable — ensure the admin account is logged in'
+        error:
+          'Spotify authentication unavailable — ensure the admin account is logged in'
       },
       { status: 503 }
     )
