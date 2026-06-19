@@ -1,7 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { createServerClient } from '@supabase/ssr'
+import { cookies } from 'next/headers'
 import { sendApiRequest } from '@/shared/api'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 import { createModuleLogger } from '@/shared/utils/logger'
+
+export const maxDuration = 15
 
 const logger = createModuleLogger('TrackUpsert')
 
@@ -25,6 +29,32 @@ interface SpotifyArtist {
 }
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
+  const cookieStore = await cookies()
+  const supabaseSSR = createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        getAll() {
+          return cookieStore.getAll()
+        },
+        setAll(cookiesToSet) {
+          try {
+            cookiesToSet.forEach(({ name, value, options }) =>
+              cookieStore.set(name, value, options)
+            )
+          } catch {}
+        }
+      }
+    }
+  )
+  const {
+    data: { session }
+  } = await supabaseSSR.auth.getSession()
+  if (!session) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
+
   try {
     // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
     const body = (await request.json()) as { spotifyTrackId?: string }
@@ -49,10 +79,11 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       path: `tracks/${spotifyTrackId}`,
       method: 'GET',
       useAppToken: true,
+      timeout: 8000,
       retryConfig: {
-        maxRetries: 2,
+        maxRetries: 1,
         baseDelay: 500,
-        maxDelay: 2000
+        maxDelay: 1000
       }
     })
 
@@ -74,10 +105,11 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
             path: `artists/${primaryArtistId}`,
             method: 'GET',
             useAppToken: true,
+            timeout: 5000,
             retryConfig: {
-              maxRetries: 2,
+              maxRetries: 0,
               baseDelay: 500,
-              maxDelay: 1000
+              maxDelay: 500
             }
           })
 

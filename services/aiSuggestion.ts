@@ -1,6 +1,5 @@
 import Anthropic from '@anthropic-ai/sdk'
 import { createModuleLogger } from '@/shared/utils/logger'
-import { getAppAccessToken } from '@/services/spotify/auth'
 import { supabase } from '@/lib/supabase'
 import type {
   AiSongRecommendation,
@@ -101,7 +100,7 @@ export function parseAiResponse(raw: string): AiSongRecommendation[] {
 }
 
 export function buildSpotifySearchQuery(title: string, artist: string): string {
-  return `track:${title} artist:${artist}`
+  return `track:"${title}" artist:"${artist}"`
 }
 
 interface SpotifySearchResponse {
@@ -124,20 +123,32 @@ async function spotifySearch(
   query: string,
   token: string
 ): Promise<SpotifySearchResult | null> {
-  const url = `https://api.spotify.com/v1/search?q=${encodeURIComponent(query)}&type=track&limit=1&market=VN`
-  const response = await fetch(url, {
-    headers: { Authorization: `Bearer ${token}` },
-    signal: AbortSignal.timeout(10000)
-  })
-  if (!response.ok) return null
-  const data = (await response.json()) as SpotifySearchResponse
-  const item = data.tracks?.items?.[0]
-  if (!item) return null
-  return {
-    id: item.id,
-    name: item.name,
-    artists: item.artists.map((a) => a.name)
+  const url = `https://api.spotify.com/v1/search?q=${encodeURIComponent(query)}&type=track&limit=1&market=from_token`
+
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const response = await fetch(url, {
+      headers: { Authorization: `Bearer ${token}` },
+      signal: AbortSignal.timeout(10000)
+    })
+
+    // Retry once on 502/503 (transient Spotify server errors)
+    if ((response.status === 502 || response.status === 503) && attempt === 0) {
+      await new Promise((resolve) => setTimeout(resolve, 500))
+      continue
+    }
+
+    if (!response.ok) return null
+    const data = (await response.json()) as SpotifySearchResponse
+    const item = data.tracks?.items?.[0]
+    if (!item) return null
+    return {
+      id: item.id,
+      name: item.name,
+      artists: item.artists.map((a) => a.name)
+    }
   }
+
+  return null
 }
 
 /**
@@ -203,10 +214,10 @@ function isAcceptableSearchResult(
 
 export async function resolveToSpotifyTrack(
   title: string,
-  artist: string
+  artist: string,
+  token: string
 ): Promise<string | null> {
   try {
-    const token = await getAppAccessToken()
 
     // Try structured query first; fall back to plain text for non-Latin scripts
     const structured = await spotifySearch(
@@ -255,10 +266,16 @@ export async function getAiSuggestions(
   prompt: string,
   excludedTrackIds: string[],
   recentlyPlayed: RecentlyPlayedEntry[],
-  queuedTracks: Array<{ title: string; artist: string }> = []
+  queuedTracks: Array<{ title: string; artist: string }> = [],
+  spotifyToken?: string
 ): Promise<AiSuggestionResult> {
   if (!process.env.ANTHROPIC_API_KEY) {
     logger('ERROR', 'Anthropic API key is not configured')
+    return { tracks: [], failedResolutions: [] }
+  }
+
+  if (!spotifyToken) {
+    logger('ERROR', 'No Spotify user token provided for track resolution')
     return { tracks: [], failedResolutions: [] }
   }
 
@@ -319,12 +336,21 @@ export async function getAiSuggestions(
     )
   }
 
-  // Resolve each recommendation to a Spotify track ID
+  // Resolve all recommendations to Spotify track IDs in parallel
   const tracks: AiSuggestionResult['tracks'] = []
   const failedResolutions: AiSuggestionResult['failedResolutions'] = []
 
-  for (const rec of recommendations) {
-    const spotifyTrackId = await resolveToSpotifyTrack(rec.title, rec.artist)
+  const resolutionResults = await Promise.allSettled(
+    recommendations.map(async (rec) => {
+      const spotifyTrackId = await resolveToSpotifyTrack(rec.title, rec.artist, spotifyToken)
+      return { rec, spotifyTrackId }
+    })
+  )
+
+  for (const result of resolutionResults) {
+    if (result.status === 'rejected') continue
+    const { rec, spotifyTrackId } = result.value
+
     if (!spotifyTrackId) {
       failedResolutions.push({
         title: rec.title,
@@ -342,6 +368,11 @@ export async function getAiSuggestions(
         'INFO',
         `Filtered out "${rec.title}" by ${rec.artist} (already played or excluded)`
       )
+      failedResolutions.push({
+        title: rec.title,
+        artist: rec.artist,
+        reason: 'Already played or excluded'
+      })
       continue
     }
 
@@ -362,7 +393,7 @@ export async function getAiSuggestions(
 
 const RECENTLY_PLAYED_LIMIT = 100
 
-async function resolveProfileId(usernameOrId: string): Promise<string> {
+async function resolveProfileId(usernameOrId: string): Promise<string | null> {
   // If it looks like a UUID, use it directly
   if (usernameOrId.includes('-') && usernameOrId.length > 30) {
     return usernameOrId
@@ -374,7 +405,7 @@ async function resolveProfileId(usernameOrId: string): Promise<string> {
     .select('id')
     .ilike('display_name', usernameOrId)
     .single()
-  return (data as { id: string } | null)?.id ?? usernameOrId
+  return (data as { id: string } | null)?.id ?? null
 }
 
 // Table type not yet in generated Supabase types (migration in task 4.1)
@@ -394,6 +425,10 @@ export async function getRecentlyPlayed(
 ): Promise<RecentlyPlayedEntry[]> {
   try {
     const resolvedId = await resolveProfileId(profileId)
+    if (!resolvedId) {
+      logger('WARN', `Could not resolve profile ID for: ${profileId}`)
+      return []
+    }
     const { data, error } = await recentlyPlayedTable()
       .select('spotify_track_id, title, artist')
       .eq('profile_id', resolvedId)
@@ -427,6 +462,10 @@ export async function addToRecentlyPlayed(
 ): Promise<void> {
   try {
     const resolvedId = await resolveProfileId(profileId)
+    if (!resolvedId) {
+      logger('WARN', `Could not resolve profile ID for: ${profileId}`)
+      return
+    }
     const { error: upsertError } = await recentlyPlayedTable().upsert(
       {
         profile_id: resolvedId,
@@ -446,12 +485,16 @@ export async function addToRecentlyPlayed(
       return
     }
 
-    // Delete oldest entries beyond the limit
+    // Delete oldest entries beyond the limit.
+    // Fetch the (LIMIT+1)th row — if it exists, the table is over the limit.
+    // Delete that row and everything older using lte so the boundary row itself
+    // is removed. If concurrent writes share the exact same timestamp as the
+    // boundary row, they are also trimmed (slightly under-keeps, not a problem).
     const { data: rows, error: fetchError } = await recentlyPlayedTable()
       .select('played_at')
       .eq('profile_id', resolvedId)
       .order('played_at', { ascending: false })
-      .range(RECENTLY_PLAYED_LIMIT - 1, RECENTLY_PLAYED_LIMIT - 1)
+      .range(RECENTLY_PLAYED_LIMIT, RECENTLY_PLAYED_LIMIT)
 
     if (fetchError) {
       logger(
@@ -467,7 +510,7 @@ export async function addToRecentlyPlayed(
       const { error: deleteError } = await recentlyPlayedTable()
         .delete()
         .eq('profile_id', resolvedId)
-        .lt('played_at', cutoff)
+        .lte('played_at', cutoff)
 
       if (deleteError) {
         logger(

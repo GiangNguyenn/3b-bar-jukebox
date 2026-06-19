@@ -44,6 +44,7 @@ function stateFromProfile(row: {
 export interface UseAiSuggestionsReturn {
   state: AiSuggestionsState
   activePrompt: string
+  profileId: string | null
   selectPreset: (presetId: string) => void
   setCustomPrompt: (prompt: string) => void
   setAutoFillTargetSize: (size: number) => void
@@ -181,7 +182,6 @@ export function useAiSuggestions(): UseAiSuggestionsReturn {
     hasPendingWriteRef.current = true
 
     const timeoutId = setTimeout(() => {
-      hasPendingWriteRef.current = false
       // Record what we're writing so the Realtime handler can recognise our own echo
       lastWrittenRef.current = {
         selectedPresetId: state.selectedPresetId,
@@ -196,6 +196,14 @@ export function useAiSuggestions(): UseAiSuggestionsReturn {
           ai_autofill_target_size: state.autoFillTargetSize
         })
         .eq('id', profileId)
+        // Clear the pending flag only after the write settles so the Realtime
+        // guard (hasPendingWriteRef) stays active for the full network round-trip
+        .then(() => {
+          hasPendingWriteRef.current = false
+        })
+        .catch(() => {
+          hasPendingWriteRef.current = false
+        })
     }, 1000)
 
     return () => {
@@ -251,6 +259,7 @@ export function useAiSuggestions(): UseAiSuggestionsReturn {
   return {
     state,
     activePrompt,
+    profileId,
     selectPreset,
     setCustomPrompt,
     setAutoFillTargetSize

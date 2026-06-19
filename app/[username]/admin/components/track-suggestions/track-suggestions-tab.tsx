@@ -28,6 +28,7 @@ export function TrackSuggestionsTab({
   const {
     state,
     activePrompt,
+    profileId,
     selectPreset,
     setCustomPrompt,
     setAutoFillTargetSize
@@ -70,32 +71,39 @@ export function TrackSuggestionsTab({
         body: JSON.stringify({
           prompt: activePrompt,
           excludedTrackIds: [],
-          profileId: 'test'
+          profileId: profileId ?? ''
         })
       })
 
       const data = (await response.json()) as {
         success: boolean
         tracks?: Array<{ id: string; title: string; artist: string }>
+        failedResolutions?: Array<{ title: string; artist: string; reason: string }>
         error?: string
       }
 
       if (data.success && data.tracks && data.tracks.length > 0) {
         setSuggestedTracks(data.tracks)
-        showToast(`Found ${data.tracks.length} tracks`)
+        const failedCount = data.failedResolutions?.length ?? 0
+        const toastMsg = failedCount > 0
+          ? `Found ${data.tracks.length} tracks (${failedCount} Spotify lookups failed)`
+          : `Found ${data.tracks.length} tracks`
+        showToast(toastMsg, failedCount > 0 ? 'info' : 'success')
         addLog(
           'INFO',
-          `AI suggestion test: ${data.tracks.length} tracks returned`,
+          `AI suggestion test: ${data.tracks.length} tracks returned, ${failedCount} failed Spotify resolution`,
           'TrackSuggestionsTab'
         )
       } else {
-        showToast(
-          data.error ?? 'No tracks returned from AI suggestion',
-          'warning'
-        )
+        const failedCount = data.failedResolutions?.length ?? 0
+        let errorMsg = data.error ?? 'No tracks returned from AI suggestion'
+        if (!data.error && failedCount > 0) {
+          errorMsg = `Claude suggested ${failedCount} tracks but Spotify lookup failed for all — Spotify may be temporarily unavailable`
+        }
+        showToast(errorMsg, 'warning')
         addLog(
           'WARN',
-          `AI suggestion test failed: ${data.error ?? 'no tracks'}`,
+          `AI suggestion test failed: ${errorMsg}`,
           'TrackSuggestionsTab'
         )
       }
@@ -149,7 +157,7 @@ export function TrackSuggestionsTab({
           onClick={() => {
             void handleTestAiSuggestion()
           }}
-          disabled={isLoading || !activePrompt}
+          disabled={isLoading || !activePrompt || !profileId}
           className={`${primaryButtonClass} w-full`}
         >
           <SparklesIcon className='mr-2 h-5 w-5' />
