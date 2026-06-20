@@ -137,7 +137,6 @@ export class QueueSynchronizer {
         const trackIdForUpsert = currentTrack.tracks.spotify_track_id
         void upsertPlayedTrack(trackIdForUpsert).catch(() => {})
 
-        this.lastForcePlayedTrackId = currentTrack.tracks.spotify_track_id
         this.currentQueueTrack = currentTrack
         queueManager.setCurrentlyPlayingTrack(
           currentTrack.tracks.spotify_track_id
@@ -340,6 +339,12 @@ export class QueueSynchronizer {
       () => this.playNextTrackImpl(nextTrack!),
       'handleTrackFinished:play'
     )
+
+    // Guard syncQueueWithPlayback against re-firing for the finished track's URI.
+    // Spotify can keep emitting states with the old track URI (e.g. repeat-track mode)
+    // after we've already advanced the queue. Without this, the A_id !== lastForcePlayedTrackId
+    // check in syncQueueWithPlayback would bypass the guard and restart the next track.
+    this.lastForcePlayedTrackId = currentSpotifyTrackId
   }
 
   syncQueueWithPlayback(state: PlayerSDKState): void {

@@ -140,7 +140,7 @@ export function usePlaybackControls(): {
         playerLifecycleService.setManualPause(false)
 
         // Get the current track's position if available
-        const currentPosition = playbackState.progress_ms || 0
+        const currentPosition = playbackState.progress_ms ?? undefined
         const result = await spotifyApi.resumePlayback(currentPosition)
         if (!result.success) {
           throw new Error('Failed to resume playback')

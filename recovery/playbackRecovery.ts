@@ -71,7 +71,7 @@ async function resumeCurrentTrack(
 
   try {
     const spotifyApi = SpotifyApiService.getInstance()
-    const currentPosition = currentPlaybackState.progress_ms || 0
+    const currentPosition = currentPlaybackState.progress_ms ?? undefined
 
     logger(
       'INFO',
