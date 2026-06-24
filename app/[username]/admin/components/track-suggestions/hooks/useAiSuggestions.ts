@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { type RealtimeChannel } from '@supabase/supabase-js'
 import { type AiSuggestionsState } from '@/shared/types/aiSuggestions'
 import {
@@ -54,21 +54,15 @@ export function useAiSuggestions(): UseAiSuggestionsReturn {
   const [state, setState] = useState<AiSuggestionsState>(loadFromLocalStorage)
   const [profileId, setProfileId] = useState<string | null>(null)
   const stateRef = useRef(state)
-  const profileIdRef = useRef<string | null>(null)
+  stateRef.current = state
+  const profileIdRef = useRef(profileId)
+  profileIdRef.current = profileId
   const lastSavedStateRef = useRef<string>('')
   const hasPendingWriteRef = useRef(false)
   // Records the exact values last written to Supabase so we can skip our own Realtime echo
   const lastWrittenRef = useRef<AiSuggestionsState | null>(null)
   // Prevents initial Supabase hydration from overwriting edits made before the fetch completes
   const hasUserEditedRef = useRef(false)
-
-  useEffect(() => {
-    stateRef.current = state
-  }, [state])
-
-  useEffect(() => {
-    profileIdRef.current = profileId
-  }, [profileId])
 
   // Load profile ID and hydrate state from Supabase
   useEffect(() => {
@@ -112,9 +106,7 @@ export function useAiSuggestions(): UseAiSuggestionsReturn {
   useEffect(() => {
     if (!profileId) return
 
-    let channel: RealtimeChannel | null = null
-
-    channel = supabaseBrowser
+    const channel = supabaseBrowser
       .channel(`profile-prompt:${profileId}`)
       .on(
         'postgres_changes',
@@ -183,11 +175,7 @@ export function useAiSuggestions(): UseAiSuggestionsReturn {
 
     const timeoutId = setTimeout(() => {
       // Record what we're writing so the Realtime handler can recognise our own echo
-      lastWrittenRef.current = {
-        selectedPresetId: state.selectedPresetId,
-        customPrompt: state.customPrompt,
-        autoFillTargetSize: state.autoFillTargetSize
-      }
+      lastWrittenRef.current = state
       void supabaseBrowser
         .from('profiles')
         .update({
@@ -198,12 +186,10 @@ export function useAiSuggestions(): UseAiSuggestionsReturn {
         .eq('id', profileId)
         // Clear the pending flag only after the write settles so the Realtime
         // guard (hasPendingWriteRef) stays active for the full network round-trip
-        .then(() => {
-          hasPendingWriteRef.current = false
-        })
-        .catch(() => {
-          hasPendingWriteRef.current = false
-        })
+        .then(
+          () => { hasPendingWriteRef.current = false },
+          () => { hasPendingWriteRef.current = false }
+        )
     }, 1000)
 
     return () => {
@@ -228,9 +214,9 @@ export function useAiSuggestions(): UseAiSuggestionsReturn {
     }
   }, [])
 
-  const activePrompt = deriveActivePrompt(
-    state.selectedPresetId,
-    state.customPrompt
+  const activePrompt = useMemo(
+    () => deriveActivePrompt(state.selectedPresetId, state.customPrompt),
+    [state.selectedPresetId, state.customPrompt]
   )
 
   const selectPreset = useCallback((presetId: string): void => {
