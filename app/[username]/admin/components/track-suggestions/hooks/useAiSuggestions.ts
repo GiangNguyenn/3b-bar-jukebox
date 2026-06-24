@@ -1,7 +1,6 @@
 'use client'
 
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
-import { type RealtimeChannel } from '@supabase/supabase-js'
 import { type AiSuggestionsState } from '@/shared/types/aiSuggestions'
 import {
   PRESET_PROMPTS,
@@ -187,8 +186,12 @@ export function useAiSuggestions(): UseAiSuggestionsReturn {
         // Clear the pending flag only after the write settles so the Realtime
         // guard (hasPendingWriteRef) stays active for the full network round-trip
         .then(
-          () => { hasPendingWriteRef.current = false },
-          () => { hasPendingWriteRef.current = false }
+          () => {
+            hasPendingWriteRef.current = false
+          },
+          () => {
+            hasPendingWriteRef.current = false
+          }
         )
     }, 1000)
 
