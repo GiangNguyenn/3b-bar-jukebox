@@ -219,7 +219,10 @@ class PlayerLifecycleService {
 
         const maxBackoffMs =
           PLAYER_LIFECYCLE_CONFIG.PLAYBACK_RETRY.initialBackoffMs *
-          Math.pow(2, PLAYER_LIFECYCLE_CONFIG.PLAYBACK_RETRY.maxBackoffMultiplier)
+          Math.pow(
+            2,
+            PLAYER_LIFECYCLE_CONFIG.PLAYBACK_RETRY.maxBackoffMultiplier
+          )
         const backoffMs = calculateBackoffDelay(
           attempt,
           PLAYER_LIFECYCLE_CONFIG.PLAYBACK_RETRY.initialBackoffMs,
@@ -290,7 +293,9 @@ class PlayerLifecycleService {
 
   handlePlaybackError(message: string): void {
     if (message.includes('Restriction violated')) {
-      void this.queueSynchronizer.handleRestrictionViolatedError().catch(() => {})
+      void this.queueSynchronizer
+        .handleRestrictionViolatedError()
+        .catch(() => {})
     }
   }
 

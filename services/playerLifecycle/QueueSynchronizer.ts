@@ -479,10 +479,7 @@ export class QueueSynchronizer {
       this.lastKnownState.position > 2000
 
     if (trackJustFinished) {
-      this.logger(
-        'INFO',
-        '[isTrackFinished] Track naturally paused at end'
-      )
+      this.logger('INFO', '[isTrackFinished] Track naturally paused at end')
       return true
     }
 

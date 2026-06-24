@@ -52,6 +52,10 @@ describe('normalizeTrackName', () => {
     assert.equal(normalizeTrackName('Song Title - Deluxe'), 'song title')
   })
 
+  it('strips year-prefixed dash remaster suffix', () => {
+    assert.equal(normalizeTrackName('Queer - 2015 Remaster'), 'queer')
+  })
+
   it('strips multiple parenthetical suffixes', () => {
     assert.equal(normalizeTrackName('Song (feat. Artist) (Remastered)'), 'song')
   })
@@ -86,6 +90,10 @@ describe('fuzzyTrackNameMatch', () => {
       ),
       true
     )
+  })
+
+  it('matches when queue has year-prefixed remaster suffix', () => {
+    assert.equal(fuzzyTrackNameMatch('Queer - 2015 Remaster', 'Queer'), true)
   })
 
   it('matches when Spotify adds remastered parenthetical suffix', () => {

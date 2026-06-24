@@ -6,7 +6,11 @@ import { PLAYER_LIFECYCLE_CONFIG } from '../playerLifecycleConfig'
 import type { TimeoutManager } from './utils'
 import type { LogLevel } from '@/hooks/ConsoleLogsProvider'
 import type { SpotifyPlaybackState } from '@/shared/types/spotify'
-import { PlayerSDKState, StateProcessorInterface, isPlayerSDKState } from './types'
+import {
+  PlayerSDKState,
+  StateProcessorInterface,
+  isPlayerSDKState
+} from './types'
 
 interface SDKLifecycleInterface {
   createPlayer(

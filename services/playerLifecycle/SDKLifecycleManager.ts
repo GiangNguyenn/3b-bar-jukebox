@@ -227,7 +227,9 @@ export class SDKLifecycleManager {
     })
 
     const verificationPromise = validateDevice(deviceId)
-      .then((result) => result.isValid && !(result.device?.isRestricted ?? false))
+      .then(
+        (result) => result.isValid && !(result.device?.isRestricted ?? false)
+      )
       .catch(() => false)
 
     try {

@@ -89,7 +89,11 @@ export class StateProcessor {
       const transformedState = this.transformStateForUI(state)
       onPlaybackStateChange(transformedState)
     } catch (error) {
-      this.context.log('ERROR', '[StateProcessor] State change handler failed', error)
+      this.context.log(
+        'ERROR',
+        '[StateProcessor] State change handler failed',
+        error
+      )
     }
   }
 

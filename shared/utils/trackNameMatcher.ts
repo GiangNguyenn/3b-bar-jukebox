@@ -15,9 +15,9 @@ export function normalizeTrackName(name: string): string {
   // Strip parenthetical suffixes: "(feat. X)", "(Remastered 2011)", "(Deluxe Edition)", "(Live)", etc.
   normalized = normalized.replace(/\s*\([^)]*\)\s*/g, ' ')
 
-  // Strip dash suffixes: "- Remastered", "- Deluxe Edition", "- Live", etc.
+  // Strip dash suffixes: "- Remastered", "- 2015 Remaster", "- Deluxe Edition", "- Live", etc.
   normalized = normalized.replace(
-    /\s*-\s+(remaster(ed)?|deluxe|live|mono|stereo|remix|bonus|anniversary|expanded|special|original|radio|acoustic|instrumental|single|album|edit|version|mix)\b.*/i,
+    /\s*-\s+(\d{4}\s+)?(remaster(ed)?|deluxe|live|mono|stereo|remix|bonus|anniversary|expanded|special|original|radio|acoustic|instrumental|single|album|edit|version|mix)\b.*/i,
     ''
   )
 
