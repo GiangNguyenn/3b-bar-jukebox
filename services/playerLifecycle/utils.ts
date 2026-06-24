@@ -140,40 +140,6 @@ export class TimeoutManager {
 }
 
 /**
- * Wraps an async operation with standardized error handling and logging
- */
-export async function withErrorHandling<T>(
-  operation: () => Promise<T>,
-  context: string,
-  logger?: (
-    level: LogLevel,
-    message: string,
-    context?: string,
-    error?: Error
-  ) => void,
-  onError?: (error: unknown) => void
-): Promise<T | null> {
-  try {
-    return await operation()
-  } catch (error) {
-    const errorInstance =
-      error instanceof Error ? error : new Error(String(error))
-
-    if (logger) {
-      logger('ERROR', `Error in ${context}`, context, errorInstance)
-    } else {
-      console.error(`[${context}] Error:`, errorInstance)
-    }
-
-    if (onError) {
-      onError(error)
-    }
-
-    return null
-  }
-}
-
-/**
  * Ensures a track is not a duplicate of the currently playing track
  * Removes duplicates from queue and returns the next valid track
  */

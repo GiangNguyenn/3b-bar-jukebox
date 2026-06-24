@@ -1,9 +1,9 @@
-import { SpotifyPlaybackState } from '@/shared/types/spotify'
-import type { PlayerLifecycleService } from '../playerLifecycle'
+import type { SpotifyPlaybackState } from '@/shared/types/spotify'
+import type { PlayerEventDispatcher } from './types'
 
 export class PlayerEventHandler {
   constructor(
-    private service: PlayerLifecycleService,
+    private service: PlayerEventDispatcher,
     private onStatusChange: (status: string, error?: string) => void,
     private onDeviceIdChange: (deviceId: string) => void,
     private onPlaybackStateChange: (state: SpotifyPlaybackState | null) => void

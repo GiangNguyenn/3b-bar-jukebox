@@ -1,3 +1,46 @@
+import type { SpotifyPlaybackState } from '@/shared/types/spotify'
+
+export interface PlayerEventDispatcher {
+  handleDeviceReady(
+    deviceId: string,
+    onStatusChange: (status: string, error?: string) => void,
+    onDeviceIdChange: (deviceId: string) => void
+  ): Promise<void>
+  handleDeviceInitializationFailure(
+    error: unknown,
+    onStatusChange: (status: string, error?: string) => void
+  ): void
+  handleNotReady(
+    deviceId: string,
+    onStatusChange: (status: string, error?: string) => void
+  ): void
+  handleInitializationError(
+    message: string,
+    onStatusChange: (status: string, error?: string) => void
+  ): void
+  handleAuthenticationError(
+    message: string,
+    onStatusChange: (status: string, error?: string) => void,
+    onDeviceIdChange: (deviceId: string) => void,
+    onPlaybackStateChange: (state: SpotifyPlaybackState | null) => void
+  ): Promise<void>
+  handleAccountError(message: string): void
+  handlePlaybackError(message: string): void
+  handlePlayerStateChangeEvent(
+    state: unknown,
+    onPlaybackStateChange: (state: SpotifyPlaybackState | null) => void,
+    onStatusChange: (status: string, error?: string) => void,
+    onDeviceIdChange: (deviceId: string) => void
+  ): void
+}
+
+export interface StateProcessorInterface {
+  processStateChange(
+    state: PlayerSDKState,
+    onPlaybackStateChange: (state: SpotifyPlaybackState | null) => void
+  ): Promise<void>
+}
+
 export interface PlayerSDKState {
   paused: boolean
   position: number

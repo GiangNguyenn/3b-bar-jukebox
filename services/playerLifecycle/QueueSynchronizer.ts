@@ -4,7 +4,8 @@ import { PlayerSDKState } from './types'
 import { LogLevel } from '@/hooks/ConsoleLogsProvider'
 import { TrackDuplicateDetector } from '@/shared/utils/trackDuplicateDetector'
 import { PLAYER_LIFECYCLE_CONFIG } from '../playerLifecycleConfig'
-import { ensureTrackNotDuplicate, withErrorHandling } from './utils'
+import { ensureTrackNotDuplicate } from './utils'
+import { withErrorHandling } from '@/shared/utils/errorHandling'
 import { buildTrackUri } from '@/shared/utils/spotifyUri'
 import { fuzzyTrackNameMatch } from '@/shared/utils/trackNameMatcher'
 import { upsertPlayedTrack } from '@/lib/trackUpsert'
@@ -29,7 +30,17 @@ export class QueueSynchronizer {
   private lastStateUpdateTime: number = 0
   private lastForcePlayedTrackId: string | null = null
 
-  constructor(private controller: PlaybackController) {}
+  private readonly logger: (
+    level: LogLevel,
+    message: string,
+    context?: string,
+    error?: Error
+  ) => void
+
+  constructor(private controller: PlaybackController) {
+    this.logger = (level, message, _context, error) =>
+      this.controller.log(level, message, error)
+  }
 
   initializeQueue(): void {
     this.currentQueueTrack = queueManager.getNextTrack() ?? null
@@ -62,16 +73,10 @@ export class QueueSynchronizer {
     return this.duplicateDetector
   }
 
-  private getLogger() {
-    return (
-      level: LogLevel,
-      message: string,
-      context?: string,
-      error?: Error
-    ) => {
-      // Defer to the controller's logger so it correctly displays in the UI console
-      this.controller.log(level, message, error)
-    }
+  reset(): void {
+    this.duplicateDetector.reset()
+    this.setLastKnownState(null)
+    this.setCurrentQueueTrack(null)
   }
 
   /**
@@ -111,7 +116,7 @@ export class QueueSynchronizer {
           currentTrack,
           lastPlayingTrackId,
           PLAYER_LIFECYCLE_CONFIG.PLAYBACK_RETRY.duplicateCheckRetries,
-          this.getLogger()
+          this.logger
         )
 
         if (!validTrack) {
@@ -149,7 +154,7 @@ export class QueueSynchronizer {
           await queueManager.markAsPlayed(currentTrack!.id)
         },
         '[playNextTrack] Remove failed track',
-        this.getLogger()
+        this.logger
       )
 
       // If markAsPlayed failed and rolled the track back to front of queue,
@@ -182,7 +187,7 @@ export class QueueSynchronizer {
           await queueManager.markAsPlayed(finishedQueueItem.id)
         },
         '[markFinishedTrackAsPlayed] Mark track as played',
-        this.getLogger()
+        this.logger
       )
     } else {
       const potentialMatches = queue
@@ -201,7 +206,7 @@ export class QueueSynchronizer {
             await queueManager.markAsPlayed(validMatch.id)
           },
           '[markFinishedTrackAsPlayed] Fuzzy removal',
-          this.getLogger()
+          this.logger
         )
       } else {
       }
@@ -221,7 +226,7 @@ export class QueueSynchronizer {
       nextTrack,
       finishedTrackId,
       PLAYER_LIFECYCLE_CONFIG.PLAYBACK_RETRY.duplicateCheckRetries,
-      this.getLogger()
+      this.logger
     )
 
     if (!validTrack) {
@@ -242,7 +247,7 @@ export class QueueSynchronizer {
             await SpotifyApiService.getInstance().pausePlayback(deviceId)
           },
           '[findNextValidTrack] Pause playback after duplicate detection',
-          this.getLogger()
+          this.logger
         )
       }
       return null
@@ -268,7 +273,7 @@ export class QueueSynchronizer {
       this.lastKnownState?.track_window?.current_track ||
       state.track_window?.current_track
     if (!finishedTrack?.id) {
-      this.getLogger()(
+      this.logger(
         'WARN',
         '[QueueSync] Cannot handle track finish: No track context found.'
       )
@@ -278,7 +283,7 @@ export class QueueSynchronizer {
     const currentSpotifyTrackId = finishedTrack.id
     const currentTrackName = finishedTrack.name || 'Unknown'
 
-    this.getLogger()(
+    this.logger(
       'INFO',
       `[QueueSync] Automatically progressing past finished track: ${currentTrackName}`
     )
@@ -445,7 +450,7 @@ export class QueueSynchronizer {
 
     // Scenario A: Track completely ended, Spotify natively deleted the context
     if (lastTrack && !currentTrack) {
-      this.getLogger()(
+      this.logger(
         'INFO',
         '[isTrackFinished] Track ended (context fully cleared by SDK)'
       )
@@ -458,7 +463,7 @@ export class QueueSynchronizer {
 
     // Scenario B: Context naturally progressed to a completely different track natively
     if (lastTrack.uri !== currentTrack.uri) {
-      this.getLogger()(
+      this.logger(
         'INFO',
         `[isTrackFinished] Native track progression detected: ${lastTrack.name} -> ${currentTrack.name}`
       )
@@ -474,7 +479,7 @@ export class QueueSynchronizer {
       this.lastKnownState.position > 2000
 
     if (trackJustFinished) {
-      this.getLogger()(
+      this.logger(
         'INFO',
         '[isTrackFinished] Track naturally paused at end'
       )
@@ -528,7 +533,7 @@ export class QueueSynchronizer {
         this.currentQueueTrack = nextTrack ?? null
       },
       '[handleRestrictionViolatedError] Remove restricted track',
-      this.getLogger()
+      this.logger
     )
   }
 }
