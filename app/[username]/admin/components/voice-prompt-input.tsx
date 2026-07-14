@@ -1,6 +1,8 @@
 'use client'
 
 import { useState, useEffect, useRef, useCallback } from 'react'
+import { cn } from '@/lib/utils'
+import { TACTILE_BUTTON_BASE } from './tactile-button'
 
 interface VoicePromptInputProps {
   onTranscript: (text: string) => void
@@ -146,13 +148,14 @@ export function VoicePromptInput({
         onClick={toggle}
         disabled={disabled}
         title={isListening ? 'Stop recording' : 'Speak your prompt'}
-        className={[
-          'flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-colors',
+        className={cn(
+          TACTILE_BUTTON_BASE,
+          'flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium',
           isListening
-            ? 'text-white bg-red-600 hover:bg-red-700'
-            : 'border border-border bg-background text-foreground hover:bg-muted',
+            ? 'text-white bg-red-600 hover:bg-red-700 active:bg-red-700'
+            : 'border border-border bg-background text-foreground hover:bg-muted hover:shadow active:bg-muted',
           disabled ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'
-        ].join(' ')}
+        )}
       >
         {isListening ? (
           <>

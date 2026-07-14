@@ -1,8 +1,10 @@
 'use client'
 
 import { useState, useEffect, useCallback, useRef } from 'react'
+import { cn } from '@/lib/utils'
 import { supabaseBrowser } from '@/lib/supabase-browser'
 import { VoicePromptInput } from '../components/voice-prompt-input'
+import { TACTILE_BUTTON_BASE } from '../components/tactile-button'
 import {
   PRESET_PROMPTS,
   MAX_CUSTOM_PROMPT_LENGTH,
@@ -10,6 +12,13 @@ import {
 } from '@/shared/constants/aiSuggestion'
 import { useNowPlayingRealtime } from '@/hooks/useNowPlayingRealtime'
 import type { RemoteCommand } from '@/hooks/useRemoteCommandListener'
+
+const PLAYBACK_BUTTON_CLASS = cn(
+  TACTILE_BUTTON_BASE,
+  'flex-1 rounded-md border border-border bg-background px-4 py-2 text-sm font-medium text-foreground',
+  'hover:bg-muted hover:shadow active:bg-muted',
+  'disabled:cursor-not-allowed disabled:opacity-50'
+)
 
 interface PromptState {
   presetId: string | null
@@ -234,7 +243,7 @@ export default function RemotePage(): JSX.Element {
           <button
             type='button'
             onClick={() => sendPlaybackAction(isPlaying ? 'pause' : 'play')}
-            className='flex-1 rounded-md border border-border bg-background px-4 py-2 text-sm font-medium text-foreground hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50'
+            className={PLAYBACK_BUTTON_CLASS}
           >
             {isPlaying ? 'Pause' : 'Play'}
           </button>
@@ -242,7 +251,7 @@ export default function RemotePage(): JSX.Element {
             type='button'
             disabled={!trackName}
             onClick={() => sendPlaybackAction('skip')}
-            className='flex-1 rounded-md border border-border bg-background px-4 py-2 text-sm font-medium text-foreground hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50'
+            className={PLAYBACK_BUTTON_CLASS}
           >
             Skip
           </button>
@@ -311,12 +320,13 @@ export default function RemotePage(): JSX.Element {
               key={preset.id}
               type='button'
               onClick={() => handlePresetSelect(preset.id)}
-              className={[
-                'rounded-md border px-3 py-2 text-left text-sm transition-colors',
+              className={cn(
+                TACTILE_BUTTON_BASE,
+                'rounded-md border px-3 py-2 text-left text-sm font-medium',
                 prompt.presetId === preset.id
-                  ? 'border-primary bg-primary/10 text-primary'
-                  : 'border-border bg-background text-foreground hover:bg-muted'
-              ].join(' ')}
+                  ? 'border-primary bg-primary/10 text-primary shadow-sm shadow-primary/10'
+                  : 'border-border bg-background text-foreground hover:bg-muted hover:shadow'
+              )}
             >
               {preset.emoji} {preset.label}
             </button>
