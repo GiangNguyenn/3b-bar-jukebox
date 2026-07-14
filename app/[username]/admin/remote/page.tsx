@@ -324,7 +324,7 @@ export default function RemotePage(): JSX.Element {
                 TACTILE_BUTTON_BASE,
                 'rounded-md border px-3 py-2 text-left text-sm font-medium',
                 prompt.presetId === preset.id
-                  ? 'border-primary bg-primary/10 text-primary shadow-sm shadow-primary/10'
+                  ? 'border-primary bg-primary/10 text-primary shadow-primary/10 shadow-sm'
                   : 'border-border bg-background text-foreground hover:bg-muted hover:shadow'
               )}
             >

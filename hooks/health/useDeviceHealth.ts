@@ -10,6 +10,7 @@ import {
   shouldAttemptDeviceRecovery
 } from '@/recovery/deviceRecovery'
 import { recoveryManager } from '@/services/player/recoveryManager'
+import { spotifyPlayerStore } from '@/hooks/spotifyPlayerStore'
 
 type DeviceHealthStatus =
   | 'healthy'
@@ -88,10 +89,18 @@ export function useDeviceHealth(deviceId: string | null): DeviceHealthStatus {
         // Attempt recovery asynchronously (don't block health check)
         void (async () => {
           try {
+            // Read the Web Playback SDK's last known local state - it's
+            // updated independently of the failing Web API calls, so it
+            // tells us whether we were mid-track when the device dropped
+            // (a real disruption) versus never having been playing here.
+            const wasPlayingLocally =
+              spotifyPlayerStore.getState().playbackState?.is_playing === true
+
             const recoveryResult = await attemptDeviceRecovery(
               deviceId,
               consecutiveRecoveryFailuresRef.current,
-              addLog
+              addLog,
+              wasPlayingLocally
             )
 
             consecutiveRecoveryFailuresRef.current =

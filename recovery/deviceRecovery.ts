@@ -60,7 +60,14 @@ export async function attemptDeviceRecovery(
     message: string,
     context?: string,
     error?: Error
-  ) => void
+  ) => void,
+  // True if our own last known local playback state (from the Web Playback SDK,
+  // independent of the failing Web API calls) shows we were mid-track when the
+  // device dropped. Distinguishes "our failed transfer stopped playback" from
+  // "there was nothing to resume" - a legitimate user pause never makes a
+  // device inactive in the first place (that only keeps is_playing false),
+  // so this signal is safe to act on without a separate "user paused" flag.
+  wasPlayingLocally: boolean = false
 ): Promise<DeviceRecoveryResult> {
   if (!deviceId) {
     const error = new Error('Device ID not available for recovery')
@@ -170,36 +177,33 @@ export async function attemptDeviceRecovery(
 
   // Safe to attempt device transfer (music is not playing or is paused)
   try {
-    logger(
-      'INFO',
-      `Attempting to activate device ${deviceId} (no active playback detected)`
-    )
+    const resumeMessage = wasPlayingLocally
+      ? `Attempting to activate device ${deviceId} and resume playback (was playing locally before device dropped)`
+      : `Attempting to activate device ${deviceId} (no active playback detected)`
+    logger('INFO', resumeMessage)
     if (addLog) {
-      addLog(
-        'INFO',
-        `Attempting to activate device ${deviceId} (no active playback detected)`,
-        'DeviceRecovery'
-      )
+      addLog('INFO', resumeMessage, 'DeviceRecovery')
     }
 
-    // Transfer playback to device (with shouldPlay: null to maintain current state)
-    // We pass undefined for intermediate optional parameters to use their defaults
+    // If we were playing locally right before the device went inactive, the
+    // stoppage was caused by the transfer/outage rather than an intentional
+    // pause, so explicitly resume (shouldPlay: true) instead of just
+    // reactivating the device with shouldPlay: null.
     const transferred = await transferPlaybackToDevice(
       deviceId,
       undefined,
       undefined,
       undefined,
-      null
+      wasPlayingLocally ? true : null
     )
 
     if (transferred) {
-      logger('INFO', `Device ${deviceId} successfully activated`)
+      const successMessage = wasPlayingLocally
+        ? `Device ${deviceId} successfully activated and playback resumed`
+        : `Device ${deviceId} successfully activated`
+      logger('INFO', successMessage)
       if (addLog) {
-        addLog(
-          'INFO',
-          `Device ${deviceId} successfully activated`,
-          'DeviceRecovery'
-        )
+        addLog('INFO', successMessage, 'DeviceRecovery')
       }
       return {
         success: true,
