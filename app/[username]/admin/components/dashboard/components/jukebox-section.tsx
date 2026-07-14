@@ -6,14 +6,11 @@ import { useSmoothProgress } from '@/hooks/useSmoothProgress'
 import { Loading } from '@/components/ui'
 import { usePlaybackControls } from '../../../hooks/usePlaybackControls'
 import { useSpotifyPlayerStore } from '@/hooks/useSpotifyPlayer'
-import { sendApiRequest } from '@/shared/api'
+import { sendApiRequest, describeApiFailure } from '@/shared/api'
+import { showToast } from '@/lib/toast'
 import { useConsoleLogsContext } from '@/hooks/ConsoleLogsProvider'
-import { useCallback, useState, useRef } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { getAutoPlayService } from '@/services/autoPlayService'
-import {
-  useRemoteCommandListener,
-  type RemoteCommand
-} from '@/hooks/useRemoteCommandListener'
 
 interface JukeboxSectionProps {
   className?: string
@@ -22,12 +19,12 @@ interface JukeboxSectionProps {
 export function JukeboxSection({
   className = ''
 }: JukeboxSectionProps): JSX.Element {
-  const { deviceId, isReady } = useSpotifyPlayerStore()
+  const { deviceId, isReady, volume, setVolume } = useSpotifyPlayerStore()
   const { addLog } = useConsoleLogsContext()
-  const [volume, setVolume] = useState(50)
   const [isSeeking, setIsSeeking] = useState(false)
   const [isDragging, setIsDragging] = useState(false)
   const progressBarRef = useRef<HTMLDivElement>(null)
+  const volumeDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const { profileId, isLoading: isProfileLoading } = useProfileId()
 
@@ -44,32 +41,13 @@ export function JukeboxSection({
   const { handlePlayPause, handleSkip, isActuallyPlaying, isSkipLoading } =
     usePlaybackControls()
 
-  const handleRemoteCommand = useCallback(
-    (cmd: RemoteCommand) => {
-      if (cmd.action === 'play' && !isActuallyPlaying) {
-        void handlePlayPause()
-      } else if (cmd.action === 'pause' && isActuallyPlaying) {
-        void handlePlayPause()
-      } else if (cmd.action === 'skip') {
-        void handleSkip()
-      } else if (cmd.action === 'volume') {
-        const clamped = Math.max(
-          0,
-          Math.min(100, Math.round(cmd.volumePercent))
-        )
-        setVolume(clamped)
-        void sendApiRequest({
-          path: `me/player/volume?volume_percent=${clamped}&device_id=${deviceId}`,
-          method: 'PUT'
-        }).catch(() => {
-          // volume errors are non-critical
-        })
-      }
-    },
-    [isActuallyPlaying, handlePlayPause, handleSkip, deviceId]
-  )
-
-  useRemoteCommandListener({ profileId, onCommand: handleRemoteCommand })
+  // Clear pending volume debounce timer on unmount to prevent state updates
+  // on a dead component and stray API calls after navigating away.
+  useEffect(() => {
+    return () => {
+      if (volumeDebounceRef.current) clearTimeout(volumeDebounceRef.current)
+    }
+  }, [])
 
   const formatTime = (ms: number): string => {
     const seconds = Math.floor(ms / 1000)
@@ -267,7 +245,7 @@ export function JukeboxSection({
               onClick={(): void => {
                 void handleSkip()
               }}
-              disabled={!isReady || !isActuallyPlaying || isSkipLoading}
+              disabled={!isReady || isSkipLoading}
               className='text-white flex-1 rounded-lg bg-blue-600 px-6 py-3 font-medium transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50'
             >
               {isSkipLoading ? (
@@ -296,26 +274,41 @@ export function JukeboxSection({
                 onChange={(e): void => {
                   const newVolume = parseInt(e.target.value)
                   setVolume(newVolume)
-                  void (async () => {
-                    try {
-                      await sendApiRequest({
-                        path: `me/player/volume?volume_percent=${newVolume}&device_id=${deviceId}`,
-                        method: 'PUT'
-                      })
-                      addLog(
-                        'INFO',
-                        `Volume set to ${newVolume}%`,
-                        'JukeboxSection'
-                      )
-                    } catch (error) {
-                      addLog(
-                        'ERROR',
-                        'Failed to set volume',
-                        'JukeboxSection',
-                        error instanceof Error ? error : undefined
-                      )
-                    }
-                  })()
+                  // Debounce the actual API call — the native 'input' event
+                  // fires on every drag movement, and one PUT per pixel can
+                  // trip Spotify's rate limit and stall every other control.
+                  if (volumeDebounceRef.current) {
+                    clearTimeout(volumeDebounceRef.current)
+                  }
+                  volumeDebounceRef.current = setTimeout(() => {
+                    void (async () => {
+                      try {
+                        await sendApiRequest({
+                          path: `me/player/volume?volume_percent=${newVolume}&device_id=${deviceId}`,
+                          method: 'PUT'
+                        })
+                        addLog(
+                          'INFO',
+                          `Volume set to ${newVolume}%`,
+                          'JukeboxSection'
+                        )
+                      } catch (error) {
+                        addLog(
+                          'ERROR',
+                          'Failed to set volume',
+                          'JukeboxSection',
+                          error instanceof Error ? error : undefined
+                        )
+                        showToast(
+                          describeApiFailure(
+                            error,
+                            'Failed to set volume. Please try again.'
+                          ),
+                          'warning'
+                        )
+                      }
+                    })()
+                  }, 300)
                 }}
                 disabled={!isReady}
               />

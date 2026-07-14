@@ -1,4 +1,5 @@
 import { sendApiRequest } from '@/shared/api'
+import { showToast } from '@/lib/toast'
 import { calculateBackoffDelay } from '@/shared/utils/retryHelpers'
 import {
   transferPlaybackToDevice,
@@ -382,6 +383,8 @@ class PlayerLifecycleService {
   async playNextFromQueue(): Promise<void> {
     const nextTrack = queueManager.getNextTrack()
     if (!nextTrack) {
+      this.log('WARN', 'playNextFromQueue: queue is empty, nothing to play')
+      showToast('Queue is empty — nothing to play.', 'warning')
       return
     }
     await this.playNextTrack(nextTrack)

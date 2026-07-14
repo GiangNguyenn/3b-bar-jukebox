@@ -8,14 +8,15 @@ import { SpotifyApiService } from '@/services/spotifyApi'
 import { type SpotifyPlaybackState } from '@/shared/types/spotify'
 import { queueManager } from '@/services/queueManager'
 import { playerLifecycleService } from '@/services/playerLifecycle'
-import { sendApiRequest } from '@/shared/api'
+import { sendApiRequest, describeApiFailure } from '@/shared/api'
+import { showToast } from '@/lib/toast'
 
 export function usePlaybackControls(): {
   isLoading: boolean
   isSkipLoading: boolean
   playbackInfo: SpotifyPlaybackState | null
   isActuallyPlaying: boolean
-  handlePlayPause: () => Promise<void>
+  handlePlayPause: (explicitTarget?: 'play' | 'pause') => Promise<void>
   handleSkip: () => Promise<void>
 } {
   const [isLoading, setIsLoading] = useState(false)
@@ -34,141 +35,180 @@ export function usePlaybackControls(): {
     return true
   }, [playbackState, isTransitionInProgress])
 
-  const handlePlayPause = useCallback(async (): Promise<void> => {
-    if (!deviceId) return
+  const handlePlayPause = useCallback(
+    async (explicitTarget?: 'play' | 'pause'): Promise<void> => {
+      if (!deviceId) {
+        addLog(
+          'WARN',
+          'Cannot toggle playback: No device available',
+          'Playback'
+        )
+        showToast('No player device connected.', 'warning')
+        return
+      }
 
-    // Explicitly manually activate the Spotify Web Player's audio element.
-    // Calling this during a direct user-click handler inherently unlocks the
-    // browser's restrictive autoplay policies, ensuring that when the Spotify
-    // servers inevitably ping the iframe down the WebSocket pipeline to start
-    // playing the music, the browser won't silently drop the audio.
-    const player = playerLifecycleService.getPlayer()
-    if (player && typeof player.activateElement === 'function') {
-      player.activateElement().catch(() => {
-        // Silently ignore activation errors (e.g. if already active)
+      // Explicitly manually activate the Spotify Web Player's audio element.
+      // Calling this during a direct user-click handler inherently unlocks the
+      // browser's restrictive autoplay policies, ensuring that when the Spotify
+      // servers inevitably ping the iframe down the WebSocket pipeline to start
+      // playing the music, the browser won't silently drop the audio.
+      const player = playerLifecycleService.getPlayer()
+      if (player && typeof player.activateElement === 'function') {
+        player.activateElement().catch(() => {
+          // Silently ignore activation errors (e.g. if already active)
+        })
+      }
+
+      if (!playbackState) {
+        // Nothing is playing, so an explicit "pause" is already satisfied.
+        if (explicitTarget === 'pause') return
+
+        // If there's no current playback state (e.g. freshly loaded and nothing playing),
+        // we should attempt to start playback from the queue.
+        setIsLoading(true)
+        try {
+          await playerLifecycleService.playNextFromQueue()
+        } catch (error) {
+          addLog(
+            'ERROR',
+            'Failed to start playback from empty state',
+            'Playback',
+            error instanceof Error ? error : undefined
+          )
+          showToast(
+            describeApiFailure(
+              error,
+              "Couldn't start playback. Please try again."
+            ),
+            'warning'
+          )
+        } finally {
+          setIsLoading(false)
+        }
+        return
+      }
+
+      const originalState = playbackState
+      const isPlaying = getIsActuallyPlaying()
+
+      // Freshest possible check for whether an explicit remote intent is already
+      // satisfied — evaluated here (not by the caller ahead of time) so a stale
+      // snapshot on the caller's side can't cause the wrong branch to run.
+      if (
+        (explicitTarget === 'play' && isPlaying) ||
+        (explicitTarget === 'pause' && !isPlaying)
+      ) {
+        return
+      }
+
+      // Optimistic update
+      setPlaybackState({
+        ...originalState,
+        is_playing: !isPlaying
       })
-    }
-
-    if (!playbackState) {
-      // If there's no current playback state (e.g. freshly loaded and nothing playing),
-      // we should attempt to start playback from the queue.
       setIsLoading(true)
+
       try {
-        await playerLifecycleService.playNextFromQueue()
+        const spotifyApi = SpotifyApiService.getInstance()
+
+        if (isPlaying) {
+          // Set manual pause flag BEFORE calling API to prevent auto-resume race conditions
+          playerLifecycleService.setManualPause(true)
+          const result = await spotifyApi.pausePlayback(deviceId)
+          if (!result.success) {
+            // Revert flag on failure
+            playerLifecycleService.setManualPause(false)
+            throw new Error('Failed to pause playback')
+          }
+        } else {
+          // Enforce Queue Logic: If resuming a track that is NOT in the queue, skip it.
+          const queue = queueManager.getQueue()
+          const currentTrackId = playbackState?.item?.id
+
+          const isTrackInQueue = currentTrackId
+            ? queue.some(
+                (item) => item.tracks.spotify_track_id === currentTrackId
+              )
+            : false
+
+          if (queue.length > 0 && currentTrackId && !isTrackInQueue) {
+            addLog(
+              'WARN',
+              '[handlePlayPause] Enforcing queue: Current track not in queue, skipping to next track.',
+              'Playback'
+            )
+
+            try {
+              // Play next track from queue
+              addLog(
+                'INFO',
+                '[handlePlayPause] Awaiting playNextFromQueue...',
+                'Playback'
+              )
+              await playerLifecycleService.playNextFromQueue()
+              addLog(
+                'INFO',
+                '[handlePlayPause] playNextFromQueue successfully completed!',
+                'Playback'
+              )
+            } catch (playbackErr) {
+              addLog(
+                'ERROR',
+                `[handlePlayPause] playNextFromQueue threw an error!`,
+                'Playback',
+                playbackErr instanceof Error ? playbackErr : undefined
+              )
+            }
+
+            // Ensure manual pause flag is cleared (handled by playNextTrack, but good for safety)
+            playerLifecycleService.setManualPause(false)
+            setIsLoading(false)
+            return
+          }
+
+          // Clear manual pause flag when resuming
+          playerLifecycleService.setManualPause(false)
+
+          // Get the current track's position if available
+          const currentPosition = playbackState.progress_ms ?? undefined
+          const result = await spotifyApi.resumePlayback(currentPosition)
+          if (!result.success) {
+            throw new Error('Failed to resume playback')
+          }
+
+          if (currentTrackId) {
+            queueManager.setCurrentlyPlayingTrack(currentTrackId)
+          }
+        }
+
+        // No longer reconciling with the actual state from the API
       } catch (error) {
         addLog(
           'ERROR',
-          'Failed to start playback from empty state',
+          'Playback control failed',
           'Playback',
           error instanceof Error ? error : undefined
         )
+        showToast(
+          describeApiFailure(
+            error,
+            "Couldn't update playback. Please try again."
+          ),
+          'warning'
+        )
+        // Rollback on error
+        setPlaybackState(originalState)
       } finally {
         setIsLoading(false)
       }
-      return
-    }
-
-    const originalState = playbackState
-    const isPlaying = getIsActuallyPlaying()
-
-    // Optimistic update
-    setPlaybackState({
-      ...originalState,
-      is_playing: !isPlaying
-    })
-    setIsLoading(true)
-
-    try {
-      const spotifyApi = SpotifyApiService.getInstance()
-
-      if (isPlaying) {
-        // Set manual pause flag BEFORE calling API to prevent auto-resume race conditions
-        playerLifecycleService.setManualPause(true)
-        const result = await spotifyApi.pausePlayback(deviceId)
-        if (!result.success) {
-          // Revert flag on failure
-          playerLifecycleService.setManualPause(false)
-          throw new Error('Failed to pause playback')
-        }
-      } else {
-        // Enforce Queue Logic: If resuming a track that is NOT in the queue, skip it.
-        const queue = queueManager.getQueue()
-        const currentTrackId = playbackState?.item?.id
-
-        const isTrackInQueue = currentTrackId
-          ? queue.some(
-              (item) => item.tracks.spotify_track_id === currentTrackId
-            )
-          : false
-
-        if (queue.length > 0 && currentTrackId && !isTrackInQueue) {
-          addLog(
-            'WARN',
-            '[handlePlayPause] Enforcing queue: Current track not in queue, skipping to next track.',
-            'Playback'
-          )
-
-          try {
-            // Play next track from queue
-            addLog(
-              'INFO',
-              '[handlePlayPause] Awaiting playNextFromQueue...',
-              'Playback'
-            )
-            await playerLifecycleService.playNextFromQueue()
-            addLog(
-              'INFO',
-              '[handlePlayPause] playNextFromQueue successfully completed!',
-              'Playback'
-            )
-          } catch (playbackErr) {
-            addLog(
-              'ERROR',
-              `[handlePlayPause] playNextFromQueue threw an error!`,
-              'Playback',
-              playbackErr instanceof Error ? playbackErr : undefined
-            )
-          }
-
-          // Ensure manual pause flag is cleared (handled by playNextTrack, but good for safety)
-          playerLifecycleService.setManualPause(false)
-          setIsLoading(false)
-          return
-        }
-
-        // Clear manual pause flag when resuming
-        playerLifecycleService.setManualPause(false)
-
-        // Get the current track's position if available
-        const currentPosition = playbackState.progress_ms ?? undefined
-        const result = await spotifyApi.resumePlayback(currentPosition)
-        if (!result.success) {
-          throw new Error('Failed to resume playback')
-        }
-
-        if (currentTrackId) {
-          queueManager.setCurrentlyPlayingTrack(currentTrackId)
-        }
-      }
-
-      // No longer reconciling with the actual state from the API
-    } catch (error) {
-      addLog(
-        'ERROR',
-        'Playback control failed',
-        'Playback',
-        error instanceof Error ? error : undefined
-      )
-      // Rollback on error
-      setPlaybackState(originalState)
-    } finally {
-      setIsLoading(false)
-    }
-  }, [deviceId, playbackState, getIsActuallyPlaying, addLog, setPlaybackState])
+    },
+    [deviceId, playbackState, getIsActuallyPlaying, addLog, setPlaybackState]
+  )
 
   const handleSkip = useCallback(async (): Promise<void> => {
     if (!deviceId) {
       addLog('WARN', 'Cannot skip: No device available', 'Playback')
+      showToast('No player device connected.', 'warning')
       return
     }
 
@@ -249,6 +289,7 @@ export function usePlaybackControls(): {
       const nextTrack = queueManager.getNextTrack()
       if (!nextTrack) {
         addLog('WARN', 'No next track available to skip to', 'Playback')
+        showToast('No next track queued to skip to.', 'warning')
         return
       }
 
@@ -259,6 +300,10 @@ export function usePlaybackControls(): {
         'Skip operation failed',
         'Playback',
         error instanceof Error ? error : undefined
+      )
+      showToast(
+        describeApiFailure(error, 'Failed to skip track. Please try again.'),
+        'warning'
       )
       // On error, try to pause playback to stop current track
       try {

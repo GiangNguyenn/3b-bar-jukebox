@@ -24,6 +24,20 @@ export class ApiError extends Error {
   }
 }
 
+/**
+ * Turns a caught error into a short, user-facing explanation of what went
+ * wrong. Callers making user-initiated requests (button clicks, sliders)
+ * should show this rather than letting failures reach only the diagnostic
+ * log — a global rate-limit trip otherwise looks identical to "the button
+ * is broken" from the user's perspective.
+ */
+export function describeApiFailure(error: unknown, fallback: string): string {
+  if (error instanceof ApiError && error.status === 429) {
+    return 'Spotify is rate-limiting requests — please wait a few seconds and try again.'
+  }
+  return fallback
+}
+
 type ApiLogger = (
   level: 'INFO' | 'ERROR' | 'WARN' | 'DEBUG',
   message: string,

@@ -29,10 +29,12 @@ export interface PlayerStatusState {
   isReady: boolean // Keep for backward compatibility
   playbackState: SpotifyPlaybackState | null
   isTransitionInProgress: boolean
+  volume: number
   setStatus: (status: PlayerStatus, error?: string) => void
   setDeviceId: (deviceId: string | null) => void
   setPlaybackState: (state: SpotifyPlaybackState | null) => void
   setIsTransitionInProgress: (value: boolean) => void
+  setVolume: (volume: number) => void
   resetFailures: () => void
   incrementFailures: () => void
 }
@@ -65,6 +67,7 @@ export const spotifyPlayerStore = create<PlayerStatusState>((set, get) => ({
   isReady: false,
   playbackState: null,
   isTransitionInProgress: false,
+  volume: 50,
 
   setStatus: (newStatus, error) => {
     const currentState = get()
@@ -107,6 +110,7 @@ export const spotifyPlayerStore = create<PlayerStatusState>((set, get) => ({
   setDeviceId: (deviceId) => set({ deviceId }),
   setPlaybackState: (state) => set({ playbackState: state }),
   setIsTransitionInProgress: (value) => set({ isTransitionInProgress: value }),
+  setVolume: (volume) => set({ volume }),
 
   resetFailures: () => set({ consecutiveFailures: 0 }),
   incrementFailures: () => {
