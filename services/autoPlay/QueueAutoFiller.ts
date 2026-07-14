@@ -140,10 +140,14 @@ export class QueueAutoFiller {
     } finally {
       this.isAutoFilling = false
       this.lastAutoFillCompletionTime = Date.now()
-      if (this.autoFillDebounceTimer) {
-        clearTimeout(this.autoFillDebounceTimer)
-        this.autoFillDebounceTimer = null
-      }
+      // NOTE: intentionally not clearing autoFillDebounceTimer here. By the time
+      // check() starts running, schedule()'s callback has already nulled the
+      // timer that led to this call (see schedule() below) — so any timer
+      // present now was armed by a newer schedule() call that arrived while
+      // this check() was in flight. Clearing it here would silently drop that
+      // legitimate follow-up trigger. Letting it fire naturally is safe: it
+      // will simply no-op via the cooldown guard above if too soon, or run a
+      // real check if the cooldown has since elapsed.
     }
   }
 

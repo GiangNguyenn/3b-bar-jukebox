@@ -39,7 +39,30 @@ export async function POST(request: Request): Promise<NextResponse> {
       )
     }
 
-    // Get available tracks after exclusion
+    // Exclude already-queued/recently-played tracks at the query level so the
+    // LIMIT is applied AFTER exclusion — otherwise an arbitrary, unordered
+    // 50-row slice could happen to be dominated by excluded tracks and starve
+    // out eligible tracks that exist elsewhere in a larger catalog.
+    let tracksQuery = supabase
+      .from('tracks')
+      .select(
+        'id, spotify_track_id, name, artist, album, duration_ms, popularity, spotify_url'
+      )
+
+    const sanitizedExclusions = (excludedTrackIds ?? []).filter(
+      (id): id is string => typeof id === 'string' && id.length > 0
+    )
+    if (sanitizedExclusions.length > 0) {
+      const literalList = sanitizedExclusions
+        .map((id) => `"${id.replace(/"/g, '\\"')}"`)
+        .join(',')
+      tracksQuery = tracksQuery.not(
+        'spotify_track_id',
+        'in',
+        `(${literalList})`
+      )
+    }
+
     const tracksResult = await queryWithRetry<
       Array<{
         id: string
@@ -52,17 +75,12 @@ export async function POST(request: Request): Promise<NextResponse> {
         spotify_url: string | null
       }>
     >(
-      supabase
-        .from('tracks')
-        .select(
-          'id, spotify_track_id, name, artist, album, duration_ms, popularity, spotify_url'
-        )
-        .limit(50), // Get up to 50 tracks to pick from
+      tracksQuery.limit(50), // Get up to 50 eligible tracks to pick from
       undefined,
       'Fetch tracks for random selection'
     )
 
-    const allTracks = tracksResult.data
+    const availableTracks = tracksResult.data
     const tracksError = tracksResult.error
 
     if (tracksError) {
@@ -72,23 +90,7 @@ export async function POST(request: Request): Promise<NextResponse> {
       )
     }
 
-    if (!allTracks || allTracks.length === 0) {
-      return NextResponse.json(
-        { error: 'No tracks available in database' },
-        { status: 404 }
-      )
-    }
-
-    // Filter out excluded tracks
-    let availableTracks = allTracks
-    if (excludedTrackIds && excludedTrackIds.length > 0) {
-      availableTracks = allTracks.filter(
-        (track: { spotify_track_id: string }) =>
-          !excludedTrackIds.includes(track.spotify_track_id)
-      )
-    }
-
-    if (availableTracks.length === 0) {
+    if (!availableTracks || availableTracks.length === 0) {
       return NextResponse.json(
         { error: 'No tracks available in database after exclusion' },
         { status: 404 }

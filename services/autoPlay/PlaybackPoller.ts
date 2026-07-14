@@ -98,7 +98,14 @@ export class PlaybackPoller {
   private startInterval(): void {
     this.clearInterval()
     this.intervalRef = setInterval(() => {
-      void this.poll().catch(() => this.stop())
+      void this.poll().catch((error) => {
+        log(
+          'WARN',
+          'Poll failed, will retry on next tick',
+          undefined,
+          error instanceof Error ? error : undefined
+        )
+      })
     }, this.intervalMs)
   }
 

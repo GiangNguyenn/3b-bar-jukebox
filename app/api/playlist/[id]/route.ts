@@ -453,9 +453,12 @@ export async function POST(
         return errorResponse
       }
 
-      return NextResponse.json({
-        message: 'Track already in queue - votes boosted to 50!'
-      })
+      return NextResponse.json(
+        {
+          message: 'Track already in queue - votes boosted to 50!'
+        },
+        { status: 409 }
+      )
     }
 
     const insertResult = await queryWithRetry(

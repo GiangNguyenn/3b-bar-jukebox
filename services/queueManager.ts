@@ -14,8 +14,37 @@ class QueueManager {
   private failedDeletes: Map<string, number> = new Map()
   // Track the currently playing track ID to exclude it from getNextTrack()
   private currentlyPlayingTrackId: string | null = null
+  // Notified whenever a track is successfully removed from the queue, regardless
+  // of which code path drove the removal (REST-poll-driven AutoPlayService or
+  // SDK-event-driven QueueSynchronizer) — lets interested parties recheck queue health.
+  private trackRemovedListeners: Set<() => void> = new Set()
 
   private constructor() {}
+
+  /**
+   * Subscribe to successful track removals. Returns an unsubscribe function.
+   */
+  public onTrackRemoved(callback: () => void): () => void {
+    this.trackRemovedListeners.add(callback)
+    return () => {
+      this.trackRemovedListeners.delete(callback)
+    }
+  }
+
+  private notifyTrackRemoved(): void {
+    this.trackRemovedListeners.forEach((listener) => {
+      try {
+        listener()
+      } catch (error) {
+        logger(
+          'ERROR',
+          '[onTrackRemoved] Listener threw',
+          undefined,
+          error as Error
+        )
+      }
+    })
+  }
 
   public static getInstance(): QueueManager {
     if (!QueueManager.instance) {
@@ -130,6 +159,18 @@ class QueueManager {
     // This protects against race conditions with updateQueue() calls
     this.pendingDeletes.add(queueId)
 
+    // Guards against double-rollback: the exhausted-retries branch below always
+    // throws, which is caught by this same function's catch block on the same
+    // attempt — without this guard the track gets unshifted back twice.
+    let rolledBack = false
+    const rollbackOnce = (): void => {
+      if (rolledBack) return
+      rolledBack = true
+      this.failedDeletes.set(queueId, Date.now())
+      this.queue.unshift(trackToRemove)
+      this.pendingDeletes.delete(queueId)
+    }
+
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
       try {
         const controller = new AbortController()
@@ -148,6 +189,7 @@ class QueueManager {
         if (response.ok) {
           // Success - remove from pending deletes
           this.pendingDeletes.delete(queueId)
+          this.notifyTrackRemoved()
           return
         }
 
@@ -158,6 +200,7 @@ class QueueManager {
             'WARN',
             `[markAsPlayed] Track ${queueId} already removed from database (404), treating as success`
           )
+          this.notifyTrackRemoved()
           return
         }
 
@@ -177,16 +220,16 @@ class QueueManager {
           'ERROR',
           `[markAsPlayed] Failed to mark track ${queueId} as played after ${maxRetries + 1} attempts, rolling back local queue. Last status: ${response.status}`
         )
+        rollbackOnce()
 
-        // Record permanent failure to prevent infinite retry loops from multiple callers
-        this.failedDeletes.set(queueId, Date.now())
-
-        // Add track back to queue at the beginning (it was highest priority)
-        this.queue.unshift(trackToRemove)
-        this.pendingDeletes.delete(queueId)
-
-        const errorData = await response.json()
-        throw new Error(`Failed to mark track as played: ${errorData.message}`)
+        let errorMessage = `status ${response.status}`
+        try {
+          const errorData = await response.json()
+          errorMessage = errorData?.message ?? errorMessage
+        } catch {
+          // Error body wasn't valid JSON — fall back to the status-based message
+        }
+        throw new Error(`Failed to mark track as played: ${errorMessage}`)
       } catch (error) {
         // Network or parsing errors
         if (attempt < maxRetries) {
@@ -201,20 +244,15 @@ class QueueManager {
           continue
         }
 
-        // Exhausted retries - rollback the optimistic update
+        // Exhausted retries - rollback the optimistic update (no-op if rollbackOnce
+        // already ran above for this same failure)
         logger(
           'ERROR',
           `[markAsPlayed] Exception while marking track ${queueId} as played after ${maxRetries + 1} attempts, rolling back local queue. Error: ${error instanceof Error ? error.message : String(error)}`,
           undefined,
           error as Error
         )
-
-        // Record permanent failure to prevent infinite retry loops from multiple callers
-        this.failedDeletes.set(queueId, Date.now())
-
-        // Add track back to queue at the beginning (it was highest priority)
-        this.queue.unshift(trackToRemove)
-        this.pendingDeletes.delete(queueId)
+        rollbackOnce()
 
         throw error
       }

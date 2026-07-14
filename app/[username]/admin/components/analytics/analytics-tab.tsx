@@ -718,6 +718,11 @@ export const AnalyticsTab = ({ username }: AnalyticsTabProps): JSX.Element => {
 
         if (response.ok) {
           showToast(`Added "${track.name}" to the playlist.`, 'success')
+        } else if (response.status === 409) {
+          showToast(
+            `"${track.name}" is already in the queue — vote boosted.`,
+            'info'
+          )
         } else {
           const errorData = (await response.json()) as { error?: string }
           showToast(
@@ -820,6 +825,8 @@ export const AnalyticsTab = ({ username }: AnalyticsTabProps): JSX.Element => {
           })
           if (response.ok) {
             addedCount++
+          } else if (response.status === 409) {
+            // Already queued — vote was boosted server-side, not a failure
           } else {
             const errorData = (await response.json()) as { error?: string }
             addLog(

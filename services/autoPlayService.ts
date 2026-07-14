@@ -41,6 +41,7 @@ export class AutoPlayService {
   private readonly poller: PlaybackPoller
   private readonly autoFiller: QueueAutoFiller
   private readonly trackPlayer: TrackPlayer
+  private unsubscribeTrackRemoved: (() => void) | null = null
 
   private onTrackFinished?: (trackId: string) => void
   private onQueueEmpty?: () => void
@@ -74,6 +75,14 @@ export class AutoPlayService {
       },
       config.checkInterval
     )
+
+    // Any successful track removal — whether driven by this service's own REST
+    // polling or by the SDK-event-driven QueueSynchronizer/playerLifecycle path —
+    // should recheck queue health. Without this, auto-fill only ever runs off
+    // this service's own poller, leaving no fallback if that poller ever stalls.
+    this.unsubscribeTrackRemoved = this.queueManager.onTrackRemoved(() => {
+      this.autoFiller.schedule(500)
+    })
   }
 
   // ─── Lifecycle ────────────────────────────────────────────────────────────
@@ -88,6 +97,10 @@ export class AutoPlayService {
     if (!this.isRunning) return
     this.isRunning = false
     this.poller.stop()
+    if (this.unsubscribeTrackRemoved) {
+      this.unsubscribeTrackRemoved()
+      this.unsubscribeTrackRemoved = null
+    }
   }
 
   // ─── Configuration setters ────────────────────────────────────────────────
