@@ -124,6 +124,12 @@ export const MAX_CUSTOM_PROMPT_LENGTH = 500
 export const SUGGESTION_BATCH_SIZE = 10
 export const AI_SUGGESTIONS_STORAGE_KEY = 'ai-suggestions-state'
 
+// Client-side (per-browser) record of tracks the AI has recently suggested,
+// used to widen the exclusion list beyond "currently queued" so repeated
+// auto-fill calls don't keep re-suggesting the same tracks within a session.
+export const AI_SUGGESTED_HISTORY_STORAGE_KEY_PREFIX = 'ai-suggested-history:'
+export const AI_SUGGESTED_HISTORY_WINDOW_MS = 60 * 60 * 1000
+
 export function truncatePrompt(prompt: string): string {
   if (prompt.length > MAX_CUSTOM_PROMPT_LENGTH) {
     return prompt.slice(0, MAX_CUSTOM_PROMPT_LENGTH)

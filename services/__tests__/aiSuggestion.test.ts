@@ -12,7 +12,9 @@ import fc from 'fast-check'
 import {
   parseAiResponse,
   buildSpotifySearchQuery,
-  buildUserMessage
+  buildUserMessage,
+  dedupeByArtist,
+  computeShortfall
 } from '../aiSuggestion'
 
 const PBT_CONFIG = { numRuns: 100 }
@@ -723,6 +725,201 @@ describe('Property 8: Buffer is consumed before requesting a new batch', () => {
           )
         }
       ),
+      PBT_CONFIG
+    )
+  })
+})
+
+// -------------------------------------------------------------------
+// Property 13: Re-prompt shortfall calculation
+// -------------------------------------------------------------------
+describe('Property 13: Re-prompt shortfall calculation', () => {
+  it('shortfall is exactly batchSize - count when count is below batchSize', () => {
+    fc.assert(
+      fc.property(
+        fc.integer({ min: 0, max: 9 }),
+        fc.integer({ min: 1, max: 20 }),
+        (count, batchSize) => {
+          fc.pre(count < batchSize)
+          assert.equal(computeShortfall(count, batchSize), batchSize - count)
+        }
+      ),
+      PBT_CONFIG
+    )
+  })
+
+  it('shortfall is zero once count meets or exceeds batchSize', () => {
+    fc.assert(
+      fc.property(
+        fc.integer({ min: 0, max: 30 }),
+        fc.integer({ min: 0, max: 30 }),
+        (count, batchSize) => {
+          fc.pre(count >= batchSize)
+          assert.equal(computeShortfall(count, batchSize), 0)
+        }
+      ),
+      PBT_CONFIG
+    )
+  })
+
+  it('count + shortfall always reaches at least batchSize', () => {
+    fc.assert(
+      fc.property(
+        fc.integer({ min: 0, max: 30 }),
+        fc.integer({ min: 0, max: 30 }),
+        (count, batchSize) => {
+          const shortfall = computeShortfall(count, batchSize)
+          assert.ok(count + shortfall >= batchSize)
+        }
+      ),
+      PBT_CONFIG
+    )
+  })
+})
+
+// -------------------------------------------------------------------
+// Property 14: Artist dedup before resolution
+// -------------------------------------------------------------------
+describe('Property 14: Artist dedup before resolution', () => {
+  it('output never contains two entries with the same normalized artist', () => {
+    fc.assert(
+      fc.property(
+        fc.array(validRecArb, { minLength: 0, maxLength: 20 }),
+        (recs) => {
+          const deduped = dedupeByArtist(recs)
+          const normalizedArtists = deduped.map((r) =>
+            r.artist.toLowerCase().replace(/[^a-z0-9\s]/g, '').trim()
+          )
+          const uniqueArtists = new Set(normalizedArtists)
+          assert.equal(
+            normalizedArtists.length,
+            uniqueArtists.size,
+            'deduped output must have unique normalized artists'
+          )
+        }
+      ),
+      PBT_CONFIG
+    )
+  })
+
+  it('output length never exceeds input length', () => {
+    fc.assert(
+      fc.property(
+        fc.array(validRecArb, { minLength: 0, maxLength: 20 }),
+        (recs) => {
+          assert.ok(dedupeByArtist(recs).length <= recs.length)
+        }
+      ),
+      PBT_CONFIG
+    )
+  })
+
+  it('keeps the first occurrence for each artist, preserving relative order', () => {
+    fc.assert(
+      fc.property(
+        fc.array(validRecArb, { minLength: 1, maxLength: 20 }),
+        (recs) => {
+          const deduped = dedupeByArtist(recs)
+          // Every deduped entry must be reference-equal to the first input
+          // entry with that (object-identity-preserving) title/artist pair
+          const firstByArtist = new Map<string, (typeof recs)[number]>()
+          for (const rec of recs) {
+            const key = rec.artist
+              .toLowerCase()
+              .replace(/[^a-z0-9\s]/g, '')
+              .trim()
+            if (!firstByArtist.has(key)) firstByArtist.set(key, rec)
+          }
+          for (const rec of deduped) {
+            const key = rec.artist
+              .toLowerCase()
+              .replace(/[^a-z0-9\s]/g, '')
+              .trim()
+            assert.deepEqual(rec, firstByArtist.get(key))
+          }
+        }
+      ),
+      PBT_CONFIG
+    )
+  })
+
+  it('deduplicates when the only difference is case/punctuation in the artist name', () => {
+    const recs = [
+      { title: 'Song A', artist: 'The Chats' },
+      { title: 'Song B', artist: 'the chats' },
+      { title: 'Song C', artist: 'THE CHATS!!!' }
+    ]
+    const deduped = dedupeByArtist(recs)
+    assert.equal(deduped.length, 1)
+    assert.equal(deduped[0].title, 'Song A')
+  })
+})
+
+// -------------------------------------------------------------------
+// Property 15: Taste-profile context included in buildUserMessage
+// -------------------------------------------------------------------
+describe('Property 15: Taste-profile context included in buildUserMessage', () => {
+  const tasteProfileArb = fc
+    .string({ minLength: 1, maxLength: 200 })
+    .filter((s) => s.trim().length > 0 && !/[[\]]/.test(s))
+    .map((s) => s.trim())
+
+  it('message includes the taste-profile text verbatim when provided', () => {
+    fc.assert(
+      fc.property(
+        nonEmptyPrintableArb,
+        tasteProfileArb,
+        (prompt, tasteProfile) => {
+          const message = buildUserMessage(
+            prompt,
+            [],
+            [],
+            10,
+            tasteProfile
+          )
+          assert.ok(
+            message.includes(tasteProfile),
+            'message must contain the taste profile text verbatim'
+          )
+        }
+      ),
+      PBT_CONFIG
+    )
+  })
+
+  it('taste-profile text appears before the vibe instruction', () => {
+    fc.assert(
+      fc.property(
+        nonEmptyPrintableArb,
+        tasteProfileArb,
+        (prompt, tasteProfile) => {
+          const message = buildUserMessage(
+            prompt,
+            [],
+            [],
+            10,
+            tasteProfile
+          )
+          const profileIndex = message.indexOf(tasteProfile)
+          const vibeIndex = message.indexOf('Suggest 10 songs matching this vibe')
+          assert.ok(profileIndex >= 0 && vibeIndex >= 0)
+          assert.ok(
+            profileIndex < vibeIndex,
+            'taste profile block must precede the vibe instruction'
+          )
+        }
+      ),
+      PBT_CONFIG
+    )
+  })
+
+  it('omitting the taste profile leaves the message unchanged from the default', () => {
+    fc.assert(
+      fc.property(nonEmptyPrintableArb, (prompt) => {
+        const withDefault = buildUserMessage(prompt, [])
+        const withExplicitEmpty = buildUserMessage(prompt, [], [], 10, '')
+        assert.equal(withDefault, withExplicitEmpty)
+      }),
       PBT_CONFIG
     )
   })

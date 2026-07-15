@@ -3,6 +3,10 @@ import { sendApiRequest } from '@/shared/api'
 import { QueueManager } from '@/services/queueManager'
 import { LogLevel } from '@/hooks/ConsoleLogsProvider'
 import { createModuleLogger } from '@/shared/utils/logger'
+import {
+  AI_SUGGESTED_HISTORY_STORAGE_KEY_PREFIX,
+  AI_SUGGESTED_HISTORY_WINDOW_MS
+} from '@/shared/constants/aiSuggestion'
 
 const log = createModuleLogger('QueueAutoFiller')
 
@@ -151,6 +155,52 @@ export class QueueAutoFiller {
     }
   }
 
+  private loadRecentAiSuggestions(): Array<{
+    id: string
+    title: string
+    artist: string
+    suggestedAt: number
+  }> {
+    if (typeof window === 'undefined' || !this.username) return []
+    try {
+      const raw = localStorage.getItem(
+        `${AI_SUGGESTED_HISTORY_STORAGE_KEY_PREFIX}${this.username}`
+      )
+      if (!raw) return []
+      const parsed = JSON.parse(raw) as Array<{
+        id: string
+        title: string
+        artist: string
+        suggestedAt: number
+      }>
+      const cutoff = Date.now() - AI_SUGGESTED_HISTORY_WINDOW_MS
+      return parsed.filter((entry) => entry.suggestedAt >= cutoff)
+    } catch {
+      return []
+    }
+  }
+
+  private recordAiSuggestions(
+    tracks: Array<{ id: string; title: string; artist: string }>
+  ): void {
+    if (typeof window === 'undefined' || !this.username || tracks.length === 0) {
+      return
+    }
+    try {
+      const now = Date.now()
+      const updated = [
+        ...this.loadRecentAiSuggestions(),
+        ...tracks.map((t) => ({ ...t, suggestedAt: now }))
+      ]
+      localStorage.setItem(
+        `${AI_SUGGESTED_HISTORY_STORAGE_KEY_PREFIX}${this.username}`,
+        JSON.stringify(updated)
+      )
+    } catch {
+      // Non-critical: localStorage may be unavailable (private browsing, quota exceeded)
+    }
+  }
+
   private async fill(): Promise<void> {
     if (!this.username) {
       if (this.addLog) {
@@ -185,13 +235,27 @@ export class QueueAutoFiller {
 
     let tracksAdded = 0
     const currentQueue = this.queueManager.getQueue()
-    const excludedTrackIds = currentQueue.map(
-      (item) => item.tracks.spotify_track_id
+    const recentAiSuggestions = this.loadRecentAiSuggestions()
+    const excludedTrackIds = Array.from(
+      new Set([
+        ...currentQueue.map((item) => item.tracks.spotify_track_id),
+        ...recentAiSuggestions.map((entry) => entry.id)
+      ])
     )
-    const queuedTracks = currentQueue.map((item) => ({
-      title: item.tracks.name,
-      artist: item.tracks.artist
-    }))
+    // Recently-AI-suggested tracks are merged into queuedTracks (not just
+    // excludedTrackIds) so they actually reach the Claude prompt via
+    // buildUserMessage's exclusion list — excludedTrackIds alone only filters
+    // post-resolution, which can't stop Claude from re-generating them.
+    const queuedTracks = [
+      ...currentQueue.map((item) => ({
+        title: item.tracks.name,
+        artist: item.tracks.artist
+      })),
+      ...recentAiSuggestions.map((entry) => ({
+        title: entry.title,
+        artist: entry.artist
+      }))
+    ]
 
     try {
       const controller = new AbortController()
@@ -262,6 +326,13 @@ export class QueueAutoFiller {
         )
       }
 
+      // Only tracks that actually made it into the queue are recorded as
+      // "recently suggested" — recording before addTrack succeeds would
+      // wrongly exclude tracks that failed to add (e.g. transient network
+      // error) from future suggestions for up to an hour.
+      const addedTracks: Array<{ id: string; title: string; artist: string }> =
+        []
+
       for (const track of result.tracks) {
         try {
           if (this.addLog) {
@@ -273,6 +344,11 @@ export class QueueAutoFiller {
           }
           await this.addTrack(track.id)
           tracksAdded++
+          addedTracks.push({
+            id: track.id,
+            title: track.title,
+            artist: track.artist
+          })
         } catch (error) {
           if (this.addLog) {
             this.addLog(
@@ -284,6 +360,8 @@ export class QueueAutoFiller {
           }
         }
       }
+
+      this.recordAiSuggestions(addedTracks)
     } catch (error) {
       if (this.addLog) {
         this.addLog(
@@ -294,6 +372,7 @@ export class QueueAutoFiller {
         )
       }
       await this.fallback()
+      return
     }
 
     if (tracksAdded === 0) {

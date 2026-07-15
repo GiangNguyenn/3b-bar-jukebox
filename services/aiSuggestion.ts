@@ -12,8 +12,9 @@ const logger = createModuleLogger('AISuggestion')
 
 const CLAUDE_MODEL = 'claude-sonnet-4-6'
 
-const SYSTEM_MESSAGE = `You are an expert music curator for a bar and venue jukebox system.
-Your job is to suggest exactly ${SUGGESTION_BATCH_SIZE} songs that match the requested vibe.
+function buildSystemMessage(count: number): string {
+  return `You are an expert music curator for a bar and venue jukebox system.
+Your job is to suggest exactly ${count} songs that match the requested vibe.
 
 Rules:
 - Return ONLY a valid JSON array — no explanation, no markdown, no other text
@@ -25,13 +26,18 @@ Rules:
 - Choose songs that are widely available on Spotify
 
 Format: [{"title": "Song Name", "artist": "Artist Name"}, ...]`
+}
 
 export function buildUserMessage(
   prompt: string,
   recentlyPlayed: RecentlyPlayedEntry[],
-  queuedTracks: Array<{ title: string; artist: string }> = []
+  queuedTracks: Array<{ title: string; artist: string }> = [],
+  count: number = SUGGESTION_BATCH_SIZE,
+  tasteProfile: string = ''
 ): string {
-  let message = `Suggest ${SUGGESTION_BATCH_SIZE} songs matching this vibe: ${prompt}`
+  let message = tasteProfile
+    ? `${tasteProfile}\n\nSuggest ${count} songs matching this vibe: ${prompt}`
+    : `Suggest ${count} songs matching this vibe: ${prompt}`
 
   const allExcluded = [
     ...recentlyPlayed.map((e) => ({ title: e.title, artist: e.artist })),
@@ -97,6 +103,29 @@ export function parseAiResponse(raw: string): AiSongRecommendation[] {
   }
 
   return recommendations
+}
+
+export function computeShortfall(
+  recommendationsCount: number,
+  batchSize: number = SUGGESTION_BATCH_SIZE
+): number {
+  return Math.max(0, batchSize - recommendationsCount)
+}
+
+export function dedupeByArtist(
+  recommendations: AiSongRecommendation[]
+): AiSongRecommendation[] {
+  const seenArtists = new Set<string>()
+  const deduped: AiSongRecommendation[] = []
+
+  for (const rec of recommendations) {
+    const key = normalize(rec.artist)
+    if (seenArtists.has(key)) continue
+    seenArtists.add(key)
+    deduped.push(rec)
+  }
+
+  return deduped
 }
 
 export function buildSpotifySearchQuery(title: string, artist: string): string {
@@ -169,17 +198,18 @@ async function spotifySearch(
  * common-word title overlap ("story") from accepting a completely wrong
  * artist, or vice-versa.
  */
+function normalize(s: string): string {
+  return s
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, '')
+    .trim()
+}
+
 function isAcceptableSearchResult(
   requestedTitle: string,
   requestedArtist: string,
   result: SpotifySearchResult
 ): boolean {
-  const normalize = (s: string) =>
-    s
-      .toLowerCase()
-      .replace(/[^a-z0-9\s]/g, '')
-      .trim()
-
   // Title: significant words (≥4 chars) shared between request and result
   const titleWords = new Set(
     normalize(requestedTitle)
@@ -261,12 +291,48 @@ export async function resolveToSpotifyTrack(
   }
 }
 
+async function callClaude(
+  anthropic: Anthropic,
+  systemMessage: string,
+  userMessage: string
+): Promise<string | null> {
+  try {
+    const message = await anthropic.messages.create({
+      model: CLAUDE_MODEL,
+      max_tokens: 1024,
+      temperature: 1.0,
+      system: systemMessage,
+      messages: [{ role: 'user', content: userMessage }]
+    })
+
+    const block = message.content[0]
+    if (block.type !== 'text') {
+      logger('WARN', 'Claude returned non-text content block')
+      return null
+    }
+    if (!block.text) {
+      logger('WARN', 'Claude returned empty content')
+      return null
+    }
+    return block.text
+  } catch (error) {
+    logger(
+      'ERROR',
+      'Failed to contact Claude API',
+      undefined,
+      error instanceof Error ? error : undefined
+    )
+    return null
+  }
+}
+
 export async function getAiSuggestions(
   prompt: string,
   excludedTrackIds: string[],
   recentlyPlayed: RecentlyPlayedEntry[],
   queuedTracks: Array<{ title: string; artist: string }> = [],
-  spotifyToken?: string
+  spotifyToken?: string,
+  tasteProfile: string = ''
 ): Promise<AiSuggestionResult> {
   if (!process.env.ANTHROPIC_API_KEY) {
     logger('ERROR', 'Anthropic API key is not configured')
@@ -278,7 +344,13 @@ export async function getAiSuggestions(
     return { tracks: [], failedResolutions: [] }
   }
 
-  const userMessage = buildUserMessage(prompt, recentlyPlayed, queuedTracks)
+  const userMessage = buildUserMessage(
+    prompt,
+    recentlyPlayed,
+    queuedTracks,
+    SUGGESTION_BATCH_SIZE,
+    tasteProfile
+  )
 
   logger(
     'INFO',
@@ -290,50 +362,60 @@ export async function getAiSuggestions(
 
   const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
 
-  let content: string
-  try {
-    const message = await anthropic.messages.create({
-      model: CLAUDE_MODEL,
-      max_tokens: 1024,
-      temperature: 1.0,
-      system: SYSTEM_MESSAGE,
-      messages: [{ role: 'user', content: userMessage }]
-    })
+  const initialContent = await callClaude(
+    anthropic,
+    buildSystemMessage(SUGGESTION_BATCH_SIZE),
+    userMessage
+  )
+  if (initialContent === null) {
+    return { tracks: [], failedResolutions: [] }
+  }
 
-    const block = message.content[0]
-    if (block.type !== 'text') {
-      logger('WARN', 'Claude returned non-text content block')
-      return { tracks: [], failedResolutions: [] }
-    }
-    content = block.text
-  } catch (error) {
+  // Enforce "max 1 song per artist" programmatically rather than relying
+  // solely on the prompt instruction — also saves wasted Spotify lookups.
+  // Dedup runs BEFORE the shortfall check so a dedup-driven shortfall (e.g.
+  // 10 raw recommendations with 3 duplicate artists) is still retried.
+  let recommendations = dedupeByArtist(parseAiResponse(initialContent))
+
+  // Claude under-delivered on count — ask once for the shortfall, excluding
+  // what it already gave us so it doesn't just repeat itself. This is
+  // separate from Spotify-resolution loss (handled below via failedResolutions),
+  // which is not retried here to keep this bounded to one extra call.
+  if (recommendations.length < SUGGESTION_BATCH_SIZE) {
+    const shortfall = computeShortfall(recommendations.length)
     logger(
-      'ERROR',
-      'Failed to contact Claude API',
-      undefined,
-      error instanceof Error ? error : undefined
+      'INFO',
+      `Claude returned ${recommendations.length}/${SUGGESTION_BATCH_SIZE} recommendations, requesting ${shortfall} more`
     )
-    return { tracks: [], failedResolutions: [] }
-  }
 
-  if (!content) {
-    logger('WARN', 'Claude returned empty content')
-    return { tracks: [], failedResolutions: [] }
+    const followUpMessage = buildUserMessage(
+      prompt,
+      recentlyPlayed,
+      [...queuedTracks, ...recommendations],
+      shortfall,
+      tasteProfile
+    )
+    const followUpContent = await callClaude(
+      anthropic,
+      buildSystemMessage(shortfall),
+      followUpMessage
+    )
+    if (followUpContent !== null) {
+      recommendations = dedupeByArtist([
+        ...recommendations,
+        ...parseAiResponse(followUpContent)
+      ])
+    }
   }
-
-  const recommendations = parseAiResponse(content)
 
   if (recommendations.length === 0) {
     logger('WARN', 'Claude returned no valid recommendations')
     return { tracks: [], failedResolutions: [] }
   }
 
-  if (recommendations.length < SUGGESTION_BATCH_SIZE) {
-    logger(
-      'INFO',
-      `Claude returned ${recommendations.length}/${SUGGESTION_BATCH_SIZE} recommendations, proceeding with partial batch`
-    )
-  }
+  // Cap at the batch size in case Claude over-delivered on either call —
+  // nothing upstream enforces the requested count.
+  recommendations = recommendations.slice(0, SUGGESTION_BATCH_SIZE)
 
   // Resolve all recommendations to Spotify track IDs in parallel
   const tracks: AiSuggestionResult['tracks'] = []
@@ -396,7 +478,9 @@ export async function getAiSuggestions(
 
 const RECENTLY_PLAYED_LIMIT = 100
 
-async function resolveProfileId(usernameOrId: string): Promise<string | null> {
+export async function resolveProfileId(
+  usernameOrId: string
+): Promise<string | null> {
   // If it looks like a UUID, use it directly
   if (usernameOrId.includes('-') && usernameOrId.length > 30) {
     return usernameOrId

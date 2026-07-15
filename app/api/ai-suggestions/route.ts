@@ -6,6 +6,7 @@ import {
   getRecentlyPlayed,
   addToRecentlyPlayed
 } from '@/services/aiSuggestion'
+import { getVenueTasteProfile, formatTasteProfile } from '@/services/venueTasteProfile'
 import { createModuleLogger } from '@/shared/utils/logger'
 import { supabase } from '@/lib/supabase'
 import { aiSuggestionsRequestSchema } from '@/shared/validations/aiSuggestionSchemas'
@@ -123,14 +124,18 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       .single<{ id: string }>()
 
     const resolvedProfileId = profile?.id ?? profileId
-    const recentlyPlayed = await getRecentlyPlayed(resolvedProfileId)
+    const [recentlyPlayed, tasteProfile] = await Promise.all([
+      getRecentlyPlayed(resolvedProfileId),
+      getVenueTasteProfile(resolvedProfileId)
+    ])
 
     const result = await getAiSuggestions(
       prompt,
       excludedTrackIds,
       recentlyPlayed,
       queuedTracks,
-      spotifyToken
+      spotifyToken,
+      formatTasteProfile(tasteProfile)
     )
 
     // Record returned tracks as recently played after the response is sent,

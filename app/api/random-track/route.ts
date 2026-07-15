@@ -1,6 +1,23 @@
 import { NextResponse } from 'next/server'
 import { supabase, queryWithRetry } from '@/lib/supabase'
 
+// Weighted random pick biased toward more popular tracks, instead of a
+// uniform pick — degrades the AI-suggestion fallback more gracefully than
+// picking a totally arbitrary track. `popularity + 1` keeps zero-popularity
+// (cache-only) tracks pickable, just unlikely.
+function pickWeightedByPopularity<T extends { popularity: number | null }>(
+  tracks: T[]
+): T {
+  const weights = tracks.map((t) => Math.max(t.popularity ?? 0, 0) + 1)
+  const totalWeight = weights.reduce((sum, w) => sum + w, 0)
+  let roll = Math.random() * totalWeight
+  for (let i = 0; i < tracks.length; i++) {
+    roll -= weights[i]
+    if (roll <= 0) return tracks[i]
+  }
+  return tracks[tracks.length - 1]
+}
+
 export async function POST(request: Request): Promise<NextResponse> {
   try {
     const body = (await request.json()) as {
@@ -75,7 +92,9 @@ export async function POST(request: Request): Promise<NextResponse> {
         spotify_url: string | null
       }>
     >(
-      tracksQuery.limit(50), // Get up to 50 eligible tracks to pick from
+      // Order by popularity first so the LIMIT slice is the most popular
+      // eligible tracks, not an arbitrary/unordered 50 rows.
+      tracksQuery.order('popularity', { ascending: false }).limit(50),
       undefined,
       'Fetch tracks for random selection'
     )
@@ -97,9 +116,8 @@ export async function POST(request: Request): Promise<NextResponse> {
       )
     }
 
-    // Pick a random track from the available tracks
-    const randomTrack =
-      availableTracks[Math.floor(Math.random() * availableTracks.length)]
+    // Pick a track weighted toward higher popularity, rather than uniformly
+    const randomTrack = pickWeightedByPopularity(availableTracks)
     return NextResponse.json({
       success: true,
       track: randomTrack

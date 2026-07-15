@@ -40,6 +40,9 @@ export function TrackSuggestionsTab({
   const [suggestedTracks, setSuggestedTracks] = useState<AiSuggestionTrack[]>(
     []
   )
+  const [failedResolutions, setFailedResolutions] = useState<
+    Array<{ title: string; artist: string; reason: string }>
+  >([])
   const [toast, setToast] = useState<{
     message: string
     variant: 'success' | 'warning' | 'info'
@@ -64,6 +67,11 @@ export function TrackSuggestionsTab({
 
   const handleTestAiSuggestion = async (): Promise<void> => {
     setIsLoading(true)
+    // Clear previous results up front so a failed/empty re-test doesn't leave
+    // a stale track list and failed-resolutions badge rendered underneath the
+    // new failure toast.
+    setSuggestedTracks([])
+    setFailedResolutions([])
     try {
       const response = await fetch('/api/ai-suggestions', {
         method: 'POST',
@@ -88,6 +96,7 @@ export function TrackSuggestionsTab({
 
       if (data.success && data.tracks && data.tracks.length > 0) {
         setSuggestedTracks(data.tracks)
+        setFailedResolutions(data.failedResolutions ?? [])
         const failedCount = data.failedResolutions?.length ?? 0
         const toastMsg =
           failedCount > 0
@@ -171,9 +180,29 @@ export function TrackSuggestionsTab({
 
         {suggestedTracks.length > 0 && (
           <div className='space-y-4'>
-            <h3 className='text-lg font-medium'>
-              AI Suggested Tracks ({suggestedTracks.length})
-            </h3>
+            <div>
+              <h3 className='text-lg font-medium'>
+                AI Suggested Tracks ({suggestedTracks.length})
+              </h3>
+              {failedResolutions.length > 0 && (
+                <details className='mt-1 text-xs text-muted-foreground'>
+                  <summary className='cursor-pointer'>
+                    {suggestedTracks.length}/
+                    {suggestedTracks.length + failedResolutions.length}{' '}
+                    suggestions added — {failedResolutions.length} couldn&apos;t
+                    be verified on Spotify
+                  </summary>
+                  <ul className='mt-2 space-y-1 pl-4'>
+                    {failedResolutions.map((failed, index) => (
+                      <li key={index}>
+                        &ldquo;{failed.title}&rdquo; by {failed.artist} —{' '}
+                        {failed.reason}
+                      </li>
+                    ))}
+                  </ul>
+                </details>
+              )}
+            </div>
             <div className='space-y-2'>
               {suggestedTracks.map((track, index) => (
                 <div
