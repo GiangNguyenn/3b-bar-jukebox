@@ -183,7 +183,11 @@ export class QueueAutoFiller {
   private recordAiSuggestions(
     tracks: Array<{ id: string; title: string; artist: string }>
   ): void {
-    if (typeof window === 'undefined' || !this.username || tracks.length === 0) {
+    if (
+      typeof window === 'undefined' ||
+      !this.username ||
+      tracks.length === 0
+    ) {
       return
     }
     try {

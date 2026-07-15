@@ -6,7 +6,10 @@ import {
   getRecentlyPlayed,
   addToRecentlyPlayed
 } from '@/services/aiSuggestion'
-import { getVenueTasteProfile, formatTasteProfile } from '@/services/venueTasteProfile'
+import {
+  getVenueTasteProfile,
+  formatTasteProfile
+} from '@/services/venueTasteProfile'
 import { createModuleLogger } from '@/shared/utils/logger'
 import { supabase } from '@/lib/supabase'
 import { aiSuggestionsRequestSchema } from '@/shared/validations/aiSuggestionSchemas'

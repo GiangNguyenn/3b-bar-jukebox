@@ -788,7 +788,10 @@ describe('Property 14: Artist dedup before resolution', () => {
         (recs) => {
           const deduped = dedupeByArtist(recs)
           const normalizedArtists = deduped.map((r) =>
-            r.artist.toLowerCase().replace(/[^a-z0-9\s]/g, '').trim()
+            r.artist
+              .toLowerCase()
+              .replace(/[^a-z0-9\s]/g, '')
+              .trim()
           )
           const uniqueArtists = new Set(normalizedArtists)
           assert.equal(
@@ -870,13 +873,7 @@ describe('Property 15: Taste-profile context included in buildUserMessage', () =
         nonEmptyPrintableArb,
         tasteProfileArb,
         (prompt, tasteProfile) => {
-          const message = buildUserMessage(
-            prompt,
-            [],
-            [],
-            10,
-            tasteProfile
-          )
+          const message = buildUserMessage(prompt, [], [], 10, tasteProfile)
           assert.ok(
             message.includes(tasteProfile),
             'message must contain the taste profile text verbatim'
@@ -893,15 +890,11 @@ describe('Property 15: Taste-profile context included in buildUserMessage', () =
         nonEmptyPrintableArb,
         tasteProfileArb,
         (prompt, tasteProfile) => {
-          const message = buildUserMessage(
-            prompt,
-            [],
-            [],
-            10,
-            tasteProfile
-          )
+          const message = buildUserMessage(prompt, [], [], 10, tasteProfile)
           const profileIndex = message.indexOf(tasteProfile)
-          const vibeIndex = message.indexOf('Suggest 10 songs matching this vibe')
+          const vibeIndex = message.indexOf(
+            'Suggest 10 songs matching this vibe'
+          )
           assert.ok(profileIndex >= 0 && vibeIndex >= 0)
           assert.ok(
             profileIndex < vibeIndex,

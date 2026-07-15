@@ -77,8 +77,8 @@ async function computeVenueTasteProfile(
   profileId: string
 ): Promise<VenueTasteProfile> {
   try {
-    const [suggestedResult, popularityResult, decadeResult] =
-      await Promise.all([
+    const [suggestedResult, popularityResult, decadeResult] = await Promise.all(
+      [
         supabase
           .from('suggested_tracks')
           .select('count, tracks(genre, artist)')
@@ -91,7 +91,8 @@ async function computeVenueTasteProfile(
         supabase.rpc('get_track_release_year_histogram', {
           p_user_id: profileId
         })
-      ])
+      ]
+    )
 
     if (suggestedResult.error) {
       logger(
@@ -102,8 +103,7 @@ async function computeVenueTasteProfile(
 
     const genreCounts = new Map<string, number>()
     const artistCounts = new Map<string, number>()
-    const rows = (suggestedResult.data ??
-      []) as unknown as SuggestedTrackRow[]
+    const rows = (suggestedResult.data ?? []) as unknown as SuggestedTrackRow[]
     for (const row of rows) {
       const genre = row.tracks?.genre
       const artist = row.tracks?.artist
@@ -192,11 +192,15 @@ export function formatTasteProfile(profile: VenueTasteProfile): string {
   }
 
   if (profile.topDecades.length > 0) {
-    lines.push(`Historically popular decades here: ${profile.topDecades.join(', ')}.`)
+    lines.push(
+      `Historically popular decades here: ${profile.topDecades.join(', ')}.`
+    )
   }
 
   if (profile.popularityDescriptor) {
-    lines.push(`This crowd tends to respond to ${profile.popularityDescriptor}.`)
+    lines.push(
+      `This crowd tends to respond to ${profile.popularityDescriptor}.`
+    )
   }
 
   return lines.join('\n')
