@@ -375,14 +375,14 @@ describe('Property 1: Original presets preserved', () => {
       label: 'V-Pop',
       emoji: '🇻🇳',
       prompt:
-        'Popular Vietnamese music (V-Pop). Trending Vietnamese hits, ballads, and modern Vietnamese pop songs.'
+        'Popular, upbeat Vietnamese pop (V-Pop) for a bar crowd. Trending Vietnamese hits, catchy ballads, and modern V-Pop stars like Sơn Tùng M-TP, Mỹ Tâm, and Đen Vâu.'
     },
     {
       id: 'vrock',
       label: 'Viet Rock & Hip Hop',
       emoji: '🎸🇻🇳',
       prompt:
-        'Vietnamese rock and hip hop. Vietnamese rap, Viet rock bands, and Vietnamese hip hop artists.'
+        'Vietnamese rock and hip hop with bar-ready energy. Vietnamese rap and hip hop from artists like Suboi, alongside Viet rock bands and rock-influenced Vietnamese pop.'
     },
     {
       id: 'punk-metal',

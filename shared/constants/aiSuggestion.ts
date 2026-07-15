@@ -74,14 +74,14 @@ export const PRESET_PROMPTS: PresetPrompt[] = [
     label: 'V-Pop',
     emoji: '🇻🇳',
     prompt:
-      'Popular Vietnamese music (V-Pop). Trending Vietnamese hits, ballads, and modern Vietnamese pop songs.'
+      'Popular, upbeat Vietnamese pop (V-Pop) for a bar crowd. Trending Vietnamese hits, catchy ballads, and modern V-Pop stars like Sơn Tùng M-TP, Mỹ Tâm, and Đen Vâu.'
   },
   {
     id: 'vrock',
     label: 'Viet Rock & Hip Hop',
     emoji: '🎸🇻🇳',
     prompt:
-      'Vietnamese rock and hip hop. Vietnamese rap, Viet rock bands, and Vietnamese hip hop artists.'
+      'Vietnamese rock and hip hop with bar-ready energy. Vietnamese rap and hip hop from artists like Suboi, alongside Viet rock bands and rock-influenced Vietnamese pop.'
   },
   {
     id: 'punk-metal',
@@ -95,14 +95,14 @@ export const PRESET_PROMPTS: PresetPrompt[] = [
     label: 'Dream Femme',
     emoji: '🌙',
     prompt:
-      'Dreamy, melancholic female-fronted indie and pop. Cinematic and atmospheric songs with lush production, haunting vocals, and nostalgic moods. Dream pop, baroque pop, and ethereal indie.'
+      'Dreamy, melancholic female-fronted indie and pop for a moody late-night bar. Cinematic and atmospheric songs with lush production, haunting vocals, and nostalgic moods. Dream pop, baroque pop, and ethereal indie.'
   },
   {
     id: 'riot-grrrl',
     label: 'Riot Grrrl',
     emoji: '✊',
     prompt:
-      'Riot grrrl and feminist punk. Raw, energetic female-fronted punk and alternative rock with fierce, empowering attitude. Distorted guitars, powerful vocals, and unapologetic energy.'
+      'Riot grrrl and feminist punk for a bar with attitude. Raw, energetic female-fronted punk and alternative rock with fierce, empowering energy and singalong hooks. Distorted guitars, powerful vocals, and unapologetic attitude.'
   },
   {
     id: 'soul-funk',
