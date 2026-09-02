@@ -1,5 +1,4 @@
-import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
-import { faGear } from '@fortawesome/free-solid-svg-icons'
+import { Loader2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 interface LoadingProps {
@@ -14,10 +13,7 @@ export function Loading({
   message
 }: LoadingProps): JSX.Element {
   const gear = (
-    <FontAwesomeIcon
-      className={cn('h-8 w-8 animate-spin', className)}
-      icon={faGear}
-    />
+    <Loader2 className={cn('h-8 w-8 animate-spin', className)} />
   )
 
   const content = (
