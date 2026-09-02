@@ -11,7 +11,10 @@ import {
   truncatePrompt
 } from '@/shared/constants/aiSuggestion'
 import { useNowPlayingRealtime } from '@/hooks/useNowPlayingRealtime'
-import type { RemoteCommand } from '@/hooks/useRemoteCommandListener'
+import type {
+  RemoteCommand,
+  RemoteCommandResult
+} from '@/hooks/useRemoteCommandListener'
 
 const PLAYBACK_BUTTON_CLASS = cn(
   TACTILE_BUTTON_BASE,
@@ -35,6 +38,7 @@ export default function RemotePage(): JSX.Element {
   const [savedAt, setSavedAt] = useState<Date | null>(null)
   const [loadError, setLoadError] = useState<string | null>(null)
   const [volume, setVolume] = useState(50)
+  const [commandError, setCommandError] = useState<string | null>(null)
   const broadcastChannelRef = useRef<ReturnType<
     typeof supabaseBrowser.channel
   > | null>(null)
@@ -42,6 +46,21 @@ export default function RemotePage(): JSX.Element {
   const pendingRef = useRef<PromptState | null>(null)
   const textareaDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const volumeDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const commandErrorTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null
+  )
+
+  // Show a command failure (from a send that didn't reach the laptop, or an
+  // ack reporting it failed there) for a few seconds, then clear it.
+  const flashCommandError = useCallback((message: string) => {
+    setCommandError(message)
+    if (commandErrorTimeoutRef.current)
+      clearTimeout(commandErrorTimeoutRef.current)
+    commandErrorTimeoutRef.current = setTimeout(
+      () => setCommandError(null),
+      4000
+    )
+  }, [])
 
   // Load current prompt from Supabase
   useEffect(() => {
@@ -104,17 +123,30 @@ export default function RemotePage(): JSX.Element {
     void save(pending)
   }, [profileId, save])
 
-  // Open a broadcast channel to send commands to the admin page (laptop)
+  // Open a broadcast channel to send commands to the admin page (laptop),
+  // and listen on the same channel for its ack of whether each one worked —
+  // the laptop is the only side that knows if the Spotify call actually
+  // succeeded, so without this the phone has no way to find out.
   useEffect(() => {
     if (!profileId) return
-    const ch = supabaseBrowser.channel(`remote_commands_${profileId}`)
+    const ch = supabaseBrowser
+      .channel(`remote_commands_${profileId}`)
+      .on(
+        'broadcast',
+        { event: 'command_result' },
+        ({ payload }: { payload: RemoteCommandResult }) => {
+          if (!payload.ok) {
+            flashCommandError(payload.error ?? 'Command failed.')
+          }
+        }
+      )
     ch.subscribe()
     broadcastChannelRef.current = ch
     return () => {
       void supabaseBrowser.removeChannel(ch)
       broadcastChannelRef.current = null
     }
-  }, [profileId])
+  }, [profileId, flashCommandError])
 
   const handleCustomPromptChange = useCallback(
     (value: string) => {
@@ -163,6 +195,8 @@ export default function RemotePage(): JSX.Element {
     return () => {
       if (volumeDebounceRef.current) clearTimeout(volumeDebounceRef.current)
       if (textareaDebounceRef.current) clearTimeout(textareaDebounceRef.current)
+      if (commandErrorTimeoutRef.current)
+        clearTimeout(commandErrorTimeoutRef.current)
     }
   }, [])
 
@@ -179,14 +213,25 @@ export default function RemotePage(): JSX.Element {
       extra?: { volumePercent?: number }
     ): void => {
       const ch = broadcastChannelRef.current
-      if (!ch) return
-      void ch.send({
-        type: 'broadcast',
-        event: 'command',
-        payload: { action, ...extra } as RemoteCommand
-      })
+      if (!ch) {
+        flashCommandError('Not connected yet — try again in a moment.')
+        return
+      }
+      void ch
+        .send({
+          type: 'broadcast',
+          event: 'command',
+          payload: { action, ...extra } as RemoteCommand
+        })
+        .then((status) => {
+          // 'ok' means it reached the relay; the laptop still acks (or not)
+          // via the 'command_result' listener above.
+          if (status !== 'ok') {
+            flashCommandError('Command failed to send. Check your connection.')
+          }
+        })
     },
-    []
+    [flashCommandError]
   )
 
   const handleVolumeChange = useCallback(
@@ -219,6 +264,12 @@ export default function RemotePage(): JSX.Element {
       {loadError && (
         <p className='rounded-md bg-red-950 px-4 py-3 text-sm text-red-400'>
           {loadError}
+        </p>
+      )}
+
+      {commandError && (
+        <p className='rounded-md bg-red-950 px-4 py-3 text-sm text-red-400'>
+          {commandError}
         </p>
       )}
 

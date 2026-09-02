@@ -423,14 +423,29 @@ export default function AdminPage(): JSX.Element {
   } = usePlaybackControls()
 
   const handleRemoteCommand = useCallback(
-    (cmd: RemoteCommand) => {
-      if (cmd.action === 'play') {
-        void handleRemotePlayPause('play')
-      } else if (cmd.action === 'pause') {
-        void handleRemotePlayPause('pause')
+    (
+      cmd: RemoteCommand,
+      respond: (result: { ok: boolean; error?: string }) => void
+    ) => {
+      if (cmd.action === 'play' || cmd.action === 'pause') {
+        if (!deviceId) {
+          respond({ ok: false, error: 'No player device connected.' })
+          return
+        }
+        void handleRemotePlayPause(cmd.action)
+        respond({ ok: true })
       } else if (cmd.action === 'skip') {
+        if (!deviceId) {
+          respond({ ok: false, error: 'No player device connected.' })
+          return
+        }
         void handleRemoteSkip()
+        respond({ ok: true })
       } else if (cmd.action === 'volume') {
+        if (!deviceId) {
+          respond({ ok: false, error: 'No player device connected.' })
+          return
+        }
         const clamped = Math.max(
           0,
           Math.min(100, Math.round(cmd.volumePercent))
@@ -439,15 +454,16 @@ export default function AdminPage(): JSX.Element {
         void sendApiRequest({
           path: `me/player/volume?volume_percent=${clamped}&device_id=${deviceId}`,
           method: 'PUT'
-        }).catch((error) => {
-          showToast(
-            describeApiFailure(
+        })
+          .then(() => respond({ ok: true }))
+          .catch((error) => {
+            const message = describeApiFailure(
               error,
               'Failed to set volume from remote. Please try again.'
-            ),
-            'warning'
-          )
-        })
+            )
+            respond({ ok: false, error: message })
+            showToast(message, 'warning')
+          })
       }
     },
     [handleRemotePlayPause, handleRemoteSkip, deviceId, setVolume]
