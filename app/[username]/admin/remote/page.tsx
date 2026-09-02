@@ -13,8 +13,21 @@ import {
 import { useNowPlayingRealtime } from '@/hooks/useNowPlayingRealtime'
 import type {
   RemoteCommand,
+  RemoteCommandEnvelope,
   RemoteCommandResult
 } from '@/hooks/useRemoteCommandListener'
+
+// How long to wait for the laptop's ack before assuming it never saw the
+// command — long enough to tolerate normal network/relay latency, short
+// enough that a real problem shows up quickly.
+const COMMAND_ACK_TIMEOUT_MS = 5000
+
+function makeCommandId(): string {
+  if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) {
+    return crypto.randomUUID()
+  }
+  return `${Date.now()}-${Math.random().toString(36).slice(2)}`
+}
 
 const PLAYBACK_BUTTON_CLASS = cn(
   TACTILE_BUTTON_BASE,
@@ -49,6 +62,12 @@ export default function RemotePage(): JSX.Element {
   const commandErrorTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(
     null
   )
+  // Commands awaiting a 'command_result' ack, keyed by id, with their
+  // no-response timeout so we can tell "the laptop is unreachable right
+  // now" apart from silence that just means everything's fine.
+  const pendingCommandsRef = useRef<
+    Map<string, ReturnType<typeof setTimeout>>
+  >(new Map())
 
   // Show a command failure (from a send that didn't reach the laptop, or an
   // ack reporting it failed there) for a few seconds, then clear it.
@@ -135,6 +154,11 @@ export default function RemotePage(): JSX.Element {
         'broadcast',
         { event: 'command_result' },
         ({ payload }: { payload: RemoteCommandResult }) => {
+          const timeoutId = pendingCommandsRef.current.get(payload.id)
+          if (timeoutId) {
+            clearTimeout(timeoutId)
+            pendingCommandsRef.current.delete(payload.id)
+          }
           if (!payload.ok) {
             flashCommandError(payload.error ?? 'Command failed.')
           }
@@ -192,11 +216,14 @@ export default function RemotePage(): JSX.Element {
 
   // Clear pending timers on unmount to prevent state updates on dead component
   useEffect(() => {
+    const pendingCommands = pendingCommandsRef.current
     return () => {
       if (volumeDebounceRef.current) clearTimeout(volumeDebounceRef.current)
       if (textareaDebounceRef.current) clearTimeout(textareaDebounceRef.current)
       if (commandErrorTimeoutRef.current)
         clearTimeout(commandErrorTimeoutRef.current)
+      pendingCommands.forEach((timeoutId) => clearTimeout(timeoutId))
+      pendingCommands.clear()
     }
   }, [])
 
@@ -217,16 +244,34 @@ export default function RemotePage(): JSX.Element {
         flashCommandError('Not connected yet — try again in a moment.')
         return
       }
+
+      const id = makeCommandId()
+      const envelope: RemoteCommandEnvelope = {
+        id,
+        command: { action, ...extra } as RemoteCommand
+      }
+
+      const timeoutId = setTimeout(() => {
+        pendingCommandsRef.current.delete(id)
+        flashCommandError(
+          'No response from the jukebox player — make sure /admin is open and in the foreground on the laptop.'
+        )
+      }, COMMAND_ACK_TIMEOUT_MS)
+      pendingCommandsRef.current.set(id, timeoutId)
+
       void ch
         .send({
           type: 'broadcast',
           event: 'command',
-          payload: { action, ...extra } as RemoteCommand
+          payload: envelope
         })
         .then((status) => {
           // 'ok' means it reached the relay; the laptop still acks (or not)
-          // via the 'command_result' listener above.
+          // via the 'command_result' listener above — or the timeout fires
+          // if it never does.
           if (status !== 'ok') {
+            clearTimeout(timeoutId)
+            pendingCommandsRef.current.delete(id)
             flashCommandError('Command failed to send. Check your connection.')
           }
         })

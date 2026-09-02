@@ -43,13 +43,6 @@ import { QRCodeComponent } from '@/components/ui'
 import { useAdminTokenManagement } from '@/hooks/useAdminTokenManagement'
 import { usePlaybackEnforcer } from '@/hooks/usePlaybackEnforcer'
 import { usePublishNowPlaying } from '@/hooks/usePublishNowPlaying'
-import { usePlaybackControls } from './hooks/usePlaybackControls'
-import {
-  useRemoteCommandListener,
-  type RemoteCommand
-} from '@/hooks/useRemoteCommandListener'
-import { sendApiRequest, describeApiFailure } from '@/shared/api'
-import { showToast } from '@/lib/toast'
 
 // Recovery removed
 
@@ -70,12 +63,7 @@ export default function AdminPage(): JSX.Element {
   const params = useParams()
   const router = useRouter()
   const username = params?.username as string | undefined
-  const {
-    isReady,
-    status: playerStatus,
-    deviceId,
-    setVolume
-  } = useSpotifyPlayerStore()
+  const { isReady, status: playerStatus, deviceId } = useSpotifyPlayerStore()
 
   const openAdminPath = (path: string): void => {
     if (!username) return
@@ -413,66 +401,9 @@ export default function AdminPage(): JSX.Element {
   // Publish now-playing state to Supabase for realtime display updates
   usePublishNowPlaying(profile?.id ?? null)
 
-  // Remote-command listener: mounted at the page level (not inside a
-  // tab-scoped widget like JukeboxSection) so commands from the /remote page
-  // keep working no matter which admin tab is currently active — mirrors
-  // usePublishNowPlaying above, which has the same requirement.
-  const {
-    handlePlayPause: handleRemotePlayPause,
-    handleSkip: handleRemoteSkip
-  } = usePlaybackControls()
-
-  const handleRemoteCommand = useCallback(
-    (
-      cmd: RemoteCommand,
-      respond: (result: { ok: boolean; error?: string }) => void
-    ) => {
-      if (cmd.action === 'play' || cmd.action === 'pause') {
-        if (!deviceId) {
-          respond({ ok: false, error: 'No player device connected.' })
-          return
-        }
-        void handleRemotePlayPause(cmd.action)
-        respond({ ok: true })
-      } else if (cmd.action === 'skip') {
-        if (!deviceId) {
-          respond({ ok: false, error: 'No player device connected.' })
-          return
-        }
-        void handleRemoteSkip()
-        respond({ ok: true })
-      } else if (cmd.action === 'volume') {
-        if (!deviceId) {
-          respond({ ok: false, error: 'No player device connected.' })
-          return
-        }
-        const clamped = Math.max(
-          0,
-          Math.min(100, Math.round(cmd.volumePercent))
-        )
-        setVolume(clamped)
-        void sendApiRequest({
-          path: `me/player/volume?volume_percent=${clamped}&device_id=${deviceId}`,
-          method: 'PUT'
-        })
-          .then(() => respond({ ok: true }))
-          .catch((error) => {
-            const message = describeApiFailure(
-              error,
-              'Failed to set volume from remote. Please try again.'
-            )
-            respond({ ok: false, error: message })
-            showToast(message, 'warning')
-          })
-      }
-    },
-    [handleRemotePlayPause, handleRemoteSkip, deviceId, setVolume]
-  )
-
-  useRemoteCommandListener({
-    profileId: profile?.id ?? null,
-    onCommand: handleRemoteCommand
-  })
+  // Remote-command handling now lives in <RemoteCommandBridge>, mounted
+  // once in the root layout so it survives navigation away from this page
+  // entirely (e.g. to /display) — see that component for why.
 
   // Only show loading if we have no queue data at all
   if (queueLoading && (!queue || queue.length === 0) && !playlistError) {

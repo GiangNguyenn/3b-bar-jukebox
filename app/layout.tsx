@@ -3,6 +3,7 @@ import { Belgrano } from 'next/font/google'
 import Script from 'next/script'
 import './globals.css'
 import Header from '@/components/Header'
+import { RemoteCommandBridge } from '@/components/RemoteCommandBridge'
 import { ConsoleLogsProvider } from '@/hooks/ConsoleLogsProvider'
 import { ToastProvider } from '@/contexts/ToastContext'
 import StructuredData from './components/StructuredData'
@@ -133,6 +134,7 @@ export default function RootLayout({
         <ToastProvider>
           <ConsoleLogsProvider>
             <Header />
+            <RemoteCommandBridge />
             {children}
           </ConsoleLogsProvider>
         </ToastProvider>
