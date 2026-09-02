@@ -29,26 +29,58 @@ export function RemoteCommandBridge(): null {
   // Track the signed-in owner's id directly (not the page's [username]
   // param, which may not even exist on the current route) so this follows
   // whoever is actually logged in in this browser, wherever they navigate.
+  //
+  // onAuthStateChange fires once immediately with the current (locally
+  // cached) session right after subscribing, so this alone gives us the
+  // initial value too — no need for a separate auth.getUser() round trip
+  // on every single page load site-wide, on top of whatever auth check
+  // that page already does.
   const [userId, setUserId] = useState<string | null>(null)
 
   useEffect(() => {
-    let cancelled = false
-    void supabaseBrowser.auth.getUser().then(({ data: { user } }) => {
-      if (!cancelled) setUserId(user?.id ?? null)
-    })
     const {
       data: { subscription }
     } = supabaseBrowser.auth.onAuthStateChange((_event, session) => {
       setUserId(session?.user?.id ?? null)
     })
     return () => {
-      cancelled = true
       subscription.unsubscribe()
     }
   }, [])
 
+  // usePlaybackControls' handleSkip looks up live playback state by
+  // username, and that lookup trusts the string with no ownership check
+  // (see /api/playback's GET handler). Resolve *our own* username from the
+  // authenticated id rather than letting the hook fall back to whichever
+  // page's [username] the browser happens to be showing — otherwise a
+  // remote command arriving while this tab is idling on a different
+  // venue's public page could read (and act on) that venue's data instead
+  // of ours.
+  const [username, setUsername] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!userId) {
+      setUsername(null)
+      return
+    }
+    let cancelled = false
+    void supabaseBrowser
+      .from('profiles')
+      .select('display_name')
+      .eq('id', userId)
+      .single()
+      .then(({ data }) => {
+        if (!cancelled) setUsername(data?.display_name ?? null)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [userId])
+
   const { deviceId, setVolume } = useSpotifyPlayerStore()
-  const { handlePlayPause, handleSkip } = usePlaybackControls()
+  const { handlePlayPause, handleSkip } = usePlaybackControls({
+    username: username ?? undefined
+  })
 
   const handleRemoteCommand = useCallback(
     (

@@ -65,9 +65,9 @@ export default function RemotePage(): JSX.Element {
   // Commands awaiting a 'command_result' ack, keyed by id, with their
   // no-response timeout so we can tell "the laptop is unreachable right
   // now" apart from silence that just means everything's fine.
-  const pendingCommandsRef = useRef<
-    Map<string, ReturnType<typeof setTimeout>>
-  >(new Map())
+  const pendingCommandsRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(
+    new Map()
+  )
 
   // Show a command failure (from a send that didn't reach the laptop, or an
   // ack reporting it failed there) for a few seconds, then clear it.

@@ -11,7 +11,7 @@ import { playerLifecycleService } from '@/services/playerLifecycle'
 import { sendApiRequest, describeApiFailure } from '@/shared/api'
 import { showToast } from '@/lib/toast'
 
-export function usePlaybackControls(): {
+export function usePlaybackControls(options?: { username?: string }): {
   isLoading: boolean
   isSkipLoading: boolean
   playbackInfo: SpotifyPlaybackState | null
@@ -22,7 +22,21 @@ export function usePlaybackControls(): {
   const [isLoading, setIsLoading] = useState(false)
   const [isSkipLoading, setIsSkipLoading] = useState(false)
   const params = useParams()
-  const username = params?.username as string | undefined
+  // handleSkip below uses this to look up the *current* playback state by
+  // username — an unauthenticated-by-identity lookup keyed only on that
+  // string (see /api/playback's GET handler). On the admin page itself
+  // that's safe: ProtectedRoute guarantees the URL's [username] belongs to
+  // the signed-in user. But a caller not scoped to that route (e.g.
+  // RemoteCommandBridge, mounted globally) has no such guarantee — the
+  // laptop's browser could be sitting on a *different* venue's public page
+  // at the moment a command arrives, and the ambient route param would
+  // silently point this lookup at the wrong account's live playback data.
+  // Such callers pass `options.username` explicitly (resolved from the
+  // authenticated session) and we then never fall back to the route param,
+  // even while that resolution is still in flight.
+  const username = options
+    ? options.username
+    : (params?.username as string | undefined)
   const { deviceId, playbackState, setPlaybackState, isTransitionInProgress } =
     useSpotifyPlayerStore()
   const { addLog } = useConsoleLogsContext()
