@@ -89,8 +89,21 @@ export function RemoteCommandBridge(): null {
     ) => {
       // Every action needs a live Spotify device — check once up front
       // rather than duplicating the guard per branch.
+      //
+      // This bridge is mounted in the root layout, so it runs in *every*
+      // open tab for the signed-in user, not just the one showing /admin —
+      // that's the whole point (see the module comment). But it means a
+      // command broadcast reaches every tab too, and only the /admin tab
+      // ever has a live deviceId (that's the only place the Spotify player
+      // gets created). A tab with no device must stay completely silent
+      // here rather than acking failure: if it responded, its "no device"
+      // error would land on the remote page right alongside the /admin
+      // tab's real success ack for the very same command, and whichever
+      // arrives — order isn't guaranteed — the failure would flash a false
+      // error even though the command actually worked. Silence here just
+      // leaves it to whichever tab (if any) actually has a device; if none
+      // do, the remote page's own ack-timeout still surfaces that.
       if (!deviceId) {
-        respond({ ok: false, error: 'No player device connected.' })
         return
       }
 
