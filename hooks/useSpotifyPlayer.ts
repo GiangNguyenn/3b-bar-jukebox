@@ -7,10 +7,10 @@ export type { PlayerStatus, PlayerStatusState } from './spotifyPlayerStore'
 export { spotifyPlayerStore } from './spotifyPlayerStore'
 
 import { spotifyPlayerStore } from './spotifyPlayerStore'
-import type { PlayerStatus } from './spotifyPlayerStore'
+import type { PlayerStatus, PlayerStatusState } from './spotifyPlayerStore'
 
 // Export a hook to access the store
-export function useSpotifyPlayerStore() {
+export function useSpotifyPlayerStore(): PlayerStatusState {
   return spotifyPlayerStore()
 }
 
@@ -18,7 +18,7 @@ export function useSpotifyPlayerStore() {
 export function useSpotifyPlayerHook(
   shouldDestroyOnUnmount = true,
   onNavigate?: (path: string) => void
-) {
+): { createPlayer: () => Promise<string | null>; destroyPlayer: () => void } {
   const { addLog } = useConsoleLogsContext()
 
   // Set up logger for player lifecycle service
@@ -142,6 +142,8 @@ export function useSpotifyPlayerHook(
 }
 
 // Admin-specific hook that never destroys the player
-export function useAdminSpotifyPlayerHook(onNavigate?: (path: string) => void) {
+export function useAdminSpotifyPlayerHook(
+  onNavigate?: (path: string) => void
+): { createPlayer: () => Promise<string | null>; destroyPlayer: () => void } {
   return useSpotifyPlayerHook(false, onNavigate)
 }

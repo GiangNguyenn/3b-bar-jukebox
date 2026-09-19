@@ -4,7 +4,7 @@ import { supabaseBrowser } from '@/lib/supabase-browser'
 export function useTrackGenre(
   trackId: string | undefined,
   fallbackGenre?: string | null
-) {
+): { genre: string | null; loading: boolean } {
   const [genre, setGenre] = useState<string | null>(fallbackGenre ?? null)
   const [loading, setLoading] = useState(false)
 

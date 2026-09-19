@@ -11,7 +11,7 @@ const loggerPromise = new Promise<LogFunction>((resolve) => {
   resolveLogger = resolve
 })
 
-export function setLogger(logger: LogFunction) {
+export function setLogger(logger: LogFunction): void {
   if (resolveLogger) {
     resolveLogger(logger)
   }
@@ -27,8 +27,8 @@ export function createModuleLogger(moduleName: string) {
     message: string,
     context?: string,
     error?: Error
-  ) => {
-    getLogger().then((logger) => {
+  ): void => {
+    void getLogger().then((logger) => {
       logger(level, `[${moduleName}] ${message}`, context || moduleName, error)
     })
   }

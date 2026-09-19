@@ -17,10 +17,10 @@ const nonEmptyCustomPromptArb = fc
 // Arbitrary for whitespace-only strings (empty after trim)
 const whitespaceOnlyArb = fc.constantFrom('', ' ', '  ', '\t', '\n', '  \t\n  ')
 
-describe('Property 4: Active prompt derivation from preset and custom prompt', () => {
+void describe('Property 4: Active prompt derivation from preset and custom prompt', () => {
   // **Validates: Requirements 2.2, 3.2, 3.3**
 
-  it('returns trimmed custom prompt when custom prompt is non-empty after trimming', () => {
+  void it('returns trimmed custom prompt when custom prompt is non-empty after trimming', () => {
     fc.assert(
       fc.property(
         presetIdArb,
@@ -34,7 +34,7 @@ describe('Property 4: Active prompt derivation from preset and custom prompt', (
     )
   })
 
-  it('returns preset prompt text when custom prompt is empty or whitespace-only', () => {
+  void it('returns preset prompt text when custom prompt is empty or whitespace-only', () => {
     fc.assert(
       fc.property(presetIdArb, whitespaceOnlyArb, (presetId, customPrompt) => {
         const result = deriveActivePrompt(presetId, customPrompt)
@@ -45,7 +45,7 @@ describe('Property 4: Active prompt derivation from preset and custom prompt', (
     )
   })
 
-  it('returns empty string when no preset selected and custom prompt is empty', () => {
+  void it('returns empty string when no preset selected and custom prompt is empty', () => {
     fc.assert(
       fc.property(whitespaceOnlyArb, (customPrompt) => {
         const result = deriveActivePrompt(null, customPrompt)
@@ -55,7 +55,7 @@ describe('Property 4: Active prompt derivation from preset and custom prompt', (
     )
   })
 
-  it('custom prompt always takes precedence over preset for any preset ID', () => {
+  void it('custom prompt always takes precedence over preset for any preset ID', () => {
     fc.assert(
       fc.property(
         fc.oneof(presetIdArb, fc.constant(null)),
@@ -69,7 +69,7 @@ describe('Property 4: Active prompt derivation from preset and custom prompt', (
     )
   })
 
-  it('reverts to preset prompt when custom prompt is cleared', () => {
+  void it('reverts to preset prompt when custom prompt is cleared', () => {
     fc.assert(
       fc.property(
         presetIdArb,
@@ -93,10 +93,10 @@ describe('Property 4: Active prompt derivation from preset and custom prompt', (
 // Feature: ai-song-suggestions, Property 6: Custom prompt truncation at 500 characters
 import { truncatePrompt, MAX_CUSTOM_PROMPT_LENGTH } from '../aiSuggestion'
 
-describe('Property 6: Custom prompt truncation at 500 characters', () => {
+void describe('Property 6: Custom prompt truncation at 500 characters', () => {
   // **Validates: Requirements 3.5**
 
-  it('returns a string of exactly 500 characters equal to the first 500 characters for strings longer than 500', () => {
+  void it('returns a string of exactly 500 characters equal to the first 500 characters for strings longer than 500', () => {
     fc.assert(
       fc.property(
         fc.string({ minLength: MAX_CUSTOM_PROMPT_LENGTH + 1, maxLength: 2000 }),
@@ -110,7 +110,7 @@ describe('Property 6: Custom prompt truncation at 500 characters', () => {
     )
   })
 
-  it('returns the string unchanged for strings of length <= 500', () => {
+  void it('returns the string unchanged for strings of length <= 500', () => {
     fc.assert(
       fc.property(
         fc.string({ minLength: 0, maxLength: MAX_CUSTOM_PROMPT_LENGTH }),
@@ -123,7 +123,7 @@ describe('Property 6: Custom prompt truncation at 500 characters', () => {
     )
   })
 
-  it('returns exactly 500 characters for strings of exactly 501 characters', () => {
+  void it('returns exactly 500 characters for strings of exactly 501 characters', () => {
     fc.assert(
       fc.property(
         fc.string({
@@ -140,7 +140,7 @@ describe('Property 6: Custom prompt truncation at 500 characters', () => {
     )
   })
 
-  it('returns the string unchanged for strings of exactly 500 characters', () => {
+  void it('returns the string unchanged for strings of exactly 500 characters', () => {
     fc.assert(
       fc.property(
         fc.string({
@@ -181,10 +181,10 @@ const aiSuggestionsStateArb = fc.record({
   autoFillTargetSize: autoFillTargetSizeArb
 }) as fc.Arbitrary<AiSuggestionsState>
 
-describe('Property 5: Suggestion state localStorage round-trip', () => {
+void describe('Property 5: Suggestion state localStorage round-trip', () => {
   // **Validates: Requirements 2.4, 3.4, 8.2, 8.3**
 
-  it('JSON round-trip produces an object equal to the original state', () => {
+  void it('JSON round-trip produces an object equal to the original state', () => {
     fc.assert(
       fc.property(aiSuggestionsStateArb, (state) => {
         const plain: AiSuggestionsState = {
@@ -201,7 +201,7 @@ describe('Property 5: Suggestion state localStorage round-trip', () => {
     )
   })
 
-  it('round-tripped state preserves selectedPresetId type (string or null)', () => {
+  void it('round-tripped state preserves selectedPresetId type (string or null)', () => {
     fc.assert(
       fc.property(aiSuggestionsStateArb, (state) => {
         const plain: AiSuggestionsState = {
@@ -223,7 +223,7 @@ describe('Property 5: Suggestion state localStorage round-trip', () => {
     )
   })
 
-  it('round-tripped state preserves customPrompt as a string of the same length', () => {
+  void it('round-tripped state preserves customPrompt as a string of the same length', () => {
     fc.assert(
       fc.property(aiSuggestionsStateArb, (state) => {
         const plain: AiSuggestionsState = {
@@ -245,7 +245,7 @@ describe('Property 5: Suggestion state localStorage round-trip', () => {
     )
   })
 
-  it('round-tripped state preserves autoFillTargetSize as an integer', () => {
+  void it('round-tripped state preserves autoFillTargetSize as an integer', () => {
     fc.assert(
       fc.property(aiSuggestionsStateArb, (state) => {
         const plain: AiSuggestionsState = {
@@ -266,22 +266,22 @@ describe('Property 5: Suggestion state localStorage round-trip', () => {
 })
 
 // Feature: drinking-anthems-preset, Unit tests for Drinking Anthems preset entry
-describe('Drinking Anthems preset entry', () => {
+void describe('Drinking Anthems preset entry', () => {
   // **Validates: Requirements 1.1, 1.2, 2.1, 2.2, 2.3**
 
-  it('has id "drinking-anthems" at index 0', () => {
+  void it('has id "drinking-anthems" at index 0', () => {
     assert.equal(PRESET_PROMPTS[0].id, 'drinking-anthems')
   })
 
-  it('has label "Drinking Anthems"', () => {
+  void it('has label "Drinking Anthems"', () => {
     assert.equal(PRESET_PROMPTS[0].label, 'Drinking Anthems')
   })
 
-  it('has emoji 🍺', () => {
+  void it('has emoji 🍺', () => {
     assert.equal(PRESET_PROMPTS[0].emoji, '🍺')
   })
 
-  it('prompt references beer, pubs, bars, and drinking culture', () => {
+  void it('prompt references beer, pubs, bars, and drinking culture', () => {
     const prompt = PRESET_PROMPTS[0].prompt.toLowerCase()
     assert.ok(prompt.includes('beer'), 'prompt should reference beer')
     assert.ok(prompt.includes('pub'), 'prompt should reference pubs')
@@ -292,24 +292,24 @@ describe('Drinking Anthems preset entry', () => {
     )
   })
 
-  it('PRESET_PROMPTS contains 16 presets', () => {
+  void it('PRESET_PROMPTS contains 16 presets', () => {
     assert.equal(PRESET_PROMPTS.length, 16)
   })
 
-  it('default selectedPresetId equals "drinking-anthems" when no localStorage state exists', () => {
+  void it('default selectedPresetId equals "drinking-anthems" when no localStorage state exists', () => {
     // getInitialState uses PRESET_PROMPTS[0]?.id ?? null as the default
     const defaultPresetId = PRESET_PROMPTS[0]?.id ?? null
     assert.equal(defaultPresetId, 'drinking-anthems')
   })
 
-  it('deriveActivePrompt("drinking-anthems", "") returns the drinking anthems prompt text', () => {
+  void it('deriveActivePrompt("drinking-anthems", "") returns the drinking anthems prompt text', () => {
     const result = deriveActivePrompt('drinking-anthems', '')
     assert.equal(result, PRESET_PROMPTS[0].prompt)
   })
 })
 
 // Feature: drinking-anthems-preset, Property 1: Original presets preserved
-describe('Property 1: Original presets preserved', () => {
+void describe('Property 1: Original presets preserved', () => {
   // **Validates: Requirements 3.2**
 
   // The 11 originally existing presets (now at indices 1–11)
@@ -397,7 +397,7 @@ describe('Property 1: Original presets preserved', () => {
     ...originalPresets.map((p) => p.id)
   )
 
-  it('each original preset exists in PRESET_PROMPTS with unchanged id, label, emoji, and prompt', () => {
+  void it('each original preset exists in PRESET_PROMPTS with unchanged id, label, emoji, and prompt', () => {
     fc.assert(
       fc.property(originalPresetIdArb, (presetId) => {
         const expected = originalPresets.find((p) => p.id === presetId)!
@@ -412,7 +412,7 @@ describe('Property 1: Original presets preserved', () => {
     )
   })
 
-  it('all 11 original presets are present in PRESET_PROMPTS', () => {
+  void it('all 11 original presets are present in PRESET_PROMPTS', () => {
     fc.assert(
       fc.property(originalPresetIdArb, (presetId) => {
         const found = PRESET_PROMPTS.some((p) => p.id === presetId)
@@ -427,7 +427,7 @@ describe('Property 1: Original presets preserved', () => {
 })
 
 // Feature: drinking-anthems-preset, Property 2: Saved preset selection restored over default
-describe('Property 2: Saved preset selection restored over default', () => {
+void describe('Property 2: Saved preset selection restored over default', () => {
   // **Validates: Requirements 3.1**
 
   const validPresetIdArb = fc.constantFrom(...PRESET_PROMPTS.map((p) => p.id))
@@ -467,7 +467,7 @@ describe('Property 2: Saved preset selection restored over default', () => {
     return defaultState
   }
 
-  it('restores saved preset ID from localStorage rather than defaulting to PRESET_PROMPTS[0].id', () => {
+  void it('restores saved preset ID from localStorage rather than defaulting to PRESET_PROMPTS[0].id', () => {
     fc.assert(
       fc.property(validPresetIdArb, (savedPresetId) => {
         const savedState: AiSuggestionsState = {

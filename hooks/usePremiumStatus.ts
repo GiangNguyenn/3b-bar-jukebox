@@ -1,8 +1,5 @@
-import { useState, useEffect, useCallback, useMemo } from 'react'
-import { useConsoleLogsContext } from '@/hooks/ConsoleLogsProvider'
+import { useCallback } from 'react'
 import { SpotifyUserProfile } from '@/shared/types/spotify'
-import { tokenManager } from '@/shared/token/tokenManager'
-import { safeParsePremiumVerificationResponse } from '@/shared/validations/tokenSchemas'
 
 interface PremiumStatus {
   isPremium: boolean

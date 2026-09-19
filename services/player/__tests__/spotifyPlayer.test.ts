@@ -12,7 +12,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { SpotifyPlayer } from '../spotifyPlayer'
-import type { PlayerSDKState } from '../types'
 
 // Mock factories
 function createMockLogger() {
@@ -27,24 +26,24 @@ function createMockLogger() {
 }
 
 function createMockPlayer(): Spotify.Player {
-  const listeners = new Map<string, Set<Function>>()
+  const listeners = new Map<string, Set<(...args: unknown[]) => void>>()
 
   return {
-    connect: async () => true,
+    connect: () => Promise.resolve(true),
     disconnect: () => {},
-    addListener: (event: string, handler: Function) => {
+    addListener: (event: string, handler: (...args: unknown[]) => void) => {
       if (!listeners.has(event)) {
         listeners.set(event, new Set())
       }
       listeners.get(event)!.add(handler)
       return true
     },
-    removeListener: (event: string, handler: Function) => {
+    removeListener: (event: string, handler: (...args: unknown[]) => void) => {
       listeners.get(event)?.delete(handler)
       return true
     },
-    getCurrentState: async () => null,
-    getVolume: async () => 0.5,
+    getCurrentState: () => Promise.resolve(null),
+    getVolume: () => Promise.resolve(0.5),
     nextTrack: async () => {},
     pause: async () => {},
     previousTrack: async () => {},
@@ -63,7 +62,7 @@ function createMockPlayer(): Spotify.Player {
 }
 
 // Test Suite: Basic Lifecycle
-test('SpotifyPlayer - initial state', () => {
+void test('SpotifyPlayer - initial state', () => {
   const player = new SpotifyPlayer()
 
   assert.strictEqual(player.getStatus(), 'uninitialized')
@@ -71,7 +70,7 @@ test('SpotifyPlayer - initial state', () => {
   assert.strictEqual(player.getPlayer(), null)
 })
 
-test('SpotifyPlayer - setLogger updates logger', () => {
+void test('SpotifyPlayer - setLogger updates logger', () => {
   const player = new SpotifyPlayer()
   const mock = createMockLogger()
 
@@ -81,7 +80,7 @@ test('SpotifyPlayer - setLogger updates logger', () => {
 })
 
 // Test Suite: Timeout Management
-test('SpotifyPlayer - destroy clears all timeouts', async (t) => {
+void test('SpotifyPlayer - destroy clears all timeouts', async (t) => {
   const player = new SpotifyPlayer()
   const clearedTimeouts: NodeJS.Timeout[] = []
 
@@ -114,8 +113,8 @@ test('SpotifyPlayer - destroy clears all timeouts', async (t) => {
     }
 
     const { tokenManager } = await import('@/shared/token/tokenManager')
-    const originalGetToken = tokenManager.getToken
-    tokenManager.getToken = async () => 'mock-token'
+    const originalGetToken = tokenManager.getToken.bind(tokenManager)
+    tokenManager.getToken = () => Promise.resolve('mock-token')
 
     // Start initialization (will create timeout)
     player
@@ -144,7 +143,7 @@ test('SpotifyPlayer - destroy clears all timeouts', async (t) => {
 })
 
 // Test Suite: Device Verification
-test('SpotifyPlayer - verifyDeviceWithTimeout returns false on timeout', async () => {
+void test('SpotifyPlayer - verifyDeviceWithTimeout returns false on timeout', () => {
   const player = new SpotifyPlayer()
 
   // We can't easily test private methods, but we can test that timeout logic works
@@ -153,7 +152,7 @@ test('SpotifyPlayer - verifyDeviceWithTimeout returns false on timeout', async (
 })
 
 // Test Suite: Status Tracking
-test('SpotifyPlayer - status transitions correctly', () => {
+void test('SpotifyPlayer - status transitions correctly', () => {
   const player = new SpotifyPlayer()
 
   assert.strictEqual(player.getStatus(), 'uninitialized')
@@ -164,7 +163,7 @@ test('SpotifyPlayer - status transitions correctly', () => {
 })
 
 // Test Suite: Error Handling
-test('SpotifyPlayer - initialize throws if SDK not loaded', async () => {
+void test('SpotifyPlayer - initialize throws if SDK not loaded', async () => {
   const player = new SpotifyPlayer()
 
   // Mock window without Spotify BUT with location
@@ -189,7 +188,7 @@ test('SpotifyPlayer - initialize throws if SDK not loaded', async () => {
   )
 })
 
-test('SpotifyPlayer - initialize throws if player already exists', async () => {
+void test('SpotifyPlayer - initialize throws if player already exists', async () => {
   const player = new SpotifyPlayer()
 
   // Set up mock environment with location
@@ -209,8 +208,8 @@ test('SpotifyPlayer - initialize throws if player already exists', async () => {
   }
 
   const { tokenManager } = await import('@/shared/token/tokenManager')
-  const originalGetToken = tokenManager.getToken
-  tokenManager.getToken = async () => 'mock-token'
+  const originalGetToken = tokenManager.getToken.bind(tokenManager)
+  tokenManager.getToken = () => Promise.resolve('mock-token')
 
   try {
     // First initialization — start it but destroy immediately to avoid 30s timeout
@@ -246,7 +245,7 @@ test('SpotifyPlayer - initialize throws if player already exists', async () => {
 })
 
 // Test Suite: Playback Commands
-test('SpotifyPlayer - play throws if no device ID', async () => {
+void test('SpotifyPlayer - play throws if no device ID', async () => {
   const player = new SpotifyPlayer()
 
   await assert.rejects(
@@ -259,7 +258,7 @@ test('SpotifyPlayer - play throws if no device ID', async () => {
   )
 })
 
-test('SpotifyPlayer - pause throws if no device ID', async () => {
+void test('SpotifyPlayer - pause throws if no device ID', async () => {
   const player = new SpotifyPlayer()
 
   await assert.rejects(
@@ -272,7 +271,7 @@ test('SpotifyPlayer - pause throws if no device ID', async () => {
   )
 })
 
-test('SpotifyPlayer - resume throws if no device ID', async () => {
+void test('SpotifyPlayer - resume throws if no device ID', async () => {
   const player = new SpotifyPlayer()
 
   await assert.rejects(
@@ -286,7 +285,7 @@ test('SpotifyPlayer - resume throws if no device ID', async () => {
 })
 
 // Test Suite: Resource Cleanup
-test('SpotifyPlayer - destroy is idempotent', () => {
+void test('SpotifyPlayer - destroy is idempotent', () => {
   const player = new SpotifyPlayer()
 
   // Should not throw when called multiple times
@@ -299,7 +298,7 @@ test('SpotifyPlayer - destroy is idempotent', () => {
   assert.strictEqual(player.getPlayer(), null)
 })
 
-test('SpotifyPlayer - destroy resets all state', async () => {
+void test('SpotifyPlayer - destroy resets all state', async () => {
   const player = new SpotifyPlayer()
   const mockPlayer = createMockPlayer()
 
@@ -314,8 +313,8 @@ test('SpotifyPlayer - destroy resets all state', async () => {
   }
 
   const { tokenManager } = await import('@/shared/token/tokenManager')
-  const originalGetToken = tokenManager.getToken
-  tokenManager.getToken = async () => 'mock-token'
+  const originalGetToken = tokenManager.getToken.bind(tokenManager)
+  tokenManager.getToken = () => Promise.resolve('mock-token')
 
   try {
     // Initialize — don't await, just let it start and destroy after player is set

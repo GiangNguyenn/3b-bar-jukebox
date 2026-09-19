@@ -207,7 +207,7 @@ export default function AdminPage(): JSX.Element {
     const autoPlayService = getAutoPlayService({
       username,
       deviceId: isReady ? deviceId : null,
-      checkInterval: 500 // Reduced for predictive track start
+      checkInterval: 500
     })
 
     // Set username

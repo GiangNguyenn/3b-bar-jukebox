@@ -7,12 +7,9 @@ import { queueManager } from '@/services/queueManager'
 import { SpotifyApiService } from '@/services/spotifyApi'
 import { spotifyPlayerStore } from '@/hooks/useSpotifyPlayer'
 import { sendApiRequest } from '@/shared/api'
-import { transferPlaybackToDevice } from '@/services/deviceManagement/deviceTransfer'
-import { buildTrackUri } from '@/shared/utils/spotifyUri'
 import { playerLifecycleService } from '@/services/playerLifecycle'
 import type { SpotifyPlaybackState } from '@/shared/types/spotify'
-import type { JukeboxQueueItem } from '@/shared/types/queue'
-import type { RecoveryStrategy, RecoveryResult } from '@/types/playbackRecovery'
+import type { RecoveryResult } from '@/types/playbackRecovery'
 
 const logger = createModuleLogger('PlaybackRecovery')
 

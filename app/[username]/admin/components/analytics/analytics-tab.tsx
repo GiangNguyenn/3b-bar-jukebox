@@ -11,7 +11,6 @@ import ReleaseYearHistogram from './release-year-histogram'
 import PopularityHistogram from './popularity-histogram'
 import { JukeboxQueueItem } from '@/shared/types/queue'
 import { useConsoleLogsContext } from '@/hooks/ConsoleLogsProvider'
-import { useSubscription } from '@/hooks/useSubscription'
 import { useGetProfile } from '@/hooks/useGetProfile'
 
 interface TopTrack {
@@ -48,9 +47,7 @@ type RawTrackData = {
   } | null
 }
 
-const useTopTracks = (
-  shouldFetchData: boolean = true
-): {
+const useTopTracks = (): {
   tracks: TopTrack[]
   isLoading: boolean
   error: string | null
@@ -73,14 +70,6 @@ const useTopTracks = (
 
   // Fetch top tracks data
   const fetchTopTracks = useCallback(async (): Promise<void> => {
-    // If data fetching is disabled, return early
-    if (!shouldFetchData) {
-      setIsLoading(false)
-      setError(null)
-      setTracks([])
-      return
-    }
-
     // INFO logs suppressed per logging policy
 
     try {
@@ -148,7 +137,7 @@ const useTopTracks = (
     } finally {
       setIsLoading(false)
     }
-  }, [supabase, addLog, shouldFetchData])
+  }, [supabase, addLog])
 
   // Set up real-time subscription for suggested_tracks and tracks tables
   const setupRealtimeSubscription = useCallback(async (): Promise<void> => {
@@ -213,10 +202,8 @@ const useTopTracks = (
       // Fetch initial data
       await fetchTopTracks()
 
-      // Set up real-time subscription only if data fetching is enabled
-      if (shouldFetchData) {
-        await setupRealtimeSubscription()
-      }
+      // Set up real-time subscription
+      await setupRealtimeSubscription()
     }
 
     void initialize()
@@ -228,20 +215,12 @@ const useTopTracks = (
         subscriptionRef.current = null
       }
     }
-  }, [
-    shouldFetchData,
-    addLog,
-    fetchTopTracks,
-    setupRealtimeSubscription,
-    supabase
-  ])
+  }, [addLog, fetchTopTracks, setupRealtimeSubscription, supabase])
 
   return { tracks, isLoading, error, optimisticUpdate }
 }
 
-const useTopArtists = (
-  shouldFetchData: boolean = true
-): {
+const useTopArtists = (): {
   artists: TopArtist[]
   isLoading: boolean
   error: string | null
@@ -254,14 +233,6 @@ const useTopArtists = (
 
   // Fetch top artists data
   const fetchTopArtists = useCallback(async (): Promise<void> => {
-    // If data fetching is disabled, return early
-    if (!shouldFetchData) {
-      setIsLoading(false)
-      setError(null)
-      setArtists([])
-      return
-    }
-
     // INFO logs suppressed per logging policy
 
     try {
@@ -381,7 +352,7 @@ const useTopArtists = (
     } finally {
       setIsLoading(false)
     }
-  }, [supabase, addLog, shouldFetchData])
+  }, [supabase, addLog])
   /* eslint-enable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-argument */
 
   // Initial fetch
@@ -392,9 +363,7 @@ const useTopArtists = (
   return { artists, isLoading, error }
 }
 
-const useTopGenres = (
-  shouldFetchData: boolean = true
-): {
+const useTopGenres = (): {
   genres: TopGenre[]
   isLoading: boolean
   error: string | null
@@ -407,14 +376,6 @@ const useTopGenres = (
 
   // Fetch top genres data
   const fetchTopGenres = useCallback(async (): Promise<void> => {
-    // If data fetching is disabled, return early
-    if (!shouldFetchData) {
-      setIsLoading(false)
-      setError(null)
-      setGenres([])
-      return
-    }
-
     // INFO logs suppressed per logging policy
 
     try {
@@ -536,7 +497,7 @@ const useTopGenres = (
     } finally {
       setIsLoading(false)
     }
-  }, [supabase, addLog, shouldFetchData])
+  }, [supabase, addLog])
   /* eslint-enable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-argument */
 
   // Initial fetch
@@ -552,32 +513,20 @@ interface AnalyticsTabProps {
 }
 
 export const AnalyticsTab = ({ username }: AnalyticsTabProps): JSX.Element => {
-  // Get current user's profile and subscription status
-  const {
-    profile,
-    loading: profileLoading,
-    error: profileError
-  } = useGetProfile()
+  // Get current user's profile
+  const { loading: profileLoading, error: profileError } = useGetProfile()
 
-  const { hasPremiumAccess, isLoading: subscriptionLoading } = useSubscription(
-    profile?.id
-  )
-
-  // Only fetch data if user has premium access
-  const shouldFetchData = hasPremiumAccess === true
-
-  const { tracks, isLoading, error, optimisticUpdate } =
-    useTopTracks(shouldFetchData)
+  const { tracks, isLoading, error, optimisticUpdate } = useTopTracks()
   const {
     artists: topArtists,
     isLoading: artistsLoading,
     error: artistsError
-  } = useTopArtists(shouldFetchData)
+  } = useTopArtists()
   const {
     genres: topGenres,
     isLoading: genresLoading,
     error: genresError
-  } = useTopGenres(shouldFetchData)
+  } = useTopGenres()
   const { data: queue, optimisticUpdate: queueOptimisticUpdate } =
     usePlaylistData(username)
   const [isAdding, setIsAdding] = useState(false)
@@ -873,12 +822,12 @@ export const AnalyticsTab = ({ username }: AnalyticsTabProps): JSX.Element => {
     }
   }
 
-  // Show loading while checking subscription status
-  if (profileLoading || subscriptionLoading) {
-    return <Loading message='Checking premium access...' />
+  // Show loading while the profile loads
+  if (profileLoading) {
+    return <Loading message='Loading analytics...' />
   }
 
-  // Show error if profile or subscription check failed
+  // Show error if the profile or any analytics query failed
   if (profileError || error || artistsError || genresError) {
     return (
       <ErrorMessage
@@ -890,22 +839,6 @@ export const AnalyticsTab = ({ username }: AnalyticsTabProps): JSX.Element => {
           'Failed to load analytics'
         }
       />
-    )
-  }
-
-  // If no premium access, show empty state
-  if (!shouldFetchData) {
-    return (
-      <div className='p-4'>
-        <div className='mb-4 flex items-center justify-between'>
-          <h2 className='text-2xl font-bold'>Top 50 Suggested Tracks</h2>
-        </div>
-        <div className='py-8 text-center'>
-          <p className='text-gray-400'>
-            Analytics are only available with Premium Access.
-          </p>
-        </div>
-      </div>
     )
   }
 

@@ -18,7 +18,20 @@ type DeviceHealthStatus =
  * Hook for managing playback recovery logic
  * Separated from health monitoring to improve maintainability
  */
-export function usePlaybackRecovery(deviceHealth: DeviceHealthStatus) {
+type PlaybackStatus = 'playing' | 'paused' | 'stopped' | 'unknown' | 'stalled'
+
+export interface UsePlaybackRecoveryResult {
+  attemptRecoveryIfNeeded: (
+    currentPlaybackState: SpotifyPlaybackState | null,
+    playbackStatus: PlaybackStatus
+  ) => Promise<void>
+  resetFailureCount: () => void
+  getLastPlaybackState: () => SpotifyPlaybackState | null
+}
+
+export function usePlaybackRecovery(
+  deviceHealth: DeviceHealthStatus
+): UsePlaybackRecoveryResult {
   const { addLog } = useConsoleLogsContext()
   const { userIntent } = usePlaybackIntentStore()
 

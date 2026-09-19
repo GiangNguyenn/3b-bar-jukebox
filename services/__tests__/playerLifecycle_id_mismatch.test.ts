@@ -4,7 +4,7 @@ import { playerLifecycleService } from '../playerLifecycle'
 import { queueManager } from '../queueManager'
 import { mockQueueItem } from './fixtures/mockQueueItem'
 
-test('BUG REPRO: searchForAndRemoveTrack handles ID mismatch (Relinking)', async () => {
+void test('BUG REPRO: searchForAndRemoveTrack handles ID mismatch (Relinking)', async () => {
   const playedTrackId = 'id-relinked' // Different from mockQueueItem.tracks.spotify_track_id
   const trackName = mockQueueItem.tracks.name
 
@@ -13,16 +13,16 @@ test('BUG REPRO: searchForAndRemoveTrack handles ID mismatch (Relinking)', async
 
   // Spy on markAsPlayed
   let markAsPlayedCalledWith: string | null = null
-  const originalMarkAsPlayed = queueManager.markAsPlayed
+  const originalMarkAsPlayed = queueManager.markAsPlayed.bind(queueManager)
 
-  // @ts-ignore
-  queueManager.markAsPlayed = async (id: string) => {
+  queueManager.markAsPlayed = (id: string) => {
     markAsPlayedCalledWith = id
+    return Promise.resolve()
   }
 
   try {
     // 2. Call markFinishedTrackAsPlayed directly on the QueueSynchronizer
-    // @ts-ignore
+    // @ts-expect-error test accesses/overrides a private member
     const queueSynchronizer = playerLifecycleService.queueSynchronizer
     await queueSynchronizer.markFinishedTrackAsPlayed(playedTrackId, trackName)
 

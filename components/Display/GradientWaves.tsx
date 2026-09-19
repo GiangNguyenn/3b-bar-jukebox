@@ -3,26 +3,25 @@
 import { memo, useEffect, useRef } from 'react'
 import type { ReactElement } from 'react'
 import type { ColorPalette } from '@/shared/utils/colorExtraction'
-import type { SpotifyAudioFeatures } from '@/shared/types/spotify'
 
 interface GradientWavesProps {
-  audioFeatures?: SpotifyAudioFeatures | null
   colors: ColorPalette
   isPlaying: boolean
 }
 
+// Spotify no longer provides per-track audio features, so the visuals run on
+// these fixed defaults.
+const energy = 0.5
+const danceability = 0.5
+const tempo = 120
+
 function GradientWaves({
-  audioFeatures,
   colors,
   isPlaying
 }: GradientWavesProps): ReactElement {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const animationFrameRef = useRef<number | undefined>()
   const phaseRef = useRef(0)
-
-  const energy = audioFeatures?.energy ?? 0.5
-  const danceability = audioFeatures?.danceability ?? 0.5
-  const tempo = audioFeatures?.tempo ?? 120
 
   useEffect(() => {
     if (!isPlaying || !canvasRef.current) return
@@ -118,7 +117,7 @@ function GradientWaves({
       if (animationFrameRef.current)
         cancelAnimationFrame(animationFrameRef.current)
     }
-  }, [isPlaying, energy, danceability, tempo, colors])
+  }, [isPlaying, colors])
 
   return (
     <canvas

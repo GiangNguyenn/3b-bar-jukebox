@@ -13,7 +13,6 @@ Collaborative Spotify-powered jukebox for venues (bars, restaurants). Venue owne
 - **Public**: Now-playing display page, search, song request flow, queue with voting
 - **DJ Mode**: AI voice announcements between tracks (Venice AI for script generation + TTS)
 - **Game**: Music trivia with genre similarity scoring and artist graph recommendations
-- **Subscriptions**: Stripe billing, free/premium tiers gating branding and analytics
 
 ## User Roles
 

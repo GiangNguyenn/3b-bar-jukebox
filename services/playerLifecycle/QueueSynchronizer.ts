@@ -13,6 +13,33 @@ import { playbackService } from '@/services/player'
 import { spotifyPlayerStore } from '@/hooks/spotifyPlayerStore'
 import { addToRecentlyPlayed } from '@/services/aiSuggestion'
 
+// Longest we hold up the next track waiting for the recently-played write.
+// The write is non-critical, so a slow or hung database call must not stall
+// playback; past this we carry on and the write finishes in the background.
+export const RECENTLY_PLAYED_WRITE_TIMEOUT_MS = 1000
+
+/**
+ * Records a finished track and waits for the write to land (bounded by
+ * RECENTLY_PLAYED_WRITE_TIMEOUT_MS). Never rejects.
+ */
+async function recordPlayedTrack(
+  profileId: string,
+  entry: { spotifyTrackId: string; title: string; artist: string }
+): Promise<void> {
+  let timer: ReturnType<typeof setTimeout> | undefined
+  const timeout = new Promise<void>((resolve) => {
+    timer = setTimeout(resolve, RECENTLY_PLAYED_WRITE_TIMEOUT_MS)
+  })
+  try {
+    await Promise.race([
+      addToRecentlyPlayed(profileId, entry).catch(() => {}),
+      timeout
+    ])
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
 export interface PlaybackController {
   playTrackWithRetry(
     trackUri: string,
@@ -50,7 +77,7 @@ export class QueueSynchronizer {
     return this.currentQueueTrack
   }
 
-  setCurrentQueueTrack(track: JukeboxQueueItem | null) {
+  setCurrentQueueTrack(track: JukeboxQueueItem | null): void {
     this.currentQueueTrack = track
   }
 
@@ -58,7 +85,7 @@ export class QueueSynchronizer {
     return this.lastKnownState
   }
 
-  setLastKnownState(state: PlayerSDKState | null) {
+  setLastKnownState(state: PlayerSDKState | null): void {
     this.lastKnownState = state
     // Reset to 0 on destroy so the SDK-silence watchdog (which guards on
     // lastSDKUpdate > 0) doesn't fire prematurely against a brand-new player.
@@ -310,19 +337,22 @@ export class QueueSynchronizer {
           ) ??
         null
 
+      // Record in recently_played_tracks if we have a profile_id. Awaited
+      // BEFORE the queue removal (bounded, see recordPlayedTrack) so that when
+      // auto-fill next looks for candidates the track is already in the
+      // recently-played list, not just gone from the queue.
+      if (finishedQueueItem?.profile_id) {
+        await recordPlayedTrack(finishedQueueItem.profile_id, {
+          spotifyTrackId: currentSpotifyTrackId,
+          title: finishedTrack.name,
+          artist: finishedTrack.artists[0]?.name ?? 'Unknown'
+        })
+      }
+
       await this.markFinishedTrackAsPlayed(
         currentSpotifyTrackId,
         currentTrackName
       )
-
-      // Record in recently_played_tracks if we have a profile_id (fire-and-forget)
-      if (finishedQueueItem?.profile_id) {
-        void addToRecentlyPlayed(finishedQueueItem.profile_id, {
-          spotifyTrackId: currentSpotifyTrackId,
-          title: finishedTrack.name,
-          artist: finishedTrack.artists[0]?.name ?? 'Unknown'
-        }).catch(() => {})
-      }
 
       queueManager.setCurrentlyPlayingTrack(null)
 

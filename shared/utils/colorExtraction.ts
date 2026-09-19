@@ -37,20 +37,6 @@ function rgbToHex(r: number, g: number, b: number): string {
 }
 
 /**
- * Converts hex color to RGB
- */
-function hexToRgb(hex: string): { r: number; g: number; b: number } | null {
-  const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex)
-  return result
-    ? {
-        r: parseInt(result[1], 16),
-        g: parseInt(result[2], 16),
-        b: parseInt(result[3], 16)
-      }
-    : null
-}
-
-/**
  * Calculates luminance of a color (for determining if text should be light/dark)
  */
 function getLuminance(r: number, g: number, b: number): number {
@@ -223,24 +209,4 @@ export async function extractColorsFromImageUrl(
     // Return default palette on error (no logging needed for color extraction failures)
     return DEFAULT_PALETTE
   }
-}
-
-/**
- * Clears the color cache (useful for memory management)
- */
-export function clearColorCache(): void {
-  colorCache.clear()
-}
-
-/**
- * Creates a gradient CSS string from a color palette
- */
-export function createGradientFromPalette(
-  palette: ColorPalette,
-  type: 'linear' | 'radial' = 'linear'
-): string {
-  if (type === 'linear') {
-    return `linear-gradient(135deg, ${palette.dominant}, ${palette.accent1})`
-  }
-  return `radial-gradient(circle, ${palette.dominant}, ${palette.accent1}, ${palette.background})`
 }

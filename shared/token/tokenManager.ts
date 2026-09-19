@@ -1,4 +1,3 @@
-import { getAppAccessToken } from '@/services/spotify/auth'
 import { getBaseUrl } from '@/shared/utils/domain'
 import { TokenError } from '@/shared/types/token'
 import type { EndpointFailureDetail } from '@/shared/types/token'
@@ -18,7 +17,7 @@ let addLog: (
 ) => void
 
 // Function to set the logging function
-export function setTokenManagerLogger(logger: typeof addLog) {
+export function setTokenManagerLogger(logger: typeof addLog): void {
   addLog = logger
 }
 

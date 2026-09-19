@@ -1,4 +1,4 @@
-import { ZodType, ZodError } from 'zod'
+import { ZodType } from 'zod'
 
 export function parseWithType<T>(schema: ZodType<T>, data: unknown): T {
   const result = schema.safeParse(data)

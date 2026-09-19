@@ -24,7 +24,13 @@ interface SpyCall {
   entry: { spotifyTrackId: string; title: string; artist: string }
 }
 let addToRecentlyPlayedCalls: SpyCall[] = []
+// Lets a test control when the (spied) write completes
+let addToRecentlyPlayedImpl: (() => Promise<void>) | null = null
 
+/* eslint-disable @typescript-eslint/no-require-imports --
+   The aiSuggestion export is swapped in require.cache BEFORE QueueSynchronizer
+   loads; static imports would be hoisted above that, so CJS require is
+   required here. */
 // Pre-load the real aiSuggestion module so it's in the cache
 const aiSuggestionReal = require('@/services/aiSuggestion')
 const aiSuggestionCacheKey = Object.keys(require.cache).find(
@@ -39,11 +45,14 @@ const aiSuggestionCacheKey = Object.keys(require.cache).find(
 const proxyExports = new Proxy(aiSuggestionReal, {
   get(target, prop, receiver) {
     if (prop === 'addToRecentlyPlayed') {
-      return async (
+      return (
         profileId: string,
         entry: { spotifyTrackId: string; title: string; artist: string }
       ) => {
         addToRecentlyPlayedCalls.push({ profileId, entry })
+        return addToRecentlyPlayedImpl
+          ? addToRecentlyPlayedImpl()
+          : Promise.resolve()
       }
     }
     return Reflect.get(target, prop, receiver)
@@ -52,17 +61,18 @@ const proxyExports = new Proxy(aiSuggestionReal, {
 
 // Replace the cached module exports with our proxy
 if (aiSuggestionCacheKey && require.cache[aiSuggestionCacheKey]) {
-  require.cache[aiSuggestionCacheKey]!.exports = proxyExports
+  require.cache[aiSuggestionCacheKey].exports = proxyExports
 }
 
 // NOW import QueueSynchronizer and other deps that may use aiSuggestion
 // eslint-disable-next-line @typescript-eslint/no-var-requires
-const { QueueSynchronizer } =
+const { QueueSynchronizer, RECENTLY_PLAYED_WRITE_TIMEOUT_MS } =
   require('../QueueSynchronizer') as typeof import('../QueueSynchronizer')
 const { playbackService } =
   require('@/services/player') as typeof import('@/services/player')
 const { queueManager } =
   require('@/services/queueManager') as typeof import('@/services/queueManager')
+/* eslint-enable @typescript-eslint/no-require-imports */
 // ─── localStorage mock (not available in Node.js test environment) ───────────
 const localStorageStore: Record<string, string> = {}
 const localStorageMock = {
@@ -77,8 +87,11 @@ const localStorageMock = {
     Object.keys(localStorageStore).forEach((k) => delete localStorageStore[k])
   }
 }
-// @ts-ignore
-global.localStorage = localStorageMock
+Object.defineProperty(globalThis, 'localStorage', {
+  value: localStorageMock,
+  writable: true,
+  configurable: true
+})
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -149,9 +162,9 @@ function makeFinishedState(
 function makeRecordingController() {
   const playedTracks: string[] = []
   return {
-    playTrackWithRetry: async (trackUri: string) => {
+    playTrackWithRetry: (trackUri: string) => {
       playedTracks.push(trackUri)
-      return true
+      return Promise.resolve(true)
     },
     log: () => {},
     getDeviceId: () => 'device-1',
@@ -166,6 +179,7 @@ beforeEach(async () => {
   queueManager.updateQueue([])
   queueManager.setCurrentlyPlayingTrack(null)
   addToRecentlyPlayedCalls = []
+  addToRecentlyPlayedImpl = null
 })
 
 afterEach(async () => {
@@ -175,7 +189,7 @@ afterEach(async () => {
 
 // ─── Test Suite ──────────────────────────────────────────────────────────────
 
-describe('Bug Condition: Track Finish Does Not Record Recently Played', () => {
+void describe('Bug Condition: Track Finish Does Not Record Recently Played', () => {
   /**
    * Test case 1: Basic track finish
    *
@@ -185,7 +199,7 @@ describe('Bug Condition: Track Finish Does Not Record Recently Played', () => {
    * Expected (correct behavior): addToRecentlyPlayed is called
    * Actual (bug): addToRecentlyPlayed is NEVER called
    */
-  it('should call addToRecentlyPlayed when a track finishes naturally', async () => {
+  void it('should call addToRecentlyPlayed when a track finishes naturally', async () => {
     const controller = makeRecordingController()
     const synchronizer = new QueueSynchronizer(controller)
 
@@ -229,7 +243,7 @@ describe('Bug Condition: Track Finish Does Not Record Recently Played', () => {
    * - title from currentTrack.name
    * - artist from currentTrack.artists[0].name
    */
-  it('should call addToRecentlyPlayed with correct profileId, spotifyTrackId, title, and artist', async () => {
+  void it('should call addToRecentlyPlayed with correct profileId, spotifyTrackId, title, and artist', async () => {
     const controller = makeRecordingController()
     const synchronizer = new QueueSynchronizer(controller)
 
@@ -297,7 +311,7 @@ describe('Bug Condition: Track Finish Does Not Record Recently Played', () => {
    *
    * This case should PASS on unfixed code (correctly not called).
    */
-  it('should NOT call addToRecentlyPlayed when no matching queue item exists', async () => {
+  void it('should NOT call addToRecentlyPlayed when no matching queue item exists', async () => {
     const controller = makeRecordingController()
     const synchronizer = new QueueSynchronizer(controller)
 
@@ -338,7 +352,7 @@ describe('Bug Condition: Track Finish Does Not Record Recently Played', () => {
    * SDK: "Dirrty (feat. Redman)"). The queue match should still work via
    * fuzzy name matching, and addToRecentlyPlayed should be called.
    */
-  it('should call addToRecentlyPlayed when queue match is by fuzzy name only', async () => {
+  void it('should call addToRecentlyPlayed when queue match is by fuzzy name only', async () => {
     const controller = makeRecordingController()
     const synchronizer = new QueueSynchronizer(controller)
 
@@ -368,6 +382,75 @@ describe('Bug Condition: Track Finish Does Not Record Recently Played', () => {
       'addToRecentlyPlayed() should be called when queue match is by fuzzy name. ' +
         'Bug: handleTrackFinishedImpl() never calls addToRecentlyPlayed() — ' +
         'even when a queue item is matched via fuzzy name, the track is not recorded.'
+    )
+  })
+})
+
+void describe('Recently-played write happens before the queue removal', () => {
+  // Setup shared by both tests: a finishing track with a queued successor,
+  // and queueManager.markAsPlayed replaced by a recorder (no network).
+  function setup(events: string[]): {
+    synchronizer: InstanceType<typeof QueueSynchronizer>
+    finishedState: ReturnType<typeof makeFinishedState>['finishedState']
+  } {
+    mock.method(queueManager, 'markAsPlayed', () => {
+      events.push('removed')
+      return Promise.resolve()
+    })
+
+    const controller = makeRecordingController()
+    const synchronizer = new QueueSynchronizer(controller)
+    const queueItem = makeQueueItem('track-order-1', 'First Song', 'profile-1')
+    const nextItem = makeQueueItem('track-order-2', 'Second Song', 'profile-1')
+    queueManager.updateQueue([queueItem, nextItem])
+    queueManager.setCurrentlyPlayingTrack('track-order-1')
+
+    const { lastKnownState, finishedState } = makeFinishedState(
+      'track-order-1',
+      'First Song',
+      'Some Artist'
+    )
+    synchronizer.setLastKnownState(lastKnownState)
+    synchronizer.setCurrentQueueTrack(queueItem)
+    return { synchronizer, finishedState }
+  }
+
+  void it('records the finished track before removing it from the queue', async () => {
+    const events: string[] = []
+    addToRecentlyPlayedImpl = async () => {
+      // Slow enough that a fire-and-forget implementation would lose the race
+      await new Promise((resolve) => setTimeout(resolve, 50))
+      events.push('recorded')
+    }
+    const { synchronizer, finishedState } = setup(events)
+
+    await synchronizer.handleTrackFinished(finishedState)
+    await playbackService.waitForCompletion()
+
+    // (markAsPlayed can be invoked more than once along the flow; only the
+    // first removal relative to the write matters here)
+    assert.equal(
+      events[0],
+      'recorded',
+      `the recently-played write must complete before the queue row is removed (saw: ${events.join(', ')})`
+    )
+    assert.ok(events.includes('removed'), 'the track must still be removed')
+  })
+
+  void it('does not stall the queue removal when the write never completes', async () => {
+    const events: string[] = []
+    addToRecentlyPlayedImpl = () => new Promise<void>(() => {}) // never settles
+    const { synchronizer, finishedState } = setup(events)
+
+    const startedAt = Date.now()
+    await synchronizer.handleTrackFinished(finishedState)
+    await playbackService.waitForCompletion()
+    const elapsed = Date.now() - startedAt
+
+    assert.ok(events.includes('removed'), 'the track must still be removed')
+    assert.ok(
+      elapsed < RECENTLY_PLAYED_WRITE_TIMEOUT_MS + 2000,
+      `playback must not wait indefinitely on the write (waited ${elapsed}ms)`
     )
   })
 })

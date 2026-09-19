@@ -54,11 +54,6 @@ export interface SystemInfo {
 }
 
 // Additional health-related types
-export interface PlaybackInfo {
-  isPlaying: boolean
-  currentTrack: string
-  progress: number
-}
 
 export type DeviceHealthStatus =
   | 'healthy'

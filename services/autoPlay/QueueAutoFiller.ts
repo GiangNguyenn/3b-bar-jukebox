@@ -7,6 +7,10 @@ import {
   AI_SUGGESTED_HISTORY_STORAGE_KEY_PREFIX,
   AI_SUGGESTED_HISTORY_WINDOW_MS
 } from '@/shared/constants/aiSuggestion'
+import {
+  getBlockedTrackIds,
+  getBlockedTracks
+} from '@/services/removedTrackBlocklist'
 
 const log = createModuleLogger('QueueAutoFiller')
 
@@ -28,6 +32,8 @@ interface AutoFillNotificationMetadata {
   explicit?: boolean | null
   isFallback?: boolean
 }
+
+const MAX_BLOCKED_TITLES_IN_PROMPT = 50
 
 export class QueueAutoFiller {
   private isAutoFilling = false
@@ -102,9 +108,12 @@ export class QueueAutoFiller {
       const timeoutId = setTimeout(() => controller.abort(), 10000)
       let response: Response
       try {
-        response = await fetch(`/api/playlist/${this.username}`, {
-          signal: controller.signal
-        })
+        response = await fetch(
+          `/api/playlist/${this.username}?_=${Date.now()}`,
+          {
+            signal: controller.signal
+          }
+        )
       } finally {
         clearTimeout(timeoutId)
       }
@@ -133,11 +142,28 @@ export class QueueAutoFiller {
     try {
       const cachedLength = this.queueManager.getQueue().length
       const freshLength = await this.refreshQueue()
-      const currentLength = freshLength ?? cachedLength
+      let currentLength = freshLength ?? cachedLength
 
       if (currentLength < this.autoFillTargetSize && this.username) {
         this.onQueueLow?.()
-        await this.fill()
+      }
+
+      // Keep filling until the queue reaches its target size. Stops early if a
+      // pass adds nothing, or if the refreshed queue shows no growth (so a
+      // failed add or unverifiable state can't spin), bounded by autoFillMaxAttempts.
+      for (
+        let attempt = 0;
+        attempt < this.autoFillMaxAttempts &&
+        currentLength < this.autoFillTargetSize &&
+        this.username;
+        attempt++
+      ) {
+        const added = await this.fill()
+        if (added === 0) break
+
+        const refreshedLength = await this.refreshQueue()
+        if (refreshedLength === null || refreshedLength <= currentLength) break
+        currentLength = refreshedLength
       }
     } catch {
       // Silently handle errors
@@ -205,7 +231,11 @@ export class QueueAutoFiller {
     }
   }
 
-  private async fill(): Promise<void> {
+  /**
+   * Adds tracks to the queue (AI first, random fallback otherwise).
+   * Returns how many tracks it believes were added.
+   */
+  private async fill(): Promise<number> {
     if (!this.username) {
       if (this.addLog) {
         this.addLog(
@@ -214,7 +244,7 @@ export class QueueAutoFiller {
           'QueueAutoFiller'
         )
       }
-      return
+      return 0
     }
 
     if (!this.activePrompt) {
@@ -225,8 +255,7 @@ export class QueueAutoFiller {
           'QueueAutoFiller'
         )
       }
-      await this.fallback()
-      return
+      return (await this.fallback()) ? 1 : 0
     }
 
     if (this.addLog) {
@@ -240,10 +269,12 @@ export class QueueAutoFiller {
     let tracksAdded = 0
     const currentQueue = this.queueManager.getQueue()
     const recentAiSuggestions = this.loadRecentAiSuggestions()
+    // Songs the admin removed this session must not come back via auto-fill.
     const excludedTrackIds = Array.from(
       new Set([
         ...currentQueue.map((item) => item.tracks.spotify_track_id),
-        ...recentAiSuggestions.map((entry) => entry.id)
+        ...recentAiSuggestions.map((entry) => entry.id),
+        ...getBlockedTrackIds()
       ])
     )
     // Recently-AI-suggested tracks are merged into queuedTracks (not just
@@ -256,6 +287,11 @@ export class QueueAutoFiller {
         artist: item.tracks.artist
       })),
       ...recentAiSuggestions.map((entry) => ({
+        title: entry.title,
+        artist: entry.artist
+      })),
+      // Capped so a long session can't bloat the prompt; IDs above are complete.
+      ...getBlockedTracks(MAX_BLOCKED_TITLES_IN_PROMPT).map((entry) => ({
         title: entry.title,
         artist: entry.artist
       }))
@@ -290,8 +326,7 @@ export class QueueAutoFiller {
             'QueueAutoFiller'
           )
         }
-        await this.fallback()
-        return
+        return (await this.fallback()) ? 1 : 0
       }
 
       const result = (await response.json()) as {
@@ -318,8 +353,7 @@ export class QueueAutoFiller {
             'QueueAutoFiller'
           )
         }
-        await this.fallback()
-        return
+        return (await this.fallback()) ? 1 : 0
       }
 
       if (this.addLog) {
@@ -375,8 +409,7 @@ export class QueueAutoFiller {
           error instanceof Error ? error : undefined
         )
       }
-      await this.fallback()
-      return
+      return (await this.fallback()) ? 1 : 0
     }
 
     if (tracksAdded === 0) {
@@ -387,7 +420,7 @@ export class QueueAutoFiller {
           'QueueAutoFiller'
         )
       }
-      await this.fallback()
+      if (await this.fallback()) tracksAdded++
     }
 
     if (this.addLog) {
@@ -397,6 +430,7 @@ export class QueueAutoFiller {
         'QueueAutoFiller'
       )
     }
+    return tracksAdded
   }
 
   private async addTrack(spotifyTrackId: string): Promise<void> {
@@ -438,6 +472,9 @@ export class QueueAutoFiller {
 
     if (!playlistResponse.ok) {
       if (playlistResponse.status === 409) return // Already in playlist
+      if (playlistResponse.status === 422) {
+        throw new Error('Track was played recently')
+      }
       throw new Error(
         `Failed to add track to playlist: ${playlistResponse.status}`
       )
@@ -472,9 +509,12 @@ export class QueueAutoFiller {
       )
     }
 
-    const excludedTrackIds = this.queueManager
-      .getQueue()
-      .map((item) => item.tracks.spotify_track_id)
+    const excludedTrackIds = [
+      ...this.queueManager
+        .getQueue()
+        .map((item) => item.tracks.spotify_track_id),
+      ...getBlockedTrackIds()
+    ]
 
     for (let attempt = 0; attempt < 5; attempt++) {
       try {
@@ -546,6 +586,11 @@ export class QueueAutoFiller {
 
         if (!playlistResponse.ok) {
           if (playlistResponse.status === 409) continue
+          if (playlistResponse.status === 422) {
+            // Played recently: never pick it again on the next attempt
+            excludedTrackIds.push(result.track.spotify_track_id)
+            continue
+          }
           return false
         }
 

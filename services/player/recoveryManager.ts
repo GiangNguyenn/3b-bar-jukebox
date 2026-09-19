@@ -277,11 +277,15 @@ export class RecoveryManager {
         currentBackoffMs * 2,
         RecoveryManager.MAX_BACKOFF_MS
       )
-      this.backoffTimer = setTimeout(attemptRecovery, nextBackoff)
+      this.backoffTimer = setTimeout(() => {
+        void attemptRecovery()
+      }, nextBackoff)
     }
 
     // Schedule the first attempt
-    this.backoffTimer = setTimeout(attemptRecovery, currentBackoffMs)
+    this.backoffTimer = setTimeout(() => {
+      void attemptRecovery()
+    }, currentBackoffMs)
   }
 
   // ─── Diagnostics ────────────────────────────────────────────────────────

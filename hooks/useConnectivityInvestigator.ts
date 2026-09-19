@@ -8,11 +8,18 @@ import type {
   RequestContext
 } from '@/shared/types/connectivity'
 
+export interface UseConnectivityInvestigatorResult {
+  investigate: (error: unknown, context: RequestContext) => void
+  investigation: ConnectivityInvestigation | null
+  recentFailures: FailedRequestInfo[]
+  clearHistory: () => void
+}
+
 /**
  * Hook for managing connectivity investigations
  * Provides access to investigation state and control functions
  */
-export function useConnectivityInvestigator() {
+export function useConnectivityInvestigator(): UseConnectivityInvestigatorResult {
   const [investigation, setInvestigation] =
     useState<ConnectivityInvestigation | null>(null)
 

@@ -1,11 +1,11 @@
-import { getAvailableDevices, getPlaybackState, findDevice } from './deviceApi'
+import { getPlaybackState, findDevice } from './deviceApi'
 import { createModuleLogger } from '@/shared/utils/logger'
 
 // Set up logger for this module
 const logger = createModuleLogger('DeviceValidation')
 
 // Function to set the logging function (for compatibility with existing pattern)
-export function setDeviceValidationLogger(loggerFn: typeof logger) {
+export function setDeviceValidationLogger(loggerFn: typeof logger): void {
   // This function is kept for compatibility but the logger is already set up
 }
 

@@ -22,8 +22,7 @@ import type {
   StatusChangeCallback,
   DeviceIdCallback,
   PlaybackStateCallback,
-  PlayerSDKState,
-  PlayerConfig
+  PlayerSDKState
 } from './types'
 
 // Type guard for runtime validation of PlayerSDKState

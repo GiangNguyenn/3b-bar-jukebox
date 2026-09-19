@@ -29,8 +29,11 @@ const localStorageMock = {
     Object.keys(localStorageStore).forEach((k) => delete localStorageStore[k])
   }
 }
-// @ts-ignore
-global.localStorage = localStorageMock
+Object.defineProperty(globalThis, 'localStorage', {
+  value: localStorageMock,
+  writable: true,
+  configurable: true
+})
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -105,9 +108,9 @@ function makeRecordingController() {
   const playedTracks: string[] = []
   const logs: string[] = []
   return {
-    playTrackWithRetry: async (trackUri: string) => {
+    playTrackWithRetry: (trackUri: string) => {
       playedTracks.push(trackUri)
-      return true
+      return Promise.resolve(true)
     },
     log: (_level: string, msg: string) => {
       logs.push(msg)
@@ -130,7 +133,7 @@ afterEach(async () => {
 
 // ─── Test Suite ──────────────────────────────────────────────────────────────
 
-describe('Preservation: Auto-Play, DJ Sequencing, and Race Condition Prevention', () => {
+void describe('Preservation: Auto-Play, DJ Sequencing, and Race Condition Prevention', () => {
   /**
    * P2a — Auto-play preservation (no DJ)
    *
@@ -139,7 +142,7 @@ describe('Preservation: Auto-Play, DJ Sequencing, and Race Condition Prevention'
    *
    * We test across multiple queue configurations to simulate "for any" semantics.
    */
-  describe('P2a: Next track plays exactly once after normal transition (no DJ)', () => {
+  void describe('P2a: Next track plays exactly once after normal transition (no DJ)', () => {
     // Parameterized over several next-track IDs to simulate property-style coverage
     const nextTrackIds = [
       'track-next-1',
@@ -149,7 +152,7 @@ describe('Preservation: Auto-Play, DJ Sequencing, and Race Condition Prevention'
     ]
 
     for (const nextTrackId of nextTrackIds) {
-      test(`plays exactly once for next track: ${nextTrackId}`, async () => {
+      void test(`plays exactly once for next track: ${nextTrackId}`, async () => {
         const controller = makeRecordingController()
         const synchronizer = new QueueSynchronizer(controller)
 
@@ -200,8 +203,8 @@ describe('Preservation: Auto-Play, DJ Sequencing, and Race Condition Prevention'
    *
    * Validates: Requirement 3.6 (serialized queue prevents concurrent execution)
    */
-  describe('P2c: Serialized queue prevents concurrent execution of track transitions', () => {
-    test('concurrent handleTrackFinished calls run sequentially (not concurrently)', async () => {
+  void describe('P2c: Serialized queue prevents concurrent execution of track transitions', () => {
+    void test('concurrent handleTrackFinished calls run sequentially (not concurrently)', async () => {
       const executionOrder: string[] = []
       let concurrentCount = 0
       let maxConcurrent = 0
@@ -261,7 +264,7 @@ describe('Preservation: Auto-Play, DJ Sequencing, and Race Condition Prevention'
       }
     })
 
-    test('TrackDuplicateDetector prevents a third+ call for the same track', async () => {
+    void test('TrackDuplicateDetector prevents a third+ call for the same track', async () => {
       const controller = makeRecordingController()
       const synchronizer = new QueueSynchronizer(controller)
 
@@ -291,7 +294,7 @@ describe('Preservation: Auto-Play, DJ Sequencing, and Race Condition Prevention'
       )
     })
 
-    test('different tracks do NOT deduplicate each other', async () => {
+    void test('different tracks do NOT deduplicate each other', async () => {
       const controller = makeRecordingController()
       const synchronizer = new QueueSynchronizer(controller)
 
@@ -329,8 +332,8 @@ describe('Preservation: Auto-Play, DJ Sequencing, and Race Condition Prevention'
     })
   })
 
-  describe('P2d: next track plays without duck/overlay', () => {
-    test('next track plays when there is no announcement', async () => {
+  void describe('P2d: next track plays without duck/overlay', () => {
+    void test('next track plays when there is no announcement', async () => {
       const controller = makeRecordingController()
       const synchronizer = new QueueSynchronizer(controller)
 

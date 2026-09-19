@@ -25,7 +25,7 @@ function createManager(): RecoveryManager {
 
 // ─── Test Suite ──────────────────────────────────────────────────────────────
 
-describe('RecoveryManager: Exponential Backoff Recovery Loop', () => {
+void describe('RecoveryManager: Exponential Backoff Recovery Loop', () => {
   let originalSetTimeout: typeof globalThis.setTimeout
   let originalClearTimeout: typeof globalThis.clearTimeout
   let scheduledCallbacks: Array<{ callback: () => void; delay: number }>
@@ -46,7 +46,7 @@ describe('RecoveryManager: Exponential Backoff Recovery Loop', () => {
     mock.restoreAll()
   })
 
-  test('startBackoffRecovery is triggered when entering suspended state', () => {
+  void test('startBackoffRecovery is triggered when entering suspended state', () => {
     const manager = createManager()
     let timerScheduled = false
 
@@ -78,7 +78,7 @@ describe('RecoveryManager: Exponential Backoff Recovery Loop', () => {
     )
   })
 
-  test('first backoff attempt is scheduled at 5 seconds', () => {
+  void test('first backoff attempt is scheduled at 5 seconds', () => {
     const manager = createManager()
 
     globalThis.setTimeout = ((cb: () => void, delay?: number) => {
@@ -96,14 +96,14 @@ describe('RecoveryManager: Exponential Backoff Recovery Loop', () => {
     )
   })
 
-  test('reset() clears the backoff timer', () => {
+  void test('reset() clears the backoff timer', () => {
     const manager = createManager()
     let lastTimerId: any = null
     let clearTimeoutCalled = false
 
     globalThis.setTimeout = ((cb: () => void, delay?: number) => {
       lastTimerId = ++timerIdCounter
-      return lastTimerId as any
+      return lastTimerId
     }) as any
 
     globalThis.clearTimeout = ((id: any) => {
@@ -128,7 +128,7 @@ describe('RecoveryManager: Exponential Backoff Recovery Loop', () => {
     )
   })
 
-  test('enterSuspendedState clears existing backoff timer before starting new one', () => {
+  void test('enterSuspendedState clears existing backoff timer before starting new one', () => {
     const manager = createManager()
     const timerIds: number[] = []
     const clearedIds: number[] = []
@@ -155,7 +155,7 @@ describe('RecoveryManager: Exponential Backoff Recovery Loop', () => {
     )
   })
 
-  test('listeners are notified with true when max duration is exceeded', async () => {
+  void test('listeners are notified with true when max duration is exceeded', async () => {
     const manager = createManager()
     const notifications: boolean[] = []
 
@@ -190,7 +190,9 @@ describe('RecoveryManager: Exponential Backoff Recovery Loop', () => {
     // Execute the scheduled callback (the recovery attempt)
     const cb = capturedCallback as (() => void) | null
     if (cb) {
-      await cb()
+      cb()
+      // The callback starts the attempt without returning it: let it settle
+      await new Promise((resolve) => setImmediate(resolve))
     }
 
     // Should have notified listeners again with true (max duration exceeded)
@@ -211,7 +213,7 @@ describe('RecoveryManager: Exponential Backoff Recovery Loop', () => {
     Date.now = realDateNow
   })
 
-  test('recovery loop stops if no longer suspended (reset externally)', async () => {
+  void test('recovery loop stops if no longer suspended (reset externally)', async () => {
     const manager = createManager()
     let capturedCallback: (() => void) | null = null
     let newTimerScheduled = false
@@ -236,7 +238,9 @@ describe('RecoveryManager: Exponential Backoff Recovery Loop', () => {
     // Execute the scheduled callback
     const cb = capturedCallback as (() => void) | null
     if (cb) {
-      await cb()
+      cb()
+      // The callback starts the attempt without returning it: let it settle
+      await new Promise((resolve) => setImmediate(resolve))
     }
 
     assert.equal(
@@ -246,7 +250,7 @@ describe('RecoveryManager: Exponential Backoff Recovery Loop', () => {
     )
   })
 
-  test('getDiagnostics reflects suspension state correctly', () => {
+  void test('getDiagnostics reflects suspension state correctly', () => {
     const manager = createManager()
 
     globalThis.setTimeout = ((cb: () => void, delay?: number) => {

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { sendApiRequest } from '@/shared/api'
 import { useSpotifyPlayerStore } from '@/hooks/useSpotifyPlayer'
 import { getAutoPlayService } from '@/services/autoPlayService'
@@ -11,6 +11,11 @@ import { JukeboxQueueItem } from '@/shared/types/queue'
 import { useConsoleLogsContext } from '@/hooks/ConsoleLogsProvider'
 import { useDebouncedCallback } from 'use-debounce'
 import { queueManager } from '@/services/queueManager'
+import {
+  blockRemovedTrack,
+  unblockTrack
+} from '@/services/removedTrackBlocklist'
+import { sortQueueByPriority } from '@/shared/utils/queueSort'
 
 interface PlaybackState {
   item?: {
@@ -33,7 +38,14 @@ export function PlaylistDisplay({
 }: PlaylistDisplayProps): JSX.Element {
   const [error, setError] = useState<string | null>(null)
   const [loadingTrackId, setLoadingTrackId] = useState<string | null>(null)
-  const [deletingTrackId, setDeletingTrackId] = useState<string | null>(null)
+  // Several deletes can be in flight at once (admin clicking quickly), so track
+  // them as a set; the ref guards against a double-fire before state re-renders.
+  const [deletingTrackIds, setDeletingTrackIds] = useState<Set<string>>(
+    () => new Set()
+  )
+  const inFlightDeletesRef = useRef<Set<string>>(new Set())
+  // Delete failures show as a banner above the table instead of replacing it
+  const [deleteError, setDeleteError] = useState<string | null>(null)
   const { deviceId } = useSpotifyPlayerStore()
   const { addLog } = useConsoleLogsContext()
   const [playbackState, setPlaybackState] = useState<PlaybackState | null>(null)
@@ -114,45 +126,61 @@ export function PlaylistDisplay({
     }
   }
 
-  const handleDeleteTrack = async (queueId: string): Promise<void> => {
+  const handleDeleteTrack = async (item: JukeboxQueueItem): Promise<void> => {
+    const queueId = item.id
+    if (inFlightDeletesRef.current.has(queueId)) return
+    inFlightDeletesRef.current.add(queueId)
+
+    setDeleteError(null)
+    setDeletingTrackIds((prev) => new Set(prev).add(queueId))
+
+    // Stop auto-fill from putting this song straight back (session only).
+    // Done before the DELETE: its success triggers an auto-fill check.
+    blockRemovedTrack({
+      id: item.tracks.spotify_track_id,
+      title: item.tracks.name,
+      artist: item.tracks.artist
+    })
+
+    // Optimistic update - remove track from UI immediately
+    optimisticUpdate?.((currentQueue) =>
+      currentQueue.filter((queueItem) => queueItem.id !== queueId)
+    )
+
     try {
-      setDeletingTrackId(queueId)
-      setError(null)
-
-      // Optimistic update - remove track from UI immediately
-      if (optimisticUpdate) {
-        optimisticUpdate((currentQueue) =>
-          currentQueue.filter((item) => item.id !== queueId)
-        )
-      }
-
-      const response = await fetch(`/api/queue/${queueId}`, {
-        method: 'DELETE'
-      })
-
-      if (!response.ok) {
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-        const errorData: { error?: string } = await response.json()
-        throw new Error(errorData.error ?? 'Failed to delete track')
-      }
+      // queueManager hides the row from every queue refresh while the DELETE is
+      // in flight and for a while after it succeeds, so stale fetches can't
+      // bring it back; it also retries and rolls its own queue back on failure.
+      await queueManager.removeFromQueue(item)
 
       // Trigger debounced refresh to sync with real-time updates
       void debouncedRefresh()
     } catch (err) {
       const errorMessage =
         err instanceof Error ? err.message : 'Failed to delete track'
-      setError(errorMessage)
+
+      // Revert: put the song back in the list and allow auto-fill to pick it again
+      unblockTrack(item.tracks.spotify_track_id)
+      optimisticUpdate?.((currentQueue) =>
+        currentQueue.some((queueItem) => queueItem.id === queueId)
+          ? currentQueue
+          : sortQueueByPriority([...currentQueue, item])
+      )
+
+      setDeleteError(`Couldn't remove "${item.tracks.name}": ${errorMessage}`)
       addLog(
         'ERROR',
         `Failed to delete track: ${errorMessage}`,
         'PlaylistDisplay',
         err instanceof Error ? err : undefined
       )
-
-      // If optimistic update was used, we should revert it on error
-      // However, since we're using real-time subscriptions, the next update will correct the state
     } finally {
-      setDeletingTrackId(null)
+      inFlightDeletesRef.current.delete(queueId)
+      setDeletingTrackIds((prev) => {
+        const next = new Set(prev)
+        next.delete(queueId)
+        return next
+      })
     }
   }
 
@@ -177,6 +205,13 @@ export function PlaylistDisplay({
       <div className='flex items-center justify-between'>
         <h2 className='text-xl font-semibold'>Queue ({queue.length} tracks)</h2>
       </div>
+
+      {deleteError && (
+        <ErrorMessage
+          message={deleteError}
+          onDismiss={() => setDeleteError(null)}
+        />
+      )}
 
       <div className='overflow-hidden rounded-lg border border-gray-800'>
         <table className='w-full'>
@@ -208,7 +243,7 @@ export function PlaylistDisplay({
               const isCurrentlyPlaying =
                 playbackState?.item?.id === item.tracks.spotify_track_id
               const isTrackLoading = loadingTrackId === item.tracks.spotify_url
-              const isTrackDeleting = deletingTrackId === item.id
+              const isTrackDeleting = deletingTrackIds.has(item.id)
               const isLockedTrack =
                 lockedTrackId === item.tracks.spotify_track_id
 
@@ -301,7 +336,7 @@ export function PlaylistDisplay({
                         )}
                       </button>
                       <button
-                        onClick={() => void handleDeleteTrack(item.id)}
+                        onClick={() => void handleDeleteTrack(item)}
                         disabled={
                           isTrackLoading ||
                           isTrackDeleting ||

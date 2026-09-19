@@ -2,7 +2,6 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Database } from '@/types/supabase'
 import { updateWithRetry } from '@/lib/supabaseQuery'
 import { createModuleLogger } from '@/shared/utils/logger'
-import type { TokenRefreshResult } from './tokenRecovery'
 
 const logger = createModuleLogger('TokenDatabaseUpdate')
 

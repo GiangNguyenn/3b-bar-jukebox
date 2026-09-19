@@ -3,10 +3,8 @@
 import { memo, useEffect, useRef, useMemo } from 'react'
 import type { ReactElement } from 'react'
 import type { ColorPalette } from '@/shared/utils/colorExtraction'
-import type { SpotifyAudioFeatures } from '@/shared/types/spotify'
 
 interface LinearSpectrumProps {
-  audioFeatures?: SpotifyAudioFeatures | null
   colors: ColorPalette
   isPlaying: boolean
 }
@@ -14,17 +12,18 @@ interface LinearSpectrumProps {
 const BAR_COUNT = 50
 const BAR_GAP = 2
 
+// Spotify no longer provides per-track audio features, so the visuals run on
+// these fixed defaults.
+const energy = 0.5
+const loudness = -20
+
 function LinearSpectrum({
-  audioFeatures,
   colors,
   isPlaying
 }: LinearSpectrumProps): ReactElement {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const animationFrameRef = useRef<number | undefined>()
   const timeRef = useRef(0)
-
-  const energy = audioFeatures?.energy ?? 0.5
-  const loudness = audioFeatures?.loudness ?? -20
 
   // Generate base bar heights based on frequency bands - memoized calculation
   const barHeights = useMemo(() => {
@@ -135,7 +134,7 @@ function LinearSpectrum({
       if (animationFrameRef.current)
         cancelAnimationFrame(animationFrameRef.current)
     }
-  }, [isPlaying, energy, loudness, colors, barHeights])
+  }, [isPlaying, colors, barHeights])
 
   return (
     <canvas

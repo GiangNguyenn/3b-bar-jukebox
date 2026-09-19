@@ -362,10 +362,3 @@ export function getAutoPlayService(
   }
   return autoPlayServiceInstance
 }
-
-export function resetAutoPlayService(): void {
-  if (autoPlayServiceInstance) {
-    autoPlayServiceInstance.stop()
-    autoPlayServiceInstance = null
-  }
-}

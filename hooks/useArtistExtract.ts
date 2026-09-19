@@ -47,7 +47,7 @@ export const useArtistExtract = (
       }
     }
 
-    fetchData()
+    void fetchData()
   }, [artistName])
 
   return { data, isLoading, error }

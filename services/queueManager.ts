@@ -4,11 +4,20 @@ import { createModuleLogger } from '@/shared/utils/logger'
 
 const logger = createModuleLogger('QueueManager')
 
+// How long a removed queue row stays hidden after its DELETE succeeds. Must
+// outlast any stale queue response that was already in flight (or served by the
+// CDN, which caches the playlist GET for up to s-maxage=15 + stale-while-revalidate=30).
+export const RECENTLY_REMOVED_TTL_MS = 60_000
+
 class QueueManager {
   private queue: JukeboxQueueItem[] = []
   private static instance: QueueManager
   // Track IDs currently being deleted to prevent race conditions with queue refreshes
   private pendingDeletes: Set<string> = new Set()
+  // Queue row IDs whose DELETE has succeeded, mapped to the time they may be
+  // forgotten. pendingDeletes only covers the in-flight window; without this a
+  // queue fetch that started before the DELETE committed could re-add the row.
+  private recentlyRemoved: Map<string, number> = new Map()
   // Track IDs that have permanently failed deletion — prevents infinite retry loops
   // when the same track keeps being retried by multiple callers
   private failedDeletes: Map<string, number> = new Map()
@@ -57,7 +66,21 @@ class QueueManager {
     // Filter out any tracks that are currently being deleted
     // This prevents race conditions where a queue refresh brings back tracks
     // that are in the process of being removed
-    this.queue = newQueue.filter((track) => !this.pendingDeletes.has(track.id))
+    // and tracks that were deleted within the last RECENTLY_REMOVED_TTL_MS
+    const now = Date.now()
+    this.recentlyRemoved.forEach((expiresAt, id) => {
+      if (expiresAt <= now) this.recentlyRemoved.delete(id)
+    })
+    this.queue = newQueue.filter(
+      (track) =>
+        !this.pendingDeletes.has(track.id) &&
+        !this.recentlyRemoved.has(track.id)
+    )
+  }
+
+  private markRemoved(queueId: string): void {
+    this.pendingDeletes.delete(queueId)
+    this.recentlyRemoved.set(queueId, Date.now() + RECENTLY_REMOVED_TTL_MS)
   }
 
   public getNextTrack(): JukeboxQueueItem | undefined {
@@ -144,6 +167,32 @@ class QueueManager {
       `[markAsPlayed] Starting removal for track: ${trackToRemove.tracks.name} (${queueId}) - optimizations enabled`
     )
 
+    await this.deleteQueueItem(trackToRemove, maxRetries, 'markAsPlayed')
+  }
+
+  /**
+   * Removes a queue item on request (e.g. the admin deleting a song). Same
+   * optimistic removal, retry, rollback and post-delete tombstone as
+   * markAsPlayed, but takes the item itself so it still works after the UI has
+   * already dropped it from the queue, and ignores the failed-delete cooldown
+   * so an explicit user action is never silently skipped. Throws if the DELETE
+   * ultimately fails (the item is restored locally first).
+   */
+  public async removeFromQueue(
+    item: JukeboxQueueItem,
+    maxRetries = 2
+  ): Promise<void> {
+    this.failedDeletes.delete(item.id)
+    await this.deleteQueueItem(item, maxRetries, 'removeFromQueue')
+  }
+
+  private async deleteQueueItem(
+    trackToRemove: JukeboxQueueItem,
+    maxRetries: number,
+    label: string
+  ): Promise<void> {
+    const queueId = trackToRemove.id
+
     // Optimistically remove from local queue immediately
     // This prevents race conditions with queue refreshes during the DELETE request
     // NOTE: There is a small window between optimistic removal (line 53) and rollback (lines 95, 119)
@@ -187,18 +236,18 @@ class QueueManager {
         }
 
         if (response.ok) {
-          // Success - remove from pending deletes
-          this.pendingDeletes.delete(queueId)
+          // Success - keep the row hidden for a while (see recentlyRemoved)
+          this.markRemoved(queueId)
           this.notifyTrackRemoved()
           return
         }
 
         if (response.status === 404) {
           // Track already removed from database - treat as success
-          this.pendingDeletes.delete(queueId)
+          this.markRemoved(queueId)
           logger(
             'WARN',
-            `[markAsPlayed] Track ${queueId} already removed from database (404), treating as success`
+            `[${label}] Track ${queueId} already removed from database (404), treating as success`
           )
           this.notifyTrackRemoved()
           return
@@ -209,7 +258,7 @@ class QueueManager {
           const backoffMs = 500 * (attempt + 1)
           logger(
             'WARN',
-            `[markAsPlayed] Failed to mark track ${queueId} as played (attempt ${attempt + 1}/${maxRetries + 1}), retrying in ${backoffMs}ms. Status: ${response.status}`
+            `[${label}] Failed to remove track ${queueId} from queue (attempt ${attempt + 1}/${maxRetries + 1}), retrying in ${backoffMs}ms. Status: ${response.status}`
           )
           await new Promise((resolve) => setTimeout(resolve, backoffMs))
           continue
@@ -218,25 +267,25 @@ class QueueManager {
         // Exhausted retries - rollback the optimistic update
         logger(
           'ERROR',
-          `[markAsPlayed] Failed to mark track ${queueId} as played after ${maxRetries + 1} attempts, rolling back local queue. Last status: ${response.status}`
+          `[${label}] Failed to remove track ${queueId} from queue after ${maxRetries + 1} attempts, rolling back local queue. Last status: ${response.status}`
         )
         rollbackOnce()
 
         let errorMessage = `status ${response.status}`
         try {
           const errorData = await response.json()
-          errorMessage = errorData?.message ?? errorMessage
+          errorMessage = errorData?.error ?? errorData?.message ?? errorMessage
         } catch {
           // Error body wasn't valid JSON — fall back to the status-based message
         }
-        throw new Error(`Failed to mark track as played: ${errorMessage}`)
+        throw new Error(`Failed to remove track from queue: ${errorMessage}`)
       } catch (error) {
         // Network or parsing errors
         if (attempt < maxRetries) {
           const backoffMs = 500 * (attempt + 1)
           logger(
             'WARN',
-            `[markAsPlayed] Error marking track ${queueId} as played (attempt ${attempt + 1}/${maxRetries + 1}), retrying in ${backoffMs}ms`,
+            `[${label}] Error removing track ${queueId} from queue (attempt ${attempt + 1}/${maxRetries + 1}), retrying in ${backoffMs}ms`,
             undefined,
             error as Error
           )
@@ -248,7 +297,7 @@ class QueueManager {
         // already ran above for this same failure)
         logger(
           'ERROR',
-          `[markAsPlayed] Exception while marking track ${queueId} as played after ${maxRetries + 1} attempts, rolling back local queue. Error: ${error instanceof Error ? error.message : String(error)}`,
+          `[${label}] Exception while removing track ${queueId} from queue after ${maxRetries + 1} attempts, rolling back local queue. Error: ${error instanceof Error ? error.message : String(error)}`,
           undefined,
           error as Error
         )

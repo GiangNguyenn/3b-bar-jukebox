@@ -5,7 +5,7 @@
   "scripts": {
     "dev": "next dev",
     "build": "npm run test && next build",
-    "test": "cross-env SPOTIFY_CLIENT_ID=mock SPOTIFY_CLIENT_SECRET=mock NEXT_PUBLIC_BASE_URL=http://localhost:3000 NEXT_PUBLIC_SUPABASE_URL=http://localhost:54321 NEXT_PUBLIC_SUPABASE_ANON_KEY=mock tsx --test services/player/__tests__/*.test.ts services/__tests__/*.test.ts shared/constants/__tests__/*.test.ts app/api/ai-suggestions/__tests__/*.test.ts hooks/__tests__/*.test.ts lib/__tests__/*.test.ts __tests__/game-cleanup-verification/*.test.ts",
+    "test": "cross-env SPOTIFY_CLIENT_ID=mock SPOTIFY_CLIENT_SECRET=mock NEXT_PUBLIC_BASE_URL=http://localhost:3000 NEXT_PUBLIC_SUPABASE_URL=http://localhost:54321 NEXT_PUBLIC_SUPABASE_ANON_KEY=mock tsx --test services/player/__tests__/*.test.ts services/playerLifecycle/__tests__/*.test.ts services/__tests__/*.test.ts shared/constants/__tests__/*.test.ts shared/utils/__tests__/*.test.ts app/api/ai-suggestions/__tests__/*.test.ts hooks/__tests__/*.test.ts lib/__tests__/*.test.ts __tests__/game-cleanup-verification/*.test.ts",
     "start": "next start",
     "lint:check": "next lint",
     "lint:fix": "next lint --fix",
@@ -32,7 +32,6 @@
     "recharts": "^3.0.2",
     "scheduler-polyfill": "^1.3.0",
     "sharp": "^0.35.0",
-    "stripe": "^18.4.0",
     "swr": "^2.2.5",
     "tailwind-merge": "^2.6.0",
     "tailwindcss-animate": "^1.0.7",

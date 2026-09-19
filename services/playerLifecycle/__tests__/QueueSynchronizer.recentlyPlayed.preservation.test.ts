@@ -16,14 +16,11 @@ import { describe, it, beforeEach, afterEach, mock } from 'node:test'
 import assert from 'node:assert/strict'
 import type { JukeboxQueueItem } from '@/shared/types/queue'
 import type { PlayerSDKState } from '../types'
+import { QueueSynchronizer } from '../QueueSynchronizer'
+import { playbackService } from '@/services/player'
+import { queueManager } from '@/services/queueManager'
 
 // ─── Import real modules (no aiSuggestion interception needed for preservation) ─
-const { QueueSynchronizer } =
-  require('../QueueSynchronizer') as typeof import('../QueueSynchronizer')
-const { playbackService } =
-  require('@/services/player') as typeof import('@/services/player')
-const { queueManager } =
-  require('@/services/queueManager') as typeof import('@/services/queueManager')
 // ─── localStorage mock (not available in Node.js test environment) ───────────
 const localStorageStore: Record<string, string> = {}
 const localStorageMock = {
@@ -38,8 +35,11 @@ const localStorageMock = {
     Object.keys(localStorageStore).forEach((k) => delete localStorageStore[k])
   }
 }
-// @ts-ignore
-global.localStorage = localStorageMock
+Object.defineProperty(globalThis, 'localStorage', {
+  value: localStorageMock,
+  writable: true,
+  configurable: true
+})
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -110,9 +110,9 @@ function makeFinishedState(
 function makeRecordingController() {
   const playedTracks: string[] = []
   return {
-    playTrackWithRetry: async (trackUri: string) => {
+    playTrackWithRetry: (trackUri: string) => {
       playedTracks.push(trackUri)
-      return true
+      return Promise.resolve(true)
     },
     log: () => {},
     getDeviceId: () => 'device-1',
@@ -197,7 +197,7 @@ afterEach(async () => {
 
 // ─── Test Suite ──────────────────────────────────────────────────────────────
 
-describe('Preservation: Track Transition Behavior Unchanged', () => {
+void describe('Preservation: Track Transition Behavior Unchanged', () => {
   /**
    * Test case 1: Queue removal
    *
@@ -210,8 +210,8 @@ describe('Preservation: Track Transition Behavior Unchanged', () => {
    * Property: For any track that finishes naturally with a matching queue item,
    * markFinishedTrackAsPlayed is called with the correct track ID and name.
    */
-  describe('Queue Removal — markFinishedTrackAsPlayed called correctly', () => {
-    it('should call markFinishedTrackAsPlayed with correct trackId and trackName for varied inputs', async () => {
+  void describe('Queue Removal — markFinishedTrackAsPlayed called correctly', () => {
+    void it('should call markFinishedTrackAsPlayed with correct trackId and trackName for varied inputs', async () => {
       for (let seed = 1; seed <= 15; seed++) {
         const controller = makeRecordingController()
         const synchronizer = new QueueSynchronizer(controller)
@@ -281,8 +281,8 @@ describe('Preservation: Track Transition Behavior Unchanged', () => {
    * Property: For any track finish with a next track in the queue,
    * the controller's playTrackWithRetry is called with the next track's URI.
    */
-  describe('Next Track Selection — findNextValidTrack drives playNextTrackImpl', () => {
-    it('should play the next track in queue after current track finishes for varied queue states', async () => {
+  void describe('Next Track Selection — findNextValidTrack drives playNextTrackImpl', () => {
+    void it('should play the next track in queue after current track finishes for varied queue states', async () => {
       for (let seed = 1; seed <= 15; seed++) {
         const controller = makeRecordingController()
         const synchronizer = new QueueSynchronizer(controller)
@@ -343,8 +343,8 @@ describe('Preservation: Track Transition Behavior Unchanged', () => {
    * Property: For any track finish where shouldProcessTrack returns false,
    * no queue removal or playback calls occur.
    */
-  describe('Duplicate Detector Early Return — no markFinishedTrackAsPlayed or playback', () => {
-    it('should not call markFinishedTrackAsPlayed or play when shouldProcessTrack returns false', async () => {
+  void describe('Duplicate Detector Early Return — no markFinishedTrackAsPlayed or playback', () => {
+    void it('should not call markFinishedTrackAsPlayed or play when shouldProcessTrack returns false', async () => {
       for (let seed = 1; seed <= 10; seed++) {
         const controller = makeRecordingController()
         const synchronizer = new QueueSynchronizer(controller)

@@ -40,9 +40,6 @@ export default function DisplayPage(): ReactElement {
 
   const { colors, error: colorsError } = useAlbumColors(albumArtUrl)
 
-  // Get audio features - feature removed due to API deprecation
-  // const { features: audioFeatures } = useAudioFeatures(trackId)
-
   // Preload album art image for faster loading
   useEffect(() => {
     if (!albumArtUrl) return
@@ -153,11 +150,7 @@ export default function DisplayPage(): ReactElement {
 
           {/* Multi-layered Visualization - takes up entire screen */}
           <div className='absolute inset-0'>
-            <VisualizationContainer
-              audioFeatures={undefined}
-              colors={colors}
-              isPlaying={isPlaying}
-            />
+            <VisualizationContainer colors={colors} isPlaying={isPlaying} />
           </div>
         </div>
       </div>

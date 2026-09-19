@@ -6,6 +6,9 @@ import { PLAYER_LIFECYCLE_CONFIG } from '../playerLifecycleConfig'
 import type {} from 'scheduler-polyfill'
 
 if (typeof window !== 'undefined') {
+  // Must load synchronously and only in the browser (a static/dynamic import
+  // would either run during SSR or load too late).
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
   require('scheduler-polyfill')
 }
 

@@ -15,14 +15,6 @@ export interface TokenResponse {
 }
 
 /**
- * Token response that includes expires_at timestamp
- * Used by some endpoints like /api/token/[username]
- */
-export interface TokenResponseWithExpiry extends TokenResponse {
-  expires_at: number
-}
-
-/**
  * Error response from token API endpoints
  */
 export interface TokenErrorResponse {
@@ -62,8 +54,6 @@ export const OFFLINE_ERROR_CODES = [
   'PROFILE_UPDATE_ERROR',
   'INTERNAL_ERROR'
 ] as const
-
-export type OfflineErrorCode = (typeof OFFLINE_ERROR_CODES)[number]
 
 /**
  * Error class for token-related errors with error codes

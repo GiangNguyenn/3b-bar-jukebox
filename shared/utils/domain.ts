@@ -59,17 +59,3 @@ export function getOAuthRedirectUrl(request?: Request): string {
   const baseUrl = getBaseUrl(request)
   return `${baseUrl}/api/auth/callback/supabase`
 }
-
-/**
- * Get the site URL for metadata and other purposes
- * Uses a more stable URL for production metadata
- */
-export function getSiteUrl(): string {
-  // For metadata and SEO, prefer a stable production URL
-  if (process.env.NEXT_PUBLIC_SITE_URL) {
-    return process.env.NEXT_PUBLIC_SITE_URL
-  }
-
-  // Fallback to dynamic URL
-  return getBaseUrl()
-}

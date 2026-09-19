@@ -17,7 +17,7 @@
  *   - useTriviaGame does not pass fallbackInterval to useNowPlayingRealtime (relies on 30s default)
  */
 
-import { describe, test, beforeEach, afterEach } from 'node:test'
+import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
@@ -32,7 +32,7 @@ function readSource(relativePath: string): string {
 
 // ─── Test Suite ──────────────────────────────────────────────────────────────
 
-describe('Bug Condition: Stale Song Detection After Tab Backgrounding', () => {
+void describe('Bug Condition: Stale Song Detection After Tab Backgrounding', () => {
   /**
    * Test 1: useNowPlayingRealtime has NO burst polling refs
    *
@@ -47,7 +47,7 @@ describe('Bug Condition: Stale Song Detection After Tab Backgrounding', () => {
    * EXPECTED: This test should FAIL on unfixed code because burst refs
    * do not exist — confirming the bug.
    */
-  test('useNowPlayingRealtime should have burstIntervalRef for accelerated polling after visibility restore', () => {
+  void test('useNowPlayingRealtime should have burstIntervalRef for accelerated polling after visibility restore', () => {
     const hookSource = readSource('hooks/useNowPlayingRealtime.ts')
 
     // BUG CONDITION: The hook should have a burstIntervalRef to manage
@@ -71,7 +71,7 @@ describe('Bug Condition: Stale Song Detection After Tab Backgrounding', () => {
    * EXPECTED: This test should FAIL on unfixed code because burstTimeoutRef
    * does not exist — confirming the bug.
    */
-  test('useNowPlayingRealtime should have burstTimeoutRef for burst duration management', () => {
+  void test('useNowPlayingRealtime should have burstTimeoutRef for burst duration management', () => {
     const hookSource = readSource('hooks/useNowPlayingRealtime.ts')
 
     // BUG CONDITION: The hook should have a burstTimeoutRef to control
@@ -96,7 +96,7 @@ describe('Bug Condition: Stale Song Detection After Tab Backgrounding', () => {
    * EXPECTED: This test should FAIL on unfixed code because the visibility
    * handler has no burst polling logic — confirming the bug.
    */
-  test('handleVisibilityChange should start burst polling on visibility restore', () => {
+  void test('handleVisibilityChange should start burst polling on visibility restore', () => {
     const hookSource = readSource('hooks/useNowPlayingRealtime.ts')
 
     // Find the handleVisibilityChange function body
@@ -121,7 +121,7 @@ describe('Bug Condition: Stale Song Detection After Tab Backgrounding', () => {
     )
   })
 
-  test.skip('useTriviaGame should pass fallbackInterval to useNowPlayingRealtime (trivia removed)', () => {
+  void test.skip('useTriviaGame should pass fallbackInterval to useNowPlayingRealtime (trivia removed)', () => {
     const triviaSource = readSource('hooks/trivia/useTriviaGame.ts')
 
     // Find the useNowPlayingRealtime call in useTriviaGame
@@ -153,7 +153,7 @@ describe('Bug Condition: Stale Song Detection After Tab Backgrounding', () => {
    *
    * EXPECTED: This test should FAIL on unfixed code — confirming the bug.
    */
-  test('Property: burst polling should exist for all backgrounding scenarios with song changes', () => {
+  void test('Property: burst polling should exist for all backgrounding scenarios with song changes', () => {
     const hookSource = readSource('hooks/useNowPlayingRealtime.ts')
 
     // Check structural properties that must hold for the fix

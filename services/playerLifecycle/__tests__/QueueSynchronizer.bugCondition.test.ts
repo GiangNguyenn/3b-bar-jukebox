@@ -33,8 +33,11 @@ const localStorageMock = {
     Object.keys(localStorageStore).forEach((k) => delete localStorageStore[k])
   }
 }
-// @ts-ignore
-global.localStorage = localStorageMock
+Object.defineProperty(globalThis, 'localStorage', {
+  value: localStorageMock,
+  writable: true,
+  configurable: true
+})
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -85,9 +88,9 @@ function makePlayingState(trackId: string, trackName: string): PlayerSDKState {
 function makeRecordingController() {
   const playedTracks: string[] = []
   return {
-    playTrackWithRetry: async (trackUri: string) => {
+    playTrackWithRetry: (trackUri: string) => {
       playedTracks.push(trackUri)
-      return true
+      return Promise.resolve(true)
     },
     log: () => {},
     getDeviceId: () => 'device-1',
@@ -113,7 +116,7 @@ afterEach(async () => {
 
 // ─── Test Suite ──────────────────────────────────────────────────────────────
 
-describe('Bug Condition: Fuzzy Name Mismatch Triggers Restart Loop', () => {
+void describe('Bug Condition: Fuzzy Name Mismatch Triggers Restart Loop', () => {
   /**
    * Test case 1: Featuring artist suffix
    *
@@ -124,7 +127,7 @@ describe('Bug Condition: Fuzzy Name Mismatch Triggers Restart Loop', () => {
    * Expected (correct behavior): playNextTrack() is NOT called
    * Actual (bug): playNextTrack() IS called, restarting the song
    */
-  it('should NOT call playNextTrack when track name differs only by featuring suffix', async () => {
+  void it('should NOT call playNextTrack when track name differs only by featuring suffix', async () => {
     const controller = makeRecordingController()
     const synchronizer = new QueueSynchronizer(controller)
 
@@ -168,7 +171,7 @@ describe('Bug Condition: Fuzzy Name Mismatch Triggers Restart Loop', () => {
    * Expected (correct behavior): playNextTrack() is NOT called
    * Actual (bug): playNextTrack() IS called, restarting the song
    */
-  it('should NOT call playNextTrack when track name differs only by remastered suffix', async () => {
+  void it('should NOT call playNextTrack when track name differs only by remastered suffix', async () => {
     const controller = makeRecordingController()
     const synchronizer = new QueueSynchronizer(controller)
 
@@ -206,7 +209,7 @@ describe('Bug Condition: Fuzzy Name Mismatch Triggers Restart Loop', () => {
    * Expected (correct behavior): playNextTrack() called at most once
    * Actual (bug): playNextTrack() called twice (no guard)
    */
-  it('should call playNextTrack at most once when syncQueueWithPlayback is called twice with same mismatch', async () => {
+  void it('should call playNextTrack at most once when syncQueueWithPlayback is called twice with same mismatch', async () => {
     const controller = makeRecordingController()
     const synchronizer = new QueueSynchronizer(controller)
 

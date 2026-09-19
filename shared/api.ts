@@ -130,7 +130,7 @@ export class RateLimitManager {
     return false
   }
 
-  public static get status() {
+  public static get status(): { tokens: number; max: number } {
     this.refillTokens()
     return { tokens: this.tokens, max: this.MAX_TOKENS }
   }
@@ -252,7 +252,7 @@ export const sendApiRequest = async <T>({
             `Failed to get ${useAppToken ? 'app' : 'user'} Spotify token`
           )
         }
-        headers['Authorization'] = `Bearer ${token}`
+        headers.Authorization = `Bearer ${token}`
       }
 
       const startTime = Date.now()
@@ -441,7 +441,7 @@ export const sendApiRequest = async <T>({
       }
 
       const contentType = response.headers.get('content-type')
-      if (!contentType || !contentType.includes('application/json')) {
+      if (!contentType?.includes('application/json')) {
         return {} as T
       }
 
@@ -493,9 +493,9 @@ export const sendApiRequest = async <T>({
           clearTimeout(timeoutState.id)
           resolve(result)
         })
-        .catch((error) => {
+        .catch((error: unknown) => {
           clearTimeout(timeoutState.id)
-          reject(error)
+          reject(error instanceof Error ? error : new Error(String(error)))
         })
     )
     void processRequestQueue()

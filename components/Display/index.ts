@@ -1,7 +1,0 @@
-export { default as TrackMetadata } from './TrackMetadata'
-export { default as ColorBackground } from './ColorBackground'
-export { default as GradientWaves } from './GradientWaves'
-export { default as LinearSpectrum } from './LinearSpectrum'
-export { default as VisualizationContainer } from './VisualizationContainer'
-export { default as QRCodeComponent } from './QRCode'
-export { default as VinylRecordPlaceholder } from './VinylRecordPlaceholder'

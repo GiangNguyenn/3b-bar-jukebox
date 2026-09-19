@@ -31,15 +31,14 @@ function createMockState(
   }
 }
 
-test('BUG REPRO: isTrackFinished detects start-up buffering as track finish', async () => {
+void test('BUG REPRO: isTrackFinished detects start-up buffering as track finish', () => {
   // 1. Setup initial state: Playing at position 0 (Start of track)
   // This simulates the moment a track starts playing.
   const statePlayingAtStart = createMockState(false, 0, 180000)
 
   // We need to access private methods/propeties for this test
-  // @ts-ignore
+  // @ts-expect-error test accesses/overrides a private member
   const queueSynchronizer = playerLifecycleService.queueSynchronizer
-  // @ts-ignore
   queueSynchronizer.setLastKnownState(statePlayingAtStart)
 
   // 2. Simulate "Buffering" state: Paused at position 0
@@ -47,7 +46,6 @@ test('BUG REPRO: isTrackFinished detects start-up buffering as track finish', as
   const stateBuffering = createMockState(true, 0, 180000)
 
   // 3. Test isTrackFinished
-  // @ts-ignore
   const isFinished = queueSynchronizer.isTrackFinished(stateBuffering)
 
   // CURRENT BEHAVIOR (BUG): Returns true because it sees "Paused at 0" and assumes finish

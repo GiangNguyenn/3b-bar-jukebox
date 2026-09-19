@@ -32,7 +32,7 @@ export function usePlaybackHealth(): PlaybackStatus {
         method: 'GET'
       })
 
-      if (!currentPlaybackState || !currentPlaybackState.item) {
+      if (!currentPlaybackState?.item) {
         setPlaybackStatus('stopped')
         lastCheckRef.current = { progress: null, uri: null }
 

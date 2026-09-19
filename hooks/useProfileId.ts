@@ -8,7 +8,12 @@ import { supabaseBrowser } from '@/lib/supabase-browser'
  * Hook to get the profile ID from the URL username parameter.
  * Also allows passing a username explicitly.
  */
-export function useProfileId(explicitUsername?: string) {
+export function useProfileId(explicitUsername?: string): {
+  profileId: string | null
+  isLoading: boolean
+  error: string | null
+  username: string | undefined
+} {
   const params = useParams()
   // Use explicit username if provided, otherwise try to get from URL params
   const rawUsername = explicitUsername || params?.username

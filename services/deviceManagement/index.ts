@@ -27,7 +27,7 @@ export function setDeviceManagementLogger(
     context?: string,
     error?: Error
   ) => void
-) {
+): void {
   setDeviceApiLogger(logger)
   setDeviceValidationLogger(logger)
   setDeviceTransferLogger(logger)

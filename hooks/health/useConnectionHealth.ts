@@ -57,7 +57,9 @@ export function useConnectionHealth(): ConnectionStatus {
 
     const handleOnline = () => {
       // Small delay to allow network to stabilize
-      setTimeout(updateConnectionStatus, 1000)
+      setTimeout(() => {
+        void updateConnectionStatus()
+      }, 1000)
     }
 
     const handleOffline = () => {

@@ -134,11 +134,10 @@ const { data } = await supabase.rpc('get_admin_spotify_credentials')
 
 The following files need updates to use secure functions:
 
-1. `services/subscriptionService.ts` - ✅ Already secure (uses proper auth)
-2. `services/authService.ts` - Needs token function updates
-3. `app/api/token/route.ts` - Needs admin function updates
-4. `app/api/auth/token/route.ts` - Needs admin function updates
-5. `app/api/now-playing/route.ts` - Needs admin function updates
+1. `services/authService.ts` - Needs token function updates
+2. `app/api/token/route.ts` - Needs admin function updates
+3. `app/api/auth/token/route.ts` - Needs admin function updates
+4. `app/api/now-playing/route.ts` - Needs admin function updates
 
 ## 🔍 Additional Security Recommendations
 
@@ -190,7 +189,6 @@ Consider implementing:
 
 - Verify all user authentication flows
 - Test admin credential access in public endpoints
-- Confirm subscription operations work correctly
 - Validate branding customization features
 
 ## 📋 Post-Migration Checklist
@@ -200,7 +198,6 @@ Consider implementing:
 - [ ] Test user authentication flows
 - [ ] Test admin functionality
 - [ ] Verify public jukebox display works
-- [ ] Test subscription operations
 - [ ] Monitor for any access errors
 - [ ] Update documentation
 

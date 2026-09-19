@@ -1,7 +1,5 @@
 import { useEffect, useState } from 'react'
 import { supabaseBrowser } from '@/lib/supabase-browser'
-import { AppError } from '@/shared/utils/errorHandling'
-import { ERROR_MESSAGES } from '@/shared/constants/errors'
 import { queryWithRetry } from '@/lib/supabaseQuery'
 
 interface Profile {
@@ -73,7 +71,7 @@ export function useGetProfile(): UseGetProfileReturn {
       }
     }
 
-    getProfile()
+    void getProfile()
   }, [supabase])
 
   return { profile, loading, error }

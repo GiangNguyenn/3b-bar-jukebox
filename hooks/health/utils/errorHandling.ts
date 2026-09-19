@@ -33,26 +33,3 @@ export function handleHealthError(
   // Log other errors
   logger('ERROR', message, context, error instanceof Error ? error : undefined)
 }
-
-/**
- * Creates a safe error handler that checks abort status before logging
- */
-export function createSafeErrorHandler(
-  isAborted: () => boolean,
-  logger: (
-    level: 'ERROR' | 'WARN' | 'INFO',
-    message: string,
-    context?: string,
-    error?: Error
-  ) => void,
-  context: string
-) {
-  return (error: unknown, message: string): void => {
-    // Don't log if component has unmounted
-    if (isAborted()) {
-      return
-    }
-
-    handleHealthError(error, logger, context, message)
-  }
-}

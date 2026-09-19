@@ -7,12 +7,12 @@ inclusion: always
 ```
 app/                          # Next.js App Router
   [username]/                 # Dynamic route per venue owner
-    admin/components/         # Admin UI organized by tab (analytics, branding, dashboard, playlist, subscription, track-suggestions)
+    admin/components/         # Admin UI organized by tab (analytics, branding, dashboard, playlist, track-suggestions)
     display/                  # Public now-playing display
     game/                     # Music trivia game
     playlist/                 # Public queue view
   api/                        # API routes — one folder per endpoint, each with route.ts
-    auth/, playback/, queue/, search/, dj-script/, dj-tts/, branding/, subscriptions/, game/, ...
+    auth/, playback/, queue/, search/, dj-script/, dj-tts/, branding/, game/, ...
   auth/                       # Auth pages (signin, error)
   components/                 # App-level shared components (SEO, structured data)
 
@@ -33,13 +33,11 @@ hooks/                        # React hooks
   spotifyPlayerStore.ts       # Zustand store for player state
   game/                       # Game-specific hooks
 
-stores/                       # Zustand stores (playlistStore, brandingStore)
 contexts/                     # React contexts (Toast)
 lib/                          # Utility libraries (Supabase clients, toast, utils)
 shared/                       # Shared client/server code
   constants/, types/, utils/, validations/
 types/                        # Global type declarations (Supabase DB types, SDK types)
-utils/                        # Supabase client helpers, subscription queries
 middleware/                   # Custom middleware utilities
 supabase/                     # Supabase project config and migrations
 recovery/                     # Playback recovery utilities

@@ -137,7 +137,7 @@ function makeQueueItem(
 function makeController(deviceId: string | null = 'device-1') {
   const logs: string[] = []
   return {
-    playTrackWithRetry: async () => true,
+    playTrackWithRetry: () => Promise.resolve(true),
     log: (_level: string, msg: string) => {
       logs.push(msg)
     },
@@ -176,7 +176,7 @@ afterEach(async () => {
 
 // ─── Test Suite ──────────────────────────────────────────────────────────────
 
-describe('Bug Condition: Playback Controls Disabled During Track Transition', () => {
+void describe('Bug Condition: Playback Controls Disabled During Track Transition', () => {
   /**
    * Property 1a — isActuallyPlaying returns true during transition
    *
@@ -186,7 +186,7 @@ describe('Bug Condition: Playback Controls Disabled During Track Transition', ()
    *
    * Validates: Requirements 2.1, 2.3
    */
-  test('isActuallyPlaying is true while isOperationInProgress() is true (lock held)', async () => {
+  void test('isActuallyPlaying is true while isOperationInProgress() is true (lock held)', async () => {
     // Simulate the stale Zustand state that occurs when the track ends
     spotifyPlayerStore.getState().setPlaybackState(makeStaleEndedState())
     // The fix: handleTrackFinished sets isTransitionInProgress = true BEFORE acquiring the lock
@@ -231,7 +231,7 @@ describe('Bug Condition: Playback Controls Disabled During Track Transition', ()
    *
    * Validates: Requirements 2.1, 2.3, 2.5
    */
-  test('skip button disabled prop is false while isOperationInProgress() is true', async () => {
+  void test('skip button disabled prop is false while isOperationInProgress() is true', async () => {
     // Set up stale ended-track state in Zustand
     spotifyPlayerStore.getState().setPlaybackState(makeStaleEndedState())
     // The fix: handleTrackFinished sets isTransitionInProgress = true BEFORE acquiring the lock
@@ -279,7 +279,7 @@ describe('Bug Condition: Playback Controls Disabled During Track Transition', ()
    *
    * Validates: Requirements 2.2
    */
-  test('syncQueueWithPlayback updates queue state even when isOperationInProgress() is true', async () => {
+  void test('syncQueueWithPlayback updates queue state even when isOperationInProgress() is true', async () => {
     const controller = makeController()
     const synchronizer = new QueueSynchronizer(controller)
 

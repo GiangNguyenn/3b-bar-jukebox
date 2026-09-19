@@ -8,7 +8,7 @@ import type { SpotifyPlaybackState } from '@/shared/types/spotify'
 
 const ENFORCEMENT_INTERVAL_MS = 5000 // Check every 5 seconds
 
-export function usePlaybackEnforcer(enabled: boolean = true) {
+export function usePlaybackEnforcer(enabled: boolean = true): void {
   const { deviceId, status } = useSpotifyPlayerStore()
   const { addLog } = useConsoleLogsContext()
   const intervalRef = useRef<NodeJS.Timeout | null>(null)
@@ -34,7 +34,7 @@ export function usePlaybackEnforcer(enabled: boolean = true) {
         })
 
         // If no playback is active, nothing to enforce
-        if (!playbackState || !playbackState.device) {
+        if (!playbackState?.device) {
           return
         }
 
@@ -75,10 +75,9 @@ export function usePlaybackEnforcer(enabled: boolean = true) {
     }
 
     // Start polling
-    intervalRef.current = setInterval(
-      checkAndEnforcePlayback,
-      ENFORCEMENT_INTERVAL_MS
-    )
+    intervalRef.current = setInterval(() => {
+      void checkAndEnforcePlayback()
+    }, ENFORCEMENT_INTERVAL_MS)
 
     // Run immediately once
     void checkAndEnforcePlayback()

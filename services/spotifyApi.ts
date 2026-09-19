@@ -2,7 +2,6 @@ import {
   SpotifyPlaylistItem,
   SpotifyPlaybackState,
   SpotifyPlayerQueue,
-  TrackItem,
   SpotifyArtist,
   TrackDetails
 } from '@/shared/types/spotify'
@@ -52,7 +51,7 @@ let addLog: (
 ) => void
 
 // Function to set the logging function
-export function setSpotifyApiLogger(logger: typeof addLog) {
+export function setSpotifyApiLogger(logger: typeof addLog): void {
   addLog = logger
 }
 

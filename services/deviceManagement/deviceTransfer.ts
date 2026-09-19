@@ -12,7 +12,7 @@ let addLog: (
 ) => void
 
 // Function to set the logging function
-export function setDeviceTransferLogger(logger: typeof addLog) {
+export function setDeviceTransferLogger(logger: typeof addLog): void {
   addLog = logger
 }
 

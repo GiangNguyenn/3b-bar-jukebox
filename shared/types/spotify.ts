@@ -92,28 +92,6 @@ export interface SpotifyPlaylistItem {
   }
 }
 
-export interface SpotifyPlaylistSimplified {
-  id: string
-  name: string
-  tracks: {
-    total: number
-  }
-  images: Array<{ url: string }>
-  public: boolean
-  owner: {
-    display_name: string
-  }
-}
-
-export interface PlaylistListItem {
-  id: string
-  name: string
-  trackCount: number
-  imageUrl: string | null
-  isPublic: boolean
-  ownerName: string
-}
-
 export interface SpotifyPlaybackState {
   is_playing: boolean
   progress_ms: number
@@ -147,67 +125,6 @@ export interface SpotifyPlayerQueue {
   currently_playing: TrackDetails
   queue: TrackDetails[]
 }
-export interface UserQueue {
-  queue: {
-    id: string
-    name: string
-    artists: { name: string }[]
-    album: {
-      name: string
-      images: { url: string }[]
-    }
-    duration_ms: number
-  }[]
-}
-
-export interface SpotifySDKPlaybackState {
-  position: number
-  duration: number
-  track_window: {
-    current_track: {
-      id: string
-      uri: string
-      name: string
-      artists: { name: string }[]
-      album: {
-        name: string
-        images: { url: string }[]
-      }
-      duration_ms: number
-    }
-  }
-  disallows: {
-    pausing: boolean
-    peeking_next: boolean
-    peeking_prev: boolean
-    resuming: boolean
-    seeking: boolean
-    skipping_next: boolean
-    skipping_prev: boolean
-  }
-}
-
-export interface SpotifyPlayerInstance {
-  connect(): Promise<boolean>
-  disconnect(): void
-  getCurrentState(): Promise<SpotifySDKPlaybackState | null>
-  setName(name: string): Promise<void>
-  getVolume(): Promise<number>
-  setVolume(volume: number): Promise<void>
-  pause(): Promise<void>
-  resume(): Promise<void>
-  previousTrack(): Promise<void>
-  nextTrack(): Promise<void>
-  activateElement(): Promise<void>
-}
-
-export interface SpotifySDK {
-  Player: new (config: {
-    name: string
-    getOAuthToken: (cb: (token: string) => void) => void
-    volume?: number
-  }) => SpotifyPlayerInstance
-}
 
 export interface SpotifyErrorResponse {
   error: {
@@ -215,25 +132,4 @@ export interface SpotifyErrorResponse {
     message: string
   }
   details?: string
-}
-
-export interface SpotifyAudioFeatures {
-  danceability: number // 0-1
-  energy: number // 0-1
-  key: number // 0-11
-  loudness: number // dB
-  mode: number // 0 or 1
-  speechiness: number // 0-1
-  acousticness: number // 0-1
-  instrumentalness: number // 0-1
-  liveness: number // 0-1
-  valence: number // 0-1 (positivity)
-  tempo: number // BPM
-  type: string
-  id: string
-  uri: string
-  track_href: string
-  analysis_url: string
-  duration_ms: number
-  time_signature: number
 }

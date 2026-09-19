@@ -10,7 +10,7 @@ let addLog: (
 ) => void
 
 // Function to set the logging function
-export function setDeviceApiLogger(logger: typeof addLog) {
+export function setDeviceApiLogger(logger: typeof addLog): void {
   addLog = logger
 }
 

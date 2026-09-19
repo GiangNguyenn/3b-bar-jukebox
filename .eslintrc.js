@@ -4,11 +4,12 @@ module.exports = {
     'next.config.mjs',
     'postcss.config.mjs',
     'tailwind.config.ts',
-    'instrumentation.ts',
-    'instrumentation-client.ts',
     'node_modules/',
     'public/',
-    'prisma/'
+    'prisma/',
+    // Generated files (Next.js env types, `supabase gen types`)
+    'next-env.d.ts',
+    'types/supabase.ts'
   ],
   overrides: [
     {
@@ -24,6 +25,14 @@ module.exports = {
       ],
       rules: {
         'unused-imports/no-unused-imports': 'error',
+        // The TS override re-applies the recommended rules, which would
+        // otherwise win over the top-level severities below. Restate them here.
+        '@typescript-eslint/no-explicit-any': [
+          'warn',
+          { ignoreRestArgs: true }
+        ],
+        // Covered (as a warning) by unused-imports/no-unused-vars
+        '@typescript-eslint/no-unused-vars': 'off',
         'unused-imports/no-unused-vars': [
           'warn',
           {
@@ -38,6 +47,14 @@ module.exports = {
         '@typescript-eslint/no-unsafe-argument': 'warn',
         '@typescript-eslint/no-unsafe-call': 'warn',
         '@typescript-eslint/no-unsafe-return': 'warn'
+      }
+    },
+    {
+      // CLI scripts write to stdout by design
+      files: ['scripts/**'],
+      rules: {
+        'no-console': 'off',
+        'no-restricted-syntax': 'off'
       }
     },
     {
@@ -79,7 +96,8 @@ module.exports = {
     '@typescript-eslint/dot-notation': ['error', { allowKeywords: true }],
     '@typescript-eslint/no-empty-function': [
       'error',
-      { allow: ['arrowFunctions'] }
+      // private-constructors: the singleton pattern (QueueManager etc.)
+      { allow: ['arrowFunctions', 'private-constructors'] }
     ],
     // Allow img elements for external images (e.g., Spotify URLs)
     '@next/next/no-img-element': 'off',

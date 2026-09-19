@@ -136,14 +136,14 @@ afterEach(() => {
 
 // ─── Test Suite ──────────────────────────────────────────────────────────────
 
-describe('Preservation: Token Caching — getToken() returns cached token without network requests', () => {
+void describe('Preservation: Token Caching — getToken() returns cached token without network requests', () => {
   /**
    * **Validates: Requirements 3.1**
    *
    * For all valid token states (not expired, not in recovery):
    * getToken() returns the cached token without making any fetch calls.
    */
-  it('getToken() returns cached token when valid, no fetch calls made', async () => {
+  void it('getToken() returns cached token when valid, no fetch calls made', async () => {
     await fc.assert(
       fc.asyncProperty(arbToken, arbExpiryMs, async (tokenValue, expiryMs) => {
         // Set up a valid cached token
@@ -186,7 +186,7 @@ describe('Preservation: Token Caching — getToken() returns cached token withou
   })
 })
 
-describe('Preservation: fetchWithRetry retries on transient failure then falls through', () => {
+void describe('Preservation: fetchWithRetry retries on transient failure then falls through', () => {
   /**
    * **Validates: Requirements 3.2**
    *
@@ -194,7 +194,7 @@ describe('Preservation: fetchWithRetry retries on transient failure then falls t
    * up to 2 times with backoff per endpoint before falling through,
    * and the token is eventually obtained from a working endpoint.
    */
-  it('fetchWithRetry retries on transient error then succeeds on next attempt', async () => {
+  void it('fetchWithRetry retries on transient error then succeeds on next attempt', async () => {
     // Patch setTimeout to speed up backoff delays in fetchWithRetry
     const originalSetTimeout = globalThis.setTimeout
     globalThis.setTimeout = ((fn: () => void, _delay?: number) => {
@@ -212,21 +212,22 @@ describe('Preservation: fetchWithRetry retries on transient failure then falls t
 
             let attemptCount = 0
             const originalFetch = globalThis.fetch
-            globalThis.fetch = (async () => {
+            globalThis.fetch = (() => {
               attemptCount++
               if (attemptCount <= failCount) {
                 // Simulate transient network error (retryable)
-                throw new Error('fetch failed: network error')
+                return Promise.reject(new Error('fetch failed: network error'))
               }
               // Succeed with a valid token response
-              return {
+              return Promise.resolve({
                 ok: true,
-                json: async () => ({
-                  access_token: tokenValue,
-                  expires_in: 3600,
-                  token_type: 'Bearer'
-                })
-              } as Response
+                json: () =>
+                  Promise.resolve({
+                    access_token: tokenValue,
+                    expires_in: 3600,
+                    token_type: 'Bearer'
+                  })
+              } as Response)
             }) as any
 
             try {
@@ -258,14 +259,14 @@ describe('Preservation: fetchWithRetry retries on transient failure then falls t
   })
 })
 
-describe('Preservation: onRefresh callbacks fire and RecoveryManager resets on success', () => {
+void describe('Preservation: onRefresh callbacks fire and RecoveryManager resets on success', () => {
   /**
    * **Validates: Requirements 3.3**
    *
    * For all successful refresh scenarios: every registered onRefresh
    * callback is invoked, and recoveryManager.failureCount resets to 0.
    */
-  it('all registered onRefresh callbacks are invoked on successful token refresh', async () => {
+  void it('all registered onRefresh callbacks are invoked on successful token refresh', async () => {
     await fc.assert(
       fc.asyncProperty(
         arbToken,
@@ -288,16 +289,16 @@ describe('Preservation: onRefresh callbacks fire and RecoveryManager resets on s
 
           // Mock fetch to return a valid token
           const originalFetch = globalThis.fetch
-          globalThis.fetch = (async () => {
-            return {
+          globalThis.fetch = (() =>
+            Promise.resolve({
               ok: true,
-              json: async () => ({
-                access_token: tokenValue,
-                expires_in: 3600,
-                token_type: 'Bearer'
-              })
-            } as Response
-          }) as any
+              json: () =>
+                Promise.resolve({
+                  access_token: tokenValue,
+                  expires_in: 3600,
+                  token_type: 'Bearer'
+                })
+            } as Response)) as any
 
           try {
             await tokenManager.getToken()
@@ -330,7 +331,7 @@ describe('Preservation: onRefresh callbacks fire and RecoveryManager resets on s
     )
   })
 
-  it('RecoveryManager failureCount resets to 0 on recordSuccess()', () => {
+  void it('RecoveryManager failureCount resets to 0 on recordSuccess()', () => {
     fc.assert(
       fc.property(fc.integer({ min: 1, max: 10 }), (failureCount) => {
         const rm = new RecoveryManager()
@@ -363,7 +364,7 @@ describe('Preservation: onRefresh callbacks fire and RecoveryManager resets on s
   })
 })
 
-describe('Preservation: Diagnostic output contains all 6 existing top-level fields', () => {
+void describe('Preservation: Diagnostic output contains all 6 existing top-level fields', () => {
   /**
    * **Validates: Requirements 3.5, 3.6**
    *
@@ -371,7 +372,7 @@ describe('Preservation: Diagnostic output contains all 6 existing top-level fiel
    * JSON contains all 6 existing top-level fields unchanged:
    * summary, criticalIssues, systemState, details, errorAnalysis, logs
    */
-  it('diagnostic output JSON contains all 6 required top-level fields', () => {
+  void it('diagnostic output JSON contains all 6 required top-level fields', () => {
     fc.assert(
       fc.property(
         arbHealthyHealthStatus(),

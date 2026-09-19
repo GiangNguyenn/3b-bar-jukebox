@@ -97,8 +97,8 @@ export function JukeboxSection({
         method: 'PUT'
       })
 
-      // Reset predictive state after seeking to prevent stale track preparation
-      // This will also immediately prepare next track if we seeked to near the end
+      // Clear the auto-play service's cached playback state after seeking and
+      // poll immediately, so it doesn't act on stale position/track info
       void getAutoPlayService().resetAfterSeek()
     } catch (error) {
       addLog(

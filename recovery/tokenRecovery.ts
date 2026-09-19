@@ -28,7 +28,6 @@ export function parseSpotifyError(
 ): TokenRefreshError {
   let errorCode = 'UNKNOWN_ERROR'
   let errorMessage = 'Unknown error occurred'
-  let isRecoverable = false
   let retryAfter: number | undefined
 
   // Try to parse JSON error response
@@ -315,36 +314,5 @@ export async function refreshTokenWithRetry(
       message: 'Token refresh failed after all retries',
       isRecoverable: false
     }
-  }
-}
-
-/**
- * Determines if a token refresh error requires user action
- */
-export function requiresUserAction(error: TokenRefreshError): boolean {
-  return (
-    error.code === 'INVALID_REFRESH_TOKEN' ||
-    error.code === 'INVALID_CLIENT_CREDENTIALS' ||
-    error.code === 'INVALID_REQUEST'
-  )
-}
-
-/**
- * Gets a user-friendly error message for display in the UI
- */
-export function getUserFriendlyErrorMessage(error: TokenRefreshError): string {
-  switch (error.code) {
-    case 'INVALID_REFRESH_TOKEN':
-      return 'Please reconnect your Spotify account'
-    case 'INVALID_CLIENT_CREDENTIALS':
-      return 'Server configuration error. Please contact support.'
-    case 'RATE_LIMITED':
-      return `Rate limited. Retrying in ${error.retryAfter ?? 'a few'} seconds...`
-    case 'TRANSIENT_ERROR':
-      return 'Temporary service issue. Retrying...'
-    case 'NETWORK_ERROR':
-      return 'Network error. Retrying...'
-    default:
-      return 'Token refresh failed. Please try again.'
   }
 }

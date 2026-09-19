@@ -34,8 +34,11 @@ const localStorageMock = {
     Object.keys(localStorageStore).forEach((k) => delete localStorageStore[k])
   }
 }
-// @ts-ignore
-global.localStorage = localStorageMock
+Object.defineProperty(globalThis, 'localStorage', {
+  value: localStorageMock,
+  writable: true,
+  configurable: true
+})
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -87,9 +90,9 @@ function makePlayingState(
 function makeRecordingController() {
   const playedTracks: string[] = []
   return {
-    playTrackWithRetry: async (trackUri: string) => {
+    playTrackWithRetry: (trackUri: string) => {
       playedTracks.push(trackUri)
-      return true
+      return Promise.resolve(true)
     },
     log: () => {},
     getDeviceId: () => 'device-1',
@@ -157,7 +160,7 @@ afterEach(async () => {
 
 // ─── Test Suite ──────────────────────────────────────────────────────────────
 
-describe('Preservation: Exact Match, Empty Queue, and Genuine Mismatch Behavior', () => {
+void describe('Preservation: Exact Match, Empty Queue, and Genuine Mismatch Behavior', () => {
   /**
    * **Validates: Requirements 3.2**
    *
@@ -167,8 +170,8 @@ describe('Preservation: Exact Match, Empty Queue, and Genuine Mismatch Behavior'
    * Property: For any queue item where the Spotify track ID matches exactly,
    * the synchronizer updates its internal state without triggering playNextTrack.
    */
-  describe('Exact ID Match — currentQueueTrack updated, no playNextTrack', () => {
-    it('should update currentQueueTrack and not call playNextTrack for exact ID match', () => {
+  void describe('Exact ID Match — currentQueueTrack updated, no playNextTrack', () => {
+    void it('should update currentQueueTrack and not call playNextTrack for exact ID match', () => {
       const controller = makeRecordingController()
       const synchronizer = new QueueSynchronizer(controller)
 
@@ -193,7 +196,7 @@ describe('Preservation: Exact Match, Empty Queue, and Genuine Mismatch Behavior'
       )
     })
 
-    it('should handle exact ID match across varied random inputs', () => {
+    void it('should handle exact ID match across varied random inputs', () => {
       for (let seed = 1; seed <= 20; seed++) {
         const controller = makeRecordingController()
         const synchronizer = new QueueSynchronizer(controller)
@@ -222,7 +225,7 @@ describe('Preservation: Exact Match, Empty Queue, and Genuine Mismatch Behavior'
       }
     })
 
-    it('should match correct item when multiple items in queue', () => {
+    void it('should match correct item when multiple items in queue', () => {
       for (let seed = 1; seed <= 10; seed++) {
         const controller = makeRecordingController()
         const synchronizer = new QueueSynchronizer(controller)
@@ -283,8 +286,8 @@ describe('Preservation: Exact Match, Empty Queue, and Genuine Mismatch Behavior'
    * then no matchingQueueItem found, queue.length === 0, so currentQueueTrack is set to null.
    * playNextTrack is NOT called.
    */
-  describe('Empty Queue — no playNextTrack, currentQueueTrack cleared', () => {
-    it('should not call playNextTrack when queue is empty and playback is active', () => {
+  void describe('Empty Queue — no playNextTrack, currentQueueTrack cleared', () => {
+    void it('should not call playNextTrack when queue is empty and playback is active', () => {
       const controller = makeRecordingController()
       const synchronizer = new QueueSynchronizer(controller)
 
@@ -307,7 +310,7 @@ describe('Preservation: Exact Match, Empty Queue, and Genuine Mismatch Behavior'
       )
     })
 
-    it('should handle empty queue across varied random track inputs', () => {
+    void it('should handle empty queue across varied random track inputs', () => {
       for (let seed = 1; seed <= 15; seed++) {
         const controller = makeRecordingController()
         const synchronizer = new QueueSynchronizer(controller)
@@ -343,8 +346,8 @@ describe('Preservation: Exact Match, Empty Queue, and Genuine Mismatch Behavior'
    * (no ID match AND no name match at all), playNextTrack() IS called with
    * the expected track to enforce queue order.
    */
-  describe('Genuine Mismatch — playNextTrack IS called to enforce queue', () => {
-    it('should call playNextTrack when a completely different track is playing', async () => {
+  void describe('Genuine Mismatch — playNextTrack IS called to enforce queue', () => {
+    void it('should call playNextTrack when a completely different track is playing', async () => {
       const controller = makeRecordingController()
       const synchronizer = new QueueSynchronizer(controller)
 
@@ -372,13 +375,13 @@ describe('Preservation: Exact Match, Empty Queue, and Genuine Mismatch Behavior'
       // Verify it was called with the expected track
       const callArgs = playNextTrackSpy.mock.calls[0].arguments
       assert.equal(
-        (callArgs[0] as JukeboxQueueItem).tracks.spotify_track_id,
+        callArgs[0].tracks.spotify_track_id,
         'expected-track-id',
         'playNextTrack() should be called with the expected queue track'
       )
     })
 
-    it('should enforce queue order across varied random mismatched inputs', async () => {
+    void it('should enforce queue order across varied random mismatched inputs', async () => {
       for (let seed = 1; seed <= 10; seed++) {
         const controller = makeRecordingController()
         const synchronizer = new QueueSynchronizer(controller)
@@ -412,7 +415,7 @@ describe('Preservation: Exact Match, Empty Queue, and Genuine Mismatch Behavior'
       }
     })
 
-    it('should use first queue item as expected track when currentQueueTrack is null', async () => {
+    void it('should use first queue item as expected track when currentQueueTrack is null', async () => {
       const controller = makeRecordingController()
       const synchronizer = new QueueSynchronizer(controller)
 
@@ -436,7 +439,7 @@ describe('Preservation: Exact Match, Empty Queue, and Genuine Mismatch Behavior'
 
       const callArgs = playNextTrackSpy.mock.calls[0].arguments
       assert.equal(
-        (callArgs[0] as JukeboxQueueItem).tracks.spotify_track_id,
+        callArgs[0].tracks.spotify_track_id,
         'first-track-id',
         'playNextTrack() should fall back to queue[0] when currentQueueTrack is null'
       )
@@ -450,8 +453,8 @@ describe('Preservation: Exact Match, Empty Queue, and Genuine Mismatch Behavior'
    * setCurrentlyPlayingTrack(null) is called and no queue enforcement occurs.
    * The function returns early before reaching the queue matching logic.
    */
-  describe('Paused State — setCurrentlyPlayingTrack(null), no queue enforcement', () => {
-    it('should set currentlyPlayingTrack to null and not call playNextTrack when paused', () => {
+  void describe('Paused State — setCurrentlyPlayingTrack(null), no queue enforcement', () => {
+    void it('should set currentlyPlayingTrack to null and not call playNextTrack when paused', () => {
       const controller = makeRecordingController()
       const synchronizer = new QueueSynchronizer(controller)
 
@@ -488,7 +491,7 @@ describe('Preservation: Exact Match, Empty Queue, and Genuine Mismatch Behavior'
       )
     })
 
-    it('should handle paused state across varied random inputs without queue enforcement', () => {
+    void it('should handle paused state across varied random inputs without queue enforcement', () => {
       for (let seed = 1; seed <= 15; seed++) {
         const controller = makeRecordingController()
         const synchronizer = new QueueSynchronizer(controller)

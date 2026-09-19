@@ -5,7 +5,7 @@ import { queueManager } from '../queueManager'
 import { PlayerSDKState } from '../playerLifecycle/types'
 import { mockQueueItem } from './fixtures/mockQueueItem'
 
-test('BUG REPRO: syncQueueWithPlayback handles ID mismatch (Relinking)', async () => {
+void test('BUG REPRO: syncQueueWithPlayback handles ID mismatch (Relinking)', () => {
   const relinkedTrackId = 'id-relinked' // Different from mockQueueItem.tracks.spotify_track_id
   const trackName = mockQueueItem.tracks.name
 
@@ -16,17 +16,15 @@ test('BUG REPRO: syncQueueWithPlayback handles ID mismatch (Relinking)', async (
 
   // Spy on queueSynchronizer.playNextTrack
   let playNextTrackCalled = false
-  // @ts-ignore
+  // @ts-expect-error test accesses/overrides a private member
   const queueSynchronizer = playerLifecycleService.queueSynchronizer
-  const originalPlayNextTrack = queueSynchronizer.playNextTrack
+  const originalPlayNextTrack =
+    queueSynchronizer.playNextTrack.bind(queueSynchronizer)
 
-  // @ts-ignore
-  queueSynchronizer.playNextTrack = async (track: JukeboxQueueItem) => {
-    console.log(
-      'QueueSynchronizer.playNextTrack called with',
-      track.tracks.name
-    )
+  // @ts-expect-error test accesses/overrides a private member
+  queueSynchronizer.playNextTrack = (_track: JukeboxQueueItem) => {
     playNextTrackCalled = true
+    return Promise.resolve()
   }
 
   // Mock State with RELINKED ID
@@ -66,7 +64,6 @@ test('BUG REPRO: syncQueueWithPlayback handles ID mismatch (Relinking)', async (
     )
   } finally {
     // Restore
-    // @ts-ignore
     queueSynchronizer.playNextTrack = originalPlayNextTrack
     queueManager.updateQueue([])
     queueManager.setCurrentlyPlayingTrack(null)

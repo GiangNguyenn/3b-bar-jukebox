@@ -19,12 +19,11 @@ inclusion: always
 ## External APIs
 
 - Spotify Web API (`spotify-web-api-node`) + Web Playback SDK
-- Stripe for subscriptions/billing
 - Venice AI for DJ script generation and TTS
 
 ## State Management
 
-- Zustand for client stores (`stores/`, `hooks/spotifyPlayerStore.ts`)
+- Zustand for client stores (`hooks/spotifyPlayerStore.ts`)
 - SWR for data fetching/caching
 - React Context for toasts and console logs
 

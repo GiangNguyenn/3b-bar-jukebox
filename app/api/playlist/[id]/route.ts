@@ -4,6 +4,7 @@ import { supabase, queryWithRetry } from '@/lib/supabase'
 import { createModuleLogger } from '@/shared/utils/logger'
 import { parseWithType } from '@/shared/types/utils'
 import { supabaseAdmin } from '@/lib/supabase-admin'
+import { getRecentlyPlayed } from '@/services/aiSuggestion'
 import type { JukeboxQueueItem } from '@/shared/types/queue'
 
 const logger = createModuleLogger('API Playlist')
@@ -172,6 +173,22 @@ export async function POST(
     const parsed = parseWithType(addTrackSchema, body)
     const { tracks, initialVotes, source } = parsed
     const requestSource = source ?? 'user'
+
+    // Backstop for auto-fill: the system must never add a track that is among
+    // the last 100 played. Human-initiated adds (user/admin) are unrestricted.
+    if (requestSource === 'system' || requestSource === 'fallback') {
+      const recentlyPlayed = await getRecentlyPlayed(profile.id)
+      if (recentlyPlayed.some((entry) => entry.spotifyTrackId === tracks.id)) {
+        logger(
+          'INFO',
+          `Rejected ${requestSource} add of "${tracks.name}" (${tracks.id}) for ${username} - played within the last 100 tracks`
+        )
+        return NextResponse.json(
+          { error: 'Track was played recently' },
+          { status: 422 }
+        )
+      }
+    }
 
     // Database-first: Check if we already have this track's metadata
     let releaseYear: number | null = null

@@ -12,7 +12,11 @@ interface ToastMessage {
   variant: ToastVariant
 }
 
-export function ToastProvider({ children }: { children: React.ReactNode }) {
+export function ToastProvider({
+  children
+}: {
+  children: React.ReactNode
+}): JSX.Element {
   const [toasts, setToasts] = useState<ToastMessage[]>([])
 
   useEffect(() => {

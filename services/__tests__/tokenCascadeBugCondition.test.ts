@@ -46,7 +46,7 @@ afterEach(() => {
 
 // ─── Test Suite ──────────────────────────────────────────────────────────────
 
-describe('Bug Condition: Dependent Services Continue After Token Recovery Exhaustion', () => {
+void describe('Bug Condition: Dependent Services Continue After Token Recovery Exhaustion', () => {
   /**
    * Test 1: RecoveryManager has no isTokenSuspended() method
    *
@@ -58,7 +58,7 @@ describe('Bug Condition: Dependent Services Continue After Token Recovery Exhaus
    * EXPECTED: This test should FAIL on unfixed code because isTokenSuspended
    * does not exist yet — confirming the bug.
    */
-  test('recoveryManager exposes isTokenSuspended() method for dependent services', () => {
+  void test('recoveryManager exposes isTokenSuspended() method for dependent services', () => {
     // Exhaust retries to simulate all 3 endpoints failing
     exhaustRecoveryRetries(recoveryManager)
 
@@ -122,7 +122,7 @@ describe('Bug Condition: Dependent Services Continue After Token Recovery Exhaus
    * EXPECTED: This test should FAIL on unfixed code because onSuspensionChange
    * does not exist yet — confirming the bug.
    */
-  test('recoveryManager exposes onSuspensionChange() listener for service notification', () => {
+  void test('recoveryManager exposes onSuspensionChange() listener for service notification', () => {
     // BUG CONDITION: There should be an onSuspensionChange() method that
     // dependent services can subscribe to for suspension state changes.
     // On unfixed code, this method does not exist.
@@ -159,7 +159,7 @@ describe('Bug Condition: Dependent Services Continue After Token Recovery Exhaus
    * EXPECTED: This test should FAIL on unfixed code because AutoPlayService
    * has no suspension guard — confirming the bug.
    */
-  test('AutoPlayService.checkPlaybackState has no guard for token suspension', async () => {
+  void test('AutoPlayService.checkPlaybackState has no guard for token suspension', async () => {
     // Exhaust recovery retries
     exhaustRecoveryRetries(recoveryManager)
     assert.equal(
@@ -178,9 +178,11 @@ describe('Bug Condition: Dependent Services Continue After Token Recovery Exhaus
 
     // Mock sendApiRequest to track calls and simulate token failure
     const originalSendApiRequest = sendApiRequest
-    const mockSendApiRequest = mock.fn(async () => {
+    const mockSendApiRequest = mock.fn(() => {
       apiCallCount++
-      throw new Error('Token refresh failed - all endpoints exhausted')
+      return Promise.reject(
+        new Error('Token refresh failed - all endpoints exhausted')
+      )
     })
 
     // Replace the module-level sendApiRequest used by getCurrentPlaybackState
@@ -216,7 +218,7 @@ describe('Bug Condition: Dependent Services Continue After Token Recovery Exhaus
    * EXPECTED: This test should FAIL on unfixed code because sendApiRequest
    * has no suspension guard — confirming the bug.
    */
-  test('sendApiRequest should check token suspension before acquiring token', async () => {
+  void test('sendApiRequest should check token suspension before acquiring token', async () => {
     // Exhaust recovery retries
     exhaustRecoveryRetries(recoveryManager)
 
@@ -267,7 +269,7 @@ describe('Bug Condition: Dependent Services Continue After Token Recovery Exhaus
    * EXPECTED: This test should FAIL on unfixed code because the listener
    * system does not exist — confirming the bug.
    */
-  test('suspension listeners are notified when entering suspended state', () => {
+  void test('suspension listeners are notified when entering suspended state', () => {
     let notifiedSuspended: boolean | null = null
 
     // BUG CONDITION: There should be a way to subscribe to suspension changes

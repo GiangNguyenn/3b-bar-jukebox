@@ -66,7 +66,7 @@ function createMockQueueItem(
 }
 
 // Test Suite: Initialization
-test('PlayerLifecycleService - singleton is available', () => {
+void test('PlayerLifecycleService - singleton is available', () => {
   assert.ok(playerLifecycleService, 'Service should be available')
   assert.ok(
     typeof playerLifecycleService.getDiagnostics === 'function',
@@ -74,7 +74,7 @@ test('PlayerLifecycleService - singleton is available', () => {
   )
 })
 
-test('PlayerLifecycleService - initial state is correct', () => {
+void test('PlayerLifecycleService - initial state is correct', () => {
   // Reset state first
   recoveryManager.reset()
 
@@ -92,7 +92,7 @@ test('PlayerLifecycleService - initial state is correct', () => {
 })
 
 // Test Suite: Logger Setup
-test('PlayerLifecycleService - setLogger configures logger', () => {
+void test('PlayerLifecycleService - setLogger configures logger', () => {
   // Using singleton playerLifecycleService
   const mock = createMockLogger()
 
@@ -101,7 +101,7 @@ test('PlayerLifecycleService - setLogger configures logger', () => {
   assert.ok(true, 'Logger should be set without error')
 })
 
-test('PlayerLifecycleService - logger is delegated to services', () => {
+void test('PlayerLifecycleService - logger is delegated to services', () => {
   // Using singleton playerLifecycleService
   const mock = createMockLogger()
 
@@ -122,7 +122,7 @@ test('PlayerLifecycleService - logger is delegated to services', () => {
 })
 
 // Test Suite: Service Delegation
-test('PlayerLifecycleService - uses spotifyPlayer for SDK management', () => {
+void test('PlayerLifecycleService - uses spotifyPlayer for SDK management', () => {
   // Using singleton playerLifecycleService
 
   // Verify spotifyPlayer is being used (initial state check)
@@ -138,7 +138,7 @@ test('PlayerLifecycleService - uses spotifyPlayer for SDK management', () => {
   )
 })
 
-test('PlayerLifecycleService - uses recoveryManager for retry state', () => {
+void test('PlayerLifecycleService - uses recoveryManager for retry state', () => {
   // Using singleton playerLifecycleService
 
   // Reset recovery state
@@ -153,13 +153,14 @@ test('PlayerLifecycleService - uses recoveryManager for retry state', () => {
   )
 })
 
-test('PlayerLifecycleService - uses playbackService for operation serialization', async () => {
+void test('PlayerLifecycleService - uses playbackService for operation serialization', async () => {
   // Using singleton playerLifecycleService
 
   // Verify playbackService can serialize operations
   let executed = false
-  await playbackService.executePlayback(async () => {
+  await playbackService.executePlayback(() => {
     executed = true
+    return Promise.resolve()
   }, 'test-operation')
 
   assert.strictEqual(
@@ -170,7 +171,7 @@ test('PlayerLifecycleService - uses playbackService for operation serialization'
 })
 
 // Test Suite: Cleanup
-test('PlayerLifecycleService - destroyPlayer cleans up resources', () => {
+void test('PlayerLifecycleService - destroyPlayer cleans up resources', () => {
   // Using singleton playerLifecycleService
   const mock = createMockLogger()
   playerLifecycleService.setLogger(mock.logger)
@@ -188,7 +189,7 @@ test('PlayerLifecycleService - destroyPlayer cleans up resources', () => {
   assert.ok(true, 'Cleanup should complete without error')
 })
 
-test('PlayerLifecycleService - destroyPlayer is idempotent', () => {
+void test('PlayerLifecycleService - destroyPlayer is idempotent', () => {
   // Using singleton playerLifecycleService
 
   // Should not throw when called multiple times
@@ -200,7 +201,7 @@ test('PlayerLifecycleService - destroyPlayer is idempotent', () => {
 })
 
 // Test Suite: Error Handling
-test('PlayerLifecycleService - handles missing device ID gracefully', async () => {
+void test('PlayerLifecycleService - handles missing device ID gracefully', () => {
   const mock = createMockLogger()
   playerLifecycleService.setLogger(mock.logger)
 
@@ -212,7 +213,7 @@ test('PlayerLifecycleService - handles missing device ID gracefully', async () =
   assert.ok(typeof diagnostics === 'object', 'Should return diagnostics')
 })
 
-test('PlayerLifecycleService - diagnostics return valid data', () => {
+void test('PlayerLifecycleService - diagnostics return valid data', () => {
   // Using singleton playerLifecycleService
   const diagnostics = playerLifecycleService.getDiagnostics()
 
@@ -227,7 +228,7 @@ test('PlayerLifecycleService - diagnostics return valid data', () => {
 })
 
 // Test Suite: Recovery Manager Integration
-test('PlayerLifecycleService - recovery state is managed by RecoveryManager', () => {
+void test('PlayerLifecycleService - recovery state is managed by RecoveryManager', () => {
   // Using singleton playerLifecycleService
 
   // Reset state
@@ -261,7 +262,7 @@ test('PlayerLifecycleService - recovery state is managed by RecoveryManager', ()
   )
 })
 
-test('PlayerLifecycleService - recovery cooldown prevents rapid retries', () => {
+void test('PlayerLifecycleService - recovery cooldown prevents rapid retries', () => {
   recoveryManager.reset()
 
   // First attempt should be allowed
@@ -284,7 +285,7 @@ test('PlayerLifecycleService - recovery cooldown prevents rapid retries', () => 
   recoveryManager.reset()
 })
 
-test('PlayerLifecycleService - recovery max retries is enforced', () => {
+void test('PlayerLifecycleService - recovery max retries is enforced', () => {
   recoveryManager.reset()
 
   // Exhaust retry attempts (default max is 3)
@@ -308,7 +309,7 @@ test('PlayerLifecycleService - recovery max retries is enforced', () => {
 })
 
 // Test Suite: Playback Service Integration
-test('PlayerLifecycleService - playback operations are serialized', async () => {
+void test('PlayerLifecycleService - playback operations are serialized', async () => {
   const operations: number[] = []
 
   // Execute multiple operations concurrently
@@ -321,8 +322,9 @@ test('PlayerLifecycleService - playback operations are serialized', async () => 
       operations.push(2)
       await new Promise((resolve) => setTimeout(resolve, 10))
     }, 'op2'),
-    playbackService.executePlayback(async () => {
+    playbackService.executePlayback(() => {
       operations.push(3)
+      return Promise.resolve()
     }, 'op3')
   ]
 
@@ -337,7 +339,7 @@ test('PlayerLifecycleService - playback operations are serialized', async () => 
 })
 
 // Test Suite: State Management
-test('PlayerLifecycleService - cleanup works correctly', () => {
+void test('PlayerLifecycleService - cleanup works correctly', () => {
   // Reset and destroy
   playerLifecycleService.destroyPlayer()
 
@@ -346,7 +348,7 @@ test('PlayerLifecycleService - cleanup works correctly', () => {
   assert.ok(diagnostics, 'Should return diagnostics after destroy')
 })
 
-test('PlayerLifecycleService - diagnostics include timeout tracking', () => {
+void test('PlayerLifecycleService - diagnostics include timeout tracking', () => {
   // Using singleton playerLifecycleService
   const diagnostics = playerLifecycleService.getDiagnostics()
 
@@ -359,7 +361,7 @@ test('PlayerLifecycleService - diagnostics include timeout tracking', () => {
 })
 
 // Test Suite: Service Lifecycle
-test('PlayerLifecycleService - singleton pattern is used', () => {
+void test('PlayerLifecycleService - singleton pattern is used', () => {
   // playerLifecycleService is a singleton instance, not a class
   // Verify singletons (spotifyPlayer, etc.) are shared
   assert.strictEqual(
@@ -370,7 +372,7 @@ test('PlayerLifecycleService - singleton pattern is used', () => {
 })
 
 // Test Suite: Integration Smoke Tests
-test('PlayerLifecycleService - full lifecycle (smoke test)', () => {
+void test('PlayerLifecycleService - full lifecycle (smoke test)', () => {
   const mock = createMockLogger()
 
   // Setup
@@ -393,7 +395,7 @@ test('PlayerLifecycleService - full lifecycle (smoke test)', () => {
   assert.ok(true, 'Full lifecycle should complete')
 })
 
-test('PlayerLifecycleService - recovery after cleanup', () => {
+void test('PlayerLifecycleService - recovery after cleanup', () => {
   // Using singleton playerLifecycleService
 
   // Record some recovery attempts
@@ -411,7 +413,7 @@ test('PlayerLifecycleService - recovery after cleanup', () => {
 })
 
 // Test Suite: Edge Cases
-test('PlayerLifecycleService - handles rapid destroy calls', () => {
+void test('PlayerLifecycleService - handles rapid destroy calls', () => {
   // Using singleton playerLifecycleService
 
   // Rapid destroy calls should not cause issues
@@ -422,7 +424,7 @@ test('PlayerLifecycleService - handles rapid destroy calls', () => {
   assert.ok(true, 'Rapid destroy calls should be handled')
 })
 
-test('PlayerLifecycleService - logger can be set multiple times', () => {
+void test('PlayerLifecycleService - logger can be set multiple times', () => {
   // Using singleton playerLifecycleService
   const mock1 = createMockLogger()
   const mock2 = createMockLogger()
@@ -433,7 +435,7 @@ test('PlayerLifecycleService - logger can be set multiple times', () => {
   assert.ok(true, 'Logger should be replaceable')
 })
 
-test('PlayerLifecycleService - diagnostics are consistent', () => {
+void test('PlayerLifecycleService - diagnostics are consistent', () => {
   // Using singleton playerLifecycleService
   recoveryManager.reset()
 
@@ -453,7 +455,7 @@ test('PlayerLifecycleService - diagnostics are consistent', () => {
 })
 
 // Test Suite: Manual Pause Tracking
-test('PlayerLifecycleService - manual pause tracking', () => {
+void test('PlayerLifecycleService - manual pause tracking', () => {
   // Initial state
   assert.strictEqual(
     playerLifecycleService.getIsManualPause(),
@@ -478,7 +480,7 @@ test('PlayerLifecycleService - manual pause tracking', () => {
   )
 })
 
-test('PlayerLifecycleService - resumePlayback clears manual pause', async () => {
+void test('PlayerLifecycleService - resumePlayback clears manual pause', async () => {
   playerLifecycleService.setManualPause(true)
 
   // We can't easily mock spotifyPlayer.resume() in this smoke test environment without more setup

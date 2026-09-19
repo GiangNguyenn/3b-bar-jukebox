@@ -2,17 +2,17 @@ import { test, describe, beforeEach } from 'node:test'
 import assert from 'node:assert/strict'
 import { playbackService } from '../playbackService'
 
-describe('PlaybackService', () => {
+void describe('PlaybackService', () => {
   beforeEach(async () => {
     // Ensure any pending operations from previous tests are done
     await playbackService.waitForCompletion()
   })
 
-  test('isOperationInProgress returns false initially', () => {
+  void test('isOperationInProgress returns false initially', () => {
     assert.equal(playbackService.isOperationInProgress(), false)
   })
 
-  test('isOperationInProgress returns true while operation is running', async () => {
+  void test('isOperationInProgress returns true while operation is running', async () => {
     let resolveOperation: () => void = () => {}
     const operationPromise = new Promise<void>((resolve) => {
       resolveOperation = resolve
@@ -33,12 +33,12 @@ describe('PlaybackService', () => {
     assert.equal(playbackService.isOperationInProgress(), false)
   })
 
-  test('isOperationInProgress returns false after operation fails', async () => {
+  void test('isOperationInProgress returns false after operation fails', async () => {
     const error = new Error('Test failure')
 
     try {
-      await playbackService.executePlayback(async () => {
-        throw error
+      await playbackService.executePlayback(() => {
+        return Promise.reject(error)
       }, 'fail-op')
     } catch (e) {
       assert.strictEqual(e, error)
@@ -47,7 +47,7 @@ describe('PlaybackService', () => {
     assert.equal(playbackService.isOperationInProgress(), false)
   })
 
-  test('serialized operations track pending count correctly', async () => {
+  void test('serialized operations track pending count correctly', async () => {
     const ops: number[] = []
 
     const p1 = playbackService.executePlayback(async () => {

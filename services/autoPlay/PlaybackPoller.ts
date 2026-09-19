@@ -1,6 +1,5 @@
 import { SpotifyPlaybackState } from '@/shared/types/spotify'
 import { sendApiRequest } from '@/shared/api'
-import { PLAYER_LIFECYCLE_CONFIG } from '@/services/playerLifecycleConfig'
 import { recoveryManager } from '@/services/player/recoveryManager'
 import { createModuleLogger } from '@/shared/utils/logger'
 

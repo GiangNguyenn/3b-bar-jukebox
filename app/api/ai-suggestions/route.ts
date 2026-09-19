@@ -1,11 +1,7 @@
-import { NextRequest, NextResponse, after } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
-import {
-  getAiSuggestions,
-  getRecentlyPlayed,
-  addToRecentlyPlayed
-} from '@/services/aiSuggestion'
+import { getAiSuggestions, getRecentlyPlayed } from '@/services/aiSuggestion'
 import {
   getVenueTasteProfile,
   formatTasteProfile
@@ -141,21 +137,10 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       formatTasteProfile(tasteProfile)
     )
 
-    // Record returned tracks as recently played after the response is sent,
-    // using after() so the serverless runtime keeps the function alive for these writes
-    after(async () => {
-      await Promise.all(
-        result.tracks.map((track) =>
-          addToRecentlyPlayed(resolvedProfileId, {
-            spotifyTrackId: track.spotifyTrackId,
-            title: track.title,
-            artist: track.artist
-          }).catch(() => {
-            // Non-critical: silently ignore failures
-          })
-        )
-      )
-    })
+    // Suggested tracks are deliberately NOT recorded as recently played here:
+    // that table holds tracks that actually finished playing (see
+    // QueueSynchronizer). Suggested-but-unplayed tracks are covered by queue
+    // exclusion, and recording them would evict real plays from the 100-row window.
 
     return NextResponse.json({
       success: true,

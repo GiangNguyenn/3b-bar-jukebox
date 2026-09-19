@@ -1,10 +1,10 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
+import { REALTIME_SUBSCRIBE_STATES } from '@supabase/supabase-js'
 import { supabaseBrowser } from '@/lib/supabase-browser'
 import { JukeboxQueueItem } from '@/shared/types/queue'
 import { useProfileId } from '@/hooks/useProfileId'
 import { useConsoleLogsContext } from './ConsoleLogsProvider'
 import { queueManager } from '@/services/queueManager'
-import { queryWithRetry } from '@/lib/supabaseQuery'
 import { fetchWithRetry } from '@/shared/utils/fetchWithRetry'
 import {
   recoverQueueFromCache,
@@ -13,7 +13,21 @@ import {
 } from '@/recovery/queueRecovery'
 import { sortQueueByPriority } from '@/shared/utils/queueSort'
 
-export function usePlaylistData(username?: string) {
+export interface UsePlaylistDataResult {
+  data: JukeboxQueueItem[]
+  isLoading: boolean
+  isRefreshing: boolean
+  error: string | null
+  isStale: boolean
+  mutate: () => Promise<void>
+  optimisticUpdate: (
+    updater: (currentQueue: JukeboxQueueItem[]) => JukeboxQueueItem[]
+  ) => void
+  isRealtimeConnected: boolean
+  profileId: string | null
+}
+
+export function usePlaylistData(username?: string): UsePlaylistDataResult {
   const [queue, setQueue] = useState<JukeboxQueueItem[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [isRefreshing, setIsRefreshing] = useState(false)
@@ -30,11 +44,19 @@ export function usePlaylistData(username?: string) {
   const lastPollTimeRef = useRef<number>(0)
   const wasQueueEmptyRef = useRef<boolean>(true)
   const realtimeFetchTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+  // Fetches can overlap (poll, realtime events, manual refresh) and resolve out
+  // of order. Each gets a sequence number, and a response is only applied if no
+  // newer fetch has already been applied — otherwise an older, slower response
+  // could overwrite fresher data (e.g. resurrect a just-deleted track).
+  const fetchSeqRef = useRef(0)
+  const appliedSeqRef = useRef(0)
 
   // Fetch queue data from API
   const fetchQueue = useCallback(
     async (isBackgroundRefresh = false, bypassCache = false): Promise<void> => {
       if (!username) return
+
+      const seq = ++fetchSeqRef.current
 
       try {
         // Only show loading state for initial load, not background refreshes
@@ -68,6 +90,10 @@ export function usePlaylistData(username?: string) {
               : 'Failed to fetch queue'
           throw new Error(errorMessage)
         }
+
+        // A newer fetch has already been applied: this response is stale
+        if (seq < appliedSeqRef.current) return
+        appliedSeqRef.current = seq
 
         // Type assertion: if response.ok is true, data should be JukeboxQueueItem[]
         const queueData = data as JukeboxQueueItem[]
@@ -126,6 +152,10 @@ export function usePlaylistData(username?: string) {
         lastPollTimeRef.current = Date.now()
         // Removed verbose logging around routine fetches
       } catch (err) {
+        // A failure from a fetch that a newer one has already superseded
+        // shouldn't clobber the fresher state with cached/empty data
+        if (seq < appliedSeqRef.current) return
+
         // Categorize the error for better user feedback
         const { type: errorType, message: errorMessage } =
           categorizeQueueError(err)
@@ -188,13 +218,15 @@ export function usePlaylistData(username?: string) {
     // Poll every 10 seconds as fallback
     const POLL_INTERVAL = 10000
 
-    pollingIntervalRef.current = setInterval(async () => {
+    pollingIntervalRef.current = setInterval(() => {
       // Only poll if real-time is not connected or if it's been more than 10 seconds since last update
       const timeSinceLastPoll = Date.now() - lastPollTimeRef.current
       const shouldPoll = !isRealtimeConnected || timeSinceLastPoll > 10000
 
       if (shouldPoll) {
-        await fetchQueue(true)
+        // Bypass the CDN cache (s-maxage=15, SWR 30): a cached response can
+        // still contain rows that were deleted seconds ago
+        void fetchQueue(true, true)
       }
     }, POLL_INTERVAL)
   }, [isRealtimeConnected, fetchQueue, addLog])
@@ -239,12 +271,15 @@ export function usePlaylistData(username?: string) {
             }
           )
           .subscribe((status) => {
-            if (status === 'SUBSCRIBED') {
+            if (status === REALTIME_SUBSCRIBE_STATES.SUBSCRIBED) {
               setIsRealtimeConnected(true)
               // Reduce polling frequency when real-time is working
               stopPolling()
               startPolling() // Restart with lower frequency
-            } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+            } else if (
+              status === REALTIME_SUBSCRIBE_STATES.CHANNEL_ERROR ||
+              status === REALTIME_SUBSCRIBE_STATES.TIMED_OUT
+            ) {
               setIsRealtimeConnected(false)
               addLog(
                 'ERROR',

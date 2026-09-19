@@ -2,7 +2,9 @@ import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
 import type { Database } from '@/types/supabase'
 
-export async function middleware(req: NextRequest) {
+export async function middleware(
+  req: NextRequest
+): Promise<NextResponse<unknown>> {
   const res = NextResponse.next()
 
   const supabase = createServerClient<Database>(

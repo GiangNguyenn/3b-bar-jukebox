@@ -98,4 +98,7 @@ async function verifyRateLimiter() {
   }
 }
 
-verifyRateLimiter()
+verifyRateLimiter().catch((error: unknown) => {
+  console.error('Verification failed:', error)
+  process.exitCode = 1
+})

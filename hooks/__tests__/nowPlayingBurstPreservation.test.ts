@@ -117,7 +117,7 @@ const nullTrackRowArb = fc.record({
 
 // ─── Test Suite ──────────────────────────────────────────────────────────────
 
-describe('Preservation: Foreground Realtime and Game Behavior Unchanged', () => {
+void describe('Preservation: Foreground Realtime and Game Behavior Unchanged', () => {
   /**
    * Property 2a: rowToPlaybackState — correct transformation
    *
@@ -135,7 +135,7 @@ describe('Preservation: Foreground Realtime and Game Behavior Unchanged', () => 
    *   - item.album.name === row.album_name ?? ''
    *   - album images populated when album_art_url is non-null
    */
-  test('Property: rowToPlaybackState maps all fields correctly for valid rows', () => {
+  void test('Property: rowToPlaybackState maps all fields correctly for valid rows', () => {
     fc.assert(
       fc.property(validNowPlayingRowArb, (row) => {
         const result = rowToPlaybackState(row)
@@ -189,7 +189,7 @@ describe('Preservation: Foreground Realtime and Game Behavior Unchanged', () => 
    *
    * When spotify_track_id or track_name is null, rowToPlaybackState returns null.
    */
-  test('Property: rowToPlaybackState returns null when track fields are null', () => {
+  void test('Property: rowToPlaybackState returns null when track fields are null', () => {
     fc.assert(
       fc.property(nullTrackRowArb, (row) => {
         const result = rowToPlaybackState(row)
@@ -217,7 +217,7 @@ describe('Preservation: Foreground Realtime and Game Behavior Unchanged', () => 
    * The only place visibility is handled is handleVisibilityChange. The main
    * subscription path has no burst logic — this is correct and must be preserved.
    */
-  test('Property: foreground path has Realtime subscription and normal polling, no burst timers', () => {
+  void test('Property: foreground path has Realtime subscription and normal polling, no burst timers', () => {
     const hookSource = readSource('hooks/useNowPlayingRealtime.ts')
 
     fc.assert(
@@ -274,7 +274,7 @@ describe('Preservation: Foreground Realtime and Game Behavior Unchanged', () => 
     )
   })
 
-  test.skip('Property: same track ID with play/pause change does not trigger re-fetch (trivia removed)', () => {
+  void test.skip('Property: same track ID with play/pause change does not trigger re-fetch (trivia removed)', () => {
     const triviaSource = readSource('hooks/trivia/useTriviaGame.ts')
 
     fc.assert(
@@ -313,7 +313,7 @@ describe('Preservation: Foreground Realtime and Game Behavior Unchanged', () => 
     )
   })
 
-  test.skip('Property: new track ID triggers state reset and trivia question fetch (trivia removed)', () => {
+  void test.skip('Property: new track ID triggers state reset and trivia question fetch (trivia removed)', () => {
     const triviaSource = readSource('hooks/trivia/useTriviaGame.ts')
 
     fc.assert(

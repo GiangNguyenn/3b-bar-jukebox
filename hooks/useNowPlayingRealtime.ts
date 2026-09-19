@@ -2,7 +2,10 @@
 
 import { useEffect, useRef, useState, useCallback } from 'react'
 import { supabaseBrowser } from '@/lib/supabase-browser'
-import type { RealtimeChannel } from '@supabase/supabase-js'
+import {
+  REALTIME_SUBSCRIBE_STATES,
+  type RealtimeChannel
+} from '@supabase/supabase-js'
 import { SpotifyPlaybackState } from '@/shared/types/spotify'
 
 interface NowPlayingRow {
@@ -62,7 +65,11 @@ function rowToPlaybackState(row: NowPlayingRow): SpotifyPlaybackState | null {
 export function useNowPlayingRealtime({
   profileId,
   fallbackInterval = 30000
-}: UseNowPlayingRealtimeOptions) {
+}: UseNowPlayingRealtimeOptions): {
+  data: SpotifyPlaybackState | null
+  isLoading: boolean
+  error: string | null
+} {
   const [data, setData] = useState<SpotifyPlaybackState | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -122,7 +129,7 @@ export function useNowPlayingRealtime({
 
       // Tear down any existing channel before creating a new one
       if (channelRef.current) {
-        supabaseBrowser.removeChannel(channelRef.current)
+        void supabaseBrowser.removeChannel(channelRef.current)
         channelRef.current = null
       }
 
@@ -146,9 +153,9 @@ export function useNowPlayingRealtime({
         .subscribe((status) => {
           if (cancelled) return
           console.warn(`[useNowPlayingRealtime] subscription status: ${status}`)
-          if (status === 'SUBSCRIBED') {
+          if (status === REALTIME_SUBSCRIBE_STATES.SUBSCRIBED) {
             reconnectAttemptsRef.current = 0
-          } else if (status === 'CHANNEL_ERROR') {
+          } else if (status === REALTIME_SUBSCRIBE_STATES.CHANNEL_ERROR) {
             // Exponential backoff: 1s, 2s, 4s, 8s … capped at 30s
             const delay = Math.min(
               1000 * 2 ** reconnectAttemptsRef.current,
@@ -230,7 +237,7 @@ export function useNowPlayingRealtime({
         reconnectTimerRef.current = null
       }
       if (channelRef.current) {
-        supabaseBrowser.removeChannel(channelRef.current)
+        void supabaseBrowser.removeChannel(channelRef.current)
         channelRef.current = null
       }
       if (intervalRef.current) {

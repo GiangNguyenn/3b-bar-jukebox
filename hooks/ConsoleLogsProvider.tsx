@@ -45,13 +45,23 @@ const DEFAULT_MAX_LOGS = 50
 const DEFAULT_RATE_LIMIT = 1000 // ms
 const DEFAULT_MAX_MESSAGE_LENGTH = 1000
 
+// Formats a console.* argument for the in-app log view
+function formatLogArg(arg: unknown): string {
+  if (arg instanceof Error) return arg.message
+  if (typeof arg === 'object') return JSON.stringify(arg)
+  if (typeof arg === 'string') return arg
+  // Remaining types (number, boolean, bigint, symbol, undefined, function)
+  // all stringify meaningfully
+  return String(arg as number | boolean | bigint | symbol | undefined)
+}
+
 export function ConsoleLogsProvider({
   children,
   maxLogs = DEFAULT_MAX_LOGS,
   enableConsoleOverride = false,
   rateLimit = DEFAULT_RATE_LIMIT,
   maxMessageLength = DEFAULT_MAX_MESSAGE_LENGTH
-}: ConsoleLogsProviderProps & { children: ReactNode }) {
+}: ConsoleLogsProviderProps & { children: ReactNode }): JSX.Element {
   const [logs, setLogs] = useState<LogEntry[]>([])
   const isConsoleOverridden = useRef(false)
   const setLogsRef = useRef(setLogs)
@@ -146,25 +156,9 @@ export function ConsoleLogsProvider({
           firstArg.endsWith(']')
         ) {
           context = firstArg.slice(1, -1)
-          message = restArgs
-            .map((arg) =>
-              arg instanceof Error
-                ? arg.message
-                : typeof arg === 'object'
-                  ? JSON.stringify(arg)
-                  : String(arg)
-            )
-            .join(' ')
+          message = restArgs.map((arg) => formatLogArg(arg)).join(' ')
         } else {
-          message = args
-            .map((arg) =>
-              arg instanceof Error
-                ? arg.message
-                : typeof arg === 'object'
-                  ? JSON.stringify(arg)
-                  : String(arg)
-            )
-            .join(' ')
+          message = args.map((arg) => formatLogArg(arg)).join(' ')
         }
 
         const lastArg = args[args.length - 1]
@@ -214,7 +208,7 @@ export function ConsoleLogsProvider({
   )
 }
 
-export function useConsoleLogsContext() {
+export function useConsoleLogsContext(): ConsoleLogsContextType {
   const context = useContext(ConsoleLogsContext)
   if (!context) {
     throw new Error(

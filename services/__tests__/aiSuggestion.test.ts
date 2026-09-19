@@ -36,10 +36,10 @@ const validRecArb = fc.record({
 // -------------------------------------------------------------------
 // Property 1: Venice AI response parsing yields valid recommendations
 // -------------------------------------------------------------------
-describe('Property 1: AI response parsing yields valid recommendations', () => {
+void describe('Property 1: AI response parsing yields valid recommendations', () => {
   // **Validates: Requirements 1.2**
 
-  it('every parsed entry has a non-empty title and non-empty artist', () => {
+  void it('every parsed entry has a non-empty title and non-empty artist', () => {
     fc.assert(
       fc.property(
         fc.array(validRecArb, { minLength: 1, maxLength: 15 }),
@@ -57,7 +57,7 @@ describe('Property 1: AI response parsing yields valid recommendations', () => {
     )
   })
 
-  it('parses correctly when JSON array is wrapped in extra text', () => {
+  void it('parses correctly when JSON array is wrapped in extra text', () => {
     // Prefix/suffix must not contain [ or ] to avoid interfering with the
     // greedy regex that parseAiResponse uses to extract the JSON array.
     const safeTextArb = fc
@@ -89,10 +89,10 @@ describe('Property 1: AI response parsing yields valid recommendations', () => {
 // -------------------------------------------------------------------
 // Property 2: Spotify search query construction includes title and artist
 // -------------------------------------------------------------------
-describe('Property 2: Spotify search query construction includes title and artist', () => {
+void describe('Property 2: Spotify search query construction includes title and artist', () => {
   // **Validates: Requirements 1.3**
 
-  it('query contains both the title and artist for any non-empty inputs', () => {
+  void it('query contains both the title and artist for any non-empty inputs', () => {
     fc.assert(
       fc.property(
         nonEmptyPrintableArb,
@@ -117,10 +117,10 @@ describe('Property 2: Spotify search query construction includes title and artis
 // -------------------------------------------------------------------
 // Property 3: Graceful degradation on partial AI responses
 // -------------------------------------------------------------------
-describe('Property 3: Graceful degradation on partial AI responses', () => {
+void describe('Property 3: Graceful degradation on partial AI responses', () => {
   // **Validates: Requirements 1.5**
 
-  it('returns exactly N results for a response with N valid items (1-9)', () => {
+  void it('returns exactly N results for a response with N valid items (1-9)', () => {
     fc.assert(
       fc.property(
         fc
@@ -145,7 +145,7 @@ describe('Property 3: Graceful degradation on partial AI responses', () => {
 // -------------------------------------------------------------------
 // Property 11: Post-resolution filtering excludes recently played tracks
 // -------------------------------------------------------------------
-describe('Property 11: Post-resolution filtering excludes recently played tracks', () => {
+void describe('Property 11: Post-resolution filtering excludes recently played tracks', () => {
   // **Validates: Requirements 5.3**
 
   // Simulate the filtering logic from getAiSuggestions:
@@ -173,7 +173,7 @@ describe('Property 11: Post-resolution filtering excludes recently played tracks
     artist: nonEmptyPrintableArb
   })
 
-  it('filtered output contains no track ID from the recently played set', () => {
+  void it('filtered output contains no track ID from the recently played set', () => {
     fc.assert(
       fc.property(
         fc.array(trackObjArb, { minLength: 0, maxLength: 20 }),
@@ -200,7 +200,7 @@ describe('Property 11: Post-resolution filtering excludes recently played tracks
     )
   })
 
-  it('filtered output is a subset of the original tracks', () => {
+  void it('filtered output is a subset of the original tracks', () => {
     fc.assert(
       fc.property(
         fc.array(trackObjArb, { minLength: 0, maxLength: 20 }),
@@ -226,7 +226,7 @@ describe('Property 11: Post-resolution filtering excludes recently played tracks
 // -------------------------------------------------------------------
 // Property 9: Recently played list size invariant
 // -------------------------------------------------------------------
-describe('Property 9: Recently played list size invariant', () => {
+void describe('Property 9: Recently played list size invariant', () => {
   // **Validates: Requirements 5.1, 5.4**
 
   const RECENTLY_PLAYED_LIMIT = 100
@@ -253,7 +253,7 @@ describe('Property 9: Recently played list size invariant', () => {
     artist: nonEmptyPrintableArb
   })
 
-  it('list size never exceeds 100 after any sequence of additions', () => {
+  void it('list size never exceeds 100 after any sequence of additions', () => {
     fc.assert(
       fc.property(
         fc.array(entryArb, { minLength: 1, maxLength: 200 }),
@@ -276,7 +276,7 @@ describe('Property 9: Recently played list size invariant', () => {
     )
   })
 
-  it('list size is exactly 100 after adding 100+ unique tracks', () => {
+  void it('list size is exactly 100 after adding 100+ unique tracks', () => {
     fc.assert(
       fc.property(
         fc
@@ -308,7 +308,7 @@ describe('Property 9: Recently played list size invariant', () => {
 // -------------------------------------------------------------------
 // Property 10: AI prompt includes recently played context
 // -------------------------------------------------------------------
-describe('Property 10: AI prompt includes recently played context', () => {
+void describe('Property 10: AI prompt includes recently played context', () => {
   // **Validates: Requirements 5.2**
 
   const recentlyPlayedEntryArb = fc.record({
@@ -319,7 +319,7 @@ describe('Property 10: AI prompt includes recently played context', () => {
     artist: nonEmptyPrintableArb
   })
 
-  it('buildUserMessage contains every title and every artist from the recently played list', () => {
+  void it('buildUserMessage contains every title and every artist from the recently played list', () => {
     fc.assert(
       fc.property(
         nonEmptyPrintableArb,
@@ -349,7 +349,7 @@ describe('Property 10: AI prompt includes recently played context', () => {
 // -------------------------------------------------------------------
 // Property 12: Recently played database persistence round-trip
 // -------------------------------------------------------------------
-describe('Property 12: Recently played database persistence round-trip', () => {
+void describe('Property 12: Recently played database persistence round-trip', () => {
   // **Validates: Requirements 5.5**
 
   // Simulate the mapping from RecentlyPlayedEntry → DB upsert payload
@@ -393,7 +393,7 @@ describe('Property 12: Recently played database persistence round-trip', () => {
     .string({ minLength: 1, maxLength: 40 })
     .filter((s) => s.trim().length > 0)
 
-  it('entry → upsert payload → row → entry round-trip preserves all fields', () => {
+  void it('entry → upsert payload → row → entry round-trip preserves all fields', () => {
     fc.assert(
       fc.property(
         profileIdArb,
@@ -430,7 +430,7 @@ describe('Property 12: Recently played database persistence round-trip', () => {
     )
   })
 
-  it('upsert payload preserves profile_id and maps spotifyTrackId to spotify_track_id', () => {
+  void it('upsert payload preserves profile_id and maps spotifyTrackId to spotify_track_id', () => {
     fc.assert(
       fc.property(profileIdArb, recentlyPlayedEntryArb, (profileId, entry) => {
         const payload = entryToUpsertPayload(profileId, entry)
@@ -472,10 +472,10 @@ function simulateAutoFill(
 // -------------------------------------------------------------------
 // Property 7: Auto-fill adds tracks from buffer up to target size
 // -------------------------------------------------------------------
-describe('Property 7: Auto-fill adds tracks from buffer up to target size', () => {
+void describe('Property 7: Auto-fill adds tracks from buffer up to target size', () => {
   // **Validates: Requirements 4.2, 4.4**
 
-  it('adds exactly min(B, T - C) tracks and resulting queue is min(C + B, T)', () => {
+  void it('adds exactly min(B, T - C) tracks and resulting queue is min(C + B, T)', () => {
     fc.assert(
       fc.property(
         fc.integer({ min: 0, max: 200 }),
@@ -516,7 +516,7 @@ describe('Property 7: Auto-fill adds tracks from buffer up to target size', () =
     )
   })
 
-  it('never adds more tracks than available in buffer', () => {
+  void it('never adds more tracks than available in buffer', () => {
     fc.assert(
       fc.property(
         fc.integer({ min: 0, max: 200 }),
@@ -541,7 +541,7 @@ describe('Property 7: Auto-fill adds tracks from buffer up to target size', () =
     )
   })
 
-  it('never overshoots the target size', () => {
+  void it('never overshoots the target size', () => {
     fc.assert(
       fc.property(
         fc.integer({ min: 0, max: 200 }),
@@ -566,7 +566,7 @@ describe('Property 7: Auto-fill adds tracks from buffer up to target size', () =
     )
   })
 
-  it('remaining buffer equals original buffer minus tracks consumed', () => {
+  void it('remaining buffer equals original buffer minus tracks consumed', () => {
     fc.assert(
       fc.property(
         fc.integer({ min: 0, max: 200 }),
@@ -598,10 +598,10 @@ describe('Property 7: Auto-fill adds tracks from buffer up to target size', () =
 // -------------------------------------------------------------------
 // Property 8: Buffer is consumed before requesting a new batch
 // -------------------------------------------------------------------
-describe('Property 8: Buffer is consumed before requesting a new batch', () => {
+void describe('Property 8: Buffer is consumed before requesting a new batch', () => {
   // **Validates: Requirements 4.3**
 
-  it('non-empty buffer means no new batch is requested', () => {
+  void it('non-empty buffer means no new batch is requested', () => {
     fc.assert(
       fc.property(
         fc.integer({ min: 0, max: 200 }),
@@ -631,7 +631,7 @@ describe('Property 8: Buffer is consumed before requesting a new batch', () => {
     )
   })
 
-  it('new batch requested only when buffer is empty AND queue still below target', () => {
+  void it('new batch requested only when buffer is empty AND queue still below target', () => {
     fc.assert(
       fc.property(
         fc.integer({ min: 0, max: 200 }),
@@ -663,7 +663,7 @@ describe('Property 8: Buffer is consumed before requesting a new batch', () => {
     )
   })
 
-  it('no new batch when buffer fully satisfies the gap', () => {
+  void it('no new batch when buffer fully satisfies the gap', () => {
     fc.assert(
       fc.property(
         fc.integer({ min: 0, max: 100 }),
@@ -698,7 +698,7 @@ describe('Property 8: Buffer is consumed before requesting a new batch', () => {
     )
   })
 
-  it('new batch needed when buffer is empty and queue is below target', () => {
+  void it('new batch needed when buffer is empty and queue is below target', () => {
     fc.assert(
       fc.property(
         fc.integer({ min: 0, max: 199 }),
@@ -733,8 +733,8 @@ describe('Property 8: Buffer is consumed before requesting a new batch', () => {
 // -------------------------------------------------------------------
 // Property 13: Re-prompt shortfall calculation
 // -------------------------------------------------------------------
-describe('Property 13: Re-prompt shortfall calculation', () => {
-  it('shortfall is exactly batchSize - count when count is below batchSize', () => {
+void describe('Property 13: Re-prompt shortfall calculation', () => {
+  void it('shortfall is exactly batchSize - count when count is below batchSize', () => {
     fc.assert(
       fc.property(
         fc.integer({ min: 0, max: 9 }),
@@ -748,7 +748,7 @@ describe('Property 13: Re-prompt shortfall calculation', () => {
     )
   })
 
-  it('shortfall is zero once count meets or exceeds batchSize', () => {
+  void it('shortfall is zero once count meets or exceeds batchSize', () => {
     fc.assert(
       fc.property(
         fc.integer({ min: 0, max: 30 }),
@@ -762,7 +762,7 @@ describe('Property 13: Re-prompt shortfall calculation', () => {
     )
   })
 
-  it('count + shortfall always reaches at least batchSize', () => {
+  void it('count + shortfall always reaches at least batchSize', () => {
     fc.assert(
       fc.property(
         fc.integer({ min: 0, max: 30 }),
@@ -780,8 +780,8 @@ describe('Property 13: Re-prompt shortfall calculation', () => {
 // -------------------------------------------------------------------
 // Property 14: Artist dedup before resolution
 // -------------------------------------------------------------------
-describe('Property 14: Artist dedup before resolution', () => {
-  it('output never contains two entries with the same normalized artist', () => {
+void describe('Property 14: Artist dedup before resolution', () => {
+  void it('output never contains two entries with the same normalized artist', () => {
     fc.assert(
       fc.property(
         fc.array(validRecArb, { minLength: 0, maxLength: 20 }),
@@ -805,7 +805,7 @@ describe('Property 14: Artist dedup before resolution', () => {
     )
   })
 
-  it('output length never exceeds input length', () => {
+  void it('output length never exceeds input length', () => {
     fc.assert(
       fc.property(
         fc.array(validRecArb, { minLength: 0, maxLength: 20 }),
@@ -817,7 +817,7 @@ describe('Property 14: Artist dedup before resolution', () => {
     )
   })
 
-  it('keeps the first occurrence for each artist, preserving relative order', () => {
+  void it('keeps the first occurrence for each artist, preserving relative order', () => {
     fc.assert(
       fc.property(
         fc.array(validRecArb, { minLength: 1, maxLength: 20 }),
@@ -846,7 +846,7 @@ describe('Property 14: Artist dedup before resolution', () => {
     )
   })
 
-  it('deduplicates when the only difference is case/punctuation in the artist name', () => {
+  void it('deduplicates when the only difference is case/punctuation in the artist name', () => {
     const recs = [
       { title: 'Song A', artist: 'The Chats' },
       { title: 'Song B', artist: 'the chats' },
@@ -861,13 +861,13 @@ describe('Property 14: Artist dedup before resolution', () => {
 // -------------------------------------------------------------------
 // Property 15: Taste-profile context included in buildUserMessage
 // -------------------------------------------------------------------
-describe('Property 15: Taste-profile context included in buildUserMessage', () => {
+void describe('Property 15: Taste-profile context included in buildUserMessage', () => {
   const tasteProfileArb = fc
     .string({ minLength: 1, maxLength: 200 })
     .filter((s) => s.trim().length > 0 && !/[[\]]/.test(s))
     .map((s) => s.trim())
 
-  it('message includes the taste-profile text verbatim when provided', () => {
+  void it('message includes the taste-profile text verbatim when provided', () => {
     fc.assert(
       fc.property(
         nonEmptyPrintableArb,
@@ -884,7 +884,7 @@ describe('Property 15: Taste-profile context included in buildUserMessage', () =
     )
   })
 
-  it('taste-profile text appears before the vibe instruction', () => {
+  void it('taste-profile text appears before the vibe instruction', () => {
     fc.assert(
       fc.property(
         nonEmptyPrintableArb,
@@ -906,7 +906,7 @@ describe('Property 15: Taste-profile context included in buildUserMessage', () =
     )
   })
 
-  it('omitting the taste profile leaves the message unchanged from the default', () => {
+  void it('omitting the taste profile leaves the message unchanged from the default', () => {
     fc.assert(
       fc.property(nonEmptyPrintableArb, (prompt) => {
         const withDefault = buildUserMessage(prompt, [])
