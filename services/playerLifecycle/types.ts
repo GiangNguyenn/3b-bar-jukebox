@@ -25,6 +25,8 @@ export interface PlayerEventDispatcher {
     onPlaybackStateChange: (state: SpotifyPlaybackState | null) => void
   ): Promise<void>
   handleAccountError(message: string): void
+  /** The player finished initializing and playback was moved to it. */
+  onPlayerReady?(deviceId: string): void
   handlePlaybackError(message: string): void
   handlePlayerStateChangeEvent(
     state: unknown,

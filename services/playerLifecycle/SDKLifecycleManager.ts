@@ -12,6 +12,9 @@ import type { LogLevel } from '@/hooks/ConsoleLogsProvider'
 import type { SpotifyPlaybackState } from '@/shared/types/spotify'
 import type { PlayerEventDispatcher } from './types'
 
+const TRANSFER_ATTEMPTS = 4
+const TRANSFER_RETRY_DELAY_MS = 1500
+
 type AddLogFn = (
   level: LogLevel,
   message: string,
@@ -185,9 +188,25 @@ export class SDKLifecycleManager {
     this.deviceId = deviceId
     onDeviceIdChange(deviceId)
 
-    const transferSuccess = await transferPlaybackToDevice(deviceId)
+    // A freshly registered device can take a few seconds to show up in
+    // Spotify's device list, and the transfer validates against that list.
+    // Failing on the first miss would mark the new player 'error' and cost a
+    // whole extra recovery cycle.
+    let transferSuccess = false
+    for (let attempt = 0; attempt < TRANSFER_ATTEMPTS; attempt++) {
+      if (attempt > 0) {
+        await new Promise((resolve) =>
+          setTimeout(resolve, TRANSFER_RETRY_DELAY_MS)
+        )
+      }
+      if (!this.playerRef || this.deviceId !== deviceId) {
+        return
+      }
+      transferSuccess = await transferPlaybackToDevice(deviceId)
+      if (transferSuccess) break
+    }
 
-    if (!this.playerRef) {
+    if (!this.playerRef || this.deviceId !== deviceId) {
       return
     }
 
@@ -198,6 +217,7 @@ export class SDKLifecycleManager {
 
     onStatusChange('ready')
     recoveryManager.recordSuccess()
+    this.dispatcher.onPlayerReady?.(deviceId)
 
     if (this.deviceReadyResolver) {
       this.deviceReadyResolver(deviceId)

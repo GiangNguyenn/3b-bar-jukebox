@@ -6,7 +6,11 @@ export {
   setDeviceApiLogger
 } from './deviceApi'
 
-export { validateDevice, setDeviceValidationLogger } from './deviceValidation'
+export {
+  validateDevice,
+  setDeviceValidationLogger,
+  DEVICE_NOT_FOUND_ERROR
+} from './deviceValidation'
 
 export {
   transferPlaybackToDevice,

@@ -24,6 +24,8 @@ interface DeviceErrorCallbacks {
   getNavigationCallback(): ((path: string) => void) | null
   log(level: LogLevel, message: string, error?: unknown): void
   stateProcessor: StateProcessorInterface
+  /** Remember what was playing before the player is torn down */
+  captureResumePoint?(): void
 }
 
 export class DeviceErrorHandler {
@@ -234,6 +236,7 @@ export class DeviceErrorHandler {
               onStatusChange('ready', undefined)
             } else {
               // Only trigger full recovery if background transfer fails
+              this.callbacks.captureResumePoint?.()
               onStatusChange(
                 'recovery_needed',
                 'Device recovery failed. Player may need to be recreated.'
@@ -241,6 +244,7 @@ export class DeviceErrorHandler {
             }
           } catch {
             if (this.sdkLifecycle.getPlayerRef()) {
+              this.callbacks.captureResumePoint?.()
               onStatusChange(
                 'recovery_needed',
                 'Device recovery error. Player may need to be recreated.'

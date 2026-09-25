@@ -30,7 +30,7 @@ export function usePlayerAutoRecovery(
   addLog: (level: LogLevel, message: string, context?: string) => void,
   enabled: boolean = true
 ): void {
-  const { status } = useSpotifyPlayerStore()
+  const { status, recoveryRequested } = useSpotifyPlayerStore()
   const attemptRef = useRef(0)
   const inFlightRef = useRef(false)
   // Bumped to re-arm the timer when an attempt leaves the status unchanged
@@ -48,15 +48,21 @@ export function usePlayerAutoRecovery(
       return
     }
 
+    // A confirmed lost device can't come back by itself: rebuild right away
+    // on the first attempt. Later attempts still back off.
     const delay =
-      threshold * Math.min(2 ** attemptRef.current, MAX_BACKOFF_MULTIPLIER)
+      recoveryRequested && attemptRef.current === 0
+        ? 0
+        : threshold * Math.min(2 ** attemptRef.current, MAX_BACKOFF_MULTIPLIER)
     const timer = setTimeout(() => {
       if (inFlightRef.current) return
       inFlightRef.current = true
       attemptRef.current++
       addLog(
         'WARN',
-        `Player has been '${status}' for ${Math.round(delay / 1000)}s — recreating it (attempt ${attemptRef.current})`,
+        delay === 0
+          ? `Player lost its Spotify device — recreating it now`
+          : `Player has been '${status}' for ${Math.round(delay / 1000)}s — recreating it (attempt ${attemptRef.current})`,
         'PlayerAutoRecovery'
       )
       void createPlayer()
@@ -70,5 +76,5 @@ export function usePlayerAutoRecovery(
     }, delay)
 
     return () => clearTimeout(timer)
-  }, [status, retryTick, enabled, createPlayer, addLog])
+  }, [status, recoveryRequested, retryTick, enabled, createPlayer, addLog])
 }

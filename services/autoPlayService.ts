@@ -380,9 +380,22 @@ export class AutoPlayService {
           return
         }
 
-        void transferPlaybackToDevice(this.deviceId, 1, 500, true, true).catch(
-          () => {}
-        )
+        // Not awaited: a slow transfer must not hold up the poller.
+        const deviceId = this.deviceId
+        void (async () => {
+          const transferred = await transferPlaybackToDevice(
+            deviceId,
+            1,
+            500,
+            true,
+            true
+          ).catch(() => false)
+          if (!transferred) {
+            await playerLifecycleService
+              .verifyDeviceRegistered('SDK silent and transfer failed')
+              .catch(() => {})
+          }
+        })()
       }
     }
   }

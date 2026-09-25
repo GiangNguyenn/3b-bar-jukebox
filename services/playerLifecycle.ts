@@ -3,8 +3,11 @@ import { showToast } from '@/lib/toast'
 import { calculateBackoffDelay } from '@/shared/utils/retryHelpers'
 import {
   transferPlaybackToDevice,
-  setDeviceManagementLogger
+  setDeviceManagementLogger,
+  validateDevice,
+  DEVICE_NOT_FOUND_ERROR
 } from '@/services/deviceManagement'
+import { spotifyPlayerStore } from '@/hooks/spotifyPlayerStore'
 import type { LogLevel } from '@/hooks/ConsoleLogsProvider'
 import { SpotifyPlaybackState } from '@/shared/types/spotify'
 import { JukeboxQueueItem } from '@/shared/types/queue'
@@ -23,6 +26,29 @@ import { StateProcessor } from './playerLifecycle/StateProcessor'
 
 // Type for the navigation callback
 export type NavigationCallback = (path: string) => void
+
+/**
+ * What to play once a player lost mid-session has been recreated.
+ * - 'track': resume this track at this position (the device dropped mid-song)
+ * - 'next': start the next queued track (it dropped between songs, or we
+ *   don't know what was playing)
+ */
+type ResumePoint =
+  | {
+      kind: 'track'
+      trackUri: string
+      trackId: string
+      positionMs: number
+      capturedAt: number
+    }
+  | { kind: 'next'; capturedAt: number }
+
+// Resume points older than this are dropped: after that long, restarting a
+// half-played song is more surprising than helpful. The regular auto-play
+// fallbacks still start the next track.
+const RESUME_POINT_MAX_AGE_MS = 10 * 60_000
+// Closer than this to the end, a song counts as finished: play the next one.
+const RESUME_END_MARGIN_MS = 3000
 
 /**
  * Coordinator for the Spotify Web Playback SDK lifecycle.
@@ -61,6 +87,9 @@ class PlayerLifecycleService {
    * Only a track-specific failure justifies dropping the track from the queue.
    */
   private lastPlayFailureWasTrackSpecific = false
+  private lastDeviceRegistrationCheck = 0
+  private readonly DEVICE_REGISTRATION_CHECK_COOLDOWN_MS = 10_000
+  private resumePoint: ResumePoint | null = null
 
   // Phase 4: Internal Log History (Circular Buffer)
   private internalLogBuffer: LogEntry[] = []
@@ -91,7 +120,8 @@ class PlayerLifecycleService {
       {
         getNavigationCallback: () => this.navigationCallback,
         log: (level, msg, error) => this.log(level, msg, error),
-        stateProcessor: this.stateProcessor
+        stateProcessor: this.stateProcessor,
+        captureResumePoint: () => this.captureResumePoint()
       }
     )
   }
@@ -161,7 +191,8 @@ class PlayerLifecycleService {
   async playTrackWithRetry(
     trackUri: string,
     deviceId: string,
-    maxRetries = PLAYER_LIFECYCLE_CONFIG.PLAYBACK_RETRY.maxRetriesPerTrack
+    maxRetries = PLAYER_LIFECYCLE_CONFIG.PLAYBACK_RETRY.maxRetriesPerTrack,
+    positionMs?: number
   ): Promise<boolean> {
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
       try {
@@ -169,7 +200,8 @@ class PlayerLifecycleService {
           path: `me/player/play?device_id=${deviceId}`,
           method: 'PUT',
           body: {
-            uris: [trackUri]
+            uris: [trackUri],
+            ...(positionMs !== undefined && { position_ms: positionMs })
           }
         })
 
@@ -207,6 +239,17 @@ class PlayerLifecycleService {
               'WARN',
               `Device activation failed for device ${deviceId}. Playback retry will likely fail.`
             )
+            // If Spotify no longer knows this device, retrying is pointless:
+            // hand off to player recreation instead.
+            if (
+              !(await this.verifyDeviceRegistered(
+                'play request failed',
+                'next'
+              ))
+            ) {
+              this.lastPlayFailureWasTrackSpecific = false
+              return false
+            }
           } else {
             this.log(
               'INFO',
@@ -246,6 +289,147 @@ class PlayerLifecycleService {
     }
     this.lastPlayFailureWasTrackSpecific = false
     return false
+  }
+
+  /**
+   * Asks Spotify whether our Web Playback SDK device is still registered.
+   * The SDK can lose its registration (after hours of use, a network drop,
+   * the laptop sleeping) without emitting 'not_ready', leaving a local player
+   * that looks 'ready' but that no command can reach. When Spotify confirms
+   * the device is gone, the player is flagged as errored so
+   * usePlayerAutoRecovery recreates it.
+   *
+   * @returns false only when the device was confirmed missing. Inconclusive
+   *   checks (network failure, rate limit, cooldown) return true.
+   */
+  async verifyDeviceRegistered(
+    reason: string,
+    resumeHint?: 'next'
+  ): Promise<boolean> {
+    const deviceId = this.sdkLifecycleManager.getDeviceId()
+    if (!deviceId) return true
+
+    const now = Date.now()
+    if (
+      now - this.lastDeviceRegistrationCheck <
+      this.DEVICE_REGISTRATION_CHECK_COOLDOWN_MS
+    ) {
+      return true
+    }
+    this.lastDeviceRegistrationCheck = now
+
+    const result = await validateDevice(deviceId)
+    if (result.isValid || !result.errors.includes(DEVICE_NOT_FOUND_ERROR)) {
+      return true
+    }
+    // The device may have been replaced while we were checking
+    if (this.sdkLifecycleManager.getDeviceId() !== deviceId) return true
+
+    this.reportDeviceLost(reason, resumeHint)
+    return false
+  }
+
+  /**
+   * Marks the player as errored because Spotify no longer lists its device.
+   * Only acts on a player that believes it is healthy; recovery already in
+   * progress is left alone.
+   */
+  reportDeviceLost(reason: string, resumeHint?: 'next'): void {
+    const store = spotifyPlayerStore.getState()
+    if (store.status !== 'ready') return
+    this.log(
+      'ERROR',
+      `Spotify no longer lists this player as a device (${reason}) — the player will be recreated`
+    )
+    // Must run before the player is destroyed, which clears the SDK state
+    this.captureResumePoint(resumeHint)
+    store.requestRecovery()
+    store.setStatus(
+      'error',
+      'Player lost its Spotify connection. Reconnecting automatically...'
+    )
+  }
+
+  /**
+   * Records what was playing so the recreated player can pick up where this
+   * one left off. Nothing is recorded if the user had paused: a recovered
+   * player must not start music they stopped.
+   */
+  captureResumePoint(hint?: 'next'): void {
+    const capturedAt = Date.now()
+    if (this.isManualPause) {
+      this.resumePoint = null
+      return
+    }
+
+    const last = this.queueSynchronizer.getLastKnownState()
+    const track = last?.track_window?.current_track
+    if (hint === 'next' || !last || !track) {
+      this.resumePoint = { kind: 'next', capturedAt }
+      return
+    }
+
+    // The SDK sends few events during steady play, so extrapolate from the
+    // last one to where playback had got to.
+    const elapsed = last.paused
+      ? 0
+      : capturedAt - this.queueSynchronizer.getLastStateUpdateTime()
+    const positionMs = Math.max(0, last.position + elapsed)
+    this.resumePoint =
+      last.duration > 0 && positionMs >= last.duration - RESUME_END_MARGIN_MS
+        ? { kind: 'next', capturedAt }
+        : {
+            kind: 'track',
+            trackUri: track.uri,
+            trackId: track.id,
+            positionMs,
+            capturedAt
+          }
+  }
+
+  /**
+   * Called by SDKLifecycleManager the moment a (re)created player reaches
+   * 'ready'. Runs synchronously up to entering the playback queue, so
+   * auto-play's fallbacks see the operation in progress and stand aside.
+   */
+  onPlayerReady(deviceId: string): void {
+    const point = this.resumePoint
+    this.resumePoint = null
+    if (!point || this.isManualPause) return
+    if (Date.now() - point.capturedAt > RESUME_POINT_MAX_AGE_MS) return
+
+    if (point.kind === 'next') {
+      const nextTrack = queueManager.getNextTrack()
+      if (!nextTrack) return
+      this.log(
+        'INFO',
+        `Player recovered — starting next track "${nextTrack.tracks.name}"`
+      )
+      void this.playNextTrack(nextTrack).catch((error) =>
+        this.log('WARN', 'Failed to start next track after recovery', error)
+      )
+      return
+    }
+
+    this.log(
+      'INFO',
+      `Player recovered — resuming at ${Math.round(point.positionMs / 1000)}s`
+    )
+    void playbackService
+      .executePlayback(async () => {
+        const resumed = await this.playTrackWithRetry(
+          point.trackUri,
+          deviceId,
+          PLAYER_LIFECYCLE_CONFIG.PLAYBACK_RETRY.maxRetriesPerTrack,
+          Math.round(point.positionMs)
+        )
+        if (resumed) {
+          queueManager.setCurrentlyPlayingTrack(point.trackId)
+        }
+      }, 'resumeAfterRecovery')
+      .catch((error) =>
+        this.log('WARN', 'Failed to resume playback after recovery', error)
+      )
   }
 
   wasLastPlayFailureTrackSpecific(): boolean {
@@ -435,10 +619,15 @@ class PlayerLifecycleService {
     // wrapper tracks its own device ID, which is only set by its own (unused)
     // initialize(), so it always threw "No device ID available" and every
     // automatic resume silently did nothing.
-    await sendApiRequest({
-      path: `me/player/play?device_id=${deviceId}`,
-      method: 'PUT'
-    })
+    try {
+      await sendApiRequest({
+        path: `me/player/play?device_id=${deviceId}`,
+        method: 'PUT'
+      })
+    } catch (error) {
+      await this.verifyDeviceRegistered('resume failed')
+      throw error
+    }
     this.isManualPause = false
   }
 }

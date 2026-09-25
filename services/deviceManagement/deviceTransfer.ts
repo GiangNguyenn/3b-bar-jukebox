@@ -130,7 +130,9 @@ export async function transferPlaybackToDevice(
             device: { id: string; name: string }
           }>({
             path: 'me/player?market=from_token',
-            method: 'GET'
+            method: 'GET',
+            // Each poll must see fresh state, not the cached pre-transfer one
+            debounceTime: 0
           })
 
           if (!state?.device) {

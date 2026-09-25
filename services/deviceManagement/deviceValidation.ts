@@ -9,6 +9,13 @@ export function setDeviceValidationLogger(loggerFn: typeof logger): void {
   // This function is kept for compatibility but the logger is already set up
 }
 
+/**
+ * Spotify answered, and its device list does not include this device: the
+ * Web Playback SDK player has lost its registration and must be recreated.
+ * (Distinct from 'Failed to validate device', which means we couldn't ask.)
+ */
+export const DEVICE_NOT_FOUND_ERROR = 'Device not found in available devices'
+
 interface DeviceValidationResult {
   isValid: boolean
   errors: string[]
@@ -64,7 +71,7 @@ export async function validateDevice(
         }
       }
 
-      errors.push('Device not found in available devices')
+      errors.push(DEVICE_NOT_FOUND_ERROR)
 
       // STRICT JUKEBOX LOGIC:
       // If we are looking for a specific device ID (which we are, the one we just created),

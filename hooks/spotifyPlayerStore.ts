@@ -30,6 +30,13 @@ export interface PlayerStatusState {
   playbackState: SpotifyPlaybackState | null
   isTransitionInProgress: boolean
   volume: number
+  /**
+   * Set when the player is known to be unrecoverable in place (Spotify
+   * confirmed its device is gone), so usePlayerAutoRecovery rebuilds it
+   * immediately instead of waiting out its grace period. Cleared on 'ready'.
+   */
+  recoveryRequested: boolean
+  requestRecovery: () => void
   setStatus: (status: PlayerStatus, error?: string) => void
   setDeviceId: (deviceId: string | null) => void
   setPlaybackState: (state: SpotifyPlaybackState | null) => void
@@ -83,6 +90,9 @@ export const spotifyPlayerStore = create<PlayerStatusState>((set, get) => ({
   playbackState: null,
   isTransitionInProgress: false,
   volume: 50,
+  recoveryRequested: false,
+
+  requestRecovery: () => set({ recoveryRequested: true }),
 
   setStatus: (newStatus, error) => {
     const currentState = get()
@@ -126,7 +136,8 @@ export const spotifyPlayerStore = create<PlayerStatusState>((set, get) => ({
       status: newStatus,
       lastStatusChange: Date.now(),
       lastError: error,
-      isReady: getIsReadyFromStatus(newStatus)
+      isReady: getIsReadyFromStatus(newStatus),
+      ...(newStatus === 'ready' && { recoveryRequested: false })
     })
   },
 
