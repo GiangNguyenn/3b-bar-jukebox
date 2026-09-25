@@ -44,8 +44,10 @@ const ALLOWED_TRANSITIONS: Record<PlayerStatus, PlayerStatus[]> = {
   initializing: ['ready', 'error', 'verifying', 'disconnected'],
   ready: ['reconnecting', 'error', 'disconnected', 'initializing', 'verifying'],
   reconnecting: ['ready', 'error', 'initializing'],
-  error: ['initializing', 'ready', 'disconnected'],
-  disconnected: ['initializing', 'ready'],
+  error: ['initializing', 'ready', 'disconnected', 'verifying'],
+  // Recovery destroys the player (-> disconnected) and immediately recreates
+  // it, so every step of a fresh initialization must be reachable from here.
+  disconnected: ['initializing', 'ready', 'verifying', 'error'],
   verifying: ['ready', 'error', 'initializing', 'disconnected'],
   recovery_needed: ['initializing', 'error', 'disconnected']
 }
@@ -56,6 +58,19 @@ function isTransitionAllowed(from: PlayerStatus, to: PlayerStatus): boolean {
 
 function getIsReadyFromStatus(status: PlayerStatus): boolean {
   return status === 'ready'
+}
+
+// A status change that arrives inside the debounce window is deferred, not
+// dropped. Dropping it could leave the store permanently on a stale status
+// (e.g. 'disconnected' after a recovery whose 'initializing' came 100ms later),
+// which in turn keeps auto-play, the enforcer and recovery switched off.
+let deferredStatusTimer: ReturnType<typeof setTimeout> | null = null
+
+function clearDeferredStatus(): void {
+  if (deferredStatusTimer) {
+    clearTimeout(deferredStatusTimer)
+    deferredStatusTimer = null
+  }
 }
 
 // Create the store with robust state management
@@ -74,6 +89,8 @@ export const spotifyPlayerStore = create<PlayerStatusState>((set, get) => ({
     const currentStatus = currentState.status
 
     if (currentStatus === newStatus) {
+      // A later call supersedes anything still waiting to be applied
+      clearDeferredStatus()
       if (error !== undefined) {
         set({ lastError: error })
       }
@@ -96,9 +113,15 @@ export const spotifyPlayerStore = create<PlayerStatusState>((set, get) => ({
       timeSinceLastChange < PLAYER_LIFECYCLE_CONFIG.STATUS_DEBOUNCE &&
       !isImportantTransition
     ) {
+      clearDeferredStatus()
+      deferredStatusTimer = setTimeout(() => {
+        deferredStatusTimer = null
+        get().setStatus(newStatus, error)
+      }, PLAYER_LIFECYCLE_CONFIG.STATUS_DEBOUNCE - timeSinceLastChange)
       return
     }
 
+    clearDeferredStatus()
     set({
       status: newStatus,
       lastStatusChange: Date.now(),

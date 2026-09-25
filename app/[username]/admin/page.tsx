@@ -42,6 +42,7 @@ import { QRCodeComponent } from '@/components/ui'
 
 import { useAdminTokenManagement } from '@/hooks/useAdminTokenManagement'
 import { usePlaybackEnforcer } from '@/hooks/usePlaybackEnforcer'
+import { usePlayerAutoRecovery } from '@/hooks/usePlayerAutoRecovery'
 import { usePublishNowPlaying } from '@/hooks/usePublishNowPlaying'
 
 // Recovery removed
@@ -111,7 +112,9 @@ export default function AdminPage(): JSX.Element {
   // First, use the health monitor hook
   const healthStatus = useSpotifyHealthMonitor()
 
-  // Recovery removed
+  // Recreate the player if it stays out of 'ready' (failed recovery, stuck
+  // initialization) instead of waiting for someone to reload the page
+  usePlayerAutoRecovery(createPlayer, addLog)
 
   // Handle sign out with re-authentication
   const handleSignOut = async (): Promise<void> => {
@@ -393,7 +396,9 @@ export default function AdminPage(): JSX.Element {
     addLog
   })
 
-  // Recovery removed
+  // Recreate the player if it stays out of 'ready' (failed recovery, stuck
+  // initialization) instead of waiting for someone to reload the page
+  usePlayerAutoRecovery(createPlayer, addLog)
 
   // Enforce single-device playback
   usePlaybackEnforcer(true) // Always enabled when admin page is loaded

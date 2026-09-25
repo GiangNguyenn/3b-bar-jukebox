@@ -9,6 +9,22 @@ import { hasTrackFinished } from './autoPlay/TrackFinishDetector'
 import { QueueAutoFiller } from './autoPlay/QueueAutoFiller'
 import { TrackPlayer } from './autoPlay/TrackPlayer'
 import { transferPlaybackToDevice } from '@/services/deviceManagement/deviceTransfer'
+import { playbackService } from '@/services/player'
+import { spotifyPlayerStore } from '@/hooks/spotifyPlayerStore'
+import { createModuleLogger } from '@/shared/utils/logger'
+
+const log = createModuleLogger('AutoPlayService')
+
+// How long playback may sit stopped at the end of a track before this service
+// starts the next one itself. The SDK-event path normally advances within a
+// second or two; this only fires when that path missed the transition.
+// Longer than the 5s GET de-duplication window in sendApiRequest, so a single
+// stale 'stopped' response can't trigger it on its own.
+const IDLE_ADVANCE_GRACE_MS = 8000
+// Minimum gap between fallback attempts (idle advance, null-state play,
+// auto-resume) so a persistent failure is retried steadily, not hammered.
+const RECOVERY_RETRY_MS = 15000
+const AUTO_RESUME_COOLDOWN_MS = 10000
 
 interface AutoPlayServiceConfig {
   checkInterval?: number
@@ -29,6 +45,10 @@ export class AutoPlayService {
   private lastPlaybackState: SpotifyPlaybackState | null = null
   private lastTrackId: string | null = null
   private lastNullStateAttemptTrackId: string | null = null
+  private lastNullStateAttemptTime = 0
+  private idleSince: number | null = null
+  private lastIdleAdvanceAttemptTime = 0
+  private lastAutoResumeTime = 0
   private isAutoPlayDisabled = false
   private lastSdkReactivationTime = 0
   private isInitialized = false
@@ -245,21 +265,86 @@ export class AutoPlayService {
     } as SpotifyPlaybackState
     this.lastTrackId = currentTrackId ?? null
 
-    // Auto-resume if paused unexpectedly mid-track (Issue #12)
-    if (
+    const canRecover =
       !currentState.is_playing &&
       !playerLifecycleService.getIsManualPause() &&
       this.isInitialized &&
-      this.username &&
+      !!this.username &&
       !this.isAutoPlayDisabled &&
-      currentState.item
+      !!this.deviceId &&
+      !!currentState.item &&
+      !playbackService.isOperationInProgress() &&
+      !spotifyPlayerStore.getState().isTransitionInProgress
+
+    const isStoppedAtEnd =
+      canRecover && hasTrackFinished(currentState, this.lastPlaybackState)
+
+    // Auto-resume if paused unexpectedly mid-track (Issue #12)
+    if (
+      canRecover &&
+      !isStoppedAtEnd &&
+      now - this.lastAutoResumeTime > AUTO_RESUME_COOLDOWN_MS
     ) {
-      const isFinished = hasTrackFinished(currentState, this.lastPlaybackState)
-      if (!isFinished) {
-        try {
-          await playerLifecycleService.resumePlayback()
-        } catch {}
+      this.lastAutoResumeTime = now
+      log('WARN', 'Playback paused unexpectedly mid-track — resuming')
+      try {
+        await playerLifecycleService.resumePlayback()
+      } catch (error) {
+        log(
+          'WARN',
+          'Auto-resume failed, will retry',
+          undefined,
+          error instanceof Error ? error : undefined
+        )
       }
+    }
+
+    // Stalled-transition fallback: the track ended but nothing started the
+    // next one (e.g. the SDK never delivered a usable end-of-track event, or
+    // the play request failed). Without this the jukebox stays silent until
+    // the page is reloaded.
+    if (isStoppedAtEnd) {
+      this.idleSince ??= now
+      if (
+        now - this.idleSince >= IDLE_ADVANCE_GRACE_MS &&
+        now - this.lastIdleAdvanceAttemptTime >= RECOVERY_RETRY_MS
+      ) {
+        const finishedId = currentState.item?.id
+        const nextTrack = this.queueManager
+          .getQueue()
+          .find((item) => item.tracks.spotify_track_id !== finishedId)
+        // The REST state can lag; the SDK knows what is actually loaded. If it
+        // has already moved on or is playing, the transition did happen.
+        const sdkState = await playerLifecycleService
+          .getPlayer()
+          ?.getCurrentState()
+          .catch(() => undefined)
+        const sdkAdvanced =
+          !!sdkState &&
+          (!sdkState.paused ||
+            sdkState.track_window?.current_track?.id !== finishedId)
+        if (sdkAdvanced) {
+          this.idleSince = null
+        } else if (nextTrack) {
+          this.lastIdleAdvanceAttemptTime = now
+          log(
+            'WARN',
+            `Playback idle at end of track for ${Math.round((now - this.idleSince) / 1000)}s — starting next track "${nextTrack.tracks.name}"`
+          )
+          try {
+            await playerLifecycleService.skipToTrack(nextTrack)
+          } catch (error) {
+            log(
+              'WARN',
+              'Idle fallback failed to start next track, will retry',
+              undefined,
+              error instanceof Error ? error : undefined
+            )
+          }
+        }
+      }
+    } else {
+      this.idleSince = null
     }
 
     // SDK silence watchdog: if the Spotify API says we're playing but the
@@ -306,14 +391,33 @@ export class AutoPlayService {
     if (!this.isInitialized || !this.username || this.isAutoPlayDisabled) return
 
     const nextTrack = this.queueManager.getNextTrack()
-    if (
-      nextTrack &&
+    if (!nextTrack) return
+
+    // Retry the same track periodically rather than only once: if the first
+    // attempt failed (device still waking up, network blip) a one-shot guard
+    // would leave playback stopped for good.
+    const now = Date.now()
+    const isNewTrack =
       nextTrack.tracks.spotify_track_id !== this.lastNullStateAttemptTrackId
+    if (
+      !isNewTrack &&
+      now - this.lastNullStateAttemptTime < RECOVERY_RETRY_MS
     ) {
-      this.lastNullStateAttemptTrackId = nextTrack.tracks.spotify_track_id
-      try {
-        await playerLifecycleService.skipToTrack(nextTrack)
-      } catch {}
+      return
+    }
+    if (playbackService.isOperationInProgress()) return
+
+    this.lastNullStateAttemptTrackId = nextTrack.tracks.spotify_track_id
+    this.lastNullStateAttemptTime = now
+    try {
+      await playerLifecycleService.skipToTrack(nextTrack)
+    } catch (error) {
+      log(
+        'WARN',
+        'No active playback — failed to start next track, will retry',
+        undefined,
+        error instanceof Error ? error : undefined
+      )
     }
   }
 

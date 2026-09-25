@@ -295,6 +295,9 @@ export class SDKLifecycleManager {
       this.playerRef.disconnect()
       this.playerRef = null
     }
+    // The old device is gone; commands sent to it would only fail. The next
+    // 'ready' event sets the new one.
+    this.deviceId = null
 
     spotifyPlayer.destroy()
   }

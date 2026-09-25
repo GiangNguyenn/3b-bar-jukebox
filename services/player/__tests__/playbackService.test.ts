@@ -1,6 +1,6 @@
 import { test, describe, beforeEach } from 'node:test'
 import assert from 'node:assert/strict'
-import { playbackService } from '../playbackService'
+import { playbackService, PlaybackService } from '../playbackService'
 
 void describe('PlaybackService', () => {
   beforeEach(async () => {
@@ -67,5 +67,23 @@ void describe('PlaybackService', () => {
 
     assert.deepEqual(ops, [1, 2]) // Serialized order
     assert.equal(playbackService.isOperationInProgress(), false)
+  })
+
+  void test('an operation that never settles does not block later operations', async () => {
+    const service = new PlaybackService(50)
+    const hung = service.executePlayback(
+      () => new Promise<void>(() => {}),
+      'hung-op'
+    )
+    let ranNext = false
+    const next = service.executePlayback(() => {
+      ranNext = true
+      return Promise.resolve()
+    }, 'next-op')
+
+    await assert.rejects(hung, /timed out/)
+    await next
+    assert.equal(ranNext, true)
+    assert.equal(service.isOperationInProgress(), false)
   })
 })

@@ -18,6 +18,15 @@ export class PlaybackService {
   private readonly RESET_THRESHOLD = 100 // Reset chain every 100 operations
 
   /**
+   * @param operationTimeoutMs - Longest one operation may hold the chain.
+   *   Every later playback operation (track changes, skips, recovery) waits
+   *   behind the current one, so an operation that never settles would stop
+   *   playback for good. Past this the chain moves on; the stuck operation is
+   *   abandoned (its caller gets a rejection) but cannot be cancelled.
+   */
+  constructor(private readonly operationTimeoutMs: number = 120_000) {}
+
+  /**
    * Set logger for this service
    */
   setLogger(logger: Logger): void {
@@ -80,10 +89,25 @@ export class PlaybackService {
         // Ignore previous error, it was handled by its own caller
       }
 
-      // 2. Execute the current operation
+      // 2. Execute the current operation, bounded by operationTimeoutMs
+      let timer: ReturnType<typeof setTimeout> | undefined
+      const timeout = new Promise<never>((_, reject) => {
+        timer = setTimeout(() => {
+          this.log(
+            'ERROR',
+            `Playback operation "${operationName}" did not finish within ${this.operationTimeoutMs}ms — releasing the playback queue`
+          )
+          reject(
+            new Error(
+              `Playback operation "${operationName}" timed out after ${this.operationTimeoutMs}ms`
+            )
+          )
+        }, this.operationTimeoutMs)
+      })
       try {
-        await operation()
+        await Promise.race([operation(), timeout])
       } finally {
+        clearTimeout(timer)
         this.pendingOperations = Math.max(0, this.pendingOperations - 1)
       }
     }

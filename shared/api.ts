@@ -86,6 +86,15 @@ const requestCache = new Map<
   { promise: Promise<any>; timestamp: number }
 >()
 
+// Drop expired entries once the map grows, so a long-running session with
+// many distinct request keys does not keep every response promise alive.
+function pruneRequestCache(now: number, maxAgeMs: number): void {
+  if (requestCache.size < 200) return
+  requestCache.forEach((entry, key) => {
+    if (now - entry.timestamp >= maxAgeMs) requestCache.delete(key)
+  })
+}
+
 const requestQueue: Array<() => Promise<any>> = []
 let isProcessingQueue = false
 // Global rate limit tracking
@@ -220,10 +229,15 @@ export const sendApiRequest = async <T>({
     )
   }
 
+  // Only reads are de-duplicated. Sharing a cached promise for a mutation
+  // turns every retry within the debounce window into a replay of the first
+  // attempt's result: a failed PUT me/player/play retried 500ms later would
+  // "fail" again without ever reaching Spotify.
+  const isCacheable = method === 'GET'
   const cacheKey = `${method}:${path}:${JSON.stringify(body)}`
   const now = Date.now()
 
-  const cachedRequest = requestCache.get(cacheKey)
+  const cachedRequest = isCacheable ? requestCache.get(cacheKey) : undefined
   if (cachedRequest && now - cachedRequest.timestamp < debounceTime) {
     return cachedRequest.promise
   }
@@ -263,20 +277,51 @@ export const sendApiRequest = async <T>({
         timeout
       )
 
-      let response: Response
+      // The abort timer stays armed until the body has been read (see the
+      // finally below): a response whose headers arrive but whose body then
+      // stalls would otherwise hang forever and wedge the request queue.
       try {
-        response = await fetch(url, {
+        const response = await fetch(url, {
           method,
           headers,
           body: body ? JSON.stringify(body) : undefined,
           signal: controller.signal,
           ...config
         })
+        return await handleResponse(response, Date.now() - startTime)
       } finally {
         clearTimeout(timeoutId)
       }
-      const durationMs = Date.now() - startTime
+    } catch (error: unknown) {
+      if (apiLogger) {
+        apiLogger('ERROR', `[API Exception] ${method}: ${url}`, 'API', error)
+      } else {
+        console.error(`[API Exception] ${method}: ${url}`, error)
+      }
+      if (error instanceof ApiError) {
+        throw error
+      }
+      // Handle abort (timeout) errors specifically. abort(reason) rejects
+      // with the reason itself, which is a string here, not an AbortError.
+      if (
+        (error instanceof Error && error.name === 'AbortError') ||
+        typeof error === 'string'
+      ) {
+        throw new ApiError(`Request timed out after ${timeout}ms`, {
+          status: 408 // Request Timeout
+        })
+      }
+      throw new ApiError(
+        error instanceof Error
+          ? error.message
+          : 'Unknown error occurred while making API request'
+      )
+    }
 
+    async function handleResponse(
+      response: Response,
+      durationMs: number
+    ): Promise<T> {
       // Track API calls using the statistics tracker
       if (statisticsTracker && !isLocalApi) {
         const operationType = categorizeApiCall(path)
@@ -448,26 +493,6 @@ export const sendApiRequest = async <T>({
       const data = await response.json()
 
       return data as T
-    } catch (error: unknown) {
-      if (apiLogger) {
-        apiLogger('ERROR', `[API Exception] ${method}: ${url}`, 'API', error)
-      } else {
-        console.error(`[API Exception] ${method}: ${url}`, error)
-      }
-      if (error instanceof ApiError) {
-        throw error
-      }
-      // Handle abort (timeout) errors specifically
-      if (error instanceof Error && error.name === 'AbortError') {
-        throw new ApiError(`Request timed out after ${timeout}ms`, {
-          status: 408 // Request Timeout
-        })
-      }
-      throw new ApiError(
-        error instanceof Error
-          ? error.message
-          : 'Unknown error occurred while making API request'
-      )
     }
   }
 
@@ -475,33 +500,56 @@ export const sendApiRequest = async <T>({
     // Create an overall timeout for the request (queueing + execution)
     // Use an object so the 401 retry path can extend the timeout
     const timeoutState = { id: 0 as unknown as ReturnType<typeof setTimeout> }
+    let settled = false
+    // Resolves when the caller has been given an answer, so the queue can
+    // move on even if makeRequest itself never settles.
+    let releaseQueueSlot: () => void = () => {}
+    const queueSlotReleased = new Promise<void>((release) => {
+      releaseQueueSlot = release
+    })
+    const settle = (fn: () => void): void => {
+      if (settled) return
+      settled = true
+      clearTimeout(timeoutState.id)
+      fn()
+      releaseQueueSlot()
+    }
     const startQueueTimeout = (duration: number) => {
       clearTimeout(timeoutState.id)
       timeoutState.id = setTimeout(() => {
-        reject(
-          new ApiError(`Request timed out after ${duration}ms`, {
-            status: 408
-          })
+        settle(() =>
+          reject(
+            new ApiError(`Request timed out after ${duration}ms`, {
+              status: 408
+            })
+          )
         )
       }, duration)
     }
     startQueueTimeout(timeout)
 
-    requestQueue.push(() =>
+    requestQueue.push(() => {
+      // The caller already gave up while this sat in the queue. Sending it
+      // now would only replay a stale command (e.g. a play request minutes
+      // after the track it was for).
+      if (settled) return Promise.resolve()
+
       makeRequest(0, startQueueTimeout)
-        .then((result) => {
-          clearTimeout(timeoutState.id)
-          resolve(result)
-        })
-        .catch((error: unknown) => {
-          clearTimeout(timeoutState.id)
-          reject(error instanceof Error ? error : new Error(String(error)))
-        })
-    )
+        .then((result) => settle(() => resolve(result)))
+        .catch((error: unknown) =>
+          settle(() =>
+            reject(error instanceof Error ? error : new Error(String(error)))
+          )
+        )
+      return queueSlotReleased
+    })
     void processRequestQueue()
   })
 
-  requestCache.set(cacheKey, { promise, timestamp: now })
+  if (isCacheable) {
+    requestCache.set(cacheKey, { promise, timestamp: now })
+    pruneRequestCache(now, debounceTime)
+  }
 
   return promise
 }

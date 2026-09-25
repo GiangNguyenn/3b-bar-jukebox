@@ -55,6 +55,12 @@ class PlayerLifecycleService {
       ) => void)
     | null = null
   private navigationCallback: NavigationCallback | null = null
+  /**
+   * Whether the most recent playTrackWithRetry failure was caused by the track
+   * itself (Spotify refused it) rather than by the device, network or API.
+   * Only a track-specific failure justifies dropping the track from the queue.
+   */
+  private lastPlayFailureWasTrackSpecific = false
 
   // Phase 4: Internal Log History (Circular Buffer)
   private internalLogBuffer: LogEntry[] = []
@@ -210,11 +216,17 @@ class PlayerLifecycleService {
           // Continue to backoff and retry
         } else if (errorMessage.includes('Restriction violated')) {
           this.log('WARN', 'Restriction violated on retry, skipping track.')
+          this.lastPlayFailureWasTrackSpecific = true
           return false // Don't retry further, just skip this track
         }
 
         // If we've exhausted retries, fail
         if (attempt === maxRetries) {
+          this.log(
+            'WARN',
+            `Failed to start ${trackUri} after ${maxRetries + 1} attempts: ${errorMessage}`
+          )
+          this.lastPlayFailureWasTrackSpecific = false
           return false
         }
 
@@ -232,7 +244,12 @@ class PlayerLifecycleService {
         await new Promise((resolve) => setTimeout(resolve, backoffMs))
       }
     }
+    this.lastPlayFailureWasTrackSpecific = false
     return false
+  }
+
+  wasLastPlayFailureTrackSpecific(): boolean {
+    return this.lastPlayFailureWasTrackSpecific
   }
 
   async playNextTrack(track: JukeboxQueueItem): Promise<void> {
@@ -409,11 +426,19 @@ class PlayerLifecycleService {
   }
 
   public async resumePlayback(): Promise<void> {
-    if (!this.sdkLifecycleManager.getDeviceId()) {
+    const deviceId = this.sdkLifecycleManager.getDeviceId()
+    if (!deviceId) {
       return
     }
 
-    await spotifyPlayer.resume()
+    // Issued directly rather than via spotifyPlayer.resume(): that legacy
+    // wrapper tracks its own device ID, which is only set by its own (unused)
+    // initialize(), so it always threw "No device ID available" and every
+    // automatic resume silently did nothing.
+    await sendApiRequest({
+      path: `me/player/play?device_id=${deviceId}`,
+      method: 'PUT'
+    })
     this.isManualPause = false
   }
 }

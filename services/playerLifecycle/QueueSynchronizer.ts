@@ -48,6 +48,11 @@ export interface PlaybackController {
   ): Promise<boolean>
   log(level: LogLevel, message: string, error?: unknown): void
   getDeviceId(): string | null
+  /**
+   * True when the last playTrackWithRetry failure was the track's fault.
+   * Controllers that don't implement it are treated as always track-specific.
+   */
+  wasLastPlayFailureTrackSpecific?(): boolean
 }
 
 export class QueueSynchronizer {
@@ -172,6 +177,19 @@ export class QueueSynchronizer {
         this.currentQueueTrack = currentTrack
         queueManager.setCurrentlyPlayingTrack(
           currentTrack.tracks.spotify_track_id
+        )
+        return
+      }
+
+      // A device/network/API failure says nothing about the track. Dropping it
+      // and moving on would burn through the whole queue during an outage;
+      // leave the queue intact so a later retry can pick up where we left off.
+      const trackAtFault =
+        this.controller.wasLastPlayFailureTrackSpecific?.() ?? true
+      if (!trackAtFault) {
+        this.logger(
+          'WARN',
+          `[playNextTrack] Could not start "${currentTrack.tracks.name}" (device or network problem) — keeping it queued for retry`
         )
         return
       }
@@ -460,7 +478,13 @@ export class QueueSynchronizer {
         }
 
         this.lastForcePlayedTrackId = currentSpotifyTrack.id
-        void this.playNextTrack(expectedTrack)
+        void this.playNextTrack(expectedTrack).catch((error) =>
+          this.controller.log(
+            'ERROR',
+            '[QueueSync] Failed to enforce queue track',
+            error
+          )
+        )
         return
       }
 
@@ -500,13 +524,22 @@ export class QueueSynchronizer {
       return true
     }
 
-    // Scenario C: Track finished but Spotify paused it correctly at position 0, or lazily at duration length
+    // Scenario C: Track finished but Spotify paused it correctly at position 0, or lazily at duration length.
+    // The SDK often sends no events during steady playback, so the last state
+    // may be from the start of the track (position ~0). Use the position it
+    // would have reached by now, not just the last reported one.
+    const estimatedLastPosition =
+      this.lastKnownState.position + (Date.now() - this.lastStateUpdateTime)
+    const playedThrough =
+      this.lastKnownState.position > 2000 ||
+      (this.lastKnownState.duration > 0 &&
+        estimatedLastPosition >= this.lastKnownState.duration - 5000)
     const trackJustFinished =
       !this.lastKnownState.paused &&
       state.paused &&
       (state.position === 0 ||
         this.lastKnownState.duration - state.position < 2000) &&
-      this.lastKnownState.position > 2000
+      playedThrough
 
     if (trackJustFinished) {
       this.logger('INFO', '[isTrackFinished] Track naturally paused at end')
