@@ -18,8 +18,8 @@ const source = readFileSync(
   'utf-8'
 )
 
-describe('useNowPlayingRealtime channel replacement', () => {
-  test('subscribe() clears channelRef before removing the old channel', () => {
+void describe('useNowPlayingRealtime channel replacement', () => {
+  void test('subscribe() clears channelRef before removing the old channel', () => {
     const subscribeStart = source.indexOf('const subscribe = () => {')
     const channelCreated = source.indexOf('.channel(`now_playing_')
     assert.ok(subscribeStart !== -1 && channelCreated > subscribeStart)
@@ -35,7 +35,7 @@ describe('useNowPlayingRealtime channel replacement', () => {
     )
   })
 
-  test('the status handler ignores a channel that has been replaced', () => {
+  void test('the status handler ignores a channel that has been replaced', () => {
     assert.match(source, /channelRef\.current !== channel\) return/)
   })
 })
