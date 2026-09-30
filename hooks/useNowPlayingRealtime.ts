@@ -128,10 +128,14 @@ export function useNowPlayingRealtime({
         reconnectTimerRef.current = null
       }
 
-      // Tear down any existing channel before creating a new one
-      if (channelRef.current) {
-        void supabaseBrowser.removeChannel(channelRef.current)
+      // Tear down any existing channel before creating a new one. Clear the ref
+      // first: removing a channel can report CLOSED synchronously, and the
+      // status handler must see it as already replaced or it schedules another
+      // reconnect that tears down the healthy channel a second later, forever.
+      const previousChannel = channelRef.current
+      if (previousChannel) {
         channelRef.current = null
+        void supabaseBrowser.removeChannel(previousChannel)
       }
 
       // A fresh topic per attempt: the client hands back the existing channel
