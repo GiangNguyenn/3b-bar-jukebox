@@ -288,18 +288,22 @@ function buildRootCauseAnalysis(
   }
 }
 
-export function formatDiagnosticsForClipboard(
+/**
+ * The full diagnostics report as data. Shared by the "Copy Diagnostics"
+ * button and the automatic upload (hooks/useDiagnosticSnapshotUploader.ts).
+ */
+export function buildDiagnosticsData(
   healthStatus: HealthStatus,
   isReady: boolean,
   playerStatus: PlayerStatus | undefined,
   currentPlayerStatus: string,
   logs: ConsoleLogEntry[] = []
-): string {
+): Record<string, unknown> {
   const hasErrors = hasErrorStatus(healthStatus)
   const hasWarnings = hasWarningStatus(healthStatus)
   const overallSeverity = getOverallSeverity(hasErrors, hasWarnings)
 
-  const diagnosticData = {
+  return {
     summary: {
       status: overallSeverity,
       timestamp: new Date().toISOString(),
@@ -396,6 +400,24 @@ export function formatDiagnosticsForClipboard(
       recoveryState: recoveryManager.getDiagnostics()
     }
   }
+}
 
-  return JSON.stringify(diagnosticData, null, 2)
+export function formatDiagnosticsForClipboard(
+  healthStatus: HealthStatus,
+  isReady: boolean,
+  playerStatus: PlayerStatus | undefined,
+  currentPlayerStatus: string,
+  logs: ConsoleLogEntry[] = []
+): string {
+  return JSON.stringify(
+    buildDiagnosticsData(
+      healthStatus,
+      isReady,
+      playerStatus,
+      currentPlayerStatus,
+      logs
+    ),
+    null,
+    2
+  )
 }

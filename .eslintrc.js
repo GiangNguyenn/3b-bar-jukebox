@@ -58,7 +58,12 @@ module.exports = {
       }
     },
     {
-      files: ['hooks/ConsoleLogsProvider.tsx', 'shared/utils/logger.ts'],
+      files: [
+        'hooks/ConsoleLogsProvider.tsx',
+        'shared/utils/logger.ts',
+        // Wraps console.warn/error to capture them for remote diagnostics
+        'services/diagnostics/instrumentation.ts'
+      ],
       rules: {
         'no-console': 'off',
         'no-restricted-syntax': 'off'

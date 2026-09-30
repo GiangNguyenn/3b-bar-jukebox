@@ -11,6 +11,10 @@ import {
   useMemo
 } from 'react'
 import { setLogger } from '@/shared/utils/logger'
+import {
+  remoteLogShipper,
+  withConsoleTapSuppressed
+} from '@/shared/utils/remoteLogShipper'
 
 export type LogLevel = 'LOG' | 'INFO' | 'WARN' | 'ERROR'
 export type LogEntry = {
@@ -89,6 +93,10 @@ export function ConsoleLogsProvider({
         return
       }
 
+      // Remote diagnostics get every line, ahead of the rate limit below
+      // that keeps the on-screen log readable
+      remoteLogShipper.enqueue({ level, message, context, error })
+
       const now = Date.now()
       if (now - lastLogTime.current < rateLimit) {
         return
@@ -115,23 +123,56 @@ export function ConsoleLogsProvider({
         ? [`[${context}]`, sanitizedMessage, error].filter(Boolean)
         : [sanitizedMessage, error].filter(Boolean)
 
-      switch (consoleMethod) {
-        case 'warn':
-          console.warn(...consoleArgs)
-          break
-        case 'error':
-          console.error(...consoleArgs)
-          break
-        case 'info':
-          console.info(...consoleArgs)
-          break
-      }
+      // Already sent to remote diagnostics above; don't let the console tap
+      // pick the same line up again
+      withConsoleTapSuppressed(() => {
+        switch (consoleMethod) {
+          case 'warn':
+            console.warn(...consoleArgs)
+            break
+          case 'error':
+            console.error(...consoleArgs)
+            break
+          case 'info':
+            console.info(...consoleArgs)
+            break
+        }
+      })
     },
     [rateLimit, validateMessage, maxLogs]
   )
 
   useEffect(() => {
     setLogger(addLog)
+  }, [addLog])
+
+  // Uncaught errors and unhandled promise rejections
+  useEffect(() => {
+    const handleError = (event: ErrorEvent): void => {
+      // Benign browser notice, fired constantly by some layouts
+      if (event.message?.includes('ResizeObserver loop')) return
+      addLog(
+        'ERROR',
+        `Uncaught error: ${event.message}`,
+        'Window',
+        event.error instanceof Error ? event.error : undefined
+      )
+    }
+    const handleRejection = (event: PromiseRejectionEvent): void => {
+      const reason: unknown = event.reason
+      addLog(
+        'ERROR',
+        `Unhandled promise rejection: ${formatLogArg(reason)}`,
+        'Window',
+        reason instanceof Error ? reason : undefined
+      )
+    }
+    window.addEventListener('error', handleError)
+    window.addEventListener('unhandledrejection', handleRejection)
+    return () => {
+      window.removeEventListener('error', handleError)
+      window.removeEventListener('unhandledrejection', handleRejection)
+    }
   }, [addLog])
 
   useEffect(() => {

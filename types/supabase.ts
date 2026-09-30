@@ -101,6 +101,131 @@ export type Database = {
         }
         Relationships: []
       }
+      client_logs: {
+        Row: {
+          app_version: string | null
+          context: string | null
+          details: Json | null
+          error: Json | null
+          id: number
+          level: string
+          logged_at: string
+          message: string
+          path: string | null
+          profile_id: string
+          received_at: string
+          repeat_count: number
+          session_id: string
+        }
+        Insert: {
+          app_version?: string | null
+          context?: string | null
+          details?: Json | null
+          error?: Json | null
+          id?: number
+          level: string
+          logged_at: string
+          message: string
+          path?: string | null
+          profile_id: string
+          received_at?: string
+          repeat_count?: number
+          session_id: string
+        }
+        Update: {
+          app_version?: string | null
+          context?: string | null
+          details?: Json | null
+          error?: Json | null
+          id?: number
+          level?: string
+          logged_at?: string
+          message?: string
+          path?: string | null
+          profile_id?: string
+          received_at?: string
+          repeat_count?: number
+          session_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'client_logs_profile_id_fkey'
+            columns: ['profile_id']
+            isOneToOne: false
+            referencedRelation: 'profiles'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'client_logs_profile_id_fkey'
+            columns: ['profile_id']
+            isOneToOne: false
+            referencedRelation: 'profiles_public'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'client_logs_profile_id_fkey'
+            columns: ['profile_id']
+            isOneToOne: false
+            referencedRelation: 'user_subscription_summary'
+            referencedColumns: ['profile_id']
+          }
+        ]
+      }
+      client_sessions: {
+        Row: {
+          app_version: string | null
+          last_seen_at: string
+          page: string | null
+          profile_id: string
+          session_id: string
+          started_at: string
+          state: Json | null
+          user_agent: string | null
+        }
+        Insert: {
+          app_version?: string | null
+          last_seen_at?: string
+          page?: string | null
+          profile_id: string
+          session_id: string
+          started_at?: string
+          state?: Json | null
+          user_agent?: string | null
+        }
+        Update: {
+          app_version?: string | null
+          last_seen_at?: string
+          page?: string | null
+          profile_id?: string
+          session_id?: string
+          started_at?: string
+          state?: Json | null
+          user_agent?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'client_sessions_profile_id_fkey'
+            columns: ['profile_id']
+            isOneToOne: false
+            referencedRelation: 'profiles'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'client_sessions_profile_id_fkey'
+            columns: ['profile_id']
+            isOneToOne: false
+            referencedRelation: 'profiles_public'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'client_sessions_profile_id_fkey'
+            columns: ['profile_id']
+            isOneToOne: false
+            referencedRelation: 'user_subscription_summary'
+            referencedColumns: ['profile_id']
+          }
+        ]
+      }
       conversations: {
         Row: {
           created_at: string
@@ -127,6 +252,70 @@ export type Database = {
             isOneToOne: true
             referencedRelation: 'matches'
             referencedColumns: ['id']
+          }
+        ]
+      }
+      diagnostic_snapshots: {
+        Row: {
+          app_version: string | null
+          captured_at: string
+          id: number
+          page: string | null
+          profile_id: string
+          received_at: string
+          session_id: string
+          severity: string
+          snapshot: Json
+          trigger: string
+          trigger_detail: string | null
+        }
+        Insert: {
+          app_version?: string | null
+          captured_at: string
+          id?: number
+          page?: string | null
+          profile_id: string
+          received_at?: string
+          session_id: string
+          severity: string
+          snapshot: Json
+          trigger: string
+          trigger_detail?: string | null
+        }
+        Update: {
+          app_version?: string | null
+          captured_at?: string
+          id?: number
+          page?: string | null
+          profile_id?: string
+          received_at?: string
+          session_id?: string
+          severity?: string
+          snapshot?: Json
+          trigger?: string
+          trigger_detail?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'diagnostic_snapshots_profile_id_fkey'
+            columns: ['profile_id']
+            isOneToOne: false
+            referencedRelation: 'profiles'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'diagnostic_snapshots_profile_id_fkey'
+            columns: ['profile_id']
+            isOneToOne: false
+            referencedRelation: 'profiles_public'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'diagnostic_snapshots_profile_id_fkey'
+            columns: ['profile_id']
+            isOneToOne: false
+            referencedRelation: 'user_subscription_summary'
+            referencedColumns: ['profile_id']
           }
         ]
       }

@@ -4,6 +4,7 @@ import Script from 'next/script'
 import './globals.css'
 import Header from '@/components/Header'
 import { RemoteCommandBridge } from '@/components/RemoteCommandBridge'
+import { RemoteLogBridge } from '@/components/RemoteLogBridge'
 import { ConsoleLogsProvider } from '@/hooks/ConsoleLogsProvider'
 import { ToastProvider } from '@/contexts/ToastContext'
 import StructuredData from './components/StructuredData'
@@ -135,6 +136,7 @@ export default function RootLayout({
           <ConsoleLogsProvider>
             <Header />
             <RemoteCommandBridge />
+            <RemoteLogBridge />
             {children}
           </ConsoleLogsProvider>
         </ToastProvider>

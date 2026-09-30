@@ -9,6 +9,7 @@ import {
 import { useConsoleLogsContext } from '@/hooks/ConsoleLogsProvider'
 import { usePlaylistData } from '@/hooks/usePlaylistData'
 import { useSpotifyHealthMonitor } from '@/hooks/useSpotifyHealthMonitor'
+import { useDiagnosticSnapshotUploader } from '@/hooks/useDiagnosticSnapshotUploader'
 import { DiagnosticPanel } from './components/dashboard/components/diagnostic-panel'
 import { JukeboxSection } from './components/dashboard/components/jukebox-section'
 import { TrackSuggestionsTab } from './components/track-suggestions/track-suggestions-tab'
@@ -111,6 +112,9 @@ export default function AdminPage(): JSX.Element {
 
   // First, use the health monitor hook
   const healthStatus = useSpotifyHealthMonitor()
+
+  // Upload diagnostics automatically when health goes wrong
+  useDiagnosticSnapshotUploader(healthStatus, isReady, playerStatus, logs)
 
   // Recreate the player if it stays out of 'ready' (failed recovery, stuck
   // initialization) instead of waiting for someone to reload the page
