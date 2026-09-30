@@ -4,8 +4,11 @@ import { useEffect, useRef } from 'react'
 import { spotifyPlayerStore } from '@/hooks/spotifyPlayerStore'
 import {
   publishNowPlaying,
-  resetNowPlayingPublisher
+  resetNowPlayingPublisher,
+  verifyNowPlaying
 } from '@/services/nowPlayingPublisher'
+
+const VERIFY_INTERVAL_MS = 20000
 
 /**
  * Subscribes to the Zustand player store and publishes playback state
@@ -32,8 +35,15 @@ export function usePublishNowPlaying(profileId: string | null): void {
       }
     })
 
+    // Safety net: confirm the row still matches the player, and repair it if
+    // a write was lost, so the display never stays on a previous song
+    const verifyInterval = setInterval(() => {
+      void verifyNowPlaying()
+    }, VERIFY_INTERVAL_MS)
+
     return () => {
       unsubscribe()
+      clearInterval(verifyInterval)
       resetNowPlayingPublisher()
     }
   }, [profileId])

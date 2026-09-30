@@ -79,6 +79,7 @@ export function useNowPlayingRealtime({
   const burstTimeoutRef = useRef<NodeJS.Timeout | null>(null)
   const reconnectTimerRef = useRef<NodeJS.Timeout | null>(null)
   const reconnectAttemptsRef = useRef(0)
+  const channelSeqRef = useRef(0)
 
   const fetchFromTable = useCallback(async () => {
     if (!profileId) return
@@ -96,10 +97,10 @@ export function useNowPlayingRealtime({
       } else {
         setError(fetchError.message)
       }
-    } else if (row) {
-      setData(rowToPlaybackState(row))
     } else {
-      setData(null)
+      // A later successful read clears an earlier failure
+      setError(null)
+      setData(row ? rowToPlaybackState(row) : null)
     }
 
     setIsLoading(false)
@@ -133,8 +134,11 @@ export function useNowPlayingRealtime({
         channelRef.current = null
       }
 
+      // A fresh topic per attempt: the client hands back the existing channel
+      // for a topic that is still leaving, and subscribing to that is a no-op
+      channelSeqRef.current += 1
       const channel = supabaseBrowser
-        .channel(`now_playing_${profileId}`)
+        .channel(`now_playing_${profileId}_${channelSeqRef.current}`)
         .on(
           'postgres_changes',
           {
@@ -151,11 +155,15 @@ export function useNowPlayingRealtime({
           }
         )
         .subscribe((status) => {
-          if (cancelled) return
+          // Ignore a channel we have already replaced (removing it reports CLOSED)
+          if (cancelled || channelRef.current !== channel) return
           console.warn(`[useNowPlayingRealtime] subscription status: ${status}`)
           if (status === REALTIME_SUBSCRIBE_STATES.SUBSCRIBED) {
             reconnectAttemptsRef.current = 0
-          } else if (status === REALTIME_SUBSCRIBE_STATES.CHANNEL_ERROR) {
+            // Catch up on anything that changed while the channel was down
+            void fetchFromTable()
+          } else if (!reconnectTimerRef.current) {
+            // CHANNEL_ERROR, TIMED_OUT or CLOSED: the channel is dead either way.
             // Exponential backoff: 1s, 2s, 4s, 8s … capped at 30s
             const delay = Math.min(
               1000 * 2 ** reconnectAttemptsRef.current,
@@ -163,7 +171,7 @@ export function useNowPlayingRealtime({
             )
             reconnectAttemptsRef.current += 1
             console.warn(
-              `[useNowPlayingRealtime] CHANNEL_ERROR — reconnecting in ${delay}ms (attempt ${reconnectAttemptsRef.current})`
+              `[useNowPlayingRealtime] ${status} — reconnecting in ${delay}ms (attempt ${reconnectAttemptsRef.current})`
             )
             reconnectTimerRef.current = setTimeout(subscribe, delay)
           }

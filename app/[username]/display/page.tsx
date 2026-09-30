@@ -20,14 +20,14 @@ export default function DisplayPage(): ReactElement {
   const hasInitialLoadRef = useRef(false)
   const { profileId, isLoading: isProfileLoading } = useProfileId(username)
 
-  // Now-playing via Supabase Realtime (with 30s fallback polling)
+  // Now-playing via Supabase Realtime (with 10s fallback polling)
   const {
     data: playbackState,
     error: playbackError,
     isLoading: isPlaybackLoading
   } = useNowPlayingRealtime({
     profileId,
-    fallbackInterval: 30000
+    fallbackInterval: 10000
   })
 
   // Extract track values with proper dependency management
