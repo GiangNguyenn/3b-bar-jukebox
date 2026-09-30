@@ -122,7 +122,7 @@ export type Database = {
           context?: string | null
           details?: Json | null
           error?: Json | null
-          id?: number
+          id?: never
           level: string
           logged_at: string
           message: string
@@ -137,7 +137,7 @@ export type Database = {
           context?: string | null
           details?: Json | null
           error?: Json | null
-          id?: number
+          id?: never
           level?: string
           logged_at?: string
           message?: string
@@ -272,7 +272,7 @@ export type Database = {
         Insert: {
           app_version?: string | null
           captured_at: string
-          id?: number
+          id?: never
           page?: string | null
           profile_id: string
           received_at?: string
@@ -285,7 +285,7 @@ export type Database = {
         Update: {
           app_version?: string | null
           captured_at?: string
-          id?: number
+          id?: never
           page?: string | null
           profile_id?: string
           received_at?: string
