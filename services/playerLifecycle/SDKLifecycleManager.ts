@@ -11,6 +11,10 @@ import { PLAYER_LIFECYCLE_CONFIG } from '../playerLifecycleConfig'
 import type { LogLevel } from '@/hooks/ConsoleLogsProvider'
 import type { SpotifyPlaybackState } from '@/shared/types/spotify'
 import type { PlayerEventDispatcher } from './types'
+import {
+  describeTabVisibility,
+  formatDuration
+} from '@/shared/utils/tabVisibility'
 
 const TRANSFER_ATTEMPTS = 4
 const TRANSFER_RETRY_DELAY_MS = 1500
@@ -29,6 +33,13 @@ export class SDKLifecycleManager {
   private deviceErrorResolver: ((error: Error) => void) | null = null
   private pendingPromiseCleanup: (() => void) | null = null
   private addLog: AddLogFn | null = null
+  // Which step of player setup is in progress, so that a timeout or failure
+  // can say where it got stuck
+  private setup: { startedAt: number; step: string; stepStartedAt: number } = {
+    startedAt: 0,
+    step: 'not started',
+    stepStartedAt: 0
+  }
   readonly timeoutManager: TimeoutManager = new TimeoutManager()
 
   constructor(private readonly dispatcher: PlayerEventDispatcher) {}
@@ -39,6 +50,27 @@ export class SDKLifecycleManager {
 
   getDeviceId(): string | null {
     return this.deviceId
+  }
+
+  private logSetup(level: LogLevel, message: string): void {
+    this.addLog?.(level, message, 'PlayerInit')
+  }
+
+  private beginSetupStep(step: string, isFirst = false): void {
+    const now = Date.now()
+    if (isFirst) this.setup.startedAt = now
+    this.setup.step = step
+    this.setup.stepStartedAt = now
+    this.logSetup(
+      'INFO',
+      `Player setup: ${step}${isFirst ? ` (tab ${describeTabVisibility()})` : ''}`
+    )
+  }
+
+  /** e.g. "after 30s, while waiting for ... (28s in that step; tab hidden for 4m 2s)" */
+  private describeSetupProgress(): string {
+    const now = Date.now()
+    return `after ${formatDuration(now - this.setup.startedAt)}, while ${this.setup.step} (${formatDuration(now - this.setup.stepStartedAt)} in that step; tab ${describeTabVisibility()})`
   }
 
   getPlayerRef(): Spotify.Player | null {
@@ -58,9 +90,14 @@ export class SDKLifecycleManager {
       throw new Error('Player already exists')
     }
 
+    this.beginSetupStep('loading the Spotify SDK script', true)
     try {
       await waitForSpotifySDK()
     } catch (error) {
+      this.logSetup(
+        'ERROR',
+        `Player setup failed: the Spotify SDK script did not load (tab ${describeTabVisibility()})`
+      )
       onStatusChange('error', 'Spotify SDK failed to load')
       throw error
     }
@@ -110,13 +147,23 @@ export class SDKLifecycleManager {
         this.dispatcher,
         onStatusChange,
         onDeviceIdChange,
-        onPlaybackStateChange
+        onPlaybackStateChange,
+        (level, message) => this.addLog?.(level, message, 'SpotifySDK')
       )
       handler.attachListeners(player)
 
+      this.beginSetupStep('connecting to Spotify')
       const connected = await player.connect()
       if (!connected) {
+        this.logSetup(
+          'ERROR',
+          `Player setup failed: the SDK could not connect to Spotify (tab ${describeTabVisibility()})`
+        )
         throw new Error('Failed to connect to Spotify')
+      }
+      // handleDeviceReady may already have moved setup on by now
+      if (this.setup.step === 'connecting to Spotify') {
+        this.beginSetupStep('waiting for Spotify to report the device ready')
       }
 
       this.playerRef = player
@@ -148,7 +195,11 @@ export class SDKLifecycleManager {
                 this.pendingPromiseCleanup()
                 this.pendingPromiseCleanup = null
               }
-              rejectWrapper(new Error('Player initialization timed out'))
+              const progress = this.describeSetupProgress()
+              this.logSetup('ERROR', `Player setup timed out ${progress}`)
+              rejectWrapper(
+                new Error(`Player initialization timed out ${progress}`)
+              )
             }
           },
           PLAYER_LIFECYCLE_CONFIG.INITIALIZATION_TIMEOUT_MS,
@@ -179,7 +230,14 @@ export class SDKLifecycleManager {
     this.timeoutManager.clear('notReady')
     onStatusChange('verifying')
 
-    await this.verifyDeviceWithTimeout(deviceId)
+    this.beginSetupStep('verifying the new device with Spotify')
+    const verified = await this.verifyDeviceWithTimeout(deviceId)
+    if (!verified) {
+      this.logSetup(
+        'WARN',
+        'Player setup: Spotify does not list the new device yet; trying to move playback to it anyway'
+      )
+    }
 
     if (!this.playerRef) {
       return
@@ -202,6 +260,9 @@ export class SDKLifecycleManager {
       if (!this.playerRef || this.deviceId !== deviceId) {
         return
       }
+      this.beginSetupStep(
+        `moving playback to the new device (attempt ${attempt + 1} of ${TRANSFER_ATTEMPTS})`
+      )
       transferSuccess = await transferPlaybackToDevice(deviceId)
       if (transferSuccess) break
     }
@@ -211,10 +272,22 @@ export class SDKLifecycleManager {
     }
 
     if (!transferSuccess) {
+      this.logSetup(
+        'ERROR',
+        `Player setup failed: the SDK reported the device ready, but playback could not be moved to it in ${TRANSFER_ATTEMPTS} attempts, ${formatDuration(Date.now() - this.setup.startedAt)} after setup began (tab ${describeTabVisibility()})`
+      )
+      this.setup.step =
+        'giving up after playback could not be moved to the device'
+      this.setup.stepStartedAt = Date.now()
       onStatusChange('error', 'Failed to transfer playback to new device')
       return
     }
 
+    this.logSetup(
+      'INFO',
+      `Player setup complete in ${formatDuration(Date.now() - this.setup.startedAt)}`
+    )
+    this.setup.step = 'complete'
     onStatusChange('ready')
     recoveryManager.recordSuccess()
     this.dispatcher.onPlayerReady?.(deviceId)

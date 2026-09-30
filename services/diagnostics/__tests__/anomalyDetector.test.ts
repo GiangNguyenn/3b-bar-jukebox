@@ -127,6 +127,66 @@ void describe('AnomalyDetector', () => {
     assert.equal(captured.length, ANOMALY_CONFIG.MAX_SNAPSHOTS_PER_HOUR + 1)
   })
 
+  void it('keeps a separate budget for triggers that mean playback broke', () => {
+    const { detector, captured, advance } = createHarness()
+
+    // Routine triggers use up their whole hourly budget...
+    for (let i = 0; i < ANOMALY_CONFIG.MAX_SNAPSHOTS_PER_HOUR + 5; i++) {
+      detector.report(`trigger_${i}`)
+      advance(SETTLE)
+    }
+    assert.equal(captured.length, ANOMALY_CONFIG.MAX_SNAPSHOTS_PER_HOUR)
+
+    // ...and the snapshot for a lost device is still taken
+    assert.equal(detector.report('recovery_attempt', 'device lost'), true)
+    advance(SETTLE)
+    assert.equal(captured[captured.length - 1].trigger, 'recovery_attempt')
+
+    for (
+      let i = 0;
+      i < ANOMALY_CONFIG.MAX_PRIORITY_SNAPSHOTS_PER_HOUR + 5;
+      i++
+    ) {
+      advance(COOLDOWN)
+      detector.report('playback_stopped', `silence ${i}`)
+      advance(SETTLE)
+    }
+    assert.equal(
+      captured.length,
+      ANOMALY_CONFIG.MAX_SNAPSHOTS_PER_HOUR +
+        ANOMALY_CONFIG.MAX_PRIORITY_SNAPSHOTS_PER_HOUR
+    )
+  })
+
+  void it('limits how many snapshots a noisy trigger may take per hour', () => {
+    const { detector, captured, advance } = createHarness()
+
+    for (let i = 0; i < 8; i++) {
+      detector.report('warn_burst', `burst ${i}`, 'warning')
+      advance(COOLDOWN)
+    }
+    assert.equal(captured.length, ANOMALY_CONFIG.MAX_PER_NOISY_TRIGGER_PER_HOUR)
+
+    // The rest of the routine budget is still there for other triggers
+    assert.equal(detector.report('offline', 'no network'), true)
+  })
+
+  void it('files a merged snapshot under the priority trigger', () => {
+    const { detector, captured, advance } = createHarness()
+
+    detector.report('warn_burst', 'lots of warnings', 'warning')
+    detector.report('recovery_attempt', 'device lost', 'error')
+    advance(SETTLE)
+
+    assert.deepEqual(captured, [
+      {
+        trigger: 'recovery_attempt',
+        detail: 'device lost (also: warn_burst)',
+        severity: 'error'
+      }
+    ])
+  })
+
   void it('reports a condition when it starts and when it recovers', () => {
     const { detector, captured, advance } = createHarness()
 

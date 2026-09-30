@@ -5,7 +5,12 @@
  *
  * WARN/ERROR lines are uploaded as they happen. INFO lines only sit in a
  * small in-memory "flight recorder" and are uploaded when something unusual
- * is detected, so a healthy jukebox stores next to nothing.
+ * is detected, so a healthy jukebox stores next to nothing. The exception is
+ * a handful of low-volume contexts (ALWAYS_UPLOAD_CONTEXTS) that make up the
+ * playback timeline: those are uploaded at any level.
+ *
+ * A line that keeps repeating is uploaded once, then as one row a minute
+ * carrying a repeat count, however many other lines are interleaved with it.
  *
  * This module must never log through the app's logger: a failed upload that
  * logged would enqueue another upload.
@@ -19,6 +24,8 @@ export interface RemoteLogInput {
   context?: string
   error?: unknown
   details?: Record<string, unknown>
+  // Upload an INFO line as it happens instead of holding it in the recorder
+  upload?: boolean
 }
 
 export interface RemoteLogEntry {
@@ -60,7 +67,19 @@ export interface RemoteLogShipperOptions {
   autoFlush?: boolean
   sessionId?: string
   appVersion?: string
+  now?: () => number
 }
+
+/**
+ * Contexts whose INFO lines are uploaded as they happen. Each is a few lines
+ * per track or per player start, and together they answer "what was the
+ * jukebox doing, and when did it stop?" without needing a snapshot.
+ */
+export const ALWAYS_UPLOAD_CONTEXTS: ReadonlySet<string> = new Set([
+  'PlaybackTimeline',
+  'SpotifySDK',
+  'PlayerInit'
+])
 
 const STORAGE_KEY = 'jukebox:diagnostics-queue'
 const MAX_QUEUE = 500
@@ -77,6 +96,16 @@ const FLUSH_INTERVAL_MS = 10_000
 const ERROR_FLUSH_DELAY_MS = 2_000
 const RETRY_BASE_MS = 5_000
 const RETRY_MAX_MS = 60_000
+// A repeating line gets one row per window, with a repeat count
+const REPEAT_WINDOW_MS = 60_000
+
+interface RepeatState {
+  entry: RemoteLogEntry
+  windowStart: number
+  // Waiting for the window to close before being queued for upload
+  held: boolean
+  uploads: boolean
+}
 
 // Set while the app's own logger writes to the console, so the console tap
 // (services/diagnostics/instrumentation.ts) doesn't capture the line twice.
@@ -244,7 +273,9 @@ export class RemoteLogShipper {
   private readonly storage: StorageLike | null
   private readonly autoFlush: boolean
   private readonly appVersion: string
+  private readonly now: () => number
 
+  private repeats = new Map<string, RepeatState>()
   private queue: RemoteLogEntry[] = []
   private recorder: RemoteLogEntry[] = []
   private snapshots: RemoteSnapshot[] = []
@@ -272,6 +303,7 @@ export class RemoteLogShipper {
       options.appVersion ??
       process.env.NEXT_PUBLIC_VERCEL_GIT_COMMIT_SHA ??
       'dev'
+    this.now = options.now ?? ((): number => Date.now())
     this.restore()
   }
 
@@ -309,22 +341,43 @@ export class RemoteLogShipper {
     const path = currentPath()
     if (path) entry.path = path
 
-    const target = input.level === 'INFO' ? this.recorder : this.queue
-    const last = target[target.length - 1]
+    const uploads =
+      input.level !== 'INFO' ||
+      input.upload === true ||
+      (input.context !== undefined && ALWAYS_UPLOAD_CONTEXTS.has(input.context))
+    const target = uploads ? this.queue : this.recorder
+
+    const now = this.now()
+    this.releaseHeld(now)
+
+    const key = `${entry.level}|${entry.context ?? ''}|${entry.message}`
+    const repeat = this.repeats.get(key)
     if (
-      last &&
-      last.level === entry.level &&
-      last.context === entry.context &&
-      last.message === entry.message
+      repeat &&
+      repeat.uploads === uploads &&
+      now - repeat.windowStart < REPEAT_WINDOW_MS &&
+      (repeat.held || target.includes(repeat.entry))
     ) {
-      last.repeatCount++
+      // Same line again before its row has left: count it on that row
+      repeat.entry.repeatCount++
+    } else if (
+      repeat &&
+      uploads &&
+      repeat.uploads &&
+      now - repeat.windowStart < REPEAT_WINDOW_MS
+    ) {
+      // Its row is already uploaded (or on its way). Hold the repeats back
+      // until the window closes, then upload them as a single row.
+      repeat.entry = entry
+      repeat.held = true
     } else {
       target.push(entry)
-      const max = input.level === 'INFO' ? MAX_RECORDER : MAX_QUEUE
+      const max = uploads ? MAX_QUEUE : MAX_RECORDER
       if (target.length > max) target.splice(0, target.length - max)
+      this.repeats.set(key, { entry, windowStart: now, held: false, uploads })
     }
 
-    if (input.level !== 'INFO') {
+    if (uploads) {
       this.scheduleFlush(
         input.level === 'ERROR' ? ERROR_FLUSH_DELAY_MS : FLUSH_INTERVAL_MS
       )
@@ -391,7 +444,11 @@ export class RemoteLogShipper {
 
   async flush(): Promise<void> {
     if (!this.enabled || this.authBlocked || this.flushing) return
-    if (!this.hasWork()) return
+    this.releaseHeld(this.now())
+    if (!this.hasWork()) {
+      this.scheduleHeldRelease()
+      return
+    }
 
     // Take the work out of the buffers for the duration of the request, so
     // entries logged meanwhile are neither lost nor sent twice.
@@ -443,6 +500,7 @@ export class RemoteLogShipper {
       this.failures = 0
       if (this.hasPersisted) this.persist()
       if (this.hasWork()) this.scheduleFlush(500)
+      else this.scheduleHeldRelease()
     } else if (!this.authBlocked) {
       this.failures++
       this.persist()
@@ -459,6 +517,8 @@ export class RemoteLogShipper {
    * fit in one beacon is kept in localStorage for the next page load.
    */
   flushOnUnload(): void {
+    // Held repeat counts would otherwise be lost with the page
+    this.releaseHeld(this.now(), true)
     if (!this.enabled || this.authBlocked) return
     if (this.queue.length === 0 && !this.heartbeat) return
     if (typeof navigator === 'undefined' || !navigator.sendBeacon) {
@@ -501,6 +561,38 @@ export class RemoteLogShipper {
     if (snapshot) body.snapshot = snapshot
     if (heartbeat) body.heartbeat = heartbeat
     return body
+  }
+
+  /**
+   * Queues the repeat rows whose window has closed (all of them when forced)
+   * and forgets lines that have stopped repeating.
+   */
+  private releaseHeld(now: number, force = false): void {
+    this.repeats.forEach((repeat, key) => {
+      if (!force && now - repeat.windowStart < REPEAT_WINDOW_MS) return
+      if (!repeat.held) {
+        this.repeats.delete(key)
+        return
+      }
+      this.queue.push(repeat.entry)
+      if (this.queue.length > MAX_QUEUE) {
+        this.queue.splice(0, this.queue.length - MAX_QUEUE)
+      }
+      // The released row opens the next window
+      repeat.held = false
+      repeat.windowStart = now
+    })
+  }
+
+  private scheduleHeldRelease(): void {
+    let earliest: number | null = null
+    this.repeats.forEach((repeat) => {
+      if (!repeat.held) return
+      const dueAt = repeat.windowStart + REPEAT_WINDOW_MS
+      if (earliest === null || dueAt < earliest) earliest = dueAt
+    })
+    if (earliest === null) return
+    this.scheduleFlush(Math.max(0, earliest - this.now()) + 50)
   }
 
   private hasWork(): boolean {

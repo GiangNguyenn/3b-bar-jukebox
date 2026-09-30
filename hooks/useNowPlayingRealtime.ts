@@ -7,6 +7,18 @@ import {
   type RealtimeChannel
 } from '@supabase/supabase-js'
 import { SpotifyPlaybackState } from '@/shared/types/spotify'
+import { remoteLogShipper } from '@/shared/utils/remoteLogShipper'
+
+// Routine events: kept in the diagnostics flight recorder (uploaded only
+// alongside a snapshot) rather than logged as warnings, which would count
+// towards a warning burst and drown out real problems.
+function logInfo(message: string): void {
+  remoteLogShipper.enqueue({
+    level: 'INFO',
+    context: 'useNowPlayingRealtime',
+    message
+  })
+}
 
 interface NowPlayingRow {
   profile_id: string
@@ -161,12 +173,16 @@ export function useNowPlayingRealtime({
         .subscribe((status) => {
           // Ignore a channel we have already replaced (removing it reports CLOSED)
           if (cancelled || channelRef.current !== channel) return
-          console.warn(`[useNowPlayingRealtime] subscription status: ${status}`)
           if (status === REALTIME_SUBSCRIBE_STATES.SUBSCRIBED) {
+            logInfo('subscription status: SUBSCRIBED')
             reconnectAttemptsRef.current = 0
             // Catch up on anything that changed while the channel was down
             void fetchFromTable()
-          } else if (!reconnectTimerRef.current) {
+          } else if (reconnectTimerRef.current) {
+            console.warn(
+              `[useNowPlayingRealtime] subscription status: ${status} (reconnect already scheduled)`
+            )
+          } else {
             // CHANNEL_ERROR, TIMED_OUT or CLOSED: the channel is dead either way.
             // Exponential backoff: 1s, 2s, 4s, 8s … capped at 30s
             const delay = Math.min(
@@ -219,7 +235,7 @@ export function useNowPlayingRealtime({
         }
 
         // Start accelerated burst polling every 2s
-        console.warn('[useNowPlayingRealtime] burst polling activated')
+        logInfo('burst polling activated')
         burstIntervalRef.current = setInterval(() => {
           void fetchFromTable()
         }, 2000)
@@ -231,9 +247,7 @@ export function useNowPlayingRealtime({
             burstIntervalRef.current = null
           }
           burstTimeoutRef.current = null
-          console.warn(
-            '[useNowPlayingRealtime] burst polling ended, resuming normal interval'
-          )
+          logInfo('burst polling ended, resuming normal interval')
           intervalRef.current = setInterval(() => {
             void fetchFromTable()
           }, fallbackInterval)

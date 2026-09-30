@@ -2,7 +2,11 @@
  * Decides when something unusual enough has happened to upload a diagnostic
  * snapshot (see docs/remote-diagnostics.md), and keeps that from turning
  * into a flood: triggers that land together are merged into one snapshot,
- * each trigger type has a cooldown, and there is an hourly cap.
+ * each trigger type has a cooldown, and there are hourly caps.
+ *
+ * Triggers that mean the music has stopped or the player is being rebuilt
+ * (PRIORITY_TRIGGERS) have an hourly budget of their own, so a burst of
+ * routine warnings can never use up the snapshots needed for a real failure.
  *
  * Pure logic with injected timers; the wiring to the browser and the player
  * lives in ./instrumentation.ts.
@@ -33,7 +37,14 @@ export const ANOMALY_CONFIG = {
   // Wait before capturing so the state settles and the follow-on logs exist
   SETTLE_MS: 5_000,
   COOLDOWN_MS: 60_000,
+  // Routine triggers share this budget...
   MAX_SNAPSHOTS_PER_HOUR: 10,
+  // ...and no single one of them may take more than this share of it
+  MAX_PER_TRIGGER_PER_HOUR: 4,
+  // Triggers that fire on log volume alone say the least per snapshot
+  MAX_PER_NOISY_TRIGGER_PER_HOUR: 2,
+  // Priority triggers draw on a separate budget
+  MAX_PRIORITY_SNAPSHOTS_PER_HOUR: 10,
   STILL_UNHEALTHY_MS: 15 * 60_000,
   WARN_BURST_COUNT: 5,
   WARN_BURST_WINDOW_MS: 60_000
@@ -46,6 +57,27 @@ const SEVERITY_RANK: Record<SnapshotSeverity, number> = {
   error: 2
 }
 const REALTIME_DOWN_PATTERN = /CHANNEL_ERROR|TIMED_OUT/
+
+/** Playback has stopped, or the player is broken or being rebuilt. */
+export const PRIORITY_TRIGGERS: ReadonlySet<string> = new Set([
+  'playback_stopped',
+  'recovery_attempt',
+  'player_stuck',
+  'health_error',
+  'token_suspended',
+  'still_unhealthy',
+  'recovered'
+])
+const NOISY_TRIGGERS: ReadonlySet<string> = new Set([
+  'warn_burst',
+  'realtime_down'
+])
+
+interface CaptureRecord {
+  at: number
+  trigger: string
+  priority: boolean
+}
 
 interface PendingSnapshot {
   trigger: string
@@ -69,7 +101,7 @@ export class AnomalyDetector {
   private pending: PendingSnapshot | null = null
   private pendingTimer: unknown = null
   private lastFired = new Map<string, number>()
-  private capturedAt: number[] = []
+  private captures: CaptureRecord[] = []
   private warnTimes: number[] = []
   private conditions = new Map<string, ConditionState>()
   private stillUnhealthyTimer: unknown = null
@@ -102,28 +134,45 @@ export class AnomalyDetector {
       return false
     }
 
+    const priority = PRIORITY_TRIGGERS.has(trigger)
+    this.captures = this.captures.filter((c) => now - c.at < HOUR_MS)
+
     if (this.pending) {
       // A snapshot is about to be taken anyway; note this trigger on it
       this.lastFired.set(cooldownKey, now)
-      if (
-        trigger !== this.pending.trigger &&
-        !this.pending.also.includes(trigger)
+      const pending = this.pending
+      if (priority && !PRIORITY_TRIGGERS.has(pending.trigger)) {
+        // The snapshot should be filed under the more serious trigger, and
+        // counted against the priority budget rather than the routine one
+        pending.also = [
+          pending.trigger,
+          ...pending.also.filter((other) => other !== trigger)
+        ]
+        pending.trigger = trigger
+        pending.detail = detail
+        const record = this.captures[this.captures.length - 1]
+        if (record) {
+          record.trigger = trigger
+          record.priority = true
+        }
+      } else if (
+        trigger !== pending.trigger &&
+        !pending.also.includes(trigger)
       ) {
-        this.pending.also.push(trigger)
+        pending.also.push(trigger)
       }
-      if (SEVERITY_RANK[severity] > SEVERITY_RANK[this.pending.severity]) {
-        this.pending.severity = severity
+      if (SEVERITY_RANK[severity] > SEVERITY_RANK[pending.severity]) {
+        pending.severity = severity
       }
       return true
     }
 
-    this.capturedAt = this.capturedAt.filter((at) => now - at < HOUR_MS)
-    if (this.capturedAt.length >= ANOMALY_CONFIG.MAX_SNAPSHOTS_PER_HOUR) {
+    if (!this.hasBudget(trigger, priority)) {
       return false
     }
 
     this.lastFired.set(cooldownKey, now)
-    this.capturedAt.push(now)
+    this.captures.push({ at: now, trigger, priority })
     this.pending = { trigger, detail, severity, also: [] }
     this.pendingTimer = this.setTimer(() => {
       const pending = this.pending
@@ -235,6 +284,19 @@ export class AnomalyDetector {
     this.pending = null
     this.pendingTimer = null
     this.stillUnhealthyTimer = null
+  }
+
+  private hasBudget(trigger: string, priority: boolean): boolean {
+    const sameClass = this.captures.filter((c) => c.priority === priority)
+    if (priority) {
+      return sameClass.length < ANOMALY_CONFIG.MAX_PRIORITY_SNAPSHOTS_PER_HOUR
+    }
+    if (sameClass.length >= ANOMALY_CONFIG.MAX_SNAPSHOTS_PER_HOUR) return false
+    const sameTrigger = sameClass.filter((c) => c.trigger === trigger).length
+    const cap = NOISY_TRIGGERS.has(trigger)
+      ? ANOMALY_CONFIG.MAX_PER_NOISY_TRIGGER_PER_HOUR
+      : ANOMALY_CONFIG.MAX_PER_TRIGGER_PER_HOUR
+    return sameTrigger < cap
   }
 
   private activeConditionKeys(): string[] {

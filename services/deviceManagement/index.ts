@@ -3,13 +3,15 @@ export {
   getAvailableDevices,
   getPlaybackState,
   findDevice,
+  listDevices,
   setDeviceApiLogger
 } from './deviceApi'
 
 export {
   validateDevice,
   setDeviceValidationLogger,
-  DEVICE_NOT_FOUND_ERROR
+  DEVICE_NOT_FOUND_ERROR,
+  describeMissingDevice
 } from './deviceValidation'
 
 export {

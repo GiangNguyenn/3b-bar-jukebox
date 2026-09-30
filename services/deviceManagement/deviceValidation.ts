@@ -1,5 +1,9 @@
-import { getPlaybackState, findDevice } from './deviceApi'
+import { getPlaybackState, listDevices } from './deviceApi'
 import { createModuleLogger } from '@/shared/utils/logger'
+import type {
+  SpotifyDevice,
+  SpotifyPlaybackState
+} from '@/shared/types/spotify'
 
 // Set up logger for this module
 const logger = createModuleLogger('DeviceValidation')
@@ -15,6 +19,35 @@ export function setDeviceValidationLogger(loggerFn: typeof logger): void {
  * (Distinct from 'Failed to validate device', which means we couldn't ask.)
  */
 export const DEVICE_NOT_FOUND_ERROR = 'Device not found in available devices'
+
+const shortId = (id: string | null | undefined): string =>
+  id ? `${id.slice(0, 8)}…` : 'none'
+
+/**
+ * Says what Spotify does list when this player's device is missing: nothing
+ * at all, or another device (a phone, another browser) that may have taken
+ * over the account. The two call for different fixes. The wording is stable
+ * for a given situation so that repeats collapse into one log row.
+ */
+export function describeMissingDevice(
+  deviceId: string,
+  devices: SpotifyDevice[],
+  playbackState: SpotifyPlaybackState | null
+): string {
+  const listed =
+    devices.length === 0
+      ? 'Spotify lists no devices for this account'
+      : `Spotify lists ${devices.length} other device${devices.length === 1 ? '' : 's'}: ${devices
+          .map(
+            (device) =>
+              `"${device.name}" (${device.type}, ${device.is_active ? 'active' : 'inactive'}${device.is_restricted ? ', restricted' : ''}, ${shortId(device.id)})`
+          )
+          .join(', ')}`
+  const playing = playbackState?.device
+    ? `Spotify playback is ${playbackState.is_playing ? 'playing' : 'paused'} on "${playbackState.device.name}" (${shortId(playbackState.device.id)})`
+    : 'Spotify reports no active playback'
+  return `Player device ${shortId(deviceId)} is not registered with Spotify. ${listed}. ${playing}.`
+}
 
 interface DeviceValidationResult {
   isValid: boolean
@@ -45,7 +78,8 @@ export async function validateDevice(
 
   try {
     // Find target device by exact ID
-    const targetDevice = await findDevice(deviceId)
+    const devices = await listDevices()
+    const targetDevice = devices.find((device) => device.id === deviceId)
 
     if (!targetDevice) {
       // Fallback: Check if the device is actually active via playback state
@@ -72,6 +106,7 @@ export async function validateDevice(
       }
 
       errors.push(DEVICE_NOT_FOUND_ERROR)
+      logger('WARN', describeMissingDevice(deviceId, devices, playbackState))
 
       // STRICT JUKEBOX LOGIC:
       // If we are looking for a specific device ID (which we are, the one we just created),

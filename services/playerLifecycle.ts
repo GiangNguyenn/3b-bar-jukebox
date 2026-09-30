@@ -1,4 +1,4 @@
-import { sendApiRequest } from '@/shared/api'
+import { sendApiRequest, ApiError } from '@/shared/api'
 import { showToast } from '@/lib/toast'
 import { calculateBackoffDelay } from '@/shared/utils/retryHelpers'
 import {
@@ -23,6 +23,7 @@ import { QueueSynchronizer } from './playerLifecycle/QueueSynchronizer'
 import { SDKLifecycleManager } from './playerLifecycle/SDKLifecycleManager'
 import { DeviceErrorHandler } from './playerLifecycle/DeviceErrorHandler'
 import { StateProcessor } from './playerLifecycle/StateProcessor'
+import { describeTabVisibility } from '@/shared/utils/tabVisibility'
 
 // Type for the navigation callback
 export type NavigationCallback = (path: string) => void
@@ -213,14 +214,19 @@ class PlayerLifecycleService {
         const errorMessage =
           error instanceof Error ? error.message : String(error)
 
+        // Spotify answers a play request for a device it doesn't know with a
+        // 404 whose message varies ("Device not found", or just "Not found."),
+        // so go by the status rather than the wording.
+        const deviceMissing =
+          (error instanceof ApiError && error.status === 404) ||
+          /not found|404/i.test(errorMessage)
+
         // Handle "Restriction violated" or "Device not found"
         // On the first attempt, this may simply mean the device is not active yet (e.g. fresh load).
         // We can safely try transferring playback to it explicitly, then retrying.
         if (
           attempt === 0 &&
-          (errorMessage.includes('Restriction violated') ||
-            errorMessage.includes('Device not found') ||
-            errorMessage.includes('404'))
+          (errorMessage.includes('Restriction violated') || deviceMissing)
         ) {
           this.log(
             'INFO',
@@ -261,6 +267,14 @@ class PlayerLifecycleService {
           this.log('WARN', 'Restriction violated on retry, skipping track.')
           this.lastPlayFailureWasTrackSpecific = true
           return false // Don't retry further, just skip this track
+        } else if (
+          deviceMissing &&
+          !(await this.verifyDeviceRegistered('play request failed', 'next'))
+        ) {
+          // The device vanished between attempts: stop retrying and let the
+          // player be recreated
+          this.lastPlayFailureWasTrackSpecific = false
+          return false
         }
 
         // If we've exhausted retries, fail
@@ -339,7 +353,7 @@ class PlayerLifecycleService {
     if (store.status !== 'ready') return
     this.log(
       'ERROR',
-      `Spotify no longer lists this player as a device (${reason}) — the player will be recreated`
+      `Spotify no longer lists this player as a device (${reason}, tab ${describeTabVisibility()}) — the player will be recreated`
     )
     // Must run before the player is destroyed, which clears the SDK state
     this.captureResumePoint(resumeHint)

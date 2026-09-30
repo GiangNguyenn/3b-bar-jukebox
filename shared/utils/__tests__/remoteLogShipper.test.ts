@@ -143,6 +143,80 @@ void describe('RemoteLogShipper', () => {
     )
   })
 
+  void it('collapses a repeating line even when other lines are interleaved', async () => {
+    const { fetchFn, bodies } = createFetch()
+    const shipper = createShipper(fetchFn)
+    shipper.setEnabled(true)
+
+    for (let i = 0; i < 5; i++) {
+      shipper.enqueue({ level: 'WARN', message: 'closed', context: 'Rt' })
+      shipper.enqueue({ level: 'WARN', message: 'reconnecting', context: 'Rt' })
+    }
+    await shipper.flush()
+
+    assert.deepEqual(
+      bodies[0].logs?.map((log) => [log.message, log.repeatCount]),
+      [
+        ['closed', 5],
+        ['reconnecting', 5]
+      ]
+    )
+  })
+
+  void it('uploads a line that keeps repeating once a minute, with a count', async () => {
+    const { fetchFn, bodies } = createFetch()
+    let now = 1_000_000
+    const shipper = new RemoteLogShipper({
+      fetchFn,
+      storage: null,
+      autoFlush: false,
+      now: () => now
+    })
+    shipper.setEnabled(true)
+
+    shipper.enqueue({ level: 'WARN', message: 'closed', context: 'Rt' })
+    await shipper.flush()
+    assert.equal(bodies.length, 1)
+
+    // Already uploaded: further repeats in the same minute are held back
+    for (let i = 0; i < 30; i++) {
+      now += 1_000
+      shipper.enqueue({ level: 'WARN', message: 'closed', context: 'Rt' })
+    }
+    await shipper.flush()
+    assert.equal(bodies.length, 1)
+
+    // Once the minute is up they go out as a single row
+    now += 31_000
+    await shipper.flush()
+    assert.equal(bodies.length, 2)
+    assert.deepEqual(
+      bodies[1].logs?.map((log) => [log.message, log.repeatCount]),
+      [['closed', 30]]
+    )
+  })
+
+  void it('uploads INFO lines from the playback timeline as they happen', async () => {
+    const { fetchFn, bodies } = createFetch()
+    const shipper = createShipper(fetchFn)
+    shipper.setEnabled(true)
+
+    shipper.enqueue({
+      level: 'INFO',
+      context: 'PlaybackTimeline',
+      message: 'Track started: "Black Betty"'
+    })
+    shipper.enqueue({ level: 'INFO', message: 'flagged', upload: true })
+    shipper.enqueue({ level: 'INFO', message: 'routine' })
+    await shipper.flush()
+
+    assert.deepEqual(
+      bodies[0].logs?.map((log) => log.message),
+      ['Track started: "Black Betty"', 'flagged']
+    )
+    assert.equal(shipper.getQueueSizes().recorded, 1)
+  })
+
   void it('sends at most 50 lines per request', async () => {
     const { fetchFn, bodies } = createFetch()
     const shipper = createShipper(fetchFn)

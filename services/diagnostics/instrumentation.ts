@@ -9,13 +9,19 @@
  */
 import { spotifyPlayerStore } from '@/hooks/spotifyPlayerStore'
 import { playerLifecycleService } from '@/services/playerLifecycle'
+import { queueManager } from '@/services/queueManager'
 import { recoveryManager } from '@/services/player/recoveryManager'
 import { tokenManager } from '@/shared/token/tokenManager'
 import {
   remoteLogShipper,
   isConsoleTapSuppressed
 } from '@/shared/utils/remoteLogShipper'
+import {
+  describeTabVisibility,
+  getTabHiddenMs
+} from '@/shared/utils/tabVisibility'
 import { AnomalyDetector, type SnapshotSeverity } from './anomalyDetector'
+import { PlaybackWatch, type PlaybackSample } from './playbackWatch'
 import {
   describeRequest,
   failureLevel,
@@ -36,6 +42,9 @@ const DRIFT_THRESHOLD_MS = 15_000
 // only a gap this long (laptop asleep) is worth flagging there.
 const HIDDEN_DRIFT_THRESHOLD_MS = 5 * 60_000
 const PLAYER_STUCK_MS = 30_000
+const PLAYBACK_WATCH_INTERVAL_MS = 5_000
+// Lets the pause/play flicker between two tracks settle into one heartbeat
+const HEARTBEAT_DEBOUNCE_MS = 3_000
 const MAX_DURATION_SAMPLES = 50
 const ERROR_BODY_LENGTH = 500
 
@@ -54,6 +63,25 @@ const hostStats = new Map<string, HostStats>()
 const longTasks = { count: 0, totalMs: 0 }
 
 export const anomalyDetector = new AnomalyDetector({ capture: captureSnapshot })
+
+const playbackWatch = new PlaybackWatch({
+  log: (level, message) => {
+    remoteLogShipper.enqueue({
+      level,
+      // INFO lines are the timeline (always uploaded); the rest are alarms
+      context: level === 'INFO' ? 'PlaybackTimeline' : 'PlaybackWatch',
+      message
+    })
+  },
+  onStoppedChange: (detail) => {
+    anomalyDetector.setCondition(
+      'playback_stopped',
+      detail !== null,
+      detail ?? undefined
+    )
+    sendHeartbeat()
+  }
+})
 
 /**
  * The admin page registers a builder for the full diagnostics snapshot.
@@ -118,12 +146,48 @@ function buildReducedSnapshot(): Record<string, unknown> {
 
 function getPlayerSummary(): Record<string, unknown> {
   const player = spotifyPlayerStore.getState()
+  const playback = player.playbackState
+  const lastSdkEvent = playerLifecycleService.getLastSDKStateUpdateTime()
   return {
     status: player.status,
     lastStatusChange: player.lastStatusChange || undefined,
+    lastError: player.lastError,
+    recoveryRequested: player.recoveryRequested || undefined,
     hasDevice: player.deviceId !== null,
-    isPlaying: player.playbackState?.is_playing,
-    track: player.playbackState?.item?.name
+    isPlaying: playback?.is_playing,
+    track: playback?.item?.name,
+    positionSeconds: playback
+      ? Math.round((playback.progress_ms ?? 0) / 1000)
+      : undefined,
+    durationSeconds: playback?.item
+      ? Math.round(playback.item.duration_ms / 1000)
+      : undefined,
+    // How stale the position above is: the SDK is quiet during steady play
+    sdkEventAgeSeconds: lastSdkEvent
+      ? Math.round((Date.now() - lastSdkEvent) / 1000)
+      : undefined,
+    manualPause: playerLifecycleService.getIsManualPause() || undefined,
+    queueLength: queueManager.getQueue().length,
+    ...playbackWatch.getSummary()
+  }
+}
+
+function getPlaybackSample(): PlaybackSample {
+  const player = spotifyPlayerStore.getState()
+  const playback = player.playbackState
+  return {
+    status: player.status,
+    lastError: player.lastError,
+    trackId: playback?.item?.id,
+    trackName: playback?.item?.name,
+    artist: playback?.item?.artists?.[0]?.name,
+    isPlaying: playback?.is_playing ?? false,
+    positionMs: playback?.progress_ms ?? 0,
+    durationMs: playback?.item?.duration_ms ?? 0,
+    stateAt: playback?.timestamp ?? Date.now(),
+    manualPause: playerLifecycleService.getIsManualPause(),
+    queueLength: queueManager.getQueue().length,
+    tab: describeTabVisibility()
   }
 }
 
@@ -412,7 +476,34 @@ function installLongTaskObserver(): void {
 // ─── Player ─────────────────────────────────────────────────────────────────
 
 function installPlayerWatch(): void {
+  const observePlayback = (): void => {
+    // Pages that never create a player have nothing to watch
+    if (spotifyPlayerStore.getState().lastStatusChange === 0) return
+    try {
+      playbackWatch.observe(getPlaybackSample())
+    } catch {
+      // Diagnostics must never disturb the player
+    }
+  }
+  setInterval(observePlayback, PLAYBACK_WATCH_INTERVAL_MS)
+
   spotifyPlayerStore.subscribe((state, previous) => {
+    if (
+      state.playbackState !== previous.playbackState ||
+      state.status !== previous.status
+    ) {
+      observePlayback()
+    }
+    // Keep client_sessions.state current: a heartbeat only every five minutes
+    // would still describe a playing jukebox long after it fell silent
+    if (
+      state.status !== previous.status ||
+      state.playbackState?.is_playing !== previous.playbackState?.is_playing ||
+      state.playbackState?.item?.id !== previous.playbackState?.item?.id
+    ) {
+      scheduleHeartbeat()
+    }
+
     if (state.status !== previous.status) {
       // lastStatusChange stays 0 on pages that never create a player, where
       // the store just sits on its initial 'initializing'
@@ -444,13 +535,29 @@ function installPlayerWatch(): void {
 
 // ─── Heartbeat ──────────────────────────────────────────────────────────────
 
+let heartbeatTimer: ReturnType<typeof setTimeout> | null = null
+
+function scheduleHeartbeat(): void {
+  if (heartbeatTimer) return
+  heartbeatTimer = setTimeout(() => {
+    heartbeatTimer = null
+    sendHeartbeat()
+  }, HEARTBEAT_DEBOUNCE_MS)
+}
+
 function sendHeartbeat(): void {
+  if (!installed) return
+  const hiddenMs = getTabHiddenMs()
   remoteLogShipper.setHeartbeat({
     userAgent: navigator.userAgent,
     state: {
+      // last_seen_at moves with every upload; this is when the state was read
+      capturedAt: new Date().toISOString(),
       player: getPlayerSummary(),
       online: navigator.onLine,
       visibility: document.visibilityState,
+      hiddenForSeconds:
+        hiddenMs === null ? undefined : Math.round(hiddenMs / 1000),
       connection: getConnectionInfo(),
       performance: getPerformanceInfo(),
       buffers: remoteLogShipper.getQueueSizes()

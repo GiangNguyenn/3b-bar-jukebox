@@ -80,15 +80,11 @@ export async function getPlaybackState(): Promise<SpotifyPlaybackState | null> {
 }
 
 /**
- * Find a device by exact ID
- * @param deviceId - The exact device ID to find
- * @returns The found device, or null if Spotify's device list doesn't include it
+ * The devices Spotify currently lists for the account, fetched fresh.
  * @throws If the device list couldn't be fetched. A failed request must not be
  *   mistaken for "device not found", which triggers recreating the player.
  */
-export async function findDevice(
-  deviceId: string
-): Promise<SpotifyDevice | null> {
+export async function listDevices(): Promise<SpotifyDevice[]> {
   const response = await sendApiRequest<DevicesResponse>({
     path: 'me/player/devices',
     method: 'GET',
@@ -99,5 +95,18 @@ export async function findDevice(
   if (!Array.isArray(response?.devices)) {
     throw new Error('Spotify returned no device list')
   }
-  return response.devices.find((device) => device.id === deviceId) ?? null
+  return response.devices
+}
+
+/**
+ * Find a device by exact ID
+ * @param deviceId - The exact device ID to find
+ * @returns The found device, or null if Spotify's device list doesn't include it
+ * @throws If the device list couldn't be fetched (see listDevices)
+ */
+export async function findDevice(
+  deviceId: string
+): Promise<SpotifyDevice | null> {
+  const devices = await listDevices()
+  return devices.find((device) => device.id === deviceId) ?? null
 }

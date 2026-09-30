@@ -80,6 +80,37 @@ void describe('verifyDeviceRegistered', () => {
     assert.equal(spotifyPlayerStore.getState().status, 'error')
   })
 
+  void it('flags the player at once when a play request fails with a bare "Not found."', async () => {
+    // Spotify's 404 for an unknown device does not always say "Device not found"
+    let playRequests = 0
+    globalThis.fetch = ((url: string) => {
+      const target = String(url)
+      if (target.includes('/me/player/play')) {
+        playRequests++
+        return Promise.resolve(
+          jsonResponse(404, { error: { status: 404, message: 'Not found.' } })
+        )
+      }
+      if (target.includes('/me/player/devices')) {
+        return Promise.resolve(jsonResponse(200, { devices: [] }))
+      }
+      return Promise.resolve(new Response(null, { status: 204 }))
+    }) as typeof fetch
+
+    const service = makeService()
+    const started = await service.playTrackWithRetry(
+      'spotify:track:6kooDsorCpWVMGc994XjWN',
+      DEVICE_ID
+    )
+
+    assert.equal(started, false)
+    assert.equal(playRequests, 1)
+    assert.equal(spotifyPlayerStore.getState().status, 'error')
+    assert.equal(spotifyPlayerStore.getState().recoveryRequested, true)
+    // A missing device says nothing about the track: keep it queued
+    assert.equal(service.wasLastPlayFailureTrackSpecific(), false)
+  })
+
   void it('does not recreate the player when the device list request fails', async () => {
     globalThis.fetch = (() =>
       Promise.resolve(

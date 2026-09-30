@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useSpotifyPlayerStore, spotifyPlayerStore } from './useSpotifyPlayer'
 import type { PlayerStatus } from './spotifyPlayerStore'
 import type { LogLevel } from './ConsoleLogsProvider'
+import { describeTabVisibility } from '@/shared/utils/tabVisibility'
 
 // How long a status may persist before the player is recreated. Failed states
 // get a short grace (in-flight auth retries run on a 5s cadence); transitional
@@ -61,8 +62,8 @@ export function usePlayerAutoRecovery(
       addLog(
         'WARN',
         delay === 0
-          ? `Player lost its Spotify device — recreating it now`
-          : `Player has been '${status}' for ${Math.round(delay / 1000)}s — recreating it (attempt ${attemptRef.current})`,
+          ? `Player lost its Spotify device — recreating it now (tab ${describeTabVisibility()})`
+          : `Player has been '${status}' for ${Math.round(delay / 1000)}s — recreating it (attempt ${attemptRef.current}, tab ${describeTabVisibility()})`,
         'PlayerAutoRecovery'
       )
       void createPlayer()

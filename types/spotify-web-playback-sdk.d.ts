@@ -52,6 +52,7 @@ declare global {
         event: 'playback_error',
         callback: (error: { message: string }) => void
       ): void
+      addListener(event: 'autoplay_failed', callback: () => void): void
       removeListener(
         event:
           | 'ready'
