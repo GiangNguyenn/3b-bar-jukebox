@@ -46,10 +46,13 @@ const NowPlaying: React.FC<INowPlayingProps> = memo(
 
     return (
       <div className='bg-white flex flex-col items-center justify-start rounded-lg p-2 shadow-lg sm:flex-row'>
-        <VinylSpinningAnimation
-          is_playing={is_playing}
-          albumCover={albumCover}
-        />
+        {/* 3B shows the vinyl inside the banner instead */}
+        {!is3B && (
+          <VinylSpinningAnimation
+            is_playing={is_playing}
+            albumCover={albumCover}
+          />
+        )}
         <div className='flex w-full flex-col px-3 text-center sm:text-left'>
           <span className='text-xs font-bold uppercase tracking-wide text-gray-600'>
             Now Playing
@@ -59,6 +62,7 @@ const NowPlaying: React.FC<INowPlayingProps> = memo(
               trackName={name}
               artistName={artistNames}
               albumCover={albumCover}
+              isPlaying={is_playing}
             />
           ) : (
             <>
