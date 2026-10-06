@@ -69,6 +69,9 @@ interface ApiProps {
   token?: string
   statisticsTracker?: ApiStatisticsTracker
   timeout?: number
+  // Error statuses the caller expects and handles (e.g. a 404 while a new
+  // device registers): logged as WARN instead of ERROR
+  expectedErrorStatuses?: number[]
 }
 
 const SPOTIFY_API_URL =
@@ -200,7 +203,8 @@ export const sendApiRequest = async <T>({
   token: providedToken,
   debounceTime = DEFAULT_DEBOUNCE_TIME,
   statisticsTracker,
-  timeout = 30000 // Default 30s timeout to allow for IPv6 fallback
+  timeout = 30000, // Default 30s timeout to allow for IPv6 fallback
+  expectedErrorStatuses
 }: ApiProps): Promise<T> => {
   // 0. Suspension Guard: Fail fast if token recovery is in progress
   if (
@@ -294,7 +298,16 @@ export const sendApiRequest = async <T>({
       }
     } catch (error: unknown) {
       if (apiLogger) {
-        apiLogger('ERROR', `[API Exception] ${method}: ${url}`, 'API', error)
+        const expected =
+          error instanceof ApiError &&
+          error.status !== undefined &&
+          expectedErrorStatuses?.includes(error.status)
+        apiLogger(
+          expected ? 'WARN' : 'ERROR',
+          `[API Exception] ${method}: ${url}`,
+          'API',
+          error
+        )
       } else {
         console.error(`[API Exception] ${method}: ${url}`, error)
       }
@@ -408,7 +421,7 @@ export const sendApiRequest = async <T>({
         }
         if (apiLogger) {
           apiLogger(
-            'ERROR',
+            expectedErrorStatuses?.includes(response.status) ? 'WARN' : 'ERROR',
             `[API Error] ${method}: ${url} - Status: ${response.status} - ${errorMessage}`,
             'API',
             errorData

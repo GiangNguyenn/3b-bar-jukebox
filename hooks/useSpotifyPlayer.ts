@@ -1,4 +1,4 @@
-import { useCallback, useEffect } from 'react'
+import { useCallback, useEffect, useRef } from 'react'
 import { useConsoleLogsContext } from './ConsoleLogsProvider'
 import { playerLifecycleService } from '@/services/playerLifecycle'
 
@@ -8,6 +8,11 @@ export { spotifyPlayerStore } from './spotifyPlayerStore'
 
 import { spotifyPlayerStore } from './spotifyPlayerStore'
 import type { PlayerStatus, PlayerStatusState } from './spotifyPlayerStore'
+
+// The player creation in progress, shared by every caller (initial mount,
+// auto-recovery, token refresh). Two creations at once would register two
+// SDK players in one tab that fight over the Spotify account.
+let inFlightCreate: Promise<string | null> | null = null
 
 // Export a hook to access the store
 export function useSpotifyPlayerStore(): PlayerStatusState {
@@ -44,7 +49,13 @@ export function useSpotifyPlayerHook(
     spotifyPlayerStore.getState().setPlaybackState(null)
   }, [])
 
-  const createPlayer = useCallback(async () => {
+  // Lets the recovery_needed callback go through the in-flight guard in
+  // createPlayer, which is declared after this
+  const createPlayerRef = useRef<() => Promise<string | null>>(() =>
+    Promise.resolve(null)
+  )
+
+  const createPlayerOnce = useCallback(async (): Promise<string | null> => {
     const currentPlayer = playerLifecycleService.getPlayer()
     const currentStatus = spotifyPlayerStore.getState().status
 
@@ -87,7 +98,7 @@ export function useSpotifyPlayerHook(
             void (async () => {
               destroyPlayer()
               await new Promise((resolve) => setTimeout(resolve, 100))
-              await createPlayer()
+              await createPlayerRef.current()
             })()
             return
           }
@@ -125,6 +136,23 @@ export function useSpotifyPlayerHook(
       return null
     }
   }, [addLog, destroyPlayer])
+
+  const createPlayer = useCallback((): Promise<string | null> => {
+    if (inFlightCreate) {
+      addLog(
+        'INFO',
+        'Player creation already in progress, waiting for it',
+        'SpotifyPlayer'
+      )
+      return inFlightCreate
+    }
+    const creation = createPlayerOnce().finally(() => {
+      if (inFlightCreate === creation) inFlightCreate = null
+    })
+    inFlightCreate = creation
+    return creation
+  }, [addLog, createPlayerOnce])
+  createPlayerRef.current = createPlayer
 
   // Cleanup on unmount
   useEffect(() => {

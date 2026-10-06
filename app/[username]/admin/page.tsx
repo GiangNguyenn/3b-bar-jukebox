@@ -400,10 +400,6 @@ export default function AdminPage(): JSX.Element {
     addLog
   })
 
-  // Recreate the player if it stays out of 'ready' (failed recovery, stuck
-  // initialization) instead of waiting for someone to reload the page
-  usePlayerAutoRecovery(createPlayer, addLog)
-
   // Enforce single-device playback
   usePlaybackEnforcer(true) // Always enabled when admin page is loaded
 

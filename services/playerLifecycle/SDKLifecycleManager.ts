@@ -16,8 +16,11 @@ import {
   formatDuration
 } from '@/shared/utils/tabVisibility'
 
-const TRANSFER_ATTEMPTS = 4
-const TRANSFER_RETRY_DELAY_MS = 1500
+// How long to keep trying to move playback to a new device. Spotify can take
+// a while to register a replacement device after it dropped the old one; a
+// page reload then works in seconds, so giving up early only costs silence.
+const TRANSFER_WINDOW_MS = 30_000
+const TRANSFER_RETRY_DELAYS_MS = [1000, 2000, 4000, 8000]
 
 type AddLogFn = (
   level: LogLevel,
@@ -152,22 +155,32 @@ export class SDKLifecycleManager {
       )
       handler.attachListeners(player)
 
+      // Claim the slot before connecting: a second createPlayer during the
+      // await must hit 'Player already exists', and a 'ready' event that
+      // arrives before connect() resolves must find the player
+      this.playerRef = player
+      window.spotifyPlayerInstance = player
+
       this.beginSetupStep('connecting to Spotify')
       const connected = await player.connect()
+      if (this.playerRef !== player) {
+        // Destroyed (and disconnected) while connecting
+        throw new Error('Player creation superseded')
+      }
       if (!connected) {
         this.logSetup(
           'ERROR',
           `Player setup failed: the SDK could not connect to Spotify (tab ${describeTabVisibility()})`
         )
+        this.playerRef = null
+        window.spotifyPlayerInstance = null
+        player.disconnect()
         throw new Error('Failed to connect to Spotify')
       }
       // handleDeviceReady may already have moved setup on by now
       if (this.setup.step === 'connecting to Spotify') {
         this.beginSetupStep('waiting for Spotify to report the device ready')
       }
-
-      this.playerRef = player
-      window.spotifyPlayerInstance = player
 
       return new Promise<string>((resolve, reject) => {
         if (this.deviceReadyResolver) {
@@ -228,6 +241,10 @@ export class SDKLifecycleManager {
     }
 
     this.timeoutManager.clear('notReady')
+    // The SDK has reported the device ready, which is what the
+    // initialization timeout waits for. The transfer below has its own
+    // deadline and must not be cut short by it.
+    this.timeoutManager.clear('initialization')
     onStatusChange('verifying')
 
     this.beginSetupStep('verifying the new device with Spotify')
@@ -246,25 +263,37 @@ export class SDKLifecycleManager {
     this.deviceId = deviceId
     onDeviceIdChange(deviceId)
 
-    // A freshly registered device can take a few seconds to show up in
-    // Spotify's device list, and the transfer validates against that list.
-    // Failing on the first miss would mark the new player 'error' and cost a
-    // whole extra recovery cycle.
+    // A freshly registered device can take a while to show up in Spotify's
+    // device list, so the transfer is sent without checking that list first
+    // (Spotify answers 404 if it really doesn't know the device) and retried
+    // with backoff until TRANSFER_WINDOW_MS has passed. The deadline is by the
+    // clock, since timers in a background tab can run late.
+    const deadline = Date.now() + TRANSFER_WINDOW_MS
     let transferSuccess = false
-    for (let attempt = 0; attempt < TRANSFER_ATTEMPTS; attempt++) {
-      if (attempt > 0) {
-        await new Promise((resolve) =>
-          setTimeout(resolve, TRANSFER_RETRY_DELAY_MS)
-        )
-      }
+    let attempt = 0
+    for (;;) {
       if (!this.playerRef || this.deviceId !== deviceId) {
         return
       }
+      attempt++
       this.beginSetupStep(
-        `moving playback to the new device (attempt ${attempt + 1} of ${TRANSFER_ATTEMPTS})`
+        `moving playback to the new device (attempt ${attempt})`
       )
-      transferSuccess = await transferPlaybackToDevice(deviceId)
+      transferSuccess = await transferPlaybackToDevice(
+        deviceId,
+        1,
+        0,
+        true,
+        null,
+        false
+      )
       if (transferSuccess) break
+      const delay =
+        TRANSFER_RETRY_DELAYS_MS[
+          Math.min(attempt - 1, TRANSFER_RETRY_DELAYS_MS.length - 1)
+        ]
+      if (Date.now() + delay >= deadline) break
+      await new Promise((resolve) => setTimeout(resolve, delay))
     }
 
     if (!this.playerRef || this.deviceId !== deviceId) {
@@ -272,14 +301,19 @@ export class SDKLifecycleManager {
     }
 
     if (!transferSuccess) {
-      this.logSetup(
-        'ERROR',
-        `Player setup failed: the SDK reported the device ready, but playback could not be moved to it in ${TRANSFER_ATTEMPTS} attempts, ${formatDuration(Date.now() - this.setup.startedAt)} after setup began (tab ${describeTabVisibility()})`
-      )
+      const message = `the SDK reported the device ready, but playback could not be moved to it in ${attempt} attempts, ${formatDuration(Date.now() - this.setup.startedAt)} after setup began (tab ${describeTabVisibility()})`
+      this.logSetup('ERROR', `Player setup failed: ${message}`)
       this.setup.step =
         'giving up after playback could not be moved to the device'
       this.setup.stepStartedAt = Date.now()
       onStatusChange('error', 'Failed to transfer playback to new device')
+      // Settle createPlayer() now, so that auto-recovery can schedule the
+      // next attempt instead of waiting for the initialization timeout
+      if (this.deviceErrorResolver) {
+        this.deviceErrorResolver(new Error(`Player setup failed: ${message}`))
+        this.deviceErrorResolver = null
+        this.deviceReadyResolver = null
+      }
       return
     }
 

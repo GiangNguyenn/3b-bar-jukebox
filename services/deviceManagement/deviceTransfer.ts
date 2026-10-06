@@ -1,4 +1,4 @@
-import { sendApiRequest } from '@/shared/api'
+import { ApiError, sendApiRequest } from '@/shared/api'
 import { validateDevice } from './deviceValidation'
 import { getAvailableDevices } from './deviceApi'
 import { isNetworkError } from '@/shared/utils/networkErrorDetection'
@@ -22,13 +22,20 @@ export function setDeviceTransferLogger(logger: typeof addLog): void {
  * @param maxAttempts - Maximum number of transfer attempts (default: 3)
  * @param delayBetweenAttempts - Delay between retry attempts in ms (default: 1000)
  * @param skipVerificationOnNetworkError - If true, skip device state verification on network errors (default: true)
+ * @param shouldPlay - Start playback on the device (true), pause it (false), or keep the current state (null)
+ * @param requireListed - If true (default), give up at once when Spotify's
+ *   device list does not include the device. A freshly created SDK player
+ *   can take several seconds to appear in that list while Spotify already
+ *   accepts a transfer to it, so player setup passes false and lets the
+ *   transfer request itself say whether the device exists.
  */
 export async function transferPlaybackToDevice(
   deviceId: string,
   maxAttempts: number = 3,
   delayBetweenAttempts: number = 1000,
   skipVerificationOnNetworkError: boolean = true,
-  shouldPlay: boolean | null = null // Default to null (maintain current state)
+  shouldPlay: boolean | null = null, // Default to null (maintain current state)
+  requireListed: boolean = true
 ): Promise<boolean> {
   if (!deviceId) {
     if (addLog) {
@@ -44,7 +51,9 @@ export async function transferPlaybackToDevice(
   while (attempts < maxAttempts) {
     try {
       // Validate device first - early exit if device is gone
-      const validation = await validateDevice(deviceId)
+      const validation = requireListed
+        ? await validateDevice(deviceId)
+        : { isValid: true, errors: [] }
 
       if (!validation.isValid) {
         if (addLog) {
@@ -77,7 +86,9 @@ export async function transferPlaybackToDevice(
         await sendApiRequest({
           path: 'me/player',
           method: 'PUT',
-          body
+          body,
+          // Spotify answers 404 while a new device is still registering
+          ...(!requireListed && { expectedErrorStatuses: [404] })
         })
 
         if (addLog) {
@@ -90,10 +101,15 @@ export async function transferPlaybackToDevice(
       } catch (transferError) {
         // If transfer API call itself fails, retry the whole loop
         const isNetworkErr = isNetworkError(transferError)
+        // Expected while a new device is still registering with Spotify
+        const notRegisteredYet =
+          !requireListed &&
+          transferError instanceof ApiError &&
+          transferError.status === 404
         if (addLog) {
           addLog(
-            isNetworkErr ? 'WARN' : 'ERROR',
-            `Device transfer API call failed: ${isNetworkErr ? 'network error' : 'API error'}`,
+            isNetworkErr || notRegisteredYet ? 'WARN' : 'ERROR',
+            `Device transfer API call failed: ${isNetworkErr ? 'network error' : notRegisteredYet ? 'Spotify does not know the device yet (404)' : 'API error'}`,
             'DeviceTransfer',
             transferError instanceof Error ? transferError : undefined
           )
