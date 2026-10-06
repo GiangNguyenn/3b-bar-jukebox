@@ -1,5 +1,6 @@
 import React, { memo } from 'react'
 import VinylSpinningAnimation from './VinylSpinningAnimation'
+import NowPlayingBanner from './NowPlayingBanner'
 import { SpotifyPlaybackState } from '@/shared/types/spotify'
 
 interface INowPlayingProps {
@@ -40,24 +41,24 @@ const NowPlaying: React.FC<INowPlayingProps> = memo(
     const { item: nowPlayingTrack, is_playing } = nowPlaying
     const { name, artists, album } = nowPlayingTrack
     const is3B = username?.toLowerCase() === '3b'
+    const albumCover = album?.images?.[0]?.url || undefined
+    const artistNames = artists.map((artist) => artist.name).join(', ')
 
     return (
       <div className='bg-white flex flex-col items-center justify-start rounded-lg p-2 shadow-lg sm:flex-row'>
         <VinylSpinningAnimation
           is_playing={is_playing}
-          albumCover={album.images[0].url}
+          albumCover={albumCover}
         />
         <div className='flex w-full flex-col px-3 text-center sm:text-left'>
           <span className='text-xs font-bold uppercase tracking-wide text-gray-600'>
             Now Playing
           </span>
           {is3B ? (
-            <iframe
-              src='https://beta.nowplaying.site/ZfOzFugudTE2H7DO'
-              width='100%'
-              height='150'
-              style={{ border: 'none', pointerEvents: 'none' }}
-              title='Now Playing'
+            <NowPlayingBanner
+              trackName={name}
+              artistName={artistNames}
+              albumCover={albumCover}
             />
           ) : (
             <>
@@ -71,7 +72,7 @@ const NowPlaying: React.FC<INowPlayingProps> = memo(
                 className='truncate text-sm'
                 style={{ color: secondaryColor }}
               >
-                - {artists.map((artist) => artist.name).join(', ')}
+                - {artistNames}
               </div>
             </>
           )}
