@@ -32,8 +32,9 @@ export interface PlayerStatusState {
   volume: number
   /**
    * Set when the player is known to be unrecoverable in place (Spotify
-   * confirmed its device is gone), so usePlayerAutoRecovery rebuilds it
-   * immediately instead of waiting out its grace period. Cleared on 'ready'.
+   * confirmed its device is gone), so usePlayerAutoRecovery recovers it
+   * immediately (by reloading the page) instead of waiting out its grace
+   * period. Cleared on 'ready'.
    */
   recoveryRequested: boolean
   requestRecovery: () => void

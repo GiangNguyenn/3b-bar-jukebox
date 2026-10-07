@@ -50,6 +50,14 @@ type ResumePoint =
 const RESUME_POINT_MAX_AGE_MS = 10 * 60_000
 // Closer than this to the end, a song counts as finished: play the next one.
 const RESUME_END_MARGIN_MS = 3000
+// Carries the resume point across a recovery page reload
+const RESUME_POINT_STORAGE_KEY = 'jukebox:playerLifecycle:resumePoint'
+// After a reload, how long to wait for the queue to load before leaving the
+// next track to auto-play
+const RELOAD_QUEUE_WAIT_MS = 10_000
+// When a play request finds our device missing, Spotify has been seen to list
+// it again ~1.5s later. Re-check at these delays before giving up on it.
+const DEVICE_RECHECK_DELAYS_MS: readonly number[] = [1500, 3000]
 
 /**
  * Coordinator for the Spotify Web Playback SDK lifecycle.
@@ -90,6 +98,7 @@ class PlayerLifecycleService {
   private lastPlayFailureWasTrackSpecific = false
   private lastDeviceRegistrationCheck = 0
   private readonly DEVICE_REGISTRATION_CHECK_COOLDOWN_MS = 10_000
+  private deviceRecheckDelaysMs = DEVICE_RECHECK_DELAYS_MS
   private resumePoint: ResumePoint | null = null
 
   // Phase 4: Internal Log History (Circular Buffer)
@@ -250,7 +259,8 @@ class PlayerLifecycleService {
             if (
               !(await this.verifyDeviceRegistered(
                 'play request failed',
-                'next'
+                'next',
+                { revive: true }
               ))
             ) {
               this.lastPlayFailureWasTrackSpecific = false
@@ -269,7 +279,9 @@ class PlayerLifecycleService {
           return false // Don't retry further, just skip this track
         } else if (
           deviceMissing &&
-          !(await this.verifyDeviceRegistered('play request failed', 'next'))
+          !(await this.verifyDeviceRegistered('play request failed', 'next', {
+            revive: true
+          }))
         ) {
           // The device vanished between attempts: stop retrying and let the
           // player be recreated
@@ -313,12 +325,16 @@ class PlayerLifecycleService {
    * the device is gone, the player is flagged as errored so
    * usePlayerAutoRecovery recreates it.
    *
+   * With `revive`, a missing device gets a few seconds to reappear and is
+   * made active again if it does, before it is declared lost.
+   *
    * @returns false only when the device was confirmed missing. Inconclusive
    *   checks (network failure, rate limit, cooldown) return true.
    */
   async verifyDeviceRegistered(
     reason: string,
-    resumeHint?: 'next'
+    resumeHint?: 'next',
+    options: { revive?: boolean } = {}
   ): Promise<boolean> {
     const deviceId = this.sdkLifecycleManager.getDeviceId()
     if (!deviceId) return true
@@ -336,10 +352,48 @@ class PlayerLifecycleService {
     if (result.isValid || !result.errors.includes(DEVICE_NOT_FOUND_ERROR)) {
       return true
     }
+    if (options.revive && (await this.reviveDevice(deviceId))) return true
     // The device may have been replaced while we were checking
     if (this.sdkLifecycleManager.getDeviceId() !== deviceId) return true
 
     this.reportDeviceLost(reason, resumeHint)
+    return false
+  }
+
+  /**
+   * Spotify can drop our device from its list for a moment and then list it
+   * again (seen after the tab had been in the background for hours). Waits
+   * for that, and if the device comes back, makes it the active device again,
+   * which is much quicker than replacing the player.
+   *
+   * @returns true when the device is listed again and accepted playback
+   */
+  private async reviveDevice(deviceId: string): Promise<boolean> {
+    for (const delay of this.deviceRecheckDelaysMs) {
+      await new Promise((resolve) => setTimeout(resolve, delay))
+      if (this.sdkLifecycleManager.getDeviceId() !== deviceId) return false
+      const result = await validateDevice(deviceId)
+      if (!result.isValid) continue
+
+      this.log(
+        'WARN',
+        'Spotify lists this player again after briefly dropping it — reactivating it'
+      )
+      const activated = await transferPlaybackToDevice(
+        deviceId,
+        2,
+        1000,
+        true,
+        true
+      )
+      this.log(
+        activated ? 'INFO' : 'WARN',
+        activated
+          ? 'Player reactivated after Spotify briefly dropped it'
+          : 'Spotify lists this player again but would not move playback to it'
+      )
+      return activated
+    }
     return false
   }
 
@@ -407,21 +461,22 @@ class PlayerLifecycleService {
    * auto-play's fallbacks see the operation in progress and stand aside.
    */
   onPlayerReady(deviceId: string): void {
-    const point = this.resumePoint
+    // Always take the stored point, so it can't be replayed by a later load
+    const stored = this.takeStoredResumePoint()
+    const fromReload = !this.resumePoint && stored !== null
+    const point = this.resumePoint ?? stored
     this.resumePoint = null
     if (!point || this.isManualPause) return
     if (Date.now() - point.capturedAt > RESUME_POINT_MAX_AGE_MS) return
 
     if (point.kind === 'next') {
       const nextTrack = queueManager.getNextTrack()
-      if (!nextTrack) return
-      this.log(
-        'INFO',
-        `Player recovered — starting next track "${nextTrack.tracks.name}"`
-      )
-      void this.playNextTrack(nextTrack).catch((error) =>
-        this.log('WARN', 'Failed to start next track after recovery', error)
-      )
+      if (nextTrack) {
+        this.startNextAfterRecovery(nextTrack)
+      } else if (fromReload) {
+        // A freshly loaded page may not have fetched the queue yet
+        void this.startNextOnceQueueLoads()
+      }
       return
     }
 
@@ -444,6 +499,75 @@ class PlayerLifecycleService {
       .catch((error) =>
         this.log('WARN', 'Failed to resume playback after recovery', error)
       )
+  }
+
+  private startNextAfterRecovery(nextTrack: JukeboxQueueItem): void {
+    this.log(
+      'INFO',
+      `Player recovered — starting next track "${nextTrack.tracks.name}"`
+    )
+    void this.playNextTrack(nextTrack).catch((error) =>
+      this.log('WARN', 'Failed to start next track after recovery', error)
+    )
+  }
+
+  private async startNextOnceQueueLoads(): Promise<void> {
+    const deadline = Date.now() + RELOAD_QUEUE_WAIT_MS
+    while (Date.now() < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, 500))
+      // Auto-play or the user got there first
+      if (
+        this.isManualPause ||
+        playbackService.isOperationInProgress() ||
+        spotifyPlayerStore.getState().playbackState?.is_playing
+      ) {
+        return
+      }
+      const nextTrack = queueManager.getNextTrack()
+      if (nextTrack) {
+        this.startNextAfterRecovery(nextTrack)
+        return
+      }
+    }
+  }
+
+  /**
+   * Called just before the page is reloaded to recover the player: saves the
+   * pending resume point so the reloaded page continues where this one
+   * stopped. Without a pending point nothing is saved, and the reloaded page
+   * behaves like any fresh load.
+   */
+  prepareForPageReload(): void {
+    try {
+      if (this.resumePoint) {
+        sessionStorage.setItem(
+          RESUME_POINT_STORAGE_KEY,
+          JSON.stringify(this.resumePoint)
+        )
+      } else {
+        sessionStorage.removeItem(RESUME_POINT_STORAGE_KEY)
+      }
+    } catch {
+      // Storage unavailable: the reloaded page falls back to auto-play
+    }
+  }
+
+  private takeStoredResumePoint(): ResumePoint | null {
+    try {
+      const raw = sessionStorage.getItem(RESUME_POINT_STORAGE_KEY)
+      if (!raw) return null
+      sessionStorage.removeItem(RESUME_POINT_STORAGE_KEY)
+      const point = JSON.parse(raw) as ResumePoint | null
+      if (
+        typeof point?.capturedAt !== 'number' ||
+        (point.kind !== 'next' && point.kind !== 'track')
+      ) {
+        return null
+      }
+      return point
+    } catch {
+      return null
+    }
   }
 
   wasLastPlayFailureTrackSpecific(): boolean {

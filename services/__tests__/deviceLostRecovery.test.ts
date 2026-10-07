@@ -25,10 +25,14 @@ function jsonResponse(status: number, body: unknown): Response {
 
 function makeService(): PlayerLifecycleService {
   const service = new PlayerLifecycleService()
+  const internals = service as unknown as {
+    sdkLifecycleManager: { deviceId: string }
+    deviceRecheckDelaysMs: readonly number[]
+  }
   // Simulate a player that completed initialization with this device
-  ;(
-    service as unknown as { sdkLifecycleManager: { deviceId: string } }
-  ).sdkLifecycleManager.deviceId = DEVICE_ID
+  internals.sdkLifecycleManager.deviceId = DEVICE_ID
+  // Re-check a missing device without the real waits
+  internals.deviceRecheckDelaysMs = [0, 0]
   return service
 }
 
@@ -36,7 +40,8 @@ function setReady(): void {
   spotifyPlayerStore.setState({
     status: 'ready',
     isReady: true,
-    lastStatusChange: 0
+    lastStatusChange: 0,
+    recoveryRequested: false
   })
 }
 
@@ -109,6 +114,63 @@ void describe('verifyDeviceRegistered', () => {
     assert.equal(spotifyPlayerStore.getState().recoveryRequested, true)
     // A missing device says nothing about the track: keep it queued
     assert.equal(service.wasLastPlayFailureTrackSpecific(), false)
+  })
+
+  void it('reactivates the device when Spotify lists it again moments later', async () => {
+    // Seen in the field: the play request 404s, Spotify lists no devices,
+    // then lists ours again (inactive) about 1.5s later
+    let deviceListRequests = 0
+    let playRequests = 0
+    let transferred = false
+    globalThis.fetch = ((url: string, init?: RequestInit) => {
+      const target = String(url)
+      if (target.includes('/me/player/play')) {
+        playRequests++
+        return Promise.resolve(
+          playRequests === 1
+            ? jsonResponse(404, {
+                error: { status: 404, message: 'Not found.' }
+              })
+            : new Response(null, { status: 204 })
+        )
+      }
+      if (target.includes('/me/player/devices')) {
+        deviceListRequests++
+        // Missing for the transfer's check and the registration check
+        return Promise.resolve(
+          jsonResponse(200, {
+            devices:
+              deviceListRequests <= 2
+                ? []
+                : [{ id: DEVICE_ID, is_active: false, name: 'Jukebox Player' }]
+          })
+        )
+      }
+      if (init?.method === 'PUT') {
+        transferred = true
+        return Promise.resolve(new Response(null, { status: 204 }))
+      }
+      return Promise.resolve(
+        jsonResponse(
+          200,
+          transferred
+            ? { device: { id: DEVICE_ID, is_active: true, name: 'Jukebox' } }
+            : {}
+        )
+      )
+    }) as typeof fetch
+
+    const service = makeService()
+    const started = await service.playTrackWithRetry(
+      'spotify:track:6kooDsorCpWVMGc994XjWN',
+      DEVICE_ID
+    )
+
+    assert.equal(started, true)
+    assert.equal(transferred, true)
+    assert.equal(playRequests, 2)
+    assert.equal(spotifyPlayerStore.getState().status, 'ready')
+    assert.equal(spotifyPlayerStore.getState().recoveryRequested, false)
   })
 
   void it('does not recreate the player when the device list request fails', async () => {
@@ -261,5 +323,89 @@ void describe('resume after recovery', () => {
     spotifyPlayerStore.setState({ lastStatusChange: 0 })
     spotifyPlayerStore.getState().setStatus('ready')
     assert.equal(spotifyPlayerStore.getState().recoveryRequested, false)
+  })
+})
+
+// ─── Carrying the resume point across a recovery page reload ────────────────
+
+function installSessionStorage(): Map<string, string> {
+  const store = new Map<string, string>()
+  ;(globalThis as { sessionStorage?: unknown }).sessionStorage = {
+    getItem: (key: string) => store.get(key) ?? null,
+    setItem: (key: string, value: string) => void store.set(key, value),
+    removeItem: (key: string) => void store.delete(key)
+  }
+  return store
+}
+
+void describe('resume after a recovery page reload', () => {
+  afterEach(() => {
+    mock.restoreAll()
+    delete (globalThis as { sessionStorage?: unknown }).sessionStorage
+  })
+
+  void it('resumes the song on the reloaded page, once', async () => {
+    const storage = installSessionStorage()
+    const before = makeService()
+    ;(
+      before as unknown as ServiceInternals
+    ).queueSynchronizer.setLastKnownState(sdkState(30_000, true))
+    before.captureResumePoint()
+    before.prepareForPageReload()
+    assert.equal(storage.size, 1)
+
+    // The reloaded page has a fresh service
+    const after = makeService()
+    const play = mock.method(after, 'playTrackWithRetry', () =>
+      Promise.resolve(true)
+    )
+    after.onPlayerReady('new-device')
+    await new Promise((resolve) => setTimeout(resolve, 10))
+
+    assert.equal(play.mock.callCount(), 1)
+    const [uri, device, , positionMs] = play.mock.calls[0].arguments
+    assert.equal(uri, 'spotify:track:song-a')
+    assert.equal(device, 'new-device')
+    assert.equal(positionMs, 30_000)
+    assert.equal(storage.size, 0)
+
+    // A later player-ready on the same page does not resume it again
+    after.onPlayerReady('newer-device')
+    await new Promise((resolve) => setTimeout(resolve, 10))
+    assert.equal(play.mock.callCount(), 1)
+  })
+
+  void it('starts the next song once the reloaded page has loaded the queue', async () => {
+    installSessionStorage()
+    const before = makeService()
+    before.captureResumePoint('next')
+    before.prepareForPageReload()
+
+    const after = makeService()
+    let queueLoaded = false
+    const nextItem = { id: 'queue-b', tracks: { name: 'Song B' } }
+    mock.method(queueManager, 'getNextTrack', () =>
+      queueLoaded ? nextItem : undefined
+    )
+    const playNext = mock.method(after, 'playNextTrack', () =>
+      Promise.resolve()
+    )
+
+    after.onPlayerReady('new-device')
+    assert.equal(playNext.mock.callCount(), 0)
+
+    queueLoaded = true
+    await new Promise((resolve) => setTimeout(resolve, 700))
+    assert.equal(playNext.mock.callCount(), 1)
+    assert.equal(playNext.mock.calls[0].arguments[0], nextItem)
+  })
+
+  void it('saves nothing when there is nothing to resume', () => {
+    const storage = installSessionStorage()
+    storage.set('jukebox:playerLifecycle:resumePoint', 'stale')
+
+    makeService().prepareForPageReload()
+
+    assert.equal(storage.size, 0)
   })
 })

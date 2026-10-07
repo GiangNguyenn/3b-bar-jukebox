@@ -277,6 +277,22 @@ void describe('player auto-recovery wiring', () => {
     )
     assert.match(hook, /window\.location\.reload\(\)/)
     assert.match(hook, /navigator\.onLine === false/)
-    assert.match(hook, /if \(!claimPageReload\(now\)\) return/)
+    assert.match(hook, /if \(!claimPageReload\(Date\.now\(\)\)\) return false/)
+    // The resume point must be saved before the page goes away
+    assert.match(
+      hook,
+      /prepareForPageReload\(\)\s*\n\s*window\.location\.reload\(\)/
+    )
+  })
+
+  void it('reloads at once for a lost device, rebuilding in place only when it may not', () => {
+    const hook = readFileSync(
+      resolve(process.cwd(), 'hooks/usePlayerAutoRecovery.ts'),
+      'utf-8'
+    )
+    assert.match(
+      hook,
+      /lostDevice &&\s*tryPageReload\([\s\S]*?\)\s*\) \{\s*return\s*\}\s*inFlightRef\.current = true/
+    )
   })
 })
